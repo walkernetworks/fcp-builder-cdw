@@ -1,18 +1,9 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { index, int, json, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import type { EngagementDocument } from "../shared/fcp";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
+  openId: varchar("openId", { length: 191 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
@@ -25,4 +16,21 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+export const engagements = mysqlTable(
+  "engagements",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerId: int("ownerId").notNull(),
+    title: varchar("title", { length: 240 }).notNull(),
+    customerName: varchar("customerName", { length: 240 }).notNull().default("Untitled customer"),
+    customerShortName: varchar("customerShortName", { length: 64 }).notNull().default("TBD"),
+    status: mysqlEnum("status", ["draft", "ready", "archived"]).default("draft").notNull(),
+    data: json("data").$type<EngagementDocument>().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("engagements_owner_updated_idx").on(table.ownerId, table.updatedAt)],
+);
+
+export type Engagement = typeof engagements.$inferSelect;
+export type InsertEngagement = typeof engagements.$inferInsert;

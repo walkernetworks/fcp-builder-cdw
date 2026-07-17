@@ -1,0 +1,26 @@
+# Project TODO
+
+- [x] Protect every business-data route and API procedure behind authenticated sessions, with only documented non-data sign-in, OAuth/session, logout, and health exceptions.
+- [x] Preserve Manus OAuth for the hosted workspace and add documented config-driven OIDC/SSO hooks for CDW Entra ID or Okta without local passwords.
+- [x] Define the authoritative §5 engagement fields and §6 timeline object as shared validated types.
+- [x] Add owner-scoped engagement persistence with create, list, open, update, duplicate, and delete operations.
+- [x] Build a CDW-branded authenticated workspace with engagement navigation and clear loading, empty, and error states.
+- [x] Build grouped Tracks A–E guided intake accordions with completion indicators, free-text notes, and overall progress.
+- [x] Implement notes-inclusive server-side Draft Timeline generation through an environment-configured approved LLM endpoint.
+- [x] Return and display a concise sequencing rationale with every AI timeline draft.
+- [x] Implement deterministic fallback sequencing that follows §7 and never fabricates protected customer values.
+- [x] Build a CSS-grid swimlane Gantt editor with lane add, rename, reorder, and delete actions.
+- [x] Add bar create, edit, move, drag-resize, delete, milestone, deferred, and constrained §8.2 color controls.
+- [x] Prevent same-lane overlaps while allowing concurrency across different lanes.
+- [x] Derive the Adoption Sequence table, Private Cloud Gantt, Two-Year Gantt, Executive Roadmap, and Forward Delivery Plan from one timeline JSON object.
+- [x] Build a live CDW-branded FCP preview that updates from engagement state without unresolved template tokens.
+- [x] Add direct standalone HTML download with self-contained styles and interaction.
+- [x] Add direct PDF download through a server-side Chromium renderer suitable for the self-hosted container.
+- [x] Provide autosave status, explicit save controls, and safe destructive-action confirmation.
+- [x] Add environment-variable examples for IdP, LLM, database, storage, and export configuration without hardcoded endpoints or secrets.
+- [x] Package the app as one OCI container with a health endpoint and one inbound application port.
+- [x] Produce architecture, data-flow, data-classification, retention, authentication, secrets, ports, dependency/SBOM, and outbound-endpoint documentation.
+- [x] Explicitly document that customer data does not leave the deployment boundary except to the configured corporate IdP and approved enterprise LLM endpoint.
+- [x] Add and run Vitest coverage for domain sequencing, validation, protected API access, synchronized rendering, token sanitization, and authenticated HTML export behavior; smoke-test Chromium PDF generation.
+- [x] Verify the Meridian Health golden scenario against the expected three-wave, hardware-gated, DR/VDefend, no-Kubernetes behavior.
+- [x] Verify desktop and mobile-responsive rendering and refine the visual system from screenshots.

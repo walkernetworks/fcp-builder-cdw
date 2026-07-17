@@ -1,0 +1,400 @@
+[
+  {
+    "name": "fcp-builder-cdw",
+    "version": "1.0.0",
+    "path": "/home/ubuntu/fcp-builder-cdw",
+    "private": false,
+    "dependencies": {
+      "@aws-sdk/client-s3": {
+        "from": "@aws-sdk/client-s3",
+        "version": "3.907.0",
+        "resolved": "https://registry.npmjs.org/@aws-sdk/client-s3/-/client-s3-3.907.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@aws-sdk+client-s3@3.907.0/node_modules/@aws-sdk/client-s3"
+      },
+      "@aws-sdk/s3-request-presigner": {
+        "from": "@aws-sdk/s3-request-presigner",
+        "version": "3.907.0",
+        "resolved": "https://registry.npmjs.org/@aws-sdk/s3-request-presigner/-/s3-request-presigner-3.907.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@aws-sdk+s3-request-presigner@3.907.0/node_modules/@aws-sdk/s3-request-presigner"
+      },
+      "@hookform/resolvers": {
+        "from": "@hookform/resolvers",
+        "version": "5.2.2",
+        "resolved": "https://registry.npmjs.org/@hookform/resolvers/-/resolvers-5.2.2.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@hookform+resolvers@5.2.2_react-hook-form@7.64.0_react@19.2.1_/node_modules/@hookform/resolvers"
+      },
+      "@radix-ui/react-accordion": {
+        "from": "@radix-ui/react-accordion",
+        "version": "1.2.12",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-accordion/-/react-accordion-1.2.12.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-accordion@1.2.12_@types+react-dom@19.2.1_@types+react@19.2.1__@types+re_bcd311bcd1aacba480eaffbb460b6b5c/node_modules/@radix-ui/react-accordion"
+      },
+      "@radix-ui/react-alert-dialog": {
+        "from": "@radix-ui/react-alert-dialog",
+        "version": "1.1.15",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-alert-dialog/-/react-alert-dialog-1.1.15.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-alert-dialog@1.1.15_@types+react-dom@19.2.1_@types+react@19.2.1__@types_995e746b97dbd5ed20f1aca7534dd7b8/node_modules/@radix-ui/react-alert-dialog"
+      },
+      "@radix-ui/react-aspect-ratio": {
+        "from": "@radix-ui/react-aspect-ratio",
+        "version": "1.1.7",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-aspect-ratio/-/react-aspect-ratio-1.1.7.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-aspect-ratio@1.1.7_@types+react-dom@19.2.1_@types+react@19.2.1__@types+_889107077754e5420db74b4041406a69/node_modules/@radix-ui/react-aspect-ratio"
+      },
+      "@radix-ui/react-avatar": {
+        "from": "@radix-ui/react-avatar",
+        "version": "1.1.10",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-avatar/-/react-avatar-1.1.10.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-avatar@1.1.10_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react_a77ed1c8c3f9ed7cabd9208a1a6c702f/node_modules/@radix-ui/react-avatar"
+      },
+      "@radix-ui/react-checkbox": {
+        "from": "@radix-ui/react-checkbox",
+        "version": "1.3.3",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-checkbox/-/react-checkbox-1.3.3.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-checkbox@1.3.3_@types+react-dom@19.2.1_@types+react@19.2.1__@types+reac_826541f1f9ada4222d2e9e757bcfd299/node_modules/@radix-ui/react-checkbox"
+      },
+      "@radix-ui/react-collapsible": {
+        "from": "@radix-ui/react-collapsible",
+        "version": "1.1.12",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-collapsible/-/react-collapsible-1.1.12.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-collapsible@1.1.12_@types+react-dom@19.2.1_@types+react@19.2.1__@types+_3641be9bd1525eaf3171a59172e23303/node_modules/@radix-ui/react-collapsible"
+      },
+      "@radix-ui/react-context-menu": {
+        "from": "@radix-ui/react-context-menu",
+        "version": "2.2.16",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-context-menu/-/react-context-menu-2.2.16.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-context-menu@2.2.16_@types+react-dom@19.2.1_@types+react@19.2.1__@types_defb7233715a2807f5570b6b82269f4b/node_modules/@radix-ui/react-context-menu"
+      },
+      "@radix-ui/react-dialog": {
+        "from": "@radix-ui/react-dialog",
+        "version": "1.1.15",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-dialog/-/react-dialog-1.1.15.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-dialog@1.1.15_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react_0a626da8ed5038c9c76cae269de88ce2/node_modules/@radix-ui/react-dialog"
+      },
+      "@radix-ui/react-dropdown-menu": {
+        "from": "@radix-ui/react-dropdown-menu",
+        "version": "2.1.16",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-dropdown-menu/-/react-dropdown-menu-2.1.16.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-dropdown-menu@2.1.16_@types+react-dom@19.2.1_@types+react@19.2.1__@type_4ef7949fa9db2e659c84c1f5f5ee8c3d/node_modules/@radix-ui/react-dropdown-menu"
+      },
+      "@radix-ui/react-hover-card": {
+        "from": "@radix-ui/react-hover-card",
+        "version": "1.1.15",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-hover-card/-/react-hover-card-1.1.15.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-hover-card@1.1.15_@types+react-dom@19.2.1_@types+react@19.2.1__@types+r_c9656ace47f88ae3f03af071781873a3/node_modules/@radix-ui/react-hover-card"
+      },
+      "@radix-ui/react-label": {
+        "from": "@radix-ui/react-label",
+        "version": "2.1.7",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-label/-/react-label-2.1.7.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-label@2.1.7_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react@1_b637ccd8c59d87a8dea72e736e84d5da/node_modules/@radix-ui/react-label"
+      },
+      "@radix-ui/react-menubar": {
+        "from": "@radix-ui/react-menubar",
+        "version": "1.1.16",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-menubar/-/react-menubar-1.1.16.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-menubar@1.1.16_@types+react-dom@19.2.1_@types+react@19.2.1__@types+reac_4f0bd9eb024dd1db19b95637cd9ba06d/node_modules/@radix-ui/react-menubar"
+      },
+      "@radix-ui/react-navigation-menu": {
+        "from": "@radix-ui/react-navigation-menu",
+        "version": "1.2.14",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-navigation-menu/-/react-navigation-menu-1.2.14.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-navigation-menu@1.2.14_@types+react-dom@19.2.1_@types+react@19.2.1__@ty_46654507d766035464ad3d31159fe1c3/node_modules/@radix-ui/react-navigation-menu"
+      },
+      "@radix-ui/react-popover": {
+        "from": "@radix-ui/react-popover",
+        "version": "1.1.15",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-popover/-/react-popover-1.1.15.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-popover@1.1.15_@types+react-dom@19.2.1_@types+react@19.2.1__@types+reac_db6ad3fcdee80f83aa08a80ffcb18f99/node_modules/@radix-ui/react-popover"
+      },
+      "@radix-ui/react-progress": {
+        "from": "@radix-ui/react-progress",
+        "version": "1.1.7",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-progress/-/react-progress-1.1.7.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-progress@1.1.7_@types+react-dom@19.2.1_@types+react@19.2.1__@types+reac_bc29bb5b5003accfe323af07d2beebe9/node_modules/@radix-ui/react-progress"
+      },
+      "@radix-ui/react-radio-group": {
+        "from": "@radix-ui/react-radio-group",
+        "version": "1.3.8",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-radio-group/-/react-radio-group-1.3.8.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-radio-group@1.3.8_@types+react-dom@19.2.1_@types+react@19.2.1__@types+r_424aeb040eff2cfca25eea205448a006/node_modules/@radix-ui/react-radio-group"
+      },
+      "@radix-ui/react-scroll-area": {
+        "from": "@radix-ui/react-scroll-area",
+        "version": "1.2.10",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-scroll-area/-/react-scroll-area-1.2.10.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-scroll-area@1.2.10_@types+react-dom@19.2.1_@types+react@19.2.1__@types+_0e43d9a71c378f341fdf64a426dbb9fd/node_modules/@radix-ui/react-scroll-area"
+      },
+      "@radix-ui/react-select": {
+        "from": "@radix-ui/react-select",
+        "version": "2.2.6",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-select/-/react-select-2.2.6.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-select@2.2.6_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react@_8b13ce225722f578eb46e40f80ca06e5/node_modules/@radix-ui/react-select"
+      },
+      "@radix-ui/react-separator": {
+        "from": "@radix-ui/react-separator",
+        "version": "1.1.7",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-separator/-/react-separator-1.1.7.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-separator@1.1.7_@types+react-dom@19.2.1_@types+react@19.2.1__@types+rea_3079ac3cc9b82322e83e0fbe11770dee/node_modules/@radix-ui/react-separator"
+      },
+      "@radix-ui/react-slider": {
+        "from": "@radix-ui/react-slider",
+        "version": "1.3.6",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-slider/-/react-slider-1.3.6.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-slider@1.3.6_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react@_f400e87c32113f99205db34ab44ee3da/node_modules/@radix-ui/react-slider"
+      },
+      "@radix-ui/react-slot": {
+        "from": "@radix-ui/react-slot",
+        "version": "1.2.3",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-slot/-/react-slot-1.2.3.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-slot@1.2.3_@types+react@19.2.1_react@19.2.1/node_modules/@radix-ui/react-slot"
+      },
+      "@radix-ui/react-switch": {
+        "from": "@radix-ui/react-switch",
+        "version": "1.2.6",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-switch/-/react-switch-1.2.6.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-switch@1.2.6_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react@_37cd853345dc388359806df09de77125/node_modules/@radix-ui/react-switch"
+      },
+      "@radix-ui/react-tabs": {
+        "from": "@radix-ui/react-tabs",
+        "version": "1.1.13",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-tabs/-/react-tabs-1.1.13.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-tabs@1.1.13_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react@1_f17d79e5624870ad9beff8f466832fc4/node_modules/@radix-ui/react-tabs"
+      },
+      "@radix-ui/react-toggle": {
+        "from": "@radix-ui/react-toggle",
+        "version": "1.1.10",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-toggle/-/react-toggle-1.1.10.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-toggle@1.1.10_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react_8136373cc468f2bb18165ffa98ae6145/node_modules/@radix-ui/react-toggle"
+      },
+      "@radix-ui/react-toggle-group": {
+        "from": "@radix-ui/react-toggle-group",
+        "version": "1.1.11",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-toggle-group/-/react-toggle-group-1.1.11.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-toggle-group@1.1.11_@types+react-dom@19.2.1_@types+react@19.2.1__@types_f1e6afa4ed80e845e386c6430fd8b0a1/node_modules/@radix-ui/react-toggle-group"
+      },
+      "@radix-ui/react-tooltip": {
+        "from": "@radix-ui/react-tooltip",
+        "version": "1.2.8",
+        "resolved": "https://registry.npmjs.org/@radix-ui/react-tooltip/-/react-tooltip-1.2.8.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@radix-ui+react-tooltip@1.2.8_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react_cf38e8bef4fd3f50a3a3839d1868f5b4/node_modules/@radix-ui/react-tooltip"
+      },
+      "@tanstack/react-query": {
+        "from": "@tanstack/react-query",
+        "version": "5.90.2",
+        "resolved": "https://registry.npmjs.org/@tanstack/react-query/-/react-query-5.90.2.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@tanstack+react-query@5.90.2_react@19.2.1/node_modules/@tanstack/react-query"
+      },
+      "@trpc/client": {
+        "from": "@trpc/client",
+        "version": "11.6.0",
+        "resolved": "https://registry.npmjs.org/@trpc/client/-/client-11.6.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@trpc+client@11.6.0_@trpc+server@11.6.0_typescript@5.9.3__typescript@5.9.3/node_modules/@trpc/client"
+      },
+      "@trpc/react-query": {
+        "from": "@trpc/react-query",
+        "version": "11.6.0",
+        "resolved": "https://registry.npmjs.org/@trpc/react-query/-/react-query-11.6.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@trpc+react-query@11.6.0_@tanstack+react-query@5.90.2_react@19.2.1__@trpc+client@11.6.0_b3a4fc388d38e7312f2de6608955b66b/node_modules/@trpc/react-query"
+      },
+      "@trpc/server": {
+        "from": "@trpc/server",
+        "version": "11.6.0",
+        "resolved": "https://registry.npmjs.org/@trpc/server/-/server-11.6.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/@trpc+server@11.6.0_typescript@5.9.3/node_modules/@trpc/server"
+      },
+      "axios": {
+        "from": "axios",
+        "version": "1.12.2",
+        "resolved": "https://registry.npmjs.org/axios/-/axios-1.12.2.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/axios@1.12.2/node_modules/axios"
+      },
+      "class-variance-authority": {
+        "from": "class-variance-authority",
+        "version": "0.7.1",
+        "resolved": "https://registry.npmjs.org/class-variance-authority/-/class-variance-authority-0.7.1.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/class-variance-authority@0.7.1/node_modules/class-variance-authority"
+      },
+      "clsx": {
+        "from": "clsx",
+        "version": "2.1.1",
+        "resolved": "https://registry.npmjs.org/clsx/-/clsx-2.1.1.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/clsx@2.1.1/node_modules/clsx"
+      },
+      "cmdk": {
+        "from": "cmdk",
+        "version": "1.1.1",
+        "resolved": "https://registry.npmjs.org/cmdk/-/cmdk-1.1.1.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/cmdk@1.1.1_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react@19.2.1_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/cmdk"
+      },
+      "cookie": {
+        "from": "cookie",
+        "version": "1.0.2",
+        "resolved": "https://registry.npmjs.org/cookie/-/cookie-1.0.2.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/cookie@1.0.2/node_modules/cookie"
+      },
+      "date-fns": {
+        "from": "date-fns",
+        "version": "4.1.0",
+        "resolved": "https://registry.npmjs.org/date-fns/-/date-fns-4.1.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/date-fns@4.1.0/node_modules/date-fns"
+      },
+      "dotenv": {
+        "from": "dotenv",
+        "version": "17.2.3",
+        "resolved": "https://registry.npmjs.org/dotenv/-/dotenv-17.2.3.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/dotenv@17.2.3/node_modules/dotenv"
+      },
+      "drizzle-orm": {
+        "from": "drizzle-orm",
+        "version": "0.44.6",
+        "resolved": "https://registry.npmjs.org/drizzle-orm/-/drizzle-orm-0.44.6.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/drizzle-orm@0.44.6_mysql2@3.15.1/node_modules/drizzle-orm"
+      },
+      "embla-carousel-react": {
+        "from": "embla-carousel-react",
+        "version": "8.6.0",
+        "resolved": "https://registry.npmjs.org/embla-carousel-react/-/embla-carousel-react-8.6.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/embla-carousel-react@8.6.0_react@19.2.1/node_modules/embla-carousel-react"
+      },
+      "express": {
+        "from": "express",
+        "version": "4.21.2",
+        "resolved": "https://registry.npmjs.org/express/-/express-4.21.2.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/express@4.21.2/node_modules/express"
+      },
+      "framer-motion": {
+        "from": "framer-motion",
+        "version": "12.23.22",
+        "resolved": "https://registry.npmjs.org/framer-motion/-/framer-motion-12.23.22.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/framer-motion@12.23.22_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/framer-motion"
+      },
+      "input-otp": {
+        "from": "input-otp",
+        "version": "1.4.2",
+        "resolved": "https://registry.npmjs.org/input-otp/-/input-otp-1.4.2.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/input-otp@1.4.2_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/input-otp"
+      },
+      "jose": {
+        "from": "jose",
+        "version": "6.1.0",
+        "resolved": "https://registry.npmjs.org/jose/-/jose-6.1.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/jose@6.1.0/node_modules/jose"
+      },
+      "lucide-react": {
+        "from": "lucide-react",
+        "version": "0.453.0",
+        "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-0.453.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/lucide-react@0.453.0_react@19.2.1/node_modules/lucide-react"
+      },
+      "mysql2": {
+        "from": "mysql2",
+        "version": "3.15.1",
+        "resolved": "https://registry.npmjs.org/mysql2/-/mysql2-3.15.1.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/mysql2@3.15.1/node_modules/mysql2"
+      },
+      "nanoid": {
+        "from": "nanoid",
+        "version": "5.1.6",
+        "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-5.1.6.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/nanoid@5.1.6/node_modules/nanoid"
+      },
+      "next-themes": {
+        "from": "next-themes",
+        "version": "0.4.6",
+        "resolved": "https://registry.npmjs.org/next-themes/-/next-themes-0.4.6.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/next-themes@0.4.6_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/next-themes"
+      },
+      "puppeteer-core": {
+        "from": "puppeteer-core",
+        "version": "24.43.1",
+        "resolved": "https://registry.npmjs.org/puppeteer-core/-/puppeteer-core-24.43.1.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/puppeteer-core@24.43.1/node_modules/puppeteer-core"
+      },
+      "react": {
+        "from": "react",
+        "version": "19.2.1",
+        "resolved": "https://registry.npmjs.org/react/-/react-19.2.1.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/react@19.2.1/node_modules/react"
+      },
+      "react-day-picker": {
+        "from": "react-day-picker",
+        "version": "9.11.1",
+        "resolved": "https://registry.npmjs.org/react-day-picker/-/react-day-picker-9.11.1.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/react-day-picker@9.11.1_react@19.2.1/node_modules/react-day-picker"
+      },
+      "react-dom": {
+        "from": "react-dom",
+        "version": "19.2.1",
+        "resolved": "https://registry.npmjs.org/react-dom/-/react-dom-19.2.1.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/react-dom@19.2.1_react@19.2.1/node_modules/react-dom"
+      },
+      "react-hook-form": {
+        "from": "react-hook-form",
+        "version": "7.64.0",
+        "resolved": "https://registry.npmjs.org/react-hook-form/-/react-hook-form-7.64.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/react-hook-form@7.64.0_react@19.2.1/node_modules/react-hook-form"
+      },
+      "react-resizable-panels": {
+        "from": "react-resizable-panels",
+        "version": "3.0.6",
+        "resolved": "https://registry.npmjs.org/react-resizable-panels/-/react-resizable-panels-3.0.6.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/react-resizable-panels@3.0.6_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/react-resizable-panels"
+      },
+      "recharts": {
+        "from": "recharts",
+        "version": "2.15.4",
+        "resolved": "https://registry.npmjs.org/recharts/-/recharts-2.15.4.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/recharts@2.15.4_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/recharts"
+      },
+      "sonner": {
+        "from": "sonner",
+        "version": "2.0.7",
+        "resolved": "https://registry.npmjs.org/sonner/-/sonner-2.0.7.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/sonner@2.0.7_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/sonner"
+      },
+      "streamdown": {
+        "from": "streamdown",
+        "version": "1.4.0",
+        "resolved": "https://registry.npmjs.org/streamdown/-/streamdown-1.4.0.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/streamdown@1.4.0_@types+react@19.2.1_react@19.2.1/node_modules/streamdown"
+      },
+      "superjson": {
+        "from": "superjson",
+        "version": "1.13.3",
+        "resolved": "https://registry.npmjs.org/superjson/-/superjson-1.13.3.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/superjson@1.13.3/node_modules/superjson"
+      },
+      "tailwind-merge": {
+        "from": "tailwind-merge",
+        "version": "3.3.1",
+        "resolved": "https://registry.npmjs.org/tailwind-merge/-/tailwind-merge-3.3.1.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/tailwind-merge@3.3.1/node_modules/tailwind-merge"
+      },
+      "tailwindcss-animate": {
+        "from": "tailwindcss-animate",
+        "version": "1.0.7",
+        "resolved": "https://registry.npmjs.org/tailwindcss-animate/-/tailwindcss-animate-1.0.7.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/tailwindcss-animate@1.0.7_tailwindcss@4.1.14/node_modules/tailwindcss-animate"
+      },
+      "vaul": {
+        "from": "vaul",
+        "version": "1.1.2",
+        "resolved": "https://registry.npmjs.org/vaul/-/vaul-1.1.2.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/vaul@1.1.2_@types+react-dom@19.2.1_@types+react@19.2.1__@types+react@19.2.1_react-dom@19.2.1_react@19.2.1__react@19.2.1/node_modules/vaul"
+      },
+      "wouter": {
+        "from": "wouter",
+        "version": "3.7.1",
+        "resolved": "https://registry.npmjs.org/wouter/-/wouter-3.7.1.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/wouter@3.7.1_patch_hash=4e16e6ff3fde7d6c1024d3e0c8605dc9eb6afb690d0d49958c2f449091813072_react@19.2.1/node_modules/wouter"
+      },
+      "zod": {
+        "from": "zod",
+        "version": "4.1.12",
+        "resolved": "https://registry.npmjs.org/zod/-/zod-4.1.12.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/zod@4.1.12/node_modules/zod"
+      }
+    }
+  }
+]
