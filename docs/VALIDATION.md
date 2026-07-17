@@ -8,20 +8,20 @@ The release gate is:
 pnpm test && pnpm check && pnpm build
 ```
 
-The suite contains **twenty-nine Vitest assertions across six test files**. It covers browser-local inventory aggregation, direct per-platform ESXi correlation, entitlement fields, month generation, VCF 9.1 platform prechecks across all status states, Upgrade Services sequencing with parallel Plan and Design work, V4-to-V5 and legacy-document migration, synchronized export rendering, safe download filenames, browser Blob-download lifecycle, PDF decoding and signatures, authenticated access, hosted-preview OAuth URL construction, return-path preservation, open-redirect rejection, stale engagement selection recovery, and secure logout behavior.
+The suite contains **thirty Vitest assertions across six test files**. It covers browser-local inventory aggregation, direct per-platform ESXi correlation, entitlement fields, monthly and weekly window generation, VCF 9.1 platform prechecks across all status states, Upgrade Services sequencing with parallel Plan and Design work, detailed customer-confirmed capability activities, V3-to-V6 and legacy-document migration, synchronized export rendering, safe download filenames, browser Blob-download lifecycle, PDF decoding and signatures, authenticated access, hosted-preview OAuth URL construction, return-path preservation, open-redirect rejection, stale engagement selection recovery, and secure logout behavior.
 
 | Area | Evidence |
 |---|---|
 | Local multi-file parsing | Two RVTools-style CSV exports are parsed together; stable host and VM identifiers deduplicate repeated rows and preserve correct core, VM, power-state, global-version totals, and per-platform ESXi distributions. |
-| Entitlement term | Inclusive month columns are built from the entitlement start and end dates. A separate sequence always contains 24 calendar months. |
+| Execution scheduling | The operational plan supports inclusive calendar-month or exact weekly windows beginning on the selected target-start date. The separate strategic outlook always contains 24 calendar months. |
 | Upgrade Services sequence | Generated adoption views begin VCF 9.1 Upgrade Services at the entitlement start while initial Platform Plan and Platform Design work overlaps where appropriate; removed consumption-plan timeline labels are absent. |
 | VCF 9.1 platform precheck | RVTools vendor, model, CPU, host-count, core, and correlated ESXi evidence classifies candidates, upgrade-required, review-required, and unavailable platforms while preserving the formal Compatibility Guide boundary. |
-| Backward compatibility | Earlier engagement documents migrate to version five with refreshed VCF 9.1 platform prechecks, clearly marked estate-wide ESXi evidence where direct historic correlation is unavailable, Upgrade Services sequencing, entitlement value, entitlement dates, normalized activity labels, and rebuilt calendar-month views. |
-| Synchronized rendering | Customer, entitlement, inventory, per-platform VCF 9.1 prechecks, planning considerations, Adoption Timeline, and Two-Year Notional Adoption Plan render from one versioned engagement object. |
+| Backward compatibility | Earlier engagement documents migrate to version six with refreshed VCF 9.1 platform prechecks, clearly marked estate-wide ESXi evidence where direct historic correlation is unavailable, Upgrade Services sequencing, detailed adoption inputs, entitlement value, entitlement dates, normalized activity labels, and rebuilt cadence-aware execution views. |
+| Synchronized rendering | Customer, entitlement, inventory, per-platform VCF 9.1 prechecks, planning considerations, the Operational Adoption Timeline, and the Two-Year Notional Adoption Outlook render from one versioned engagement object. |
 | Token sanitization | Exported HTML contains no unresolved `[[...]]` placeholders. |
 | HTML and PDF downloads | Protected export-ticket issuance and signed binary routes return safe filenames and valid attachment responses; tests verify ownership, MIME types, content-disposition headers, no-store behavior, non-empty bytes, PDF signatures, and malformed or tampered payload rejection. |
 | Business-data authorization | Unauthenticated engagement and export access is rejected. |
-| Timeline pointer gestures | The same pure transition function used by the editor is tested for whole-activity month movement, independent start/end edge resizing, grid-bound rejection, and same-workstream overlap rejection. |
+| Timeline pointer gestures | The same pure transition function used by the editor is tested for whole-activity movement, independent start/end edge resizing, grid-bound rejection, and same-workstream overlap rejection; the editor applies the behavior to both month and week columns. |
 | Hosted-preview sign-in | The protected entry exposes the explicit **Sign in with Manus** action. Tests verify the hosted callback URL, preserved local return path, and rejection of absolute or protocol-relative post-login destinations. |
 | Engagement recovery | The workspace prevents a stale selected ID from reaching the engagement query until the owner-scoped list confirms it is current. Tests prove stale IDs fall back to a valid record or empty state, while a record removed between list and get returns `null` rather than a visible API error. |
 | Session handling | Logout clears the secure session cookie. |
@@ -36,7 +36,7 @@ The assessment function produces evidence-based `good`, `attention`, `info`, or 
 
 ## Adoption Timeline editor evidence
 
-`AdoptionTimelineEditor.tsx` provides editable workstream and activity names, lane creation/deletion/reordering, activity creation/deletion, constrained legend colors, whole-activity dragging, independent start/end resize handles, and explicit month selectors. Pointer movement calls the shared `applyTimelineGesture` transition, whose drag, edge-resize, bounds, and same-workstream collision behavior is covered directly by Vitest. The editor is used for both the entitlement-term Adoption Timeline and the separate Two-Year Notional Adoption Plan.
+`AdoptionTimelineEditor.tsx` provides editable workstream and activity names, lane creation/deletion/reordering, activity creation/deletion, constrained legend colors, whole-activity dragging, independent start/end resize handles, and explicit cadence-aware week or month selectors. Pointer movement calls the shared `applyTimelineGesture` transition, whose drag, edge-resize, bounds, and same-workstream collision behavior is covered directly by Vitest. The editor is used for the operational adoption timeline and the separate two-year strategic outlook.
 
 ## Authentication boundary evidence
 
@@ -44,7 +44,7 @@ All engagement and preview procedures use the protected API contract. HTML/PDF d
 
 ## Visual and responsive review
 
-The authenticated workspace is reviewed at desktop and mobile widths, including the directly opened Adoption Timelines tab. The screenshots confirm contained horizontal month canvases, a sticky and readable workstream column, touch-sized drag/resize handles, explicit start/end month selectors, and access to both editable adoption views without page-width overflow. Pointer behavior is backed by the repeatable transition tests above. Preview, HTML, and PDF exports remain synchronized with the two editable adoption views.
+The authenticated workspace is reviewed at desktop and mobile widths, including the directly opened Adoption Timelines tab and the live report preview. The screenshots confirm contained horizontal timeline canvases, a sticky and readable workstream column, touch-sized drag/resize handles, operational-versus-strategic labels, a compact **2-Year Outlook** mobile control, and access to both planning views without page-width overflow. The report no longer renders the misaligned Plan Summary number circles; it uses stable, text-led summary cards instead. Pointer behavior is backed by the repeatable transition tests above. Preview, HTML, and PDF exports remain synchronized with the two distinct planning views.
 
 ## Export Download Regression — July 17, 2026
 
@@ -82,6 +82,14 @@ The readiness report now converts observed RVTools host models into a per-platfo
 The adoption view begins **VCF 9.1 Upgrade Services** at the entitlement start; **Platform Plan** starts in the same month and **Platform Design** overlaps the Upgrade Services window. The two-year view carries forward Year 1 Upgrade Services and a Year 2 Expansion Upgrade Services progression rather than placing a Consumption Plan activity in the timeline.
 
 The full release gate passed after this change: **6 test files and 29 tests passed**, TypeScript completed with no errors, and the production build completed successfully. Regression coverage verifies direct ESXi correlation, estate-wide migration provenance, current Dell candidate classification, legacy Dell upgrade-required classification, review-required and unavailable paths, export content, and Upgrade Services sequencing.
+
+## Detailed Adoption Planning and Weekly Scheduling — July 17, 2026
+
+The saved-document contract is now **V6**. It adds a persisted execution cadence and customer-confirmed adoption detail selections. The operational Adoption Timeline can use exact weekly windows beginning on the target-start date, allowing a plan to begin mid-month without approximating the first week as a full calendar month. The two-year view remains monthly by design and is labeled as a **strategic outlook**, not a second service-delivery schedule.
+
+The guided intake covers the upgrade approach, operations, automation and self-service, security, resilience, Kubernetes, and private AI. It records only selections confirmed by the engagement team. Those selections create granular, editable workstream activities—for example, VM self-service catalog, infrastructure-as-code, or custom operations dashboards—rather than inventing commitments. The generated rationale describes the operational cadence, confirmed focus count, parallel Upgrade Services / Platform Plan / Platform Design work, and the different role of the strategic outlook.
+
+Export rendering now uses text-led Plan Summary cards rather than the former numbered circles, which eliminates the layout defect. A renderer-level regression extracts the Plan Summary region and verifies its semantic Inventory, Operational Window, and Upgrade Services headings, stable card styling, and absence of numeric marker spans or step attributes. The standalone HTML/PDF report explicitly labels the **Operational Adoption Timeline** as the editable execution sequence and the **Two-Year Notional Adoption Outlook** as a deliberately spread strategic planning view. The final release gate passed on July 17, 2026: **6 test files and 30 tests passed**, TypeScript completed with no errors, and the production build completed successfully.
 
 ## Missing Engagement Recovery — July 17, 2026
 

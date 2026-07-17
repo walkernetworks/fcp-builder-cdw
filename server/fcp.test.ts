@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
-import { applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearColumns, createDefaultDocument, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
+import { applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearColumns, buildWeekColumns, createDefaultDocument, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
 import type { TrpcContext } from "./_core/context";
 import { renderFcpHtml } from "./fcpRenderer";
 import { appRouter } from "./routers";
@@ -70,13 +70,47 @@ describe("calendar-month adoption plans", () => {
     expect(plans.adoptionTimeline.columns).toHaveLength(12);
     expect(plans.twoYearPlan.columns).toHaveLength(24);
     expect(plans.rationale).toContain("$2,500,000");
-    expect(labels).toContain("VCF 9.1 Upgrade Services");
+    expect(labels).toContain("VCF 9.1 Upgrade Services Scope and Runbook");
     expect(labels.join(" ")).not.toMatch(/Consumption Plan|Workshop|Readiness|Assessment|Validation/i);
     expect(upgrade.bars[0].startCol).toBe(1);
     expect(platformPlan.bars[0].startCol).toBe(1);
     expect(platformDesign.bars[0].startCol).toBeLessThan(upgrade.bars[0].endCol);
     expect(validateTimeline(plans.adoptionTimeline)).toEqual([]);
     expect(validateTimeline(plans.twoYearPlan)).toEqual([]);
+  });
+
+  it("creates exact weekly operational windows and detailed customer-confirmed capability activities", () => {
+    expect(buildWeekColumns("2027-01-17", "2027-02-15")).toEqual([
+      "Jan 17–Jan 23, 27", "Jan 24–Jan 30, 27", "Jan 31–Feb 6, 27", "Feb 7–Feb 13, 27", "Feb 14–Feb 20, 27",
+    ]);
+    const document = createDefaultDocument();
+    Object.assign(document.fields, {
+      entitlementStart: "2027-01-01",
+      entitlementEnd: "2027-06-30",
+      targetStart: "2027-01-17",
+      targetComplete: "2027-02-15",
+      adoptionCadence: "week",
+      priorities: ["automation", "operations"],
+      adoptionDetails: {
+        ...document.fields.adoptionDetails,
+        upgradePath: "migration-waves",
+        automation: ["vm-self-service", "infrastructure-as-code"],
+        operations: ["custom-dashboards"],
+      },
+    });
+    const plans = buildAdoptionPlans(document.fields, document.inventory);
+    const labels = plans.adoptionTimeline.lanes.flatMap(lane => lane.bars.map(activity => activity.label));
+    expect(plans.adoptionTimeline).toMatchObject({ cadence: "week", startDate: "2027-01-17" });
+    expect(plans.adoptionTimeline.columns).toEqual(buildWeekColumns("2027-01-17", "2027-02-15"));
+    expect(labels).toEqual(expect.arrayContaining([
+      "VCF 9.1 Migration Wave Services",
+      "VM Self-Service Catalog Plan",
+      "Infrastructure-as-Code Patterns Plan",
+      "Custom Operations Dashboards Plan",
+    ]));
+    expect(plans.twoYearPlan).toMatchObject({ cadence: "month" });
+    expect(plans.rationale).toContain("weekly execution windows");
+    expect(plans.rationale).toContain("3 confirmed detailed capability focus areas");
   });
 
   it("normalizes custom labels to title-style Plan or Design language", () => {
@@ -107,7 +141,7 @@ describe("calendar-month adoption plans", () => {
   it("migrates older engagements to entitlement-aware, normalized adoption plans", () => {
     const legacyTimeline = { columns: ["Wave 1", "Wave 2"], lanes: [{ id: "legacy", name: "readiness", bars: [{ id: "old", startCol: 1, endCol: 2, color: "blue", label: "workshop", milestone: false, deferred: false }] }] };
     const migrated = migrateDocument({ version: 1, fields: { customerName: "Meridian Health", cust: "MER", entitlement: "256", funds: "$1,750,000", termStart: "2027-01-01", termEnd: "2028-12-31", vmCount: "980", hostCount: "22", notes: "No December changes" }, timeline: legacyTimeline, rationale: "Old rationale" });
-    expect(migrated.version).toBe(5);
+    expect(migrated.version).toBe(6);
     expect(migrated.fields.customerName).toBe("Meridian Health");
     expect(migrated.fields.entitlementAmount).toBe(1_750_000);
     expect(migrated.fields.entitlementStart).toBe("2027-01-01");
@@ -190,7 +224,7 @@ describe("planning considerations, exports, and access boundary", () => {
     v4.inventory.hostModels.forEach((platform: { esxiVersions?: unknown; esxiCorrelation?: unknown }) => { delete platform.esxiVersions; delete platform.esxiCorrelation; });
     v4.readiness.hardwarePlatforms.forEach((platform: { esxiVersions?: unknown; esxiCorrelation?: unknown }) => { delete platform.esxiVersions; delete platform.esxiCorrelation; });
     const migrated = migrateDocument(v4);
-    expect(migrated.version).toBe(5);
+    expect(migrated.version).toBe(6);
     expect(migrated.inventory.hostModels[0]).toMatchObject({
       esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 2 }],
       esxiCorrelation: "estate-wide",
@@ -206,11 +240,24 @@ describe("planning considerations, exports, and access boundary", () => {
     const html = renderFcpHtml("Meridian FCP", document);
     expect(html).toContain("Meridian Health");
     expect(html).toContain("$3,000,000");
-    expect(html).toContain("Adoption Timeline");
-    expect(html).toContain("Two-Year Notional Adoption Plan");
+    expect(html).toContain("Operational Adoption Timeline");
+    expect(html).toContain("Two-Year Notional Adoption Outlook");
+    expect(html).toContain("Execution view:");
+    expect(html).toContain("Strategic view:");
     expect(html).toContain("VCF 9.1 Hardware Platform Precheck");
     expect(html).toContain("Observed ESXi");
     expect(html).toContain("Upgrade Services");
+    const planSummaryStart = html.indexOf('<div class="plan-summary">');
+    const observedInventoryStart = html.indexOf('<h2>Observed Versions and Hardware</h2>');
+    const planSummary = html.slice(planSummaryStart, observedInventoryStart);
+    expect(planSummaryStart).toBeGreaterThan(-1);
+    expect(observedInventoryStart).toBeGreaterThan(planSummaryStart);
+    expect(planSummary).toContain("<h3>Inventory</h3>");
+    expect(planSummary).toContain("<h3>Operational window</h3>");
+    expect(planSummary).toContain("<h3>Upgrade Services</h3>");
+    expect(planSummary).not.toMatch(/<span[^>]*>\s*\d+\s*<\/span>|data-step=/);
+    expect(html).toContain(".plan-summary article{background:#fff;border:1px solid var(--line);border-radius:10px;padding:15px;border-top:3px solid var(--navy)}");
+    expect(html).not.toContain(".plan-summary article>span");
     expect(html).not.toMatch(/Gantt|Year [12] Consumption Plan|Workshop/i);
     expect(html).not.toMatch(/\[\[[^\]]+\]\]/);
   });

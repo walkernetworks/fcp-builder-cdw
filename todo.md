@@ -102,3 +102,16 @@
 
 - [x] Surface observed ESXi versions alongside each compatible hardware-platform precheck where RVTools host rows provide the correlation, while retaining ESXi as a lifecycle signal rather than a certification.
 - [x] Add regression coverage for review-required and unavailable platform states in addition to candidate and upgrade-required classifications.
+
+## Detailed Adoption Planning and Weekly Scheduling
+
+- [x] Diagnose and correct the Plan Summary numbered-circle placement and numbering semantics.
+- [x] Research authoritative VCF adoption workstreams and define practical, capability-specific discovery prompts that improve plan detail without fabricating customer commitments.
+- [x] Extend the adoption timeline to support week-level columns and mid-month activity start and end dates while preserving existing monthly-plan data.
+- [x] Differentiate the operational Adoption Timeline from the Two-Year Notional Adoption Plan in the workspace and exported HTML/PDF report so their scopes and cadence are clear.
+- [x] Add a guided detailed-intake experience for upgrade, automation, operations, security, resilience, Kubernetes, and private-AI priorities, and use confirmed choices to add granular plan activities.
+- [x] Add regression coverage for marker placement, weekly timeline behavior, detailed intake sequencing, migration, and distinct report sections; run the full release gate before checkpointing.
+
+## Plan Summary Rendering Regression
+
+- [x] Add explicit regression coverage proving the exported Plan Summary uses stable text-led cards without numbered-circle marker elements, then rerun the full release gate.

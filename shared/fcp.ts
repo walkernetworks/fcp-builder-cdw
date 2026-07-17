@@ -3,6 +3,9 @@ import { z } from "zod";
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
 export type TimelineColor = (typeof TIMELINE_COLORS)[number];
 
+export const timelineCadenceSchema = z.enum(["month", "week"]);
+export type TimelineCadence = z.infer<typeof timelineCadenceSchema>;
+
 export const timelineBarSchema = z.object({
   id: z.string().min(1),
   startCol: z.number().int().min(1),
@@ -19,8 +22,15 @@ export const timelineLaneSchema = z.object({
   bars: z.array(timelineBarSchema),
 });
 
-export const timelineSchema = z.object({
+const timelineV5Schema = z.object({
   columns: z.array(z.string().min(1)).min(2).max(36),
+  lanes: z.array(timelineLaneSchema).min(1),
+});
+
+export const timelineSchema = z.object({
+  cadence: timelineCadenceSchema,
+  startDate: z.string(),
+  columns: z.array(z.string().min(1)).min(2).max(208),
   lanes: z.array(timelineLaneSchema).min(1),
 });
 
@@ -31,7 +41,29 @@ export type Timeline = z.infer<typeof timelineSchema>;
 export const capabilitySchema = z.enum(["operations", "automation", "security", "resilience", "kubernetes", "private-ai"]);
 export type Capability = z.infer<typeof capabilitySchema>;
 
-export const minimalFieldsSchema = z.object({
+export const upgradePathSchema = z.enum(["undecided", "in-place", "new-build", "migration-waves", "design-only"]);
+export type UpgradePath = z.infer<typeof upgradePathSchema>;
+
+const operationsFocusSchema = z.enum(["lifecycle", "observability", "capacity-cost", "custom-dashboards", "identity-certificates", "event-integration"]);
+const automationFocusSchema = z.enum(["vm-self-service", "infrastructure-as-code", "day-2-automation", "governance", "application-provisioning"]);
+const securityFocusSchema = z.enum(["segmentation", "identity-rbac", "hardening-compliance"]);
+const resilienceFocusSchema = z.enum(["recovery-architecture", "recovery-exercises", "cyber-recovery"]);
+const kubernetesFocusSchema = z.enum(["workload-domains", "platform-operations", "developer-experience"]);
+const privateAiFocusSchema = z.enum(["gpu-capacity", "ai-guardrails", "pilot-onboarding"]);
+
+export const adoptionDetailsSchema = z.object({
+  upgradePath: upgradePathSchema,
+  operations: z.array(operationsFocusSchema).max(6),
+  automation: z.array(automationFocusSchema).max(5),
+  security: z.array(securityFocusSchema).max(3),
+  resilience: z.array(resilienceFocusSchema).max(3),
+  kubernetes: z.array(kubernetesFocusSchema).max(3),
+  privateAi: z.array(privateAiFocusSchema).max(3),
+  notes: z.string().max(5000),
+});
+export type AdoptionDetails = z.infer<typeof adoptionDetailsSchema>;
+
+const minimalFieldsV5Schema = z.object({
   customerName: z.string().max(240),
   accountId: z.string().max(120),
   location: z.string().max(240),
@@ -46,6 +78,11 @@ export const minimalFieldsSchema = z.object({
   hardwareLeadWeeks: z.number().int().min(0).max(104),
   priorities: z.array(capabilitySchema),
   timelineNotes: z.string().max(5000),
+});
+
+export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
+  adoptionCadence: timelineCadenceSchema,
+  adoptionDetails: adoptionDetailsSchema,
 });
 export type MinimalFields = z.infer<typeof minimalFieldsSchema>;
 
@@ -162,28 +199,39 @@ const readinessV3Schema = z.object({
 
 export const engagementDocumentV3Schema = z.object({
   version: z.literal(3),
-  fields: minimalFieldsSchema,
+  fields: minimalFieldsV5Schema,
   inventorySources: z.array(inventorySourceSchema),
   inventory: inventorySummaryV4Schema,
   readiness: readinessV3Schema,
-  adoptionTimeline: timelineSchema,
-  twoYearPlan: timelineSchema,
+  adoptionTimeline: timelineV5Schema,
+  twoYearPlan: timelineV5Schema,
   rationale: z.string(),
 });
 
 export const engagementDocumentV4Schema = z.object({
   version: z.literal(4),
-  fields: minimalFieldsSchema,
+  fields: minimalFieldsV5Schema,
   inventorySources: z.array(inventorySourceSchema),
   inventory: inventorySummaryV4Schema,
   readiness: readinessV4Schema,
-  adoptionTimeline: timelineSchema,
-  twoYearPlan: timelineSchema,
+  adoptionTimeline: timelineV5Schema,
+  twoYearPlan: timelineV5Schema,
   rationale: z.string(),
 });
 
 export const engagementDocumentV5Schema = z.object({
   version: z.literal(5),
+  fields: minimalFieldsV5Schema,
+  inventorySources: z.array(inventorySourceSchema),
+  inventory: inventorySummarySchema,
+  readiness: readinessSchema,
+  adoptionTimeline: timelineV5Schema,
+  twoYearPlan: timelineV5Schema,
+  rationale: z.string(),
+});
+
+export const engagementDocumentV6Schema = z.object({
+  version: z.literal(6),
   fields: minimalFieldsSchema,
   inventorySources: z.array(inventorySourceSchema),
   inventory: inventorySummarySchema,
@@ -192,7 +240,7 @@ export const engagementDocumentV5Schema = z.object({
   twoYearPlan: timelineSchema,
   rationale: z.string(),
 });
-export type EngagementDocument = z.infer<typeof engagementDocumentV5Schema>;
+export type EngagementDocument = z.infer<typeof engagementDocumentV6Schema>;
 
 export function emptyInventory(): InventorySummary {
   return {
@@ -221,6 +269,19 @@ export function emptyInventory(): InventorySummary {
   };
 }
 
+export function createDefaultAdoptionDetails(): AdoptionDetails {
+  return {
+    upgradePath: "undecided",
+    operations: [],
+    automation: [],
+    security: [],
+    resilience: [],
+    kubernetes: [],
+    privateAi: [],
+    notes: "",
+  };
+}
+
 export function createDefaultFields(): MinimalFields {
   return {
     customerName: "",
@@ -237,6 +298,8 @@ export function createDefaultFields(): MinimalFields {
     hardwareLeadWeeks: 0,
     priorities: ["operations", "automation"],
     timelineNotes: "",
+    adoptionCadence: "month",
+    adoptionDetails: createDefaultAdoptionDetails(),
   };
 }
 
@@ -253,8 +316,26 @@ function parseMonth(value: string): Date | null {
   return new Date(Date.UTC(year, month, 1));
 }
 
+function parseIsoDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month && parsed.getUTCDate() === day ? parsed : null;
+}
+
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
 function addUtcMonths(date: Date, months: number): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }
 
 function monthDifference(start: Date, end: Date): number {
@@ -273,9 +354,39 @@ export function buildMonthColumns(startValue: string, endValue: string, fallback
   return Array.from({ length: count }, (_, index) => displayMonth(addUtcMonths(start, index)));
 }
 
+export function buildWeekColumns(startValue: string, endValue: string, fallbackCount = 12, maximum = 104): string[] {
+  const start = parseIsoDate(startValue) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const end = parseIsoDate(endValue);
+  const requested = end && end >= start ? Math.ceil((end.getTime() - start.getTime() + 86_400_000) / 604_800_000) : fallbackCount;
+  const count = Math.max(2, Math.min(maximum, requested));
+  return Array.from({ length: count }, (_, index) => {
+    const weekStart = addUtcDays(start, index * 7);
+    const weekEnd = addUtcDays(weekStart, 6);
+    const startLabel = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(weekStart);
+    const endLabel = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "2-digit", timeZone: "UTC" }).format(weekEnd);
+    return `${startLabel}–${endLabel}`;
+  });
+}
+
 export function buildTwoYearColumns(startValue: string): string[] {
   const start = parseMonth(startValue) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
   return Array.from({ length: 24 }, (_, index) => displayMonth(addUtcMonths(start, index)));
+}
+
+function timelineStartDate(fields: MinimalFields): string {
+  const candidate = fields.targetStart || fields.entitlementStart;
+  return parseIsoDate(candidate) ? candidate : isoDate(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)));
+}
+
+function timelineEndDate(fields: MinimalFields): string {
+  const candidate = fields.targetComplete || fields.entitlementEnd;
+  return parseIsoDate(candidate) ? candidate : "";
+}
+
+function primaryColumns(fields: MinimalFields): string[] {
+  const start = timelineStartDate(fields);
+  const end = timelineEndDate(fields);
+  return fields.adoptionCadence === "week" ? buildWeekColumns(start, end, 12, 104) : buildMonthColumns(start, end, 12, 36);
 }
 
 function boundedRange(start: number, duration: number, columnCount: number): [number, number] {
@@ -321,77 +432,146 @@ export function normalizeWorkstreamLabel(value: string): string {
   return titleCase(cleaned || "Custom Workstream");
 }
 
+function capabilityColor(capability: Capability): TimelineColor {
+  return capability === "security" ? "red" : capability === "resilience" ? "blue" : capability === "automation" ? "amber" : capability === "operations" ? "teal" : "green";
+}
+
+function upgradeServiceLabel(path: UpgradePath): string {
+  const labels: Record<UpgradePath, string> = {
+    undecided: "VCF 9.1 Upgrade Services Scope and Runbook",
+    "in-place": "VCF 9.1 In-Place Upgrade Services",
+    "new-build": "VCF 9.1 New-Build and Converge Services",
+    "migration-waves": "VCF 9.1 Migration Wave Services",
+    "design-only": "VCF 9.1 Upgrade Architecture and Runbook",
+  };
+  return labels[path];
+}
+
+const focusLabels: Record<Capability, Record<string, string>> = {
+  operations: {
+    lifecycle: "Lifecycle and Certificate Ownership",
+    observability: "Health, Logs, and Diagnostics Observability",
+    "capacity-cost": "Capacity and Cost Visibility",
+    "custom-dashboards": "Custom Operations Dashboards",
+    "identity-certificates": "Identity, Certificates, and Password Operations",
+    "event-integration": "Event and Incident Integration",
+  },
+  automation: {
+    "vm-self-service": "VM Self-Service Catalog",
+    "infrastructure-as-code": "Infrastructure-as-Code Patterns",
+    "day-2-automation": "Day-2 Automation",
+    governance: "Organization and Policy Governance",
+    "application-provisioning": "Application Platform Provisioning",
+  },
+  security: {
+    segmentation: "Segmentation and Security Policy",
+    "identity-rbac": "Identity and RBAC Design",
+    "hardening-compliance": "Hardening and Compliance Controls",
+  },
+  resilience: {
+    "recovery-architecture": "Recovery Architecture",
+    "recovery-exercises": "Recovery Exercise and Runbook",
+    "cyber-recovery": "Cyber-Recovery Design",
+  },
+  kubernetes: {
+    "workload-domains": "Workload Domain and Supervisor Design",
+    "platform-operations": "Kubernetes Platform Operations",
+    "developer-experience": "Developer Experience and Guardrails",
+  },
+  "private-ai": {
+    "gpu-capacity": "AI Capacity and GPU Readiness",
+    "ai-guardrails": "Private AI Guardrails",
+    "pilot-onboarding": "Private AI Pilot Onboarding",
+  },
+};
+
+function selectedFocuses(fields: MinimalFields, capability: Capability): string[] {
+  const detailKey: Record<Capability, keyof Omit<AdoptionDetails, "upgradePath" | "notes">> = {
+    operations: "operations",
+    automation: "automation",
+    security: "security",
+    resilience: "resilience",
+    kubernetes: "kubernetes",
+    "private-ai": "privateAi",
+  };
+  return fields.adoptionDetails[detailKey[capability]];
+}
+
+function activityLabelsForCapability(fields: MinimalFields, capability: Capability): string[] {
+  const focuses = selectedFocuses(fields, capability);
+  if (!focuses.length) return [`${capabilityTitle(capability)} Design`];
+  return focuses.map(focus => `${focusLabels[capability][focus] || capabilityTitle(capability)} Plan`);
+}
+
 function buildPrimaryTimeline(fields: MinimalFields): Timeline {
-  const columns = buildMonthColumns(fields.entitlementStart || fields.targetStart, fields.entitlementEnd || fields.targetComplete, 12, 36);
+  const columns = primaryColumns(fields);
   const count = columns.length;
-  const upgradeDuration = Math.max(2, Math.min(6, Math.ceil(count * 0.35)));
-  const planDuration = Math.max(2, Math.min(4, Math.ceil(count * 0.2)));
-  const designDuration = Math.max(2, Math.min(6, Math.ceil(count * 0.3)));
+  const cadence = fields.adoptionCadence;
+  const upgradeDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.36)));
+  const planDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.22)));
+  const designDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.3)));
   const [upgradeStart, upgradeEnd] = boundedRange(1, upgradeDuration, count);
   const [planStart, planEnd] = boundedRange(1, planDuration, count);
   const [platformStart, platformEnd] = boundedRange(Math.max(2, planEnd - 1), designDuration, count);
   const lanes: TimelineLane[] = [
-    { id: "lane-upgrade-services", name: "Upgrade Services", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", "VCF 9.1 Upgrade Services")] },
-    { id: "lane-platform-plan", name: "Platform Plan", bars: [bar("bar-platform-plan", planStart, planEnd, "teal", "Platform Plan")] },
-    { id: "lane-platform-design", name: "Platform Design", bars: [bar("bar-platform-design", platformStart, platformEnd, "green", "VCF Platform Design")] },
+    { id: "lane-upgrade-services", name: "Upgrade Services", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", upgradeServiceLabel(fields.adoptionDetails.upgradePath))] },
+    { id: "lane-platform-plan", name: "Platform Plan", bars: [bar("bar-platform-plan", planStart, planEnd, "teal", "Platform Plan and Decision Log")] },
+    { id: "lane-platform-design", name: "Platform Design", bars: [bar("bar-platform-design", platformStart, platformEnd, "green", "VCF Platform Design") ] },
   ];
 
-  fields.priorities.forEach((priority, index) => {
-    const start = Math.min(count - 1, Math.max(2, platformStart + (index % 3)));
-    const duration = Math.max(2, Math.min(5, Math.ceil(count * 0.22)));
-    const [capStart, capEnd] = boundedRange(start, duration, count);
-    const title = capabilityTitle(priority);
-    lanes.push({
-      id: `lane-${priority}`,
-      name: `${title} Design`,
-      bars: [bar(`bar-${priority}`, capStart, capEnd, priority === "security" ? "red" : priority === "resilience" ? "blue" : priority === "automation" ? "amber" : "green", `${title} Design`)],
+  fields.priorities.forEach((priority, priorityIndex) => {
+    const labels = activityLabelsForCapability(fields, priority);
+    const baseStart = Math.min(count - 1, Math.max(2, platformStart + (priorityIndex % 3)));
+    const duration = Math.max(labels.length, Math.min(count - baseStart + 1, Math.ceil(count * 0.28)));
+    const slot = Math.max(1, Math.ceil(duration / labels.length));
+    const bars = labels.map((label, index) => {
+      const start = Math.min(count, baseStart + index * slot);
+      const [safeStart, end] = boundedRange(start, slot, count);
+      return bar(`bar-${priority}-${index + 1}`, safeStart, end, capabilityColor(priority), label);
     });
+    lanes.push({ id: `lane-${priority}`, name: `${capabilityTitle(priority)} Outcomes`, bars });
   });
 
-  return { columns, lanes };
+  return { cadence, startDate: timelineStartDate(fields), columns, lanes };
 }
 
 function buildTwoYearPlan(fields: MinimalFields): Timeline {
-  const columns = buildTwoYearColumns(fields.entitlementStart || fields.targetStart);
+  const columns = buildTwoYearColumns(timelineStartDate(fields));
   const lanes: TimelineLane[] = [
     {
-      id: "lane-two-year-upgrade-services",
-      name: "Upgrade Services",
+      id: "lane-two-year-foundation",
+      name: "Foundation and Upgrade Services",
       bars: [
-        bar("bar-year-one-upgrade-services", 1, 8, "blue", "Year 1 VCF 9.1 Upgrade Services"),
-        bar("bar-year-two-upgrade-services", 13, 20, "slate", "Year 2 Expansion Upgrade Services"),
+        bar("bar-year-one-foundation", 1, 8, "blue", "Year 1 Foundation and Upgrade Services"),
+        bar("bar-year-two-modernization", 14, 21, "slate", "Year 2 Modernization and Expansion"),
       ],
     },
     {
-      id: "lane-two-year-platform-plan",
-      name: "Platform Plan",
+      id: "lane-two-year-platform",
+      name: "Platform Evolution",
       bars: [
-        bar("bar-year-one-platform-plan", 1, 4, "teal", "Year 1 Platform Plan"),
-        bar("bar-year-two-platform-plan", 13, 16, "teal", "Year 2 Expansion Plan"),
-      ],
-    },
-    {
-      id: "lane-two-year-platform-design",
-      name: "Platform Design",
-      bars: [
-        bar("bar-year-one-platform-design", 2, 9, "green", "Core Platform Design"),
-        bar("bar-year-two-platform-design", 15, 22, "green", "Expansion Design"),
+        bar("bar-year-one-platform", 1, 5, "teal", "Year 1 Platform Plan and Core Design"),
+        bar("bar-year-two-platform", 15, 20, "teal", "Year 2 Platform Expansion Design"),
       ],
     },
   ];
 
   fields.priorities.forEach((priority, index) => {
     const title = capabilityTitle(priority);
-    const start = 6 + (index % 4) * 2;
-    const end = Math.min(25, start + 6);
+    const firstFocus = activityLabelsForCapability(fields, priority)[0].replace(/ Plan$/, "").replace(/ Design$/, "");
+    const start = 5 + (index % 4) * 2;
+    const yearTwoStart = Math.min(20, start + 12);
     lanes.push({
       id: `lane-two-year-${priority}`,
-      name: `${title} Design`,
-      bars: [bar(`bar-two-year-${priority}`, start, end, priority === "security" ? "red" : priority === "automation" ? "amber" : "blue", `${title} Design`)],
+      name: `${title} Strategic Outlook`,
+      bars: [
+        bar(`bar-two-year-${priority}-foundation`, start, Math.min(13, start + 4), capabilityColor(priority), `Year 1 ${firstFocus}`),
+        bar(`bar-two-year-${priority}-expansion`, yearTwoStart, Math.min(25, yearTwoStart + 4), capabilityColor(priority), `Year 2 ${title} Expansion`),
+      ],
     });
   });
 
-  return { columns, lanes };
+  return { cadence: "month", startDate: timelineStartDate(fields), columns, lanes };
 }
 
 export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
@@ -401,7 +581,10 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
   const term = fields.entitlementStart && fields.entitlementEnd ? `${fields.entitlementStart} through ${fields.entitlementEnd}` : "the confirmed entitlement term";
   const priorities = fields.priorities.length ? fields.priorities.map(capabilityTitle).join(", ") : "the selected customer outcomes";
-  const rationale = `The adoption plan is aligned to ${amount}, ${term}, ${estate}, and the selected outcomes: ${priorities}. Upgrade Services begins at the start of the entitlement window while initial platform planning and design work run in parallel. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const cadence = fields.adoptionCadence === "week" ? "weekly execution windows" : "calendar-month execution windows";
+  const detailCount = [fields.adoptionDetails.operations, fields.adoptionDetails.automation, fields.adoptionDetails.security, fields.adoptionDetails.resilience, fields.adoptionDetails.kubernetes, fields.adoptionDetails.privateAi].flat().length;
+  const details = detailCount ? `${detailCount} confirmed detailed capability focus area${detailCount === 1 ? "" : "s"}` : "high-level outcome selections pending detailed discovery";
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Upgrade Services begins at the start of the target window while initial platform planning and design work run in parallel. The separate Two-Year Notional Adoption Outlook is a strategic expansion view, not a duplicate delivery schedule. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -583,7 +766,7 @@ export function createDefaultDocument(): EngagementDocument {
   const inventory = emptyInventory();
   const readiness = assessReadiness(fields, inventory);
   const plans = buildAdoptionPlans(fields, inventory);
-  return { version: 5, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+  return { version: 6, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
 function stringValue(value: unknown): string {
@@ -595,21 +778,42 @@ function numberValue(value: unknown): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
 }
 
+function migrateFieldsToV6(fields: z.infer<typeof minimalFieldsV5Schema>): MinimalFields {
+  return { ...fields, adoptionCadence: "month", adoptionDetails: createDefaultAdoptionDetails() };
+}
+
 export function migrateDocument(value: unknown): EngagementDocument {
-  const current = engagementDocumentV5Schema.safeParse(value);
+  const current = engagementDocumentV6Schema.safeParse(value);
   if (current.success) return current.data;
+
+  const v5 = engagementDocumentV5Schema.safeParse(value);
+  if (v5.success) {
+    const fields = migrateFieldsToV6(v5.data.fields);
+    const plans = buildAdoptionPlans(fields, v5.data.inventory);
+    return {
+      version: 6,
+      fields,
+      inventorySources: v5.data.inventorySources,
+      inventory: v5.data.inventory,
+      readiness: assessReadiness(fields, v5.data.inventory, v5.data.inventorySources.flatMap(source => source.warnings)),
+      adoptionTimeline: plans.adoptionTimeline,
+      twoYearPlan: plans.twoYearPlan,
+      rationale: plans.rationale,
+    };
+  }
 
   const v4 = engagementDocumentV4Schema.safeParse(value);
   if (v4.success) {
     const inventory = migrateInventoryToV5(v4.data.inventory);
+    const fields = migrateFieldsToV6(v4.data.fields);
     const warnings = v4.data.inventorySources.flatMap(source => source.warnings);
-    const plans = buildAdoptionPlans(v4.data.fields, inventory);
+    const plans = buildAdoptionPlans(fields, inventory);
     return {
-      version: 5,
-      fields: v4.data.fields,
+      version: 6,
+      fields,
       inventorySources: v4.data.inventorySources,
       inventory,
-      readiness: assessReadiness(v4.data.fields, inventory, warnings),
+      readiness: assessReadiness(fields, inventory, warnings),
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
@@ -619,14 +823,15 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const v3 = engagementDocumentV3Schema.safeParse(value);
   if (v3.success) {
     const inventory = migrateInventoryToV5(v3.data.inventory);
+    const fields = migrateFieldsToV6(v3.data.fields);
     const warnings = v3.data.inventorySources.flatMap(source => source.warnings);
-    const plans = buildAdoptionPlans(v3.data.fields, inventory);
+    const plans = buildAdoptionPlans(fields, inventory);
     return {
-      version: 5,
-      fields: v3.data.fields,
+      version: 6,
+      fields,
       inventorySources: v3.data.inventorySources,
       inventory,
-      readiness: assessReadiness(v3.data.fields, inventory, warnings),
+      readiness: assessReadiness(fields, inventory, warnings),
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
@@ -664,18 +869,18 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const parsedSources = z.array(inventorySourceSchema).safeParse(legacy.inventorySources);
   const plans = buildAdoptionPlans(fields, inventory);
   return {
-    version: 5,
+    version: 6,
     fields,
     inventorySources: parsedSources.success ? parsedSources.data : [],
     inventory,
-    readiness: assessReadiness(fields, inventory, ["Existing engagement updated to the VCF 9.1 platform-precheck and Upgrade Services plan format."]),
+    readiness: assessReadiness(fields, inventory, ["Existing engagement updated to the detailed adoption-intake and cadence-aware plan format."]),
     adoptionTimeline: plans.adoptionTimeline,
     twoYearPlan: plans.twoYearPlan,
     rationale: plans.rationale,
   };
 }
 
-export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV5Schema);
+export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV6Schema);
 
 export function refreshDerivedDocument(document: EngagementDocument): EngagementDocument {
   const warnings = document.inventorySources.flatMap(source => source.warnings);
