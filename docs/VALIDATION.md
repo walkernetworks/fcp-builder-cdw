@@ -8,38 +8,37 @@ The release gate is:
 pnpm test && pnpm check && pnpm build
 ```
 
-The redesigned suite contains **eight Vitest assertions across two test files**. It covers browser-local inventory aggregation, deterministic readiness and sequencing, legacy-document migration, synchronized export rendering, safe download filenames, authenticated access, and secure logout behavior.
+The suite contains **eleven Vitest assertions across two test files**. It covers browser-local inventory aggregation, entitlement fields, month generation, Plan/Design-only defaults, two-year planning, pointer-gesture transitions, legacy-document migration, synchronized export rendering, safe download filenames, authenticated access, and secure logout behavior.
 
 | Area | Evidence |
 |---|---|
-| Local multi-file parsing | Two RVTools-style CSV exports are parsed together; stable host and VM identifiers deduplicate repeated rows and preserve correct core, VM, power-state and version totals. |
-| Assessment transparency | Older ESXi versions and entitlement-to-observed-core gaps are flagged; hardware certification remains explicitly unknown rather than inferred. |
-| Deterministic sequencing | Hardware procurement, operations, automation, security and resilience lanes are produced from explicit inputs with no same-lane overlap. |
-| Backward compatibility | A version-one manual-intake document migrates to the minimal version-two model while retaining customer, inventory, hardware lead-time, security priority and timeline context. |
-| Synchronized rendering | Customer, inventory, readiness and timeline content are rendered from one versioned engagement object. |
+| Local multi-file parsing | Two RVTools-style CSV exports are parsed together; stable host and VM identifiers deduplicate repeated rows and preserve correct core, VM, power-state, and version totals. |
+| Entitlement term | Inclusive month columns are built from the entitlement start and end dates. A separate sequence always contains 24 calendar months. |
+| Plan and Design defaults | Generated and user-edited labels normalize to title-style Plan or Design language, and excluded phase labels are absent from both adoption views. |
+| Backward compatibility | Earlier engagement documents migrate to version three with entitlement value, entitlement dates, normalized activity labels, and rebuilt calendar-month views. |
+| Synchronized rendering | Customer, entitlement, inventory, planning considerations, Adoption Timeline, and Two-Year Notional Adoption Plan render from one versioned engagement object. |
 | Token sanitization | Exported HTML contains no unresolved `[[...]]` placeholders. |
-| HTML download | The authenticated procedure returns a safe filename and standalone document with the explicit “Generated without AI” provenance statement. |
+| HTML download | The authenticated procedure returns a safe filename and standalone document containing both adoption views. |
 | Business-data authorization | Unauthenticated engagement and export access is rejected. |
+| Timeline pointer gestures | The same pure transition function used by the editor is tested for whole-activity month movement, independent start/end edge resizing, grid-bound rejection, and same-workstream overlap rejection. |
 | Session handling | Logout clears the secure session cookie. |
 
 ## Inventory minimization evidence
 
-`client/src/lib/rvtools.ts` uses the browser File API, `fflate`, and `DOMParser` to read XLSX/CSV content locally. There is no file-upload API procedure and no server-side RVTools parser. The parser stores only aggregate inventory facts and source metadata in the engagement document. Tests use RVTools-style CSV inputs to verify aggregation and stable-ID deduplication.
+`client/src/lib/rvtools.ts` uses the browser File API, `fflate`, and `DOMParser` to read XLSX/CSV content locally. There is no file-upload API procedure and no server-side RVTools parser. The parser stores only aggregate inventory facts and source metadata in the engagement document. Tests use RVTools-style CSV inputs to verify aggregation and stable-identifier deduplication.
 
-## Readiness boundary evidence
+## Planning-consideration boundary evidence
 
-`assessReadiness()` produces evidence-based `good`, `attention`, or `unknown` results. Unknown is used for information RVTools cannot prove, including complete hardware/firmware/driver compatibility and network/identity/rack readiness. The UI and exported document both state that the result is a pre-assessment, not HCL certification or a final VCF deployment decision.
+The assessment function produces evidence-based `good`, `attention`, or `unknown` results for inventory-observable facts. Unknown is used for information RVTools cannot prove, including complete hardware/firmware/driver compatibility and network, identity, or facilities requirements. These observations are shown separately and are not inserted as activities on either adoption plan.
 
-## Timeline editor evidence
+## Adoption Timeline editor evidence
 
-`GanttEditor.tsx` retains editable lane names, lane creation/deletion/reordering, activity creation/deletion, constrained legend colors, milestone/deferred controls, whole-bar dragging, and independent start/end resize handles. The change guard rejects any edit that would overlap another activity in the same lane. “Rebuild plan” restores the transparent deterministic recommendation from the confirmed minimal inputs and aggregate inventory.
+`AdoptionTimelineEditor.tsx` provides editable workstream and activity names, lane creation/deletion/reordering, activity creation/deletion, constrained legend colors, whole-activity dragging, independent start/end resize handles, and explicit month selectors. Pointer movement calls the shared `applyTimelineGesture` transition, whose drag, edge-resize, bounds, and same-workstream collision behavior is covered directly by Vitest. The editor is used for both the entitlement-term Adoption Timeline and the separate Two-Year Notional Adoption Plan.
 
 ## Authentication boundary evidence
 
-All engagement, preview, HTML and PDF procedures use the protected API contract. The unauthenticated surface is limited to the sign-in boundary, OAuth/session bootstrap, logout cookie clearing, and a non-data health probe. The self-hosted deployment additionally places the entire container behind the approved OIDC gateway and blocks direct access.
-
-There is no AI drafting procedure, LLM client module, model configuration, model credential, or inventory-upload API.
+All engagement, preview, HTML, and PDF procedures use the protected API contract. The unauthenticated surface is limited to the sign-in boundary, OAuth/session bootstrap, logout cookie clearing, and a non-data health probe. The self-hosted deployment additionally places the entire container behind the approved OIDC gateway and blocks direct access.
 
 ## Visual and responsive review
 
-The authenticated upload-first workspace was reviewed at desktop width. It presents the security boundary first, followed by the four-step flow: Upload, Customer, Timeline, and Review. A mobile breakpoint review is included in the final release gate. The interface retains the compact engagement rail, live Gantt editor, synchronized preview, and direct HTML/PDF downloads while removing the previous multi-track discovery burden.
+The authenticated workspace is reviewed at desktop and mobile widths, including the directly opened Adoption Timelines tab. The screenshots confirm contained horizontal month canvases, a sticky and readable workstream column, touch-sized drag/resize handles, explicit start/end month selectors, and access to both editable adoption views without page-width overflow. Pointer behavior is backed by the repeatable transition tests above. Preview, HTML, and PDF exports remain synchronized with the two editable adoption views.

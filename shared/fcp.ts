@@ -20,7 +20,7 @@ export const timelineLaneSchema = z.object({
 });
 
 export const timelineSchema = z.object({
-  columns: z.array(z.string().min(1)).min(2).max(12),
+  columns: z.array(z.string().min(1)).min(2).max(36),
   lanes: z.array(timelineLaneSchema).min(1),
 });
 
@@ -37,6 +37,7 @@ export const minimalFieldsSchema = z.object({
   location: z.string().max(240),
   primaryContact: z.string().max(240),
   entitledCores: z.number().int().min(0).max(10_000_000),
+  entitlementAmount: z.number().min(0).max(1_000_000_000_000),
   entitlementStart: z.string(),
   entitlementEnd: z.string(),
   targetStart: z.string(),
@@ -105,22 +106,23 @@ export type ReadinessItem = z.infer<typeof readinessItemSchema>;
 
 export const readinessSchema = z.object({
   generatedAt: z.string(),
-  label: z.literal("Inventory-informed VCF 9.1 pre-assessment"),
+  label: z.literal("Inventory-Informed VCF 9.1 Planning Considerations"),
   items: z.array(readinessItemSchema),
   disclaimer: z.string(),
 });
 export type ReadinessAssessment = z.infer<typeof readinessSchema>;
 
-export const engagementDocumentV2Schema = z.object({
-  version: z.literal(2),
+export const engagementDocumentV3Schema = z.object({
+  version: z.literal(3),
   fields: minimalFieldsSchema,
   inventorySources: z.array(inventorySourceSchema),
   inventory: inventorySummarySchema,
   readiness: readinessSchema,
-  timeline: timelineSchema,
+  adoptionTimeline: timelineSchema,
+  twoYearPlan: timelineSchema,
   rationale: z.string(),
 });
-export type EngagementDocument = z.infer<typeof engagementDocumentV2Schema>;
+export type EngagementDocument = z.infer<typeof engagementDocumentV3Schema>;
 
 export function emptyInventory(): InventorySummary {
   return {
@@ -156,6 +158,7 @@ export function createDefaultFields(): MinimalFields {
     location: "",
     primaryContact: "",
     entitledCores: 0,
+    entitlementAmount: 0,
     entitlementStart: "",
     entitlementEnd: "",
     targetStart: "",
@@ -171,91 +174,159 @@ function bar(id: string, startCol: number, endCol: number, color: TimelineColor,
   return { id, startCol, endCol, color, label, milestone, deferred };
 }
 
-export function estimateMigrationWaves(vmCount: number): number {
-  if (!Number.isFinite(vmCount) || vmCount <= 0) return 2;
-  if (vmCount <= 400) return 2;
-  if (vmCount <= 1600) return 3;
-  if (vmCount <= 3000) return 4;
-  return 5;
+function parseMonth(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  if (!Number.isInteger(year) || month < 0 || month > 11) return null;
+  return new Date(Date.UTC(year, month, 1));
 }
 
-function phaseColumns(fields: MinimalFields): string[] {
-  const start = fields.targetStart ? `Start · ${fields.targetStart}` : "Confirm";
-  const complete = fields.targetComplete ? `Target · ${fields.targetComplete}` : "Operate";
-  return fields.hardwareAvailability === "new" && fields.hardwareLeadWeeks > 0
-    ? [start, `Hardware · ~${fields.hardwareLeadWeeks} wk`, "Validate", "Foundation", "Wave 1", "Wave 2", "Modernize", complete]
-    : [start, "Validate", "Foundation", "Wave 1", "Wave 2", "Stabilize", "Modernize", complete];
+function addUtcMonths(date: Date, months: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
 }
 
-export function buildTimeline(fields: MinimalFields, inventory: InventorySummary): { timeline: Timeline; rationale: string } {
-  const columns = phaseColumns(fields);
-  const last = columns.length + 1;
-  const hardwareGate = fields.hardwareAvailability === "new" && fields.hardwareLeadWeeks > 0;
-  const validateStart = 2;
-  const foundationStart = hardwareGate ? 4 : 3;
-  const migrationStart = foundationStart + 1;
-  const waves = estimateMigrationWaves(inventory.poweredOnVms || inventory.vmCount);
-  const versionAttention = inventory.esxiVersions.some(item => /^(?:[0-7])(?:\.|$)/.test(item.version.trim()));
+function monthDifference(start: Date, end: Date): number {
+  return (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + end.getUTCMonth() - start.getUTCMonth();
+}
+
+function displayMonth(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", { month: "short", year: "2-digit", timeZone: "UTC" }).format(date);
+}
+
+export function buildMonthColumns(startValue: string, endValue: string, fallbackCount = 12, maximum = 36): string[] {
+  const start = parseMonth(startValue) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const end = parseMonth(endValue);
+  const requested = end && end >= start ? monthDifference(start, end) + 1 : fallbackCount;
+  const count = Math.max(2, Math.min(maximum, requested));
+  return Array.from({ length: count }, (_, index) => displayMonth(addUtcMonths(start, index)));
+}
+
+export function buildTwoYearColumns(startValue: string): string[] {
+  const start = parseMonth(startValue) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  return Array.from({ length: 24 }, (_, index) => displayMonth(addUtcMonths(start, index)));
+}
+
+function boundedRange(start: number, duration: number, columnCount: number): [number, number] {
+  const safeStart = Math.max(1, Math.min(columnCount, start));
+  return [safeStart, Math.max(safeStart + 1, Math.min(columnCount + 1, safeStart + Math.max(1, duration)))];
+}
+
+function capabilityTitle(capability: Capability): string {
+  const labels: Record<Capability, string> = {
+    operations: "Operations",
+    automation: "Automation and Self-Service",
+    security: "Security",
+    resilience: "Resilience",
+    kubernetes: "Kubernetes",
+    "private-ai": "Private AI",
+  };
+  return labels[capability];
+}
+
+function titleCase(value: string): string {
+  const minorWords = new Set(["and", "or", "of", "the", "to", "in", "for", "with"]);
+  return value
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase()
+    .split(" ")
+    .map((word, index) => {
+      if (index > 0 && minorWords.has(word)) return word;
+      if (/^(vcf|nsx|dr|hcx|tanzu|kubernetes|ai)$/.test(word)) return word.toUpperCase();
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
+export function normalizeActivityLabel(value: string): string {
+  const cleaned = value.trim().replace(/\b(workshop|readiness|assessment|validation)\b/gi, "plan");
+  const titled = titleCase(cleaned || "Custom Plan");
+  return /\b(plan|design)\b/i.test(titled) ? titled : `${titled} Plan`;
+}
+
+export function normalizeWorkstreamLabel(value: string): string {
+  const cleaned = value.trim().replace(/\b(workshop|readiness|assessment|validation)\b/gi, "plan");
+  return titleCase(cleaned || "Custom Workstream");
+}
+
+function buildPrimaryTimeline(fields: MinimalFields): Timeline {
+  const columns = buildMonthColumns(fields.entitlementStart || fields.targetStart, fields.entitlementEnd || fields.targetComplete, 12, 36);
+  const count = columns.length;
+  const planDuration = Math.max(2, Math.min(4, Math.ceil(count * 0.2)));
+  const designDuration = Math.max(2, Math.min(6, Math.ceil(count * 0.3)));
+  const [planStart, planEnd] = boundedRange(1, planDuration, count);
+  const [platformStart, platformEnd] = boundedRange(Math.max(2, planEnd - 1), designDuration, count);
+  const lanes: TimelineLane[] = [
+    { id: "lane-plan", name: "Consumption Plan", bars: [bar("bar-consumption-plan", planStart, planEnd, "blue", "Functional Consumption Plan")] },
+    { id: "lane-platform-design", name: "Platform Design", bars: [bar("bar-platform-design", platformStart, platformEnd, "teal", "VCF Platform Design")] },
+  ];
+
+  fields.priorities.forEach((priority, index) => {
+    const start = Math.min(count - 1, Math.max(2, platformStart + 1 + (index % 3)));
+    const duration = Math.max(2, Math.min(5, Math.ceil(count * 0.22)));
+    const [capStart, capEnd] = boundedRange(start, duration, count);
+    const title = capabilityTitle(priority);
+    lanes.push({
+      id: `lane-${priority}`,
+      name: `${title} Design`,
+      bars: [bar(`bar-${priority}`, capStart, capEnd, priority === "security" ? "red" : priority === "resilience" ? "blue" : priority === "automation" ? "amber" : "green", `${title} Design`)],
+    });
+  });
+
+  return { columns, lanes };
+}
+
+function buildTwoYearPlan(fields: MinimalFields): Timeline {
+  const columns = buildTwoYearColumns(fields.entitlementStart || fields.targetStart);
   const lanes: TimelineLane[] = [
     {
-      id: "lane-validate",
-      name: "Validate & Plan",
+      id: "lane-two-year-plan",
+      name: "Consumption Plan",
       bars: [
-        bar("bar-inventory", 1, validateStart, "blue", "Reconcile RVTools inventory, entitlement cores, HCL and VCF planning workbook", true),
-        bar("bar-decisions", validateStart, foundationStart, "slate", "Confirm architecture, networking, identity and operating decisions"),
+        bar("bar-year-one-plan", 1, 5, "blue", "Year 1 Consumption Plan"),
+        bar("bar-year-two-plan", 13, 17, "slate", "Year 2 Consumption Plan"),
+      ],
+    },
+    {
+      id: "lane-two-year-platform",
+      name: "Platform Design",
+      bars: [
+        bar("bar-year-one-platform", 3, 9, "teal", "Core Platform Design"),
+        bar("bar-year-two-platform", 15, 22, "green", "Expansion Design"),
       ],
     },
   ];
 
-  if (hardwareGate) {
+  fields.priorities.forEach((priority, index) => {
+    const title = capabilityTitle(priority);
+    const start = 6 + (index % 4) * 2;
+    const end = Math.min(25, start + 6);
     lanes.push({
-      id: "lane-hardware",
-      name: "Hardware Readiness",
-      bars: [
-        bar("bar-hardware-order", 1, 2, "gate", "Approve supported hardware and place order", true),
-        bar("bar-hardware-lead", 2, foundationStart, "amber", `Procurement and delivery · approximately ${fields.hardwareLeadWeeks} weeks`),
-      ],
+      id: `lane-two-year-${priority}`,
+      name: `${title} Design`,
+      bars: [bar(`bar-two-year-${priority}`, start, end, priority === "security" ? "red" : priority === "automation" ? "amber" : "blue", `${title} Design`)],
     });
-  }
+  });
 
-  lanes.push(
-    {
-      id: "lane-foundation",
-      name: "VCF Foundation",
-      bars: [
-        bar("bar-foundation", foundationStart, migrationStart, versionAttention ? "red" : "teal", versionAttention ? "Remediate legacy vSphere and establish VCF 9.1 foundation" : "Establish or validate VCF 9.1 foundation", true),
-        bar("bar-lifecycle", migrationStart, last, "green", "Lifecycle, operations and capacity governance"),
-      ],
-    },
-    {
-      id: "lane-workloads",
-      name: "Workload Transition",
-      bars: [
-        bar("bar-pilot", migrationStart, migrationStart + 1, "blue", "Pilot mobility group and rollback validation", true),
-        bar("bar-waves", migrationStart + 1, Math.min(last - 1, migrationStart + Math.max(3, waves)), "amber", `${waves} workload migration waves`),
-        bar("bar-stabilize", Math.min(last - 1, migrationStart + Math.max(3, waves)), last, "green", "Stabilize and optimize"),
-      ],
-    },
-  );
+  return { columns, lanes };
+}
 
-  if (fields.priorities.includes("automation") || fields.priorities.includes("operations")) {
-    lanes.push({ id: "lane-consumption", name: "Cloud Consumption", bars: [bar("bar-consumption", foundationStart, last, "teal", "Operations, automation and governed self-service adoption")] });
-  }
-  if (fields.priorities.includes("security")) {
-    lanes.push({ id: "lane-security", name: "Security", bars: [bar("bar-security", validateStart, last - 1, "red", "Security design, segmentation, policy and enforcement")] });
-  }
-  if (fields.priorities.includes("resilience")) {
-    lanes.push({ id: "lane-resilience", name: "Resilience", bars: [bar("bar-resilience", validateStart, last - 1, "blue", "Recovery requirements, architecture, implementation and exercise", true)] });
-  }
-  if (fields.priorities.includes("kubernetes") || fields.priorities.includes("private-ai")) {
-    const labels = [fields.priorities.includes("kubernetes") ? "Kubernetes" : "", fields.priorities.includes("private-ai") ? "private AI" : ""].filter(Boolean).join(" and ");
-    lanes.push({ id: "lane-modern-apps", name: "Modern Applications", bars: [bar("bar-modern-apps", Math.max(foundationStart + 1, last - 3), last, "deferred", `${labels} enablement after foundation readiness`, false, true)] });
-  }
+export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
+  const adoptionTimeline = buildPrimaryTimeline(fields);
+  const twoYearPlan = buildTwoYearPlan(fields);
+  const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
+  const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
+  const term = fields.entitlementStart && fields.entitlementEnd ? `${fields.entitlementStart} through ${fields.entitlementEnd}` : "the confirmed entitlement term";
+  const priorities = fields.priorities.length ? fields.priorities.map(capabilityTitle).join(", ") : "the selected customer outcomes";
+  const rationale = `The adoption plan is aligned to ${amount}, ${term}, ${estate}, and the selected outcomes: ${priorities}. The recommendation contains planning and design activities only. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  return { adoptionTimeline, twoYearPlan, rationale };
+}
 
-  const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs on ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
-  const hardwareText = hardwareGate ? ` Hardware availability introduces an approximately ${fields.hardwareLeadWeeks}-week gate.` : " No confirmed procurement gate has been added.";
-  const rationale = `This deterministic plan uses ${estate}, ${inventory.physicalCores.toLocaleString()} observed physical cores, software-version signals, selected outcomes, and the target window. It sequences validation before foundation changes, then a pilot and ${waves} migration waves.${hardwareText} Compatibility, network, identity, and detailed VCF design remain explicit human validations.`;
-  return { timeline: { columns, lanes }, rationale };
+export function buildTimeline(fields: MinimalFields, inventory: InventorySummary): { timeline: Timeline; rationale: string } {
+  const plans = buildAdoptionPlans(fields, inventory);
+  return { timeline: plans.adoptionTimeline, rationale: plans.rationale };
 }
 
 export function assessReadiness(fields: MinimalFields, inventory: InventorySummary, sourceWarnings: string[] = []): ReadinessAssessment {
@@ -264,7 +335,7 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     id: "inventory-coverage",
     category: "inventory",
     status: inventory.hosts > 0 && inventory.vmCount > 0 ? (sourceWarnings.length ? "attention" : "good") : "attention",
-    title: "RVTools inventory coverage",
+    title: "RVTools Inventory Coverage",
     detail: inventory.hosts > 0 && inventory.vmCount > 0 ? `${inventory.sourceCount} export(s) provide ${inventory.hosts} unique hosts and ${inventory.vmCount} unique VMs.` : "No usable host and VM inventory has been imported.",
     evidence: sourceWarnings.length ? sourceWarnings.join(" ") : "Required vHost and vInfo data detected.",
   });
@@ -276,8 +347,8 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     id: "software-baseline",
     category: "software",
     status: legacyHosts ? "attention" : v9Hosts ? "good" : v8Hosts ? "info" : "unknown",
-    title: "vSphere software baseline",
-    detail: legacyHosts ? `${legacyHosts} host(s) report ESXi 7.x or older and need a modernization path before VCF 9.1.` : v9Hosts ? `${v9Hosts} host(s) report a 9.x ESXi baseline.` : v8Hosts ? `${v8Hosts} host(s) report ESXi 8.x; validate the supported VCF 9.1 import or upgrade path.` : "ESXi versions were not available.",
+    title: "vSphere Software Baseline",
+    detail: legacyHosts ? `${legacyHosts} host(s) report ESXi 7.x or older.` : v9Hosts ? `${v9Hosts} host(s) report a 9.x ESXi baseline.` : v8Hosts ? `${v8Hosts} host(s) report ESXi 8.x.` : "ESXi versions were not available.",
     evidence: inventory.esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ") || "No vHost version data",
   });
 
@@ -285,8 +356,8 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     id: "hardware-compatibility",
     category: "hardware",
     status: inventory.hostModels.length ? "unknown" : "attention",
-    title: "Broadcom hardware compatibility",
-    detail: inventory.hostModels.length ? "Vendor, model, and CPU details are available for an official Broadcom Compatibility Guide check. RVTools cannot certify support." : "Host vendor/model data is missing; collect it before compatibility validation.",
+    title: "Hardware Compatibility Lookup",
+    detail: inventory.hostModels.length ? "Vendor, model, and CPU details are available for an official compatibility check." : "Host vendor and model data are missing.",
     evidence: inventory.hostModels.slice(0, 6).map(item => `${item.vendor} ${item.model} (${item.hosts})`).join("; ") || "No host model data",
   });
 
@@ -295,9 +366,9 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     id: "capacity-signals",
     category: "capacity",
     status: capacityAttention ? "attention" : inventory.hosts ? "info" : "unknown",
-    title: "Point-in-time capacity signals",
-    detail: capacityAttention ? `${inventory.highCpuHosts} high-CPU host(s), ${inventory.highMemoryHosts} high-memory host(s), and ${inventory.overcommittedDatastores} heavily provisioned datastore(s) were observed.` : "No simple point-in-time threshold exceptions were observed; use VCF Operations history for sizing.",
-    evidence: "RVTools is a point-in-time inventory and is not a substitute for performance or growth analysis.",
+    title: "Point-in-Time Capacity Signals",
+    detail: capacityAttention ? `${inventory.highCpuHosts} high-CPU host(s), ${inventory.highMemoryHosts} high-memory host(s), and ${inventory.overcommittedDatastores} heavily provisioned datastore(s) were observed.` : "No simple point-in-time threshold exceptions were observed.",
+    evidence: "RVTools provides a point-in-time inventory view.",
   });
 
   const delta = fields.entitledCores - inventory.physicalCores;
@@ -305,25 +376,16 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     id: "core-entitlement",
     category: "licensing",
     status: !fields.entitledCores || !inventory.physicalCores ? "unknown" : delta >= 0 ? "good" : "attention",
-    title: "Core entitlement comparison",
+    title: "Core Entitlement Comparison",
     detail: !fields.entitledCores ? "Enter the entitled core quantity to compare it with observed physical cores." : !inventory.physicalCores ? "Physical-core inventory is unavailable." : delta >= 0 ? `${fields.entitledCores.toLocaleString()} entitled cores cover ${inventory.physicalCores.toLocaleString()} observed physical cores, with ${delta.toLocaleString()} unallocated.` : `${inventory.physicalCores.toLocaleString()} observed physical cores exceed entitlement by ${Math.abs(delta).toLocaleString()}.`,
-    evidence: "This is a simple inventory comparison, not a licensing determination.",
-  });
-
-  items.push({
-    id: "planning-workbook",
-    category: "planning",
-    status: "unknown",
-    title: "VCF planning and architecture decisions",
-    detail: "Complete the official VCF 9.1 Planning and Preparation Workbook and validate networking, DNS/NTP, identity, NSX, storage, topology, ports, and operational requirements.",
-    evidence: "These decisions are not available from RVTools.",
+    evidence: "Simple inventory comparison",
   });
 
   return {
     generatedAt: new Date().toISOString(),
-    label: "Inventory-informed VCF 9.1 pre-assessment",
+    label: "Inventory-Informed VCF 9.1 Planning Considerations",
     items,
-    disclaimer: "This pre-assessment summarizes RVTools-observable inventory. It is not an HCL certification, licensing determination, sizing study, low-level design, or supported-upgrade approval.",
+    disclaimer: "These considerations summarize RVTools-observable inventory for planning. Confirm compatibility, licensing, sizing, architecture, networking, identity, and implementation requirements through the appropriate CDW and vendor processes.",
   };
 }
 
@@ -331,8 +393,8 @@ export function createDefaultDocument(): EngagementDocument {
   const fields = createDefaultFields();
   const inventory = emptyInventory();
   const readiness = assessReadiness(fields, inventory);
-  const draft = buildTimeline(fields, inventory);
-  return { version: 2, fields, inventorySources: [], inventory, readiness, timeline: draft.timeline, rationale: draft.rationale };
+  const plans = buildAdoptionPlans(fields, inventory);
+  return { version: 3, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
 function stringValue(value: unknown): string {
@@ -345,50 +407,56 @@ function numberValue(value: unknown): number {
 }
 
 export function migrateDocument(value: unknown): EngagementDocument {
-  const current = engagementDocumentV2Schema.safeParse(value);
+  const current = engagementDocumentV3Schema.safeParse(value);
   if (current.success) return current.data;
   const legacy = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   const oldFields = (legacy.fields && typeof legacy.fields === "object" ? legacy.fields : {}) as Record<string, unknown>;
   const fields: MinimalFields = {
     ...createDefaultFields(),
     customerName: stringValue(oldFields.customerName),
-    accountId: stringValue(oldFields.cust),
-    location: stringValue(oldFields.cityState || oldFields.city),
-    primaryContact: "",
-    entitledCores: numberValue(oldFields.entitlement),
-    entitlementStart: stringValue(oldFields.termStart),
-    entitlementEnd: stringValue(oldFields.entitlementEndDate || oldFields.termEnd),
-    targetStart: stringValue(oldFields.kickoffDate),
-    targetComplete: stringValue(oldFields.termEnd),
-    hardwareAvailability: oldFields.hardwareIsNetNew === true ? "new" : oldFields.hardwareIsNetNew === false ? "existing" : "unknown",
-    hardwareLeadWeeks: numberValue(oldFields.hardwareLeadMonths) * 4,
-    priorities: ["operations", "automation", ...(oldFields.vdefendInScope ? ["security" as const] : []), ...(oldFields.drInScope ? ["resilience" as const] : []), ...(oldFields.k8sInScope ? ["kubernetes" as const] : [])],
-    timelineNotes: stringValue(oldFields.notes),
+    accountId: stringValue(oldFields.accountId || oldFields.cust),
+    location: stringValue(oldFields.location || oldFields.cityState || oldFields.city),
+    primaryContact: stringValue(oldFields.primaryContact),
+    entitledCores: numberValue(oldFields.entitledCores || oldFields.entitlement),
+    entitlementAmount: numberValue(oldFields.entitlementAmount || oldFields.entitlementValue || oldFields.funds),
+    entitlementStart: stringValue(oldFields.entitlementStart || oldFields.termStart),
+    entitlementEnd: stringValue(oldFields.entitlementEnd || oldFields.entitlementEndDate || oldFields.termEnd),
+    targetStart: stringValue(oldFields.targetStart || oldFields.kickoffDate),
+    targetComplete: stringValue(oldFields.targetComplete || oldFields.termEnd),
+    hardwareAvailability: oldFields.hardwareAvailability === "existing" || oldFields.hardwareAvailability === "new" || oldFields.hardwareAvailability === "unknown" ? oldFields.hardwareAvailability : oldFields.hardwareIsNetNew === true ? "new" : oldFields.hardwareIsNetNew === false ? "existing" : "unknown",
+    hardwareLeadWeeks: numberValue(oldFields.hardwareLeadWeeks) || numberValue(oldFields.hardwareLeadMonths) * 4,
+    priorities: Array.isArray(oldFields.priorities) ? capabilitySchema.array().catch([]).parse(oldFields.priorities) : ["operations", "automation", ...(oldFields.vdefendInScope ? ["security" as const] : []), ...(oldFields.drInScope ? ["resilience" as const] : []), ...(oldFields.k8sInScope ? ["kubernetes" as const] : [])],
+    timelineNotes: stringValue(oldFields.timelineNotes || oldFields.notes),
   };
-  const inventory = emptyInventory();
-  inventory.vmCount = numberValue(oldFields.vmCount);
-  inventory.poweredOnVms = inventory.vmCount;
-  inventory.hosts = numberValue(oldFields.hostCount);
-  inventory.clusters = numberValue(oldFields.clusterCount);
-  inventory.datacenters = numberValue(oldFields.siteCount);
-  const draft = buildTimeline(fields, inventory);
+  const parsedInventory = inventorySummarySchema.safeParse(legacy.inventory);
+  const inventory = parsedInventory.success ? parsedInventory.data : emptyInventory();
+  if (!parsedInventory.success) {
+    inventory.vmCount = numberValue(oldFields.vmCount);
+    inventory.poweredOnVms = inventory.vmCount;
+    inventory.hosts = numberValue(oldFields.hostCount);
+    inventory.clusters = numberValue(oldFields.clusterCount);
+    inventory.datacenters = numberValue(oldFields.siteCount);
+  }
+  const parsedSources = z.array(inventorySourceSchema).safeParse(legacy.inventorySources);
+  const plans = buildAdoptionPlans(fields, inventory);
   return {
-    version: 2,
+    version: 3,
     fields,
-    inventorySources: [],
+    inventorySources: parsedSources.success ? parsedSources.data : [],
     inventory,
-    readiness: assessReadiness(fields, inventory, ["Migrated from the earlier manual-intake format; import RVTools to refresh inventory evidence."]),
-    timeline: (legacy.timeline && timelineSchema.safeParse(legacy.timeline).success ? timelineSchema.parse(legacy.timeline) : draft.timeline),
-    rationale: stringValue(legacy.rationale) || draft.rationale,
+    readiness: assessReadiness(fields, inventory, ["Existing engagement updated to the calendar-month adoption-plan format."]),
+    adoptionTimeline: plans.adoptionTimeline,
+    twoYearPlan: plans.twoYearPlan,
+    rationale: plans.rationale,
   };
 }
 
-export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV2Schema);
+export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV3Schema);
 
 export function refreshDerivedDocument(document: EngagementDocument): EngagementDocument {
   const warnings = document.inventorySources.flatMap(source => source.warnings);
-  const draft = buildTimeline(document.fields, document.inventory);
-  return { ...document, readiness: assessReadiness(document.fields, document.inventory, warnings), timeline: draft.timeline, rationale: draft.rationale };
+  const plans = buildAdoptionPlans(document.fields, document.inventory);
+  return { ...document, readiness: assessReadiness(document.fields, document.inventory, warnings), adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
 export function validateTimeline(timeline: Timeline): string[] {
@@ -406,13 +474,46 @@ export function validateTimeline(timeline: Timeline): string[] {
   return errors;
 }
 
+export type TimelineGestureMode = "move" | "start" | "end";
+
+export function applyTimelineGesture(timeline: Timeline, laneId: string, barId: string, mode: TimelineGestureMode, deltaMonths: number): Timeline {
+  if (!deltaMonths) return timeline;
+  const lane = timeline.lanes.find(item => item.id === laneId);
+  const current = lane?.bars.find(item => item.id === barId);
+  if (!lane || !current) return timeline;
+
+  const maxEnd = timeline.columns.length + 1;
+  let startCol = current.startCol;
+  let endCol = current.endCol;
+  if (mode === "move") {
+    startCol += deltaMonths;
+    endCol += deltaMonths;
+  } else if (mode === "start") {
+    startCol += deltaMonths;
+  } else {
+    endCol += deltaMonths;
+  }
+
+  if (startCol < 1 || endCol > maxEnd || endCol <= startCol) return timeline;
+  const candidate = { ...current, startCol, endCol };
+  const overlaps = lane.bars.some(item => item.id !== barId && candidate.startCol < item.endCol && candidate.endCol > item.startCol);
+  if (overlaps) return timeline;
+
+  return {
+    ...timeline,
+    lanes: timeline.lanes.map(item => item.id === laneId
+      ? { ...item, bars: item.bars.map(bar => bar.id === barId ? candidate : bar) }
+      : item),
+  };
+}
+
 export function completionPercent(fields: MinimalFields, inventory: InventorySummary): number {
   const checks = [
     fields.customerName.trim().length > 0,
     fields.entitledCores > 0,
+    fields.entitlementAmount > 0,
+    fields.entitlementStart.trim().length > 0,
     fields.entitlementEnd.trim().length > 0,
-    fields.targetStart.trim().length > 0,
-    fields.targetComplete.trim().length > 0,
     inventory.hosts > 0,
     inventory.vmCount > 0,
   ];

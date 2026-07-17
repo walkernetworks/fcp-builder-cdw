@@ -1,31 +1,31 @@
 # FCP Builder
 
-FCP Builder is a secure, CDW-branded internal workspace for creating inventory-informed Functional Consumption Plans. An authenticated solution architect selects one or more RVTools XLSX or CSV exports, confirms a small set of customer, entitlement, outcome, hardware, and date fields, reviews a transparent VCF 9.1 pre-assessment, adjusts the deterministic timeline, and downloads standalone HTML or PDF output.
+FCP Builder is a secure, CDW-branded internal workspace for creating inventory-informed Functional Consumption Plans. An authenticated solution architect selects one or more RVTools XLSX or CSV exports, confirms a small set of customer and entitlement fields, customizes two calendar-month adoption views, and downloads standalone HTML or PDF output.
 
-**The application does not use AI.** RVTools files are parsed in browser memory, raw workbooks and per-object inventory rows are not uploaded, and the self-hosted CDW mode requires no public-internet application egress.
+RVTools files are parsed in browser memory. Raw workbooks and per-object inventory rows are not uploaded; only aggregate estate facts and source metadata are stored with the engagement.
 
 ## Product capabilities
 
 | Capability | Implementation |
 |---|---|
-| Protected workspace | Hosted Manus OAuth for review plus a config-driven trusted OIDC gateway hook for CDW Entra ID or Okta. |
+| Protected workspace | Hosted authentication for review plus a config-driven trusted OIDC gateway hook for CDW Entra ID or Okta. |
 | Engagement management | Owner-scoped create, list, open, update, duplicate, and delete operations. |
-| Local RVTools intake | Multi-file XLSX/CSV parsing and duplicate-aware aggregation in the browser; no raw inventory upload API. |
-| Minimal confirmed inputs | Customer identity, entitled physical cores, desired outcomes, hardware availability, exceptions, and target dates. |
-| Transparent readiness | Evidence-based VCF 9.1 pre-assessment with explicit unknowns for HCL, firmware, network, identity and facilities items that RVTools cannot prove. |
-| Deterministic planning | Local rules generate a readable sequence and rationale from confirmed inputs and aggregate inventory; no model call or AI fallback. |
-| Visual editing | CSS-grid swimlanes, drag/move/resize, lane and activity controls, constrained colors, milestone/deferred flags, and same-lane overlap prevention. |
-| Synchronized document | Inventory, readiness, adoption sequence, Gantt views, roadmap and forward plan derive from one versioned engagement object. |
+| Local RVTools intake | Multi-file XLSX/CSV parsing and duplicate-aware aggregation in the browser, with no raw-inventory upload API. |
+| Minimal confirmed inputs | Customer identity, entitled physical cores, entitlement dollar value, entitlement start/end dates, desired outcomes, and timeline notes. |
+| Planning considerations | Evidence-based VCF 9.1 observations with explicit unknowns for items RVTools cannot prove. |
+| Calendar-month Adoption Timeline | Editable workstreams and activities aligned to the entitlement term, with drag-to-move, edge-resize, month selectors, constrained colors, and overlap prevention. |
+| Two-Year Notional Adoption Plan | A separate editable 24-month view for longer-range planning and design activities. |
+| Synchronized document | Customer, entitlement, inventory, planning considerations, both adoption views, preview, HTML, and PDF derive from one versioned engagement object. |
 | Direct export | Standalone HTML and container-local Chromium PDF downloads from the authenticated UI. |
-| Approval evidence | Configuration, architecture, data flow, classification, endpoints, secrets, ports, retention, deployment, dependency and validation documentation. |
+| Approval evidence | Configuration, architecture, data flow, classification, endpoints, secrets, ports, retention, deployment, dependency, and validation documentation. |
 
 ## Four-step workflow
 
 | Step | User action | Application action |
 |---|---|---|
-| 1. Upload | Select up to 20 RVTools files. | Parse locally, deduplicate stable IDs, and calculate aggregate facts. |
-| 2. Customer | Confirm the small set of commercial and planning inputs. | Calculate transparent readiness indicators and unresolved validation items. |
-| 3. Timeline | Review or adjust the recommended workstreams. | Enforce valid ranges and prevent same-lane overlap. |
+| 1. Upload | Select one or more RVTools files. | Parse locally, deduplicate stable identifiers, and calculate aggregate facts. |
+| 2. Customer | Confirm customer details, entitlement cores and value, and entitlement start/end dates. | Align both adoption views to actual calendar months. |
+| 3. Timeline | Drag, resize, rename, add, or remove Plan and Design activities. | Preserve valid ranges and prevent same-workstream overlap. |
 | 4. Review | Inspect the synchronized document and export. | Produce self-contained HTML or PDF without unresolved tokens or external resources. |
 
 ## Local development
@@ -45,7 +45,7 @@ pnpm check
 pnpm build
 ```
 
-The test suite covers multi-file RVTools-style aggregation, stable-ID deduplication, readiness boundaries, legacy engagement migration, deterministic sequencing, overlap detection, protected engagement and export procedures, synchronized rendering, safe filenames, and unresolved-token removal.
+The test suite covers multi-file RVTools aggregation, stable-identifier deduplication, entitlement fields, calendar-month generation, two-year planning, legacy engagement migration, Plan/Design-only defaults, overlap detection, protected engagement and export procedures, synchronized rendering, safe filenames, and unresolved-token removal.
 
 ## Security and deployment
 

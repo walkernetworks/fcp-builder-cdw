@@ -39,3 +39,23 @@
 - [x] Update security documentation to state that RVTools parsing and plan generation are local/deterministic and require no internet or public AI egress.
 - [x] Add tests for multi-file parsing, aggregation, readiness rules, minimal-field validation, migration, synchronized rendering, and exports.
 - [x] Verify the revised desktop and mobile workflow with screenshots and create a new reviewable checkpoint.
+
+## Calendar-Month Adoption Timeline Refinement
+
+- [x] Remove user-facing statements and badges about AI or the absence of AI while preserving the existing no-model architecture.
+- [x] Rename all Gantt-facing product language to Adoption Timeline and standardize title-style capitalization across phases and activities.
+- [x] Add entitlement dollar amount, entitlement start date, and entitlement end date to the minimal customer inputs and versioned engagement data.
+- [x] Replace relative Wave/Year columns with actual calendar-month columns derived from the entitlement term.
+- [x] Remove workshop, readiness, assessment, and validation phases from generated recommendations and default plans.
+- [x] Restrict generated recommendations to customer-relevant Plan and Design activities, with optional custom user-created activities.
+- [x] Redesign the primary Adoption Timeline for intuitive drag-to-move and edge-resize editing across calendar months.
+- [x] Add a separate editable Two-Year Notional Adoption Plan covering 24 calendar months.
+- [x] Keep the primary Adoption Timeline, two-year notional plan, summaries, preview, HTML, and PDF synchronized from the engagement data.
+- [x] Update migration behavior so existing engagements receive entitlement terms, normalized capitalization, and workshop/readiness activity cleanup.
+- [x] Update tests for entitlement fields, calendar month generation, Plan/Design-only recommendations, normalization, two-year rendering, and overlap controls.
+- [x] Verify desktop and mobile usability, especially horizontal month navigation and touch-friendly timeline controls.
+
+## Interaction Evidence Follow-up
+
+- [x] Add repeatable automated coverage for month-grid whole-activity drag and independent edge-resize behavior, including bounds and same-workstream overlap rejection.
+- [x] Document the desktop/mobile horizontal-navigation evidence and the automated pointer-gesture coverage in the release validation record.
