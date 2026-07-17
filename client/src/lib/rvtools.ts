@@ -176,7 +176,7 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
   const datacenters = new Set<string>();
   const clusters = new Set<string>();
   const versions = new Map<string, number>();
-  const models = new Map<string, { vendor: string; model: string; cpuModel: string; hosts: number; physicalCores: number }>();
+  const models = new Map<string, { vendor: string; model: string; cpuModel: string; hosts: number; physicalCores: number; esxiVersions: Map<string, number> }>();
   for (const row of Array.from(hostRows.values())) {
     const datacenter = norm(first(row, ["Datacenter"])); if (datacenter) datacenters.add(datacenter);
     const cluster = norm(first(row, ["Cluster"])); if (cluster) clusters.add(`${datacenter}|${cluster}`);
@@ -191,13 +191,24 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
     const model = norm(first(row, ["Model"])) || "Unknown model";
     const cpuModel = norm(first(row, ["CPU Model"])) || "Unknown CPU";
     const modelKey = `${vendor}|${model}|${cpuModel}`;
-    const existing = models.get(modelKey) || { vendor, model, cpuModel, hosts: 0, physicalCores: 0 };
-    existing.hosts += 1; existing.physicalCores += Math.max(0, cores); models.set(modelKey, existing);
+    const existing = models.get(modelKey) || { vendor, model, cpuModel, hosts: 0, physicalCores: 0, esxiVersions: new Map<string, number>() };
+    existing.hosts += 1;
+    existing.physicalCores += Math.max(0, cores);
+    existing.esxiVersions.set(version, (existing.esxiVersions.get(version) || 0) + 1);
+    models.set(modelKey, existing);
   }
   summary.datacenters = datacenters.size;
   summary.clusters = clusters.size;
   summary.esxiVersions = Array.from(versions.entries()).map(([version, hosts]) => ({ version, hosts })).sort((a, b) => b.hosts - a.hosts);
-  summary.hostModels = Array.from(models.values()).sort((a, b) => b.hosts - a.hosts);
+  summary.hostModels = Array.from(models.values()).map(model => ({
+    vendor: model.vendor,
+    model: model.model,
+    cpuModel: model.cpuModel,
+    hosts: model.hosts,
+    physicalCores: model.physicalCores,
+    esxiVersions: Array.from(model.esxiVersions.entries()).map(([version, hosts]) => ({ version, hosts })).sort((a, b) => b.hosts - a.hosts),
+    esxiCorrelation: "per-platform" as const,
+  })).sort((a, b) => b.hosts - a.hosts);
 
   const operatingSystems = new Map<string, number>();
   for (const row of Array.from(vmRows.values())) {

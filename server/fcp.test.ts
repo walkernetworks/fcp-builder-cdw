@@ -35,6 +35,12 @@ describe("RVTools local import", () => {
     expect(result.summary.physicalCores).toBe(64);
     expect(result.summary.vmCount).toBe(2);
     expect(result.summary.poweredOnVms).toBe(1);
+    expect(result.summary.hostModels[0]).toMatchObject({
+      vendor: "Dell",
+      model: "R760",
+      esxiCorrelation: "per-platform",
+      esxiVersions: [{ version: "8.0.3", hosts: 1 }, { version: "7.0.3", hosts: 1 }],
+    });
   });
 });
 
@@ -47,7 +53,7 @@ describe("calendar-month adoption plans", () => {
     expect(twoYear[23]).toBe("Dec 28");
   });
 
-  it("uses entitlement value and term while generating only Plan and Design activities", () => {
+  it("starts Upgrade Services while opening platform planning and design in parallel", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementAmount: 2_500_000,
@@ -58,11 +64,17 @@ describe("calendar-month adoption plans", () => {
     Object.assign(document.inventory, { vmCount: 1800, poweredOnVms: 1600, hosts: 40 });
     const plans = buildAdoptionPlans(document.fields, document.inventory);
     const labels = [...plans.adoptionTimeline.lanes, ...plans.twoYearPlan.lanes].flatMap(lane => [lane.name, ...lane.bars.map(activity => activity.label)]);
+    const upgrade = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-upgrade-services")!;
+    const platformPlan = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-platform-plan")!;
+    const platformDesign = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-platform-design")!;
     expect(plans.adoptionTimeline.columns).toHaveLength(12);
     expect(plans.twoYearPlan.columns).toHaveLength(24);
     expect(plans.rationale).toContain("$2,500,000");
-    expect(labels.every(label => /(Plan|Design)$/.test(label))).toBe(true);
-    expect(labels.join(" ")).not.toMatch(/Workshop|Readiness|Assessment|Validation/i);
+    expect(labels).toContain("VCF 9.1 Upgrade Services");
+    expect(labels.join(" ")).not.toMatch(/Consumption Plan|Workshop|Readiness|Assessment|Validation/i);
+    expect(upgrade.bars[0].startCol).toBe(1);
+    expect(platformPlan.bars[0].startCol).toBe(1);
+    expect(platformDesign.bars[0].startCol).toBeLessThan(upgrade.bars[0].endCol);
     expect(validateTimeline(plans.adoptionTimeline)).toEqual([]);
     expect(validateTimeline(plans.twoYearPlan)).toEqual([]);
   });
@@ -95,13 +107,15 @@ describe("calendar-month adoption plans", () => {
   it("migrates older engagements to entitlement-aware, normalized adoption plans", () => {
     const legacyTimeline = { columns: ["Wave 1", "Wave 2"], lanes: [{ id: "legacy", name: "readiness", bars: [{ id: "old", startCol: 1, endCol: 2, color: "blue", label: "workshop", milestone: false, deferred: false }] }] };
     const migrated = migrateDocument({ version: 1, fields: { customerName: "Meridian Health", cust: "MER", entitlement: "256", funds: "$1,750,000", termStart: "2027-01-01", termEnd: "2028-12-31", vmCount: "980", hostCount: "22", notes: "No December changes" }, timeline: legacyTimeline, rationale: "Old rationale" });
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(5);
     expect(migrated.fields.customerName).toBe("Meridian Health");
     expect(migrated.fields.entitlementAmount).toBe(1_750_000);
     expect(migrated.fields.entitlementStart).toBe("2027-01-01");
     expect(migrated.adoptionTimeline.columns[0]).toBe("Jan 27");
     expect(migrated.twoYearPlan.columns).toHaveLength(24);
-    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).not.toMatch(/Workshop|Readiness|Assessment|Validation/i);
+    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Upgrade Services");
+    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).not.toMatch(/Consumption Plan|Workshop|Readiness|Assessment|Validation/i);
+    expect(migrated.readiness.hardwarePlatforms).toEqual([]);
   });
 });
 
@@ -109,14 +123,81 @@ describe("planning considerations, exports, and access boundary", () => {
   it("keeps inventory observations transparent without placing excluded activities on either plan", () => {
     const document = createDefaultDocument();
     document.fields.entitledCores = 32;
-    Object.assign(document.inventory, { hosts: 2, vmCount: 120, poweredOnVms: 100, physicalCores: 64, esxiVersions: [{ version: "7.0.3", hosts: 2 }], hostModels: [{ vendor: "Dell", model: "R740", cpuModel: "Intel", hosts: 2, physicalCores: 64 }] });
+    Object.assign(document.inventory, { hosts: 2, vmCount: 120, poweredOnVms: 100, physicalCores: 64, esxiVersions: [{ version: "7.0.3", hosts: 2 }], hostModels: [{ vendor: "Dell", model: "R740", cpuModel: "Intel", hosts: 2, physicalCores: 64, esxiVersions: [{ version: "7.0.3", hosts: 2 }], esxiCorrelation: "per-platform" }] });
     const considerations = assessReadiness(document.fields, document.inventory);
     expect(considerations.items.find(item => item.id === "software-baseline")?.status).toBe("attention");
     expect(considerations.items.find(item => item.id === "core-entitlement")?.status).toBe("attention");
     expect(considerations.label).toBe("Inventory-Informed VCF 9.1 Planning Considerations");
   });
 
-  it("renders entitlement details and both synchronized adoption views with neutral language", () => {
+  it("classifies RVTools host platforms into VCF 9.1 candidate and upgrade-required precheck outcomes", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      hosts: 10,
+      physicalCores: 640,
+      esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 10 }],
+      hostModels: [
+        { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel Xeon Gold", hosts: 6, physicalCores: 384, esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 6 }], esxiCorrelation: "per-platform" },
+        { vendor: "Dell Inc.", model: "PowerEdge R730", cpuModel: "Intel Xeon E5", hosts: 3, physicalCores: 192, esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 3 }], esxiCorrelation: "per-platform" },
+        { vendor: "Dell Inc.", model: "PowerEdge R530", cpuModel: "Intel Xeon E5", hosts: 1, physicalCores: 64, esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 1 }], esxiCorrelation: "per-platform" },
+      ],
+    });
+    const readiness = assessReadiness(document.fields, document.inventory);
+    expect(readiness.hardwarePlatforms.map(platform => [platform.model, platform.status, platform.hosts])).toEqual([
+      ["PowerEdge R760", "candidate", 6],
+      ["PowerEdge R730", "upgrade-required", 3],
+      ["PowerEdge R530", "upgrade-required", 1],
+    ]);
+    expect(readiness.items.find(item => item.id === "hardware-compatibility")).toMatchObject({
+      status: "attention",
+      title: "VCF 9.1 Hardware Platform Precheck",
+    });
+    expect(readiness.hardwarePlatforms[0]).toMatchObject({
+      model: "PowerEdge R760",
+      esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 6 }],
+      esxiCorrelation: "per-platform",
+    });
+    expect(readiness.disclaimer).toContain("not a VCF 9.1 certification");
+  });
+
+  it("marks unclassified and incomplete platforms as review-required or unavailable", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      hosts: 2,
+      physicalCores: 64,
+      hostModels: [
+        { vendor: "HPE", model: "ProLiant DL380 Gen10", cpuModel: "Intel Xeon", hosts: 1, physicalCores: 32, esxiVersions: [{ version: "8.0.3", hosts: 1 }], esxiCorrelation: "per-platform" },
+        { vendor: "Unknown vendor", model: "Unknown model", cpuModel: "Unknown CPU", hosts: 1, physicalCores: 32, esxiVersions: [], esxiCorrelation: "unavailable" },
+      ],
+    });
+    const readiness = assessReadiness(document.fields, document.inventory);
+    expect(readiness.hardwarePlatforms.map(platform => [platform.model, platform.status])).toEqual([
+      ["ProLiant DL380 Gen10", "review-required"],
+      ["Unknown model", "unavailable"],
+    ]);
+  });
+
+  it("migrates V4 platform evidence as estate-wide rather than per-platform", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      hosts: 2,
+      esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 2 }],
+      hostModels: [{ vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel Xeon Gold", hosts: 2, physicalCores: 128, esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 2 }], esxiCorrelation: "per-platform" }],
+    });
+    document.readiness = assessReadiness(document.fields, document.inventory);
+    const v4 = JSON.parse(JSON.stringify(document));
+    v4.version = 4;
+    v4.inventory.hostModels.forEach((platform: { esxiVersions?: unknown; esxiCorrelation?: unknown }) => { delete platform.esxiVersions; delete platform.esxiCorrelation; });
+    v4.readiness.hardwarePlatforms.forEach((platform: { esxiVersions?: unknown; esxiCorrelation?: unknown }) => { delete platform.esxiVersions; delete platform.esxiCorrelation; });
+    const migrated = migrateDocument(v4);
+    expect(migrated.version).toBe(5);
+    expect(migrated.inventory.hostModels[0]).toMatchObject({
+      esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 2 }],
+      esxiCorrelation: "estate-wide",
+    });
+  });
+
+  it("renders entitlement details and both synchronized adoption views with VCF 9.1 platform evidence", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, { customerName: "Meridian Health", entitledCores: 128, entitlementAmount: 3_000_000, entitlementStart: "2027-01-01", entitlementEnd: "2028-12-31" });
     Object.assign(document.inventory, { sourceCount: 2, hosts: 4, physicalCores: 128, vmCount: 220, poweredOnVms: 200 });
@@ -127,7 +208,10 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("$3,000,000");
     expect(html).toContain("Adoption Timeline");
     expect(html).toContain("Two-Year Notional Adoption Plan");
-    expect(html).not.toMatch(/Gantt|Workshop|Readiness/i);
+    expect(html).toContain("VCF 9.1 Hardware Platform Precheck");
+    expect(html).toContain("Observed ESXi");
+    expect(html).toContain("Upgrade Services");
+    expect(html).not.toMatch(/Gantt|Year [12] Consumption Plan|Workshop/i);
     expect(html).not.toMatch(/\[\[[^\]]+\]\]/);
   });
 

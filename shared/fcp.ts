@@ -58,7 +58,9 @@ export const inventorySourceSchema = z.object({
   warnings: z.array(z.string()),
 });
 
-export const inventoryHostModelSchema = z.object({
+export const inventoryVersionSchema = z.object({ version: z.string(), hosts: z.number().int().nonnegative() });
+
+const inventoryHostModelV4Schema = z.object({
   vendor: z.string(),
   model: z.string(),
   cpuModel: z.string(),
@@ -66,9 +68,12 @@ export const inventoryHostModelSchema = z.object({
   physicalCores: z.number().int().nonnegative(),
 });
 
-export const inventoryVersionSchema = z.object({ version: z.string(), hosts: z.number().int().nonnegative() });
+export const inventoryHostModelSchema = inventoryHostModelV4Schema.extend({
+  esxiVersions: z.array(inventoryVersionSchema),
+  esxiCorrelation: z.enum(["per-platform", "estate-wide", "unavailable"]),
+});
 
-export const inventorySummarySchema = z.object({
+const inventorySummaryBaseSchema = z.object({
   sourceCount: z.number().int().nonnegative(),
   datacenters: z.number().int().nonnegative(),
   clusters: z.number().int().nonnegative(),
@@ -88,9 +93,16 @@ export const inventorySummarySchema = z.object({
   highCpuHosts: z.number().int().nonnegative(),
   highMemoryHosts: z.number().int().nonnegative(),
   overcommittedDatastores: z.number().int().nonnegative(),
-  hostModels: z.array(inventoryHostModelSchema),
   esxiVersions: z.array(inventoryVersionSchema),
   guestOperatingSystems: z.array(z.object({ name: z.string(), vms: z.number().int().nonnegative() })),
+});
+
+const inventorySummaryV4Schema = inventorySummaryBaseSchema.extend({
+  hostModels: z.array(inventoryHostModelV4Schema),
+});
+
+export const inventorySummarySchema = inventorySummaryBaseSchema.extend({
+  hostModels: z.array(inventoryHostModelSchema),
 });
 export type InventorySummary = z.infer<typeof inventorySummarySchema>;
 
@@ -104,16 +116,74 @@ export const readinessItemSchema = z.object({
 });
 export type ReadinessItem = z.infer<typeof readinessItemSchema>;
 
-export const readinessSchema = z.object({
+export const hardwarePlatformStatusSchema = z.enum(["candidate", "upgrade-required", "review-required", "unavailable"]);
+export type HardwarePlatformStatus = z.infer<typeof hardwarePlatformStatusSchema>;
+
+export const platformEsxiCorrelationSchema = z.enum(["per-platform", "estate-wide", "unavailable"]);
+export type PlatformEsxiCorrelation = z.infer<typeof platformEsxiCorrelationSchema>;
+
+const hardwarePlatformAssessmentV4Schema = z.object({
+  id: z.string(),
+  vendor: z.string(),
+  model: z.string(),
+  cpuModel: z.string(),
+  hosts: z.number().int().nonnegative(),
+  physicalCores: z.number().int().nonnegative(),
+  status: hardwarePlatformStatusSchema,
+  detail: z.string(),
+  nextAction: z.string(),
+});
+
+export const hardwarePlatformAssessmentSchema = hardwarePlatformAssessmentV4Schema.extend({
+  esxiVersions: z.array(inventoryVersionSchema),
+  esxiCorrelation: platformEsxiCorrelationSchema,
+});
+export type HardwarePlatformAssessment = z.infer<typeof hardwarePlatformAssessmentSchema>;
+
+const readinessV4Schema = z.object({
+  generatedAt: z.string(),
+  label: z.literal("Inventory-Informed VCF 9.1 Planning Considerations"),
+  items: z.array(readinessItemSchema),
+  hardwarePlatforms: z.array(hardwarePlatformAssessmentV4Schema),
+  disclaimer: z.string(),
+});
+
+export const readinessSchema = readinessV4Schema.extend({
+  hardwarePlatforms: z.array(hardwarePlatformAssessmentSchema),
+});
+export type ReadinessAssessment = z.infer<typeof readinessSchema>;
+
+const readinessV3Schema = z.object({
   generatedAt: z.string(),
   label: z.literal("Inventory-Informed VCF 9.1 Planning Considerations"),
   items: z.array(readinessItemSchema),
   disclaimer: z.string(),
 });
-export type ReadinessAssessment = z.infer<typeof readinessSchema>;
 
 export const engagementDocumentV3Schema = z.object({
   version: z.literal(3),
+  fields: minimalFieldsSchema,
+  inventorySources: z.array(inventorySourceSchema),
+  inventory: inventorySummaryV4Schema,
+  readiness: readinessV3Schema,
+  adoptionTimeline: timelineSchema,
+  twoYearPlan: timelineSchema,
+  rationale: z.string(),
+});
+
+export const engagementDocumentV4Schema = z.object({
+  version: z.literal(4),
+  fields: minimalFieldsSchema,
+  inventorySources: z.array(inventorySourceSchema),
+  inventory: inventorySummaryV4Schema,
+  readiness: readinessV4Schema,
+  adoptionTimeline: timelineSchema,
+  twoYearPlan: timelineSchema,
+  rationale: z.string(),
+});
+
+export const engagementDocumentV5Schema = z.object({
+  version: z.literal(5),
   fields: minimalFieldsSchema,
   inventorySources: z.array(inventorySourceSchema),
   inventory: inventorySummarySchema,
@@ -122,7 +192,7 @@ export const engagementDocumentV3Schema = z.object({
   twoYearPlan: timelineSchema,
   rationale: z.string(),
 });
-export type EngagementDocument = z.infer<typeof engagementDocumentV3Schema>;
+export type EngagementDocument = z.infer<typeof engagementDocumentV5Schema>;
 
 export function emptyInventory(): InventorySummary {
   return {
@@ -243,7 +313,7 @@ function titleCase(value: string): string {
 export function normalizeActivityLabel(value: string): string {
   const cleaned = value.trim().replace(/\b(workshop|readiness|assessment|validation)\b/gi, "plan");
   const titled = titleCase(cleaned || "Custom Plan");
-  return /\b(plan|design)\b/i.test(titled) ? titled : `${titled} Plan`;
+  return /\b(plan|design|upgrade)\b/i.test(titled) ? titled : `${titled} Plan`;
 }
 
 export function normalizeWorkstreamLabel(value: string): string {
@@ -254,17 +324,20 @@ export function normalizeWorkstreamLabel(value: string): string {
 function buildPrimaryTimeline(fields: MinimalFields): Timeline {
   const columns = buildMonthColumns(fields.entitlementStart || fields.targetStart, fields.entitlementEnd || fields.targetComplete, 12, 36);
   const count = columns.length;
+  const upgradeDuration = Math.max(2, Math.min(6, Math.ceil(count * 0.35)));
   const planDuration = Math.max(2, Math.min(4, Math.ceil(count * 0.2)));
   const designDuration = Math.max(2, Math.min(6, Math.ceil(count * 0.3)));
+  const [upgradeStart, upgradeEnd] = boundedRange(1, upgradeDuration, count);
   const [planStart, planEnd] = boundedRange(1, planDuration, count);
   const [platformStart, platformEnd] = boundedRange(Math.max(2, planEnd - 1), designDuration, count);
   const lanes: TimelineLane[] = [
-    { id: "lane-plan", name: "Consumption Plan", bars: [bar("bar-consumption-plan", planStart, planEnd, "blue", "Functional Consumption Plan")] },
-    { id: "lane-platform-design", name: "Platform Design", bars: [bar("bar-platform-design", platformStart, platformEnd, "teal", "VCF Platform Design")] },
+    { id: "lane-upgrade-services", name: "Upgrade Services", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", "VCF 9.1 Upgrade Services")] },
+    { id: "lane-platform-plan", name: "Platform Plan", bars: [bar("bar-platform-plan", planStart, planEnd, "teal", "Platform Plan")] },
+    { id: "lane-platform-design", name: "Platform Design", bars: [bar("bar-platform-design", platformStart, platformEnd, "green", "VCF Platform Design")] },
   ];
 
   fields.priorities.forEach((priority, index) => {
-    const start = Math.min(count - 1, Math.max(2, platformStart + 1 + (index % 3)));
+    const start = Math.min(count - 1, Math.max(2, platformStart + (index % 3)));
     const duration = Math.max(2, Math.min(5, Math.ceil(count * 0.22)));
     const [capStart, capEnd] = boundedRange(start, duration, count);
     const title = capabilityTitle(priority);
@@ -282,19 +355,27 @@ function buildTwoYearPlan(fields: MinimalFields): Timeline {
   const columns = buildTwoYearColumns(fields.entitlementStart || fields.targetStart);
   const lanes: TimelineLane[] = [
     {
-      id: "lane-two-year-plan",
-      name: "Consumption Plan",
+      id: "lane-two-year-upgrade-services",
+      name: "Upgrade Services",
       bars: [
-        bar("bar-year-one-plan", 1, 5, "blue", "Year 1 Consumption Plan"),
-        bar("bar-year-two-plan", 13, 17, "slate", "Year 2 Consumption Plan"),
+        bar("bar-year-one-upgrade-services", 1, 8, "blue", "Year 1 VCF 9.1 Upgrade Services"),
+        bar("bar-year-two-upgrade-services", 13, 20, "slate", "Year 2 Expansion Upgrade Services"),
       ],
     },
     {
-      id: "lane-two-year-platform",
+      id: "lane-two-year-platform-plan",
+      name: "Platform Plan",
+      bars: [
+        bar("bar-year-one-platform-plan", 1, 4, "teal", "Year 1 Platform Plan"),
+        bar("bar-year-two-platform-plan", 13, 16, "teal", "Year 2 Expansion Plan"),
+      ],
+    },
+    {
+      id: "lane-two-year-platform-design",
       name: "Platform Design",
       bars: [
-        bar("bar-year-one-platform", 3, 9, "teal", "Core Platform Design"),
-        bar("bar-year-two-platform", 15, 22, "green", "Expansion Design"),
+        bar("bar-year-one-platform-design", 2, 9, "green", "Core Platform Design"),
+        bar("bar-year-two-platform-design", 15, 22, "green", "Expansion Design"),
       ],
     },
   ];
@@ -320,13 +401,99 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
   const term = fields.entitlementStart && fields.entitlementEnd ? `${fields.entitlementStart} through ${fields.entitlementEnd}` : "the confirmed entitlement term";
   const priorities = fields.priorities.length ? fields.priorities.map(capabilityTitle).join(", ") : "the selected customer outcomes";
-  const rationale = `The adoption plan is aligned to ${amount}, ${term}, ${estate}, and the selected outcomes: ${priorities}. The recommendation contains planning and design activities only. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const rationale = `The adoption plan is aligned to ${amount}, ${term}, ${estate}, and the selected outcomes: ${priorities}. Upgrade Services begins at the start of the entitlement window while initial platform planning and design work run in parallel. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
 export function buildTimeline(fields: MinimalFields, inventory: InventorySummary): { timeline: Timeline; rationale: string } {
   const plans = buildAdoptionPlans(fields, inventory);
   return { timeline: plans.adoptionTimeline, rationale: plans.rationale };
+}
+
+function platformId(vendor: string, model: string, cpuModel: string): string {
+  return `${vendor}-${model}-${cpuModel}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+}
+
+function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][number]): HardwarePlatformAssessment {
+  const vendor = platform.vendor.trim();
+  const model = platform.model.trim();
+  const cpuModel = platform.cpuModel.trim();
+  const esxiVersions = platform.esxiVersions;
+  const esxiCorrelation = platform.esxiCorrelation;
+  const observedEsxi = esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ");
+  const esxiDetail = observedEsxi
+    ? ` Observed ESXi ${observedEsxi}${esxiCorrelation === "estate-wide" ? " (estate-wide evidence; not uniquely correlated to this platform)" : ""}.`
+    : " Per-platform ESXi version evidence was unavailable in the RVTools host rows.";
+  const identifier = `${vendor} ${model}`.toLowerCase();
+  const missingIdentity = !vendor || !model || /^unknown(?: vendor| model)?$/i.test(vendor) || /^unknown(?: vendor| model)?$/i.test(model);
+  const currentDellPowerEdge = /\b(?:r760|r760xa|r760xs|r660|r860|r750|r650)\b/i.test(identifier);
+  const legacyDellPowerEdge = /\b(?:r730|r530|r630|r430|r330|r720|r520|m630|m530|t630)\b/i.test(identifier);
+
+  if (missingIdentity) {
+    return {
+      id: platformId(vendor || "unknown-vendor", model || "unknown-model", cpuModel || "unknown-cpu"),
+      vendor: vendor || "Unknown vendor",
+      model: model || "Unknown model",
+      cpuModel: cpuModel || "Unknown CPU",
+      hosts: platform.hosts,
+      physicalCores: platform.physicalCores,
+      esxiVersions,
+      esxiCorrelation,
+      status: "unavailable",
+      detail: `A VCF 9.1 platform precheck cannot be formed because RVTools did not provide a usable vendor and model.${esxiDetail}`,
+      nextAction: "Collect the server make, model, CPU, BIOS, firmware, adapter, and storage-controller details before compatibility review.",
+    };
+  }
+
+  if (legacyDellPowerEdge) {
+    return {
+      id: platformId(vendor, model, cpuModel),
+      vendor,
+      model,
+      cpuModel: cpuModel || "Unknown CPU",
+      hosts: platform.hosts,
+      physicalCores: platform.physicalCores,
+      esxiVersions,
+      esxiCorrelation,
+      status: "upgrade-required",
+      detail: `This legacy Dell PowerEdge generation should be treated as a replacement or exception decision for VCF 9.1 planning, not as an assumed in-place upgrade target.${esxiDetail}`,
+      nextAction: "Validate the exact configuration in the Broadcom Compatibility Guide and determine the replacement, repurpose, or exception path before the Upgrade Services workstream begins.",
+    };
+  }
+
+  if (currentDellPowerEdge) {
+    return {
+      id: platformId(vendor, model, cpuModel),
+      vendor,
+      model,
+      cpuModel: cpuModel || "Unknown CPU",
+      hosts: platform.hosts,
+      physicalCores: platform.physicalCores,
+      esxiVersions,
+      esxiCorrelation,
+      status: "candidate",
+      detail: `This current-generation Dell PowerEdge model is a candidate for VCF 9.1 infrastructure validation; RVTools alone cannot establish a supported server configuration.${esxiDetail}`,
+      nextAction: "Validate the exact server, CPU, NIC, storage controller, firmware, driver, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
+    };
+  }
+
+  return {
+    id: platformId(vendor, model, cpuModel),
+    vendor,
+    model,
+    cpuModel: cpuModel || "Unknown CPU",
+    hosts: platform.hosts,
+    physicalCores: platform.physicalCores,
+    esxiVersions,
+    esxiCorrelation,
+    status: "review-required",
+    detail: `RVTools provides a usable platform identity, but no deterministic VCF 9.1 outcome can be inferred from this model alone.${esxiDetail}`,
+    nextAction: "Validate the exact server, CPU, adapters, storage controllers, firmware, drivers, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
+  };
+}
+
+export function assessHardwarePlatforms(inventory: InventorySummary): HardwarePlatformAssessment[] {
+  return inventory.hostModels.map(hardwarePlatformAssessment);
 }
 
 export function assessReadiness(fields: MinimalFields, inventory: InventorySummary, sourceWarnings: string[] = []): ReadinessAssessment {
@@ -352,13 +519,23 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     evidence: inventory.esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ") || "No vHost version data",
   });
 
+  const hardwarePlatforms = assessHardwarePlatforms(inventory);
+  const upgradeRequiredPlatforms = hardwarePlatforms.filter(platform => platform.status === "upgrade-required");
+  const candidatePlatforms = hardwarePlatforms.filter(platform => platform.status === "candidate");
+  const unavailablePlatforms = hardwarePlatforms.filter(platform => platform.status === "unavailable");
   items.push({
     id: "hardware-compatibility",
     category: "hardware",
-    status: inventory.hostModels.length ? "unknown" : "attention",
-    title: "Hardware Compatibility Lookup",
-    detail: inventory.hostModels.length ? "Vendor, model, and CPU details are available for an official compatibility check." : "Host vendor and model data are missing.",
-    evidence: inventory.hostModels.slice(0, 6).map(item => `${item.vendor} ${item.model} (${item.hosts})`).join("; ") || "No host model data",
+    status: !hardwarePlatforms.length ? "attention" : upgradeRequiredPlatforms.length ? "attention" : unavailablePlatforms.length ? "unknown" : "info",
+    title: "VCF 9.1 Hardware Platform Precheck",
+    detail: !hardwarePlatforms.length
+      ? "Host vendor and model data are missing."
+      : upgradeRequiredPlatforms.length
+        ? `${upgradeRequiredPlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) are on legacy platform generations that need a replacement or formal exception decision for VCF 9.1 planning. ${candidatePlatforms.length ? `${candidatePlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) remain candidate platforms pending exact configuration validation.` : ""}`
+        : candidatePlatforms.length
+          ? `${candidatePlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) are on candidate platform generation(s); exact configuration validation is still required.`
+          : "Platform identities are available for a VCF 9.1 compatibility review, but RVTools cannot determine final certification.",
+    evidence: hardwarePlatforms.map(platform => `${platform.vendor} ${platform.model} (${platform.hosts}): ${platform.status}`).join("; ") || "No host model data",
   });
 
   const capacityAttention = inventory.highCpuHosts + inventory.highMemoryHosts + inventory.overcommittedDatastores;
@@ -385,7 +562,19 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     generatedAt: new Date().toISOString(),
     label: "Inventory-Informed VCF 9.1 Planning Considerations",
     items,
-    disclaimer: "These considerations summarize RVTools-observable inventory for planning. Confirm compatibility, licensing, sizing, architecture, networking, identity, and implementation requirements through the appropriate CDW and vendor processes.",
+    hardwarePlatforms,
+    disclaimer: "These considerations summarize RVTools-observable inventory for planning. A candidate, upgrade-required, review-required, or unavailable platform result is not a VCF 9.1 certification. Confirm the exact server, CPU, NIC, HBA/controller, firmware, driver, vSAN/ReadyNode, licensing, sizing, architecture, networking, identity, and implementation requirements through the Broadcom Compatibility Guide and the appropriate CDW and vendor processes.",
+  };
+}
+
+function migrateInventoryToV5(inventory: z.infer<typeof inventorySummaryV4Schema>): InventorySummary {
+  return {
+    ...inventory,
+    hostModels: inventory.hostModels.map(platform => ({
+      ...platform,
+      esxiVersions: inventory.esxiVersions,
+      esxiCorrelation: inventory.esxiVersions.length ? "estate-wide" as const : "unavailable" as const,
+    })),
   };
 }
 
@@ -394,7 +583,7 @@ export function createDefaultDocument(): EngagementDocument {
   const inventory = emptyInventory();
   const readiness = assessReadiness(fields, inventory);
   const plans = buildAdoptionPlans(fields, inventory);
-  return { version: 3, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+  return { version: 5, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
 function stringValue(value: unknown): string {
@@ -407,8 +596,43 @@ function numberValue(value: unknown): number {
 }
 
 export function migrateDocument(value: unknown): EngagementDocument {
-  const current = engagementDocumentV3Schema.safeParse(value);
+  const current = engagementDocumentV5Schema.safeParse(value);
   if (current.success) return current.data;
+
+  const v4 = engagementDocumentV4Schema.safeParse(value);
+  if (v4.success) {
+    const inventory = migrateInventoryToV5(v4.data.inventory);
+    const warnings = v4.data.inventorySources.flatMap(source => source.warnings);
+    const plans = buildAdoptionPlans(v4.data.fields, inventory);
+    return {
+      version: 5,
+      fields: v4.data.fields,
+      inventorySources: v4.data.inventorySources,
+      inventory,
+      readiness: assessReadiness(v4.data.fields, inventory, warnings),
+      adoptionTimeline: plans.adoptionTimeline,
+      twoYearPlan: plans.twoYearPlan,
+      rationale: plans.rationale,
+    };
+  }
+
+  const v3 = engagementDocumentV3Schema.safeParse(value);
+  if (v3.success) {
+    const inventory = migrateInventoryToV5(v3.data.inventory);
+    const warnings = v3.data.inventorySources.flatMap(source => source.warnings);
+    const plans = buildAdoptionPlans(v3.data.fields, inventory);
+    return {
+      version: 5,
+      fields: v3.data.fields,
+      inventorySources: v3.data.inventorySources,
+      inventory,
+      readiness: assessReadiness(v3.data.fields, inventory, warnings),
+      adoptionTimeline: plans.adoptionTimeline,
+      twoYearPlan: plans.twoYearPlan,
+      rationale: plans.rationale,
+    };
+  }
+
   const legacy = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
   const oldFields = (legacy.fields && typeof legacy.fields === "object" ? legacy.fields : {}) as Record<string, unknown>;
   const fields: MinimalFields = {
@@ -428,8 +652,8 @@ export function migrateDocument(value: unknown): EngagementDocument {
     priorities: Array.isArray(oldFields.priorities) ? capabilitySchema.array().catch([]).parse(oldFields.priorities) : ["operations", "automation", ...(oldFields.vdefendInScope ? ["security" as const] : []), ...(oldFields.drInScope ? ["resilience" as const] : []), ...(oldFields.k8sInScope ? ["kubernetes" as const] : [])],
     timelineNotes: stringValue(oldFields.timelineNotes || oldFields.notes),
   };
-  const parsedInventory = inventorySummarySchema.safeParse(legacy.inventory);
-  const inventory = parsedInventory.success ? parsedInventory.data : emptyInventory();
+  const parsedInventory = inventorySummaryV4Schema.safeParse(legacy.inventory);
+  const inventory = parsedInventory.success ? migrateInventoryToV5(parsedInventory.data) : emptyInventory();
   if (!parsedInventory.success) {
     inventory.vmCount = numberValue(oldFields.vmCount);
     inventory.poweredOnVms = inventory.vmCount;
@@ -440,18 +664,18 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const parsedSources = z.array(inventorySourceSchema).safeParse(legacy.inventorySources);
   const plans = buildAdoptionPlans(fields, inventory);
   return {
-    version: 3,
+    version: 5,
     fields,
     inventorySources: parsedSources.success ? parsedSources.data : [],
     inventory,
-    readiness: assessReadiness(fields, inventory, ["Existing engagement updated to the calendar-month adoption-plan format."]),
+    readiness: assessReadiness(fields, inventory, ["Existing engagement updated to the VCF 9.1 platform-precheck and Upgrade Services plan format."]),
     adoptionTimeline: plans.adoptionTimeline,
     twoYearPlan: plans.twoYearPlan,
     rationale: plans.rationale,
   };
 }
 
-export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV3Schema);
+export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV5Schema);
 
 export function refreshDerivedDocument(document: EngagementDocument): EngagementDocument {
   const warnings = document.inventorySources.flatMap(source => source.warnings);

@@ -89,3 +89,16 @@
 - [x] Gate workspace record queries on a settled owner-scoped list so cached stale IDs from reload, navigation, or deletion are not requested; safely recover the unavoidable list/get race with a null result.
 - [x] Recover gracefully by selecting a valid engagement or presenting a clear empty state instead of surfacing a raw API query error.
 - [x] Add workspace-selection controller regression coverage for reload refresh, stale-list fallback, empty-list recovery, and the list/get deletion race; run the full release gate before checkpointing.
+
+## VCF 9.1 Hardware Readiness and Upgrade Services Sequencing
+
+- [x] Research authoritative VCF 9.1 hardware compatibility requirements and establish what RVTools evidence can and cannot verify locally.
+- [x] Convert parsed vendor, model, CPU, and ESXi evidence into per-platform VCF 9.1 hardware readiness findings with clear candidate, upgrade-required, review-required, and unavailable states.
+- [x] Update the readiness report and FCP preview to identify each observed hardware platform and its compatibility evidence instead of only stating that an official lookup is available.
+- [x] Replace the consumption-plan activity in generated adoption plans with an Upgrade Services progression while allowing initial Plan and Design work to run in parallel where appropriate.
+- [x] Add regression coverage for platform-readiness results and revised sequencing, then run the full release gate before checkpointing.
+
+## VCF 9.1 Readiness Evidence Completion
+
+- [x] Surface observed ESXi versions alongside each compatible hardware-platform precheck where RVTools host rows provide the correlation, while retaining ESXi as a lifecycle signal rather than a certification.
+- [x] Add regression coverage for review-required and unavailable platform states in addition to candidate and upgrade-required classifications.

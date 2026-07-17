@@ -12,7 +12,7 @@ Public Broadcom and VMware materials describe VCF consumption in terms of applic
 
 > **Working product definition:** A Functional Consumption Plan is a customer-specific calendar plan for turning owned VCF entitlement and the current VMware estate into prioritized platform capabilities and operating outcomes.
 
-The FCP should answer a short set of practical questions: **What is owned? What is running now? Which capabilities matter? Which Plan and Design activities are appropriate? When should those activities occur within the entitlement term and the two-year planning horizon?** It is not a low-level design, formal HCL certification, licensing determination, or automated deployment plan.
+The FCP should answer a short set of practical questions: **What is owned? What is running now? Which hardware platforms are plausible VCF 9.1 candidates, require modernization, or need evidence? Which capabilities matter? Which Upgrade Services, Plan, and Design activities are appropriate? When should those activities occur within the entitlement term and the two-year planning horizon?** It is not a low-level design, formal HCL certification, licensing determination, or automated deployment plan.
 
 ## What RVTools can provide
 
@@ -25,7 +25,7 @@ Microsoft documents RVTools worksheets that expose stable inventory families. `v
 | Software lifecycle signal | ESXi version distribution | Group observed versions and require formal path validation. |
 | Capacity signal | Datastore capacity and used values | Surface aggregate utilization observations. |
 | Operational signal | Snapshot and host-state observations where present | Present separately from adoption-plan activities. |
-| Hardware lookup list | Host vendor, model, CPU, and version | Prepare a verification list; never self-certify compatibility. |
+| Hardware platform precheck | Host vendor, model, CPU, and host count | Identify candidate, upgrade-required, review-required, or unavailable evidence; never self-certify compatibility. |
 | Source traceability | Filename, size, parsed worksheet names, and warnings | Store metadata without retaining raw workbook content. |
 
 RVTools does **not** replace the VCF 9.1 Planning and Preparation Workbook, Configuration Maximums, Ports and Protocols, or formal design activities. Broadcom’s planning guidance covers workload domains, identity broker, vSphere Supervisor, VCF Automation, fleet sizing, prerequisites, and the dynamic environment specification.[3]
@@ -34,7 +34,7 @@ RVTools does **not** replace the VCF 9.1 Planning and Preparation Workbook, Conf
 
 Broadcom’s VCF 9.1 bill of materials identifies the platform component set, including ESX 9.1, vCenter 9.1, NSX 9.1, and VCF Installer/SDDC Manager 9.1, and requires controlled component sequencing.[4] A version string from RVTools is therefore a **lifecycle signal**, not proof of a supported upgrade path.
 
-Broadcom maintains the VMware Compatibility Guide as the authority for supported server and component configurations.[6] RVTools can populate a useful model/version lookup list, but it cannot certify firmware, drivers, storage controllers, NICs, vSAN ReadyNode status, or the full server configuration.
+Broadcom maintains the VMware Compatibility Guide as the authority for supported server and component configurations.[6] The application therefore uses RVTools evidence only to prioritize the official review: current Dell PowerEdge generations are presented as candidates pending validation, while identified R730/R530-era systems are presented as replacement or exception decisions for planning. RVTools cannot certify firmware, drivers, storage controllers, NICs, vSAN ReadyNode status, CPU support, or the full server configuration.
 
 | Planning area | App may summarize | App must leave to the appropriate process |
 |---|---|---|
@@ -42,13 +42,13 @@ Broadcom maintains the VMware Compatibility Guide as the authority for supported
 | Estate scale | Aggregate VMs, hosts, clusters, storage, and cores | Workload dependencies and business constraints. |
 | ESXi lifecycle | Observed major/minor version groups | Supported upgrade/import path for the full VCF bill of materials. |
 | Capacity | Aggregate observed datastore use | Final sizing, growth, resilience, and failure-domain design. |
-| Hardware | Vendor/model/CPU lookup list | HCL, firmware, driver, controller, NIC, and ReadyNode certification. |
+| Hardware | Per-platform candidate, upgrade-required, review-required, or unavailable precheck using vendor/model/CPU evidence | HCL, CPU, firmware, driver, controller, NIC, and ReadyNode certification. |
 | Platform requirements | User-confirmed entitlement term and target dates | DNS, NTP, VLAN/IP capacity, BGP, identity, certificates, rack, power, and cabling. |
-| Adoption sequence | Editable Plan and Design activities | Detailed design, implementation procedure, and change approvals. |
+| Adoption sequence | Editable Upgrade Services, Plan, and Design activities; initial Plan and Design may overlap Upgrade Services | Detailed design, implementation procedure, and change approvals. |
 
 ## Resulting product workflow
 
-The research supports a four-step experience. First, the SA selects one or more RVTools exports and the browser locally calculates duplicate-aware aggregates. Second, the SA confirms customer identity, entitlement cores, entitlement dollar value, entitlement start and end dates, selected outcomes, and timeline notes. Third, the application creates an editable entitlement-term Adoption Timeline and a separate editable Two-Year Notional Adoption Plan, both using actual calendar months. Fourth, the SA reviews and exports the synchronized FCP.
+The research supports a four-step experience. First, the SA selects one or more RVTools exports and the browser locally calculates duplicate-aware aggregates plus a per-platform VCF 9.1 precheck. Second, the SA confirms customer identity, entitlement cores, entitlement dollar value, entitlement start and end dates, selected outcomes, and timeline notes. Third, the application creates an editable entitlement-term Adoption Timeline and a separate editable Two-Year Notional Adoption Plan, both using actual calendar months; Upgrade Services begins at the entitlement start while initial platform Plan and Design activities can proceed in parallel. Fourth, the SA reviews the required Broadcom Compatibility Guide validation and exports the synchronized FCP.
 
 Raw workbooks remain in browser memory and are not uploaded. The application stores only the aggregate facts and source metadata required to reproduce the plan.
 

@@ -8,15 +8,16 @@ The release gate is:
 pnpm test && pnpm check && pnpm build
 ```
 
-The suite contains **twenty-six Vitest assertions across six test files**. It covers browser-local inventory aggregation, entitlement fields, month generation, Plan/Design-only defaults, two-year planning, pointer-gesture transitions, legacy-document migration, synchronized export rendering, safe download filenames, browser Blob-download lifecycle, PDF decoding and signatures, authenticated access, hosted-preview OAuth URL construction, return-path preservation, open-redirect rejection, stale engagement selection recovery, and secure logout behavior.
+The suite contains **twenty-nine Vitest assertions across six test files**. It covers browser-local inventory aggregation, direct per-platform ESXi correlation, entitlement fields, month generation, VCF 9.1 platform prechecks across all status states, Upgrade Services sequencing with parallel Plan and Design work, V4-to-V5 and legacy-document migration, synchronized export rendering, safe download filenames, browser Blob-download lifecycle, PDF decoding and signatures, authenticated access, hosted-preview OAuth URL construction, return-path preservation, open-redirect rejection, stale engagement selection recovery, and secure logout behavior.
 
 | Area | Evidence |
 |---|---|
-| Local multi-file parsing | Two RVTools-style CSV exports are parsed together; stable host and VM identifiers deduplicate repeated rows and preserve correct core, VM, power-state, and version totals. |
+| Local multi-file parsing | Two RVTools-style CSV exports are parsed together; stable host and VM identifiers deduplicate repeated rows and preserve correct core, VM, power-state, global-version totals, and per-platform ESXi distributions. |
 | Entitlement term | Inclusive month columns are built from the entitlement start and end dates. A separate sequence always contains 24 calendar months. |
-| Plan and Design defaults | Generated and user-edited labels normalize to title-style Plan or Design language, and excluded phase labels are absent from both adoption views. |
-| Backward compatibility | Earlier engagement documents migrate to version three with entitlement value, entitlement dates, normalized activity labels, and rebuilt calendar-month views. |
-| Synchronized rendering | Customer, entitlement, inventory, planning considerations, Adoption Timeline, and Two-Year Notional Adoption Plan render from one versioned engagement object. |
+| Upgrade Services sequence | Generated adoption views begin VCF 9.1 Upgrade Services at the entitlement start while initial Platform Plan and Platform Design work overlaps where appropriate; removed consumption-plan timeline labels are absent. |
+| VCF 9.1 platform precheck | RVTools vendor, model, CPU, host-count, core, and correlated ESXi evidence classifies candidates, upgrade-required, review-required, and unavailable platforms while preserving the formal Compatibility Guide boundary. |
+| Backward compatibility | Earlier engagement documents migrate to version five with refreshed VCF 9.1 platform prechecks, clearly marked estate-wide ESXi evidence where direct historic correlation is unavailable, Upgrade Services sequencing, entitlement value, entitlement dates, normalized activity labels, and rebuilt calendar-month views. |
+| Synchronized rendering | Customer, entitlement, inventory, per-platform VCF 9.1 prechecks, planning considerations, Adoption Timeline, and Two-Year Notional Adoption Plan render from one versioned engagement object. |
 | Token sanitization | Exported HTML contains no unresolved `[[...]]` placeholders. |
 | HTML and PDF downloads | Protected export-ticket issuance and signed binary routes return safe filenames and valid attachment responses; tests verify ownership, MIME types, content-disposition headers, no-store behavior, non-empty bytes, PDF signatures, and malformed or tampered payload rejection. |
 | Business-data authorization | Unauthenticated engagement and export access is rejected. |
@@ -31,7 +32,7 @@ The suite contains **twenty-six Vitest assertions across six test files**. It co
 
 ## Planning-consideration boundary evidence
 
-The assessment function produces evidence-based `good`, `attention`, or `unknown` results for inventory-observable facts. Unknown is used for information RVTools cannot prove, including complete hardware/firmware/driver compatibility and network, identity, or facilities requirements. These observations are shown separately and are not inserted as activities on either adoption plan.
+The assessment function produces evidence-based `good`, `attention`, `info`, or `unknown` results for inventory-observable facts. It also derives per-platform VCF 9.1 precheck categories—`candidate`, `upgrade-required`, `review-required`, and `unavailable`—from RVTools vendor, model, CPU, host-count, core, and observed ESXi evidence. New imports correlate ESXi distributions to the same RVTools host rows; migrated reports label inherited ESXi evidence as estate-wide rather than claim a unique platform correlation. Those categories and lifecycle observations are deliberately not certifications: the exact server, CPU, adapters, storage controllers, firmware, drivers, and vSAN/ReadyNode configuration remains subject to the [Broadcom Compatibility Guide](https://compatibilityguide.broadcom.com/). These observations are shown separately and are not inserted as activities on either adoption plan.
 
 ## Adoption Timeline editor evidence
 
@@ -73,6 +74,14 @@ The export UI now saves the current engagement, requests a short-lived owner-sco
 A non-destructive smoke test issued short-lived tickets for an existing saved engagement and requested both files from the active hosted preview URL. The HTML response returned HTTP 200, `text/html; charset=utf-8`, an attachment filename, 20,861 bytes, and a `<!doctype html>` signature. The PDF response returned HTTP 200, `application/pdf`, an attachment filename, 391,701 bytes, and a `%PDF-` signature. Invalid or tampered tickets return HTTP 401. Automated route tests additionally verify ownership-scoped lookup, no-store headers, safe filenames, MIME types, content-disposition headers, and non-empty content.
 
 The final release gate passed on July 17, 2026: **6 test files and 26 tests passed**, TypeScript completed with no errors, and the production client/server build completed successfully. Vite reported only its advisory large-chunk warning; no build failure or runtime-blocking diagnostic was produced.
+
+## VCF 9.1 Platform Precheck and Upgrade Services Sequence — July 17, 2026
+
+The readiness report now converts observed RVTools host models into a per-platform VCF 9.1 precheck rather than a generic “hardware lookup” placeholder. For the reported estate, the renderer identifies **Dell PowerEdge R760** hosts as **candidate** platforms that require exact Broadcom Compatibility Guide validation, and marks **Dell PowerEdge R730** and **R530** hosts as **upgrade-required** replacement or exception decisions for VCF 9.1 planning. The report now shows the observed ESXi version alongside each platform. New RVTools imports correlate that evidence to the underlying host rows; V3 and V4 saved reports migrate to V5 and label inherited version data as **estate-wide** when the historic document cannot prove a unique model-to-version mapping. Neither candidate, upgrade-required, review-required, nor unavailable labels are certifications.
+
+The adoption view begins **VCF 9.1 Upgrade Services** at the entitlement start; **Platform Plan** starts in the same month and **Platform Design** overlaps the Upgrade Services window. The two-year view carries forward Year 1 Upgrade Services and a Year 2 Expansion Upgrade Services progression rather than placing a Consumption Plan activity in the timeline.
+
+The full release gate passed after this change: **6 test files and 29 tests passed**, TypeScript completed with no errors, and the production build completed successfully. Regression coverage verifies direct ESXi correlation, estate-wide migration provenance, current Dell candidate classification, legacy Dell upgrade-required classification, review-required and unavailable paths, export content, and Upgrade Services sequencing.
 
 ## Missing Engagement Recovery — July 17, 2026
 

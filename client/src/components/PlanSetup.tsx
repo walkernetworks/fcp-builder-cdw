@@ -7,8 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { parseRvToolsFiles } from "@/lib/rvtools";
-import { assessReadiness, type Capability, type EngagementDocument } from "@shared/fcp";
-import { AlertCircle, CheckCircle2, FileSpreadsheet, HardDrive, Info, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
+import { assessReadiness, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
+import { AlertCircle, CheckCircle2, ExternalLink, FileSpreadsheet, HardDrive, Info, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -100,7 +100,7 @@ export function PlanSetup({ document, onChange }: Props) {
 
         <TabsContent value="review" className="space-y-5">
           <InventoryCards document={document} />
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">VCF 9.1</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Inventory-Informed Planning Considerations</h2></div><Badge variant="outline" className="border-slate-300">Planning View</Badge></div><div className="mt-6 grid gap-3 md:grid-cols-2">{document.readiness.items.map(item => <ReadinessCard key={item.id} item={item} />)}</div><div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600"><strong className="text-slate-900">Planning boundary:</strong> {document.readiness.disclaimer}</div></section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">VCF 9.1</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Inventory-Informed Planning Considerations</h2></div><Badge variant="outline" className="border-slate-300">Planning View</Badge></div><div className="mt-6 grid gap-3 md:grid-cols-2">{document.readiness.items.map(item => <ReadinessCard key={item.id} item={item} />)}</div><HardwarePlatformPrecheck platforms={document.readiness.hardwarePlatforms} /><div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600"><strong className="text-slate-900">Planning boundary:</strong> {document.readiness.disclaimer}</div></section>
         </TabsContent>
       </Tabs>
     </div>
@@ -120,6 +120,23 @@ function InventoryCards({ document }: { document: EngagementDocument }) {
     { label: "Datastore capacity", value: inventory.datastoreCapacityTiB ? `${inventory.datastoreCapacityTiB} TiB` : 0, detail: `${inventory.datastoreUsedTiB} TiB used`, icon: ShieldCheck },
   ];
   return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map(card => <article key={card.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{card.label}</p><card.icon className="size-4 text-slate-400" /></div><strong className="mt-3 block text-3xl tracking-tight text-slate-950">{card.value || "—"}</strong><p className="mt-1 text-xs text-slate-500">{card.detail}</p></article>)}</div>;
+}
+
+function HardwarePlatformPrecheck({ platforms }: { platforms: HardwarePlatformAssessment[] }) {
+  const statusStyles: Record<HardwarePlatformAssessment["status"], string> = {
+    candidate: "border-blue-200 bg-blue-50 text-blue-800",
+    "upgrade-required": "border-amber-200 bg-amber-50 text-amber-800",
+    "review-required": "border-slate-200 bg-slate-50 text-slate-700",
+    unavailable: "border-slate-200 bg-slate-50 text-slate-500",
+  };
+  const statusLabels: Record<HardwarePlatformAssessment["status"], string> = {
+    candidate: "Candidate",
+    "upgrade-required": "Upgrade required",
+    "review-required": "Review required",
+    unavailable: "Evidence unavailable",
+  };
+
+  return <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.14em] text-[#c8102e]">Hardware compatibility</p><h3 className="mt-1 text-base font-semibold text-slate-950">VCF 9.1 platform precheck</h3><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">This uses RVTools vendor, model, CPU, ESXi, and host-count evidence to prioritize the official compatibility review. It does not certify the exact server configuration.</p></div><a href="https://compatibilityguide.broadcom.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100">Open Broadcom guide <ExternalLink className="size-3.5" /></a></div>{platforms.length ? <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="min-w-[980px] w-full text-left text-xs"><thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2.5">Observed platform</th><th className="px-3 py-2.5">Estate</th><th className="px-3 py-2.5">Observed ESXi</th><th className="px-3 py-2.5">VCF 9.1 precheck</th><th className="px-3 py-2.5">Required next action</th></tr></thead><tbody>{platforms.map(platform => { const esxiEvidence = platform.esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ") || "Not available"; const correlation = platform.esxiCorrelation === "per-platform" ? "Correlated to the same RVTools host rows" : platform.esxiCorrelation === "estate-wide" ? "Estate-wide evidence; not uniquely correlated" : "Unavailable in RVTools host rows"; return <tr key={platform.id} className="border-t border-slate-100 align-top"><td className="px-3 py-3"><p className="font-semibold text-slate-900">{platform.vendor} {platform.model}</p><p className="mt-1 text-slate-500">{platform.cpuModel}</p></td><td className="px-3 py-3 text-slate-700">{platform.hosts} host{platform.hosts === 1 ? "" : "s"}<br /><span className="text-slate-500">{platform.physicalCores.toLocaleString()} cores</span></td><td className="px-3 py-3 leading-5 text-slate-700">{esxiEvidence}<br /><span className="text-slate-500">{correlation}</span></td><td className="px-3 py-3"><Badge variant="outline" className={`border ${statusStyles[platform.status]}`}>{statusLabels[platform.status]}</Badge><p className="mt-2 max-w-sm leading-5 text-slate-600">{platform.detail}</p></td><td className="px-3 py-3 leading-5 text-slate-700">{platform.nextAction}</td></tr>; })}</tbody></table></div> : <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-4 text-xs leading-5 text-slate-500">No usable host vendor and model rows were found in the imported RVTools data. Upload a vHost export to build the compatibility precheck.</p>}</section>;
 }
 
 function ReadinessCard({ item }: { item: EngagementDocument["readiness"]["items"][number] }) {

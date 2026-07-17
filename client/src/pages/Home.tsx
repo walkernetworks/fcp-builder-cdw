@@ -67,10 +67,12 @@ export default function Home() {
   useEffect(() => {
     if (!selected.data || hydratedId.current === selected.data.id) return;
     hydratedId.current = selected.data.id;
+    const migratedDocument = migrateDocument(selected.data.data);
+    const needsPersistence = JSON.stringify(migratedDocument) !== JSON.stringify(selected.data.data);
     setTitle(selected.data.title);
-    setFcpDocument(migrateDocument(selected.data.data));
-    setDirty(false);
-    setSaveState("saved");
+    setFcpDocument(migratedDocument);
+    setDirty(needsPersistence);
+    setSaveState(needsPersistence ? "unsaved" : "saved");
   }, [selected.data]);
   useEffect(() => {
     if (!selectedId || !dirty) return;
