@@ -6,31 +6,12 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { downloadBase64, downloadText } from "@/lib/downloads";
 import { trpc } from "@/lib/trpc";
 import { createDefaultDocument, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "@shared/fcp";
 import { ArrowRight, CalendarRange, Copy, Download, FileSpreadsheet, Loader2, MoreHorizontal, Plus, RefreshCw, Save, ShieldCheck, Trash2, Workflow } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-
-function downloadText(filename: string, mime: string, content: string) {
-  const url = URL.createObjectURL(new Blob([content], { type: mime }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-function downloadBase64(filename: string, mime: string, base64: string) {
-  const binary = atob(base64);
-  const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
-  const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
 
 export default function Home() {
   const utils = trpc.useUtils();
@@ -54,8 +35,20 @@ export default function Home() {
   const duplicate = trpc.engagement.duplicate.useMutation({ onSuccess: async row => { await utils.engagement.list.invalidate(); setSelectedId(row.id); toast.success("Engagement duplicated"); } });
   const remove = trpc.engagement.delete.useMutation({ onSuccess: async () => { setSelectedId(null); hydratedId.current = null; setFcpDocument(createDefaultDocument()); setTitle("New FCP Engagement"); await utils.engagement.list.invalidate(); toast.success("Engagement deleted"); } });
   const preview = trpc.document.preview.useMutation({ onSuccess: result => setPreviewHtml(result.html) });
-  const htmlExport = trpc.document.html.useMutation({ onSuccess: result => downloadText(result.filename, result.mime, result.content), onError: error => toast.error(error.message) });
-  const pdfExport = trpc.document.pdf.useMutation({ onSuccess: result => downloadBase64(result.filename, result.mime, result.base64), onError: error => toast.error(error.message) });
+  const htmlExport = trpc.document.html.useMutation({
+    onSuccess: result => {
+      try { downloadText(result.filename, result.mime, result.content); toast.success("HTML download started"); }
+      catch (error) { console.error("[Export] HTML download failed", error); toast.error("The HTML was generated, but the browser could not start the download."); }
+    },
+    onError: error => toast.error(error.message),
+  });
+  const pdfExport = trpc.document.pdf.useMutation({
+    onSuccess: result => {
+      try { downloadBase64(result.filename, result.mime, result.base64); toast.success("PDF download started"); }
+      catch (error) { console.error("[Export] PDF download failed", error); toast.error("The PDF was generated, but the browser could not start the download."); }
+    },
+    onError: error => toast.error(error.message),
+  });
 
   useEffect(() => { if (!selectedId && list.data?.length) setSelectedId(list.data[0].id); }, [list.data, selectedId]);
   useEffect(() => {

@@ -65,3 +65,11 @@
 - [x] Remove the inventory-storage banner and its explanatory copy from the Plan Setup workspace.
 - [x] Revalidate the revised workspace, automated tests, type checking, and production build.
 - [x] Save a reviewable checkpoint and provide a concise CDW pilot and production rollout path covering access, hosting, identity, network, scanning, and approval evidence.
+
+## HTML and PDF Download Failure
+
+- [x] Reproduce the authenticated HTML and PDF download failures and capture the exact browser, network, and server errors.
+- [x] Fix the underlying export response or browser download handling without weakening authentication.
+- [x] Add regression tests for both downloadable formats, including filenames, MIME types, non-empty content, and error handling.
+- [x] Validate direct HTML and PDF downloads end to end with authenticated export responses and headless Chromium.
+- [x] Run the complete release gate and save a corrected reviewable checkpoint.

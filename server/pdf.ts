@@ -33,3 +33,11 @@ export async function renderPdf(html: string) {
     await page.close();
   }
 }
+
+export async function closePdfBrowser() {
+  const pending = browserPromise;
+  browserPromise = null;
+  if (!pending) return;
+  const browser = await pending.catch(() => null);
+  if (browser) await browser.close();
+}
