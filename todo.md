@@ -73,3 +73,12 @@
 - [x] Add regression tests for both downloadable formats, including filenames, MIME types, non-empty content, and error handling.
 - [x] Validate direct HTML and PDF downloads end to end with authenticated export responses and headless Chromium.
 - [x] Run the complete release gate and save a corrected reviewable checkpoint.
+
+## Hosted Preview Sign-In and PDF Transfer
+
+- [x] Reproduce the hosted-preview PDF failure and the missing Manus sign-in entry when opening the app directly.
+- [x] Ensure every unauthenticated preview route renders an explicit Sign in with Manus action and preserves the intended return URL.
+- [x] Add an authenticated binary download endpoint for HTML and PDF so hosted-preview downloads do not depend on large base64 tRPC payloads or Blob URLs.
+- [x] Preserve protected export authorization and safe filenames on the direct download endpoint.
+- [x] Add regression tests for sign-in redirects, authenticated binary responses, MIME types, content disposition, and unauthorized access.
+- [x] Validate the explicit sign-in entry and both signed export responses in the hosted preview, then run the full release gate and save a corrected checkpoint.

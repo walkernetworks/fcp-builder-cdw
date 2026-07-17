@@ -8,7 +8,7 @@ The release gate is:
 pnpm test && pnpm check && pnpm build
 ```
 
-The suite contains **fourteen Vitest assertions across three test files**. It covers browser-local inventory aggregation, entitlement fields, month generation, Plan/Design-only defaults, two-year planning, pointer-gesture transitions, legacy-document migration, synchronized export rendering, safe download filenames, browser Blob-download lifecycle, PDF decoding and signatures, authenticated access, and secure logout behavior.
+The suite contains **twenty-one Vitest assertions across five test files**. It covers browser-local inventory aggregation, entitlement fields, month generation, Plan/Design-only defaults, two-year planning, pointer-gesture transitions, legacy-document migration, synchronized export rendering, safe download filenames, browser Blob-download lifecycle, PDF decoding and signatures, authenticated access, hosted-preview OAuth URL construction, return-path preservation, open-redirect rejection, and secure logout behavior.
 
 | Area | Evidence |
 |---|---|
@@ -18,9 +18,10 @@ The suite contains **fourteen Vitest assertions across three test files**. It co
 | Backward compatibility | Earlier engagement documents migrate to version three with entitlement value, entitlement dates, normalized activity labels, and rebuilt calendar-month views. |
 | Synchronized rendering | Customer, entitlement, inventory, planning considerations, Adoption Timeline, and Two-Year Notional Adoption Plan render from one versioned engagement object. |
 | Token sanitization | Exported HTML contains no unresolved `[[...]]` placeholders. |
-| HTML and PDF downloads | Authenticated procedures return safe filenames and valid content; browser tests verify MIME types, delayed Blob-URL cleanup, non-empty bytes, PDF signatures, and malformed-payload errors. |
+| HTML and PDF downloads | Protected export-ticket issuance and signed binary routes return safe filenames and valid attachment responses; tests verify ownership, MIME types, content-disposition headers, no-store behavior, non-empty bytes, PDF signatures, and malformed or tampered payload rejection. |
 | Business-data authorization | Unauthenticated engagement and export access is rejected. |
 | Timeline pointer gestures | The same pure transition function used by the editor is tested for whole-activity month movement, independent start/end edge resizing, grid-bound rejection, and same-workstream overlap rejection. |
+| Hosted-preview sign-in | The protected entry exposes the explicit **Sign in with Manus** action. Tests verify the hosted callback URL, preserved local return path, and rejection of absolute or protocol-relative post-login destinations. |
 | Session handling | Logout clears the secure session cookie. |
 
 ## Inventory minimization evidence
@@ -37,7 +38,7 @@ The assessment function produces evidence-based `good`, `attention`, or `unknown
 
 ## Authentication boundary evidence
 
-All engagement, preview, HTML, and PDF procedures use the protected API contract. The unauthenticated surface is limited to the sign-in boundary, OAuth/session bootstrap, logout cookie clearing, and a non-data health probe. The self-hosted deployment additionally places the entire container behind the approved OIDC gateway and blocks direct access.
+All engagement and preview procedures use the protected API contract. HTML/PDF download tickets are issued only by a protected procedure, and the binary attachment route accepts only short-lived signed tickets bound to the authenticated owner and engagement. The unauthenticated surface is limited to the sign-in boundary, OAuth/session bootstrap, logout cookie clearing, and a non-data health probe. The protected entry calls a pure OAuth URL builder only after the user selects **Sign in with Manus**. Its signed state preserves the current local path through the callback, while `sanitizeOAuthReturnPath` rejects absolute and protocol-relative destinations before the server redirects. The self-hosted deployment additionally places the entire container behind the approved OIDC gateway and blocks direct access.
 
 ## Visual and responsive review
 
@@ -61,3 +62,13 @@ A headless Chromium smoke test exercised the same delayed Blob-download lifecycl
 | Isolation | Because generation completed while the browser alone reported a failed file, the failure was isolated to the post-response Blob download lifecycle. The previous helper called `URL.revokeObjectURL` immediately after `anchor.click()`. |
 
 The repaired helper delays revocation for 30 seconds. The positive headless-Chromium control now downloads and validates both files; the unit suite independently confirms that revocation does not occur before the delayed cleanup callback.
+
+## Hosted Preview Authentication and Binary Export Verification
+
+The unauthenticated hosted preview was opened directly after restart. It remained on the protected entry screen and displayed an explicit **Sign in with Manus** action rather than being preempted by a global unauthorized-error redirect. Activating the action produced the expected Manus OAuth URL with the hosted preview callback and return state. The callback now restores that validated local path after the session cookie is established, rather than always returning to the workspace root. Absolute and protocol-relative values fall back to `/`, preventing an OAuth open redirect.
+
+The export UI now saves the current engagement, requests a short-lived owner-scoped signed ticket through the protected API, and opens a direct binary attachment URL. This avoids large base64 tRPC payloads, browser Blob URLs, iframe third-party-cookie dependence during file transfer, and premature object-URL revocation.
+
+A non-destructive smoke test issued short-lived tickets for an existing saved engagement and requested both files from the active hosted preview URL. The HTML response returned HTTP 200, `text/html; charset=utf-8`, an attachment filename, 20,861 bytes, and a `<!doctype html>` signature. The PDF response returned HTTP 200, `application/pdf`, an attachment filename, 391,701 bytes, and a `%PDF-` signature. Invalid or tampered tickets return HTTP 401. Automated route tests additionally verify ownership-scoped lookup, no-store headers, safe filenames, MIME types, content-disposition headers, and non-empty content.
+
+The final release gate passed on July 17, 2026: **5 test files and 21 tests passed**, TypeScript completed with no errors, and the production client/server build completed successfully. Vite reported only its advisory large-chunk warning; no build failure or runtime-blocking diagnostic was produced.

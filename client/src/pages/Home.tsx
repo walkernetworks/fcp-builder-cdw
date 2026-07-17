@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { downloadBase64, downloadText } from "@/lib/downloads";
 import { trpc } from "@/lib/trpc";
 import { createDefaultDocument, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "@shared/fcp";
 import { ArrowRight, CalendarRange, Copy, Download, FileSpreadsheet, Loader2, MoreHorizontal, Plus, RefreshCw, Save, ShieldCheck, Trash2, Workflow } from "lucide-react";
@@ -21,6 +20,7 @@ export default function Home() {
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "unsaved">("saved");
   const [previewHtml, setPreviewHtml] = useState("");
+  const [exportingFormat, setExportingFormat] = useState<"html" | "pdf" | null>(null);
   const [workspaceTab, setWorkspaceTab] = useState<"setup" | "timeline" | "preview">(() => {
     const requested = new URLSearchParams(window.location.search).get("tab");
     return requested === "timeline" || requested === "preview" ? requested : "setup";
@@ -35,20 +35,7 @@ export default function Home() {
   const duplicate = trpc.engagement.duplicate.useMutation({ onSuccess: async row => { await utils.engagement.list.invalidate(); setSelectedId(row.id); toast.success("Engagement duplicated"); } });
   const remove = trpc.engagement.delete.useMutation({ onSuccess: async () => { setSelectedId(null); hydratedId.current = null; setFcpDocument(createDefaultDocument()); setTitle("New FCP Engagement"); await utils.engagement.list.invalidate(); toast.success("Engagement deleted"); } });
   const preview = trpc.document.preview.useMutation({ onSuccess: result => setPreviewHtml(result.html) });
-  const htmlExport = trpc.document.html.useMutation({
-    onSuccess: result => {
-      try { downloadText(result.filename, result.mime, result.content); toast.success("HTML download started"); }
-      catch (error) { console.error("[Export] HTML download failed", error); toast.error("The HTML was generated, but the browser could not start the download."); }
-    },
-    onError: error => toast.error(error.message),
-  });
-  const pdfExport = trpc.document.pdf.useMutation({
-    onSuccess: result => {
-      try { downloadBase64(result.filename, result.mime, result.base64); toast.success("PDF download started"); }
-      catch (error) { console.error("[Export] PDF download failed", error); toast.error("The PDF was generated, but the browser could not start the download."); }
-    },
-    onError: error => toast.error(error.message),
-  });
+  const downloadTicket = trpc.document.downloadTicket.useMutation();
 
   useEffect(() => { if (!selectedId && list.data?.length) setSelectedId(list.data[0].id); }, [list.data, selectedId]);
   useEffect(() => {
@@ -74,6 +61,39 @@ export default function Home() {
   const mutateDocument = (next: EngagementDocument) => { setFcpDocument(next); setDirty(true); };
   const buildPlan = () => { mutateDocument(refreshDerivedDocument(fcpDocument)); toast.success("Adoption plans rebuilt from the confirmed inputs"); };
   const saveNow = () => { if (!selectedId) return; setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument }); };
+  const startExport = async (format: "html" | "pdf") => {
+    if (!selectedId || exportingFormat) return;
+    const popup = window.open("", "_blank");
+    if (popup) {
+      popup.opener = null;
+      popup.document.title = `Preparing ${format.toUpperCase()} export`;
+      popup.document.body.innerHTML = `<p style="font:16px system-ui;padding:32px;color:#0f172a">Preparing ${format.toUpperCase()} export…</p>`;
+    }
+
+    setExportingFormat(format);
+    try {
+      setSaveState("saving");
+      await update.mutateAsync({ id: selectedId, title, data: fcpDocument });
+      const result = await downloadTicket.mutateAsync({ id: selectedId, format });
+      if (popup) popup.location.href = result.url;
+      else {
+        const anchor = document.createElement("a");
+        anchor.href = result.url;
+        anchor.target = "_blank";
+        anchor.rel = "noopener noreferrer";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
+      toast.success(`${format.toUpperCase()} download started`);
+    } catch (error) {
+      popup?.close();
+      console.error(`[Export] ${format.toUpperCase()} download failed`, error);
+      toast.error(error instanceof Error ? error.message : `The ${format.toUpperCase()} download could not be started.`);
+    } finally {
+      setExportingFormat(null);
+    }
+  };
 
   if (list.isLoading) return <div className="grid min-h-[70vh] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div>;
 
@@ -90,7 +110,7 @@ export default function Home() {
         <main className="min-w-0 p-4 md:p-6">
           {!selectedId ? <EmptyState onCreate={() => create.mutate({ title: "New FCP Engagement" })} /> : selected.isLoading ? <div className="grid min-h-[65vh] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div> : (
             <Tabs value={workspaceTab} onValueChange={value => { const next = value as "setup" | "timeline" | "preview"; setWorkspaceTab(next); const url = new URL(window.location.href); if (next === "setup") url.searchParams.delete("tab"); else url.searchParams.set("tab", next); window.history.replaceState({}, "", url); }} className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3"><TabsList className="h-11 rounded-xl bg-white p-1 shadow-sm"><TabsTrigger value="setup" className="rounded-lg px-5">Plan Setup</TabsTrigger><TabsTrigger value="timeline" className="rounded-lg px-5">Adoption Timelines</TabsTrigger><TabsTrigger value="preview" className="rounded-lg px-5">Review and Export</TabsTrigger></TabsList><div className="flex gap-2"><Button variant="outline" size="sm" disabled={htmlExport.isPending} onClick={() => htmlExport.mutate({ title, data: fcpDocument })}><Download className="size-4" /> HTML</Button><Button variant="outline" size="sm" disabled={pdfExport.isPending} onClick={() => pdfExport.mutate({ title, data: fcpDocument })}>{pdfExport.isPending ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} PDF</Button></div></div>
+              <div className="flex flex-wrap items-center justify-between gap-3"><TabsList className="h-11 rounded-xl bg-white p-1 shadow-sm"><TabsTrigger value="setup" className="rounded-lg px-5">Plan Setup</TabsTrigger><TabsTrigger value="timeline" className="rounded-lg px-5">Adoption Timelines</TabsTrigger><TabsTrigger value="preview" className="rounded-lg px-5">Review and Export</TabsTrigger></TabsList><div className="flex gap-2"><Button variant="outline" size="sm" disabled={Boolean(exportingFormat)} onClick={() => void startExport("html")}>{exportingFormat === "html" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} HTML</Button><Button variant="outline" size="sm" disabled={Boolean(exportingFormat)} onClick={() => void startExport("pdf")}>{exportingFormat === "pdf" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} PDF</Button></div></div>
 
               <TabsContent value="setup"><PlanSetup document={fcpDocument} onChange={mutateDocument} /></TabsContent>
 

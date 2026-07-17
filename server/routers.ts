@@ -6,6 +6,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
+import { createExportTicket } from "./exportTickets";
 import { renderFcpHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 
@@ -39,6 +40,10 @@ export const appRouter = router({
   }),
   document: router({
     preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ html: renderFcpHtml(input.title, input.data) })),
+    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf"]) })).mutation(async ({ ctx, input }) => {
+      requireRow(await db.getEngagement(ctx.user.id, input.id));
+      return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format)}` };
+    }),
     html: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ filename: safeFilename(input.title, "html"), mime: "text/html;charset=utf-8", content: renderFcpHtml(input.title, input.data) })),
     pdf: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(async ({ input }) => {
       const pdf = await renderPdf(renderFcpHtml(input.title, input.data));

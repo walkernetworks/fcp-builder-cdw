@@ -2,6 +2,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { startLogin } from "@/const";
 import { Loader2, LockKeyhole } from "lucide-react";
+import { MANUS_SIGN_IN_LABEL } from "@/lib/auth";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { loading, user } = useAuth();
@@ -19,8 +20,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center justify-between"><div className="rounded-md bg-[#c8102e] px-3 py-1.5 text-lg font-black tracking-[-0.08em]">CDW</div><div className="flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-slate-300"><LockKeyhole className="size-3.5" /> Protected</div></div>
           <p className="mt-12 text-xs font-bold uppercase tracking-[0.2em] text-red-300">Functional Consumption Plan</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight">Build governed FCPs in one secure workspace.</h1>
-          <p className="mt-4 text-sm leading-6 text-slate-300">Sign in with the approved identity provider to manage engagements, draft timelines, and export customer-ready plans.</p>
-          <Button size="lg" className="mt-8 w-full bg-[#c8102e] text-white hover:bg-[#a80d27]" onClick={() => startLogin()}>Continue with secure sign-in</Button>
+          <p className="mt-4 text-sm leading-6 text-slate-300">Sign in with your Manus account to open the FCP workspace and manage customer-ready plans.</p>
+          <Button size="lg" className="mt-8 w-full bg-[#c8102e] text-white hover:bg-[#a80d27]" onClick={() => startLogin()}>{MANUS_SIGN_IN_LABEL}</Button>
           <p className="mt-4 text-center text-[11px] text-slate-400">No local passwords · Session protected · Internal use</p>
         </section>
       </main>
