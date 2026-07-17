@@ -59,3 +59,9 @@
 
 - [x] Add repeatable automated coverage for month-grid whole-activity drag and independent edge-resize behavior, including bounds and same-workstream overlap rejection.
 - [x] Document the desktop/mobile horizontal-navigation evidence and the automated pointer-gesture coverage in the release validation record.
+
+## Banner Removal and CDW Rollout
+
+- [x] Remove the inventory-storage banner and its explanatory copy from the Plan Setup workspace.
+- [x] Revalidate the revised workspace, automated tests, type checking, and production build.
+- [x] Save a reviewable checkpoint and provide a concise CDW pilot and production rollout path covering access, hosting, identity, network, scanning, and approval evidence.

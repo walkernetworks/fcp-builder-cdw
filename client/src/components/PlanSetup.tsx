@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { parseRvToolsFiles } from "@/lib/rvtools";
 import { assessReadiness, type Capability, type EngagementDocument } from "@shared/fcp";
-import { AlertCircle, CheckCircle2, FileSpreadsheet, HardDrive, Info, Loader2, LockKeyhole, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileSpreadsheet, HardDrive, Info, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -56,10 +56,6 @@ export function PlanSetup({ document, onChange }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-950 shadow-sm">
-        <div className="flex items-start gap-3"><LockKeyhole className="mt-0.5 size-5 shrink-0 text-emerald-700" /><div><p className="font-semibold">Inventory stays within the engagement workspace.</p><p className="mt-1 leading-6 text-emerald-800">RVTools files are opened and summarized in this browser. Only the derived inventory totals and planning indicators are saved with the engagement.</p></div></div>
-      </div>
-
       <Tabs defaultValue="upload" className="space-y-5">
         <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl bg-white p-1 shadow-sm lg:grid-cols-4">
           <TabsTrigger value="upload" className="rounded-lg py-2.5"><span className="mr-2 text-[10px] font-black text-[#c8102e]">01</span> Upload</TabsTrigger>
