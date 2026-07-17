@@ -24,3 +24,18 @@
 - [x] Add and run Vitest coverage for domain sequencing, validation, protected API access, synchronized rendering, token sanitization, and authenticated HTML export behavior; smoke-test Chromium PDF generation.
 - [x] Verify the Meridian Health golden scenario against the expected three-wave, hardware-gated, DR/VDefend, no-Kubernetes behavior.
 - [x] Verify desktop and mobile-responsive rendering and refine the visual system from screenshots.
+
+## Offline-First Simplification Redesign
+
+- [x] Research authoritative VCF 9.1 architecture/readiness guidance, practical FCP usage, and RVTools export structure.
+- [x] Define a minimal user-entered field set limited to customer, entitlement, scope exceptions, and timeline decisions.
+- [x] Remove public or external AI dependencies and make deterministic local rules the only plan-generation mechanism.
+- [x] Add secure in-browser upload and parsing for multiple RVTools XLSX/CSV exports without sending file contents to external services.
+- [x] Aggregate uploaded estate data across files with source-level traceability and duplicate-aware totals.
+- [x] Calculate a transparent VCF 9.1 readiness summary from RVTools-observable signals, with explicit unknown/not-assessable items.
+- [x] Replace Tracks A–E discovery intake with a short guided workflow: Upload, Confirm, Timeline, Review & Export.
+- [x] Simplify engagement JSON and persistence while preserving backward-compatible opening of existing engagements where practical.
+- [x] Derive the FCP narrative, tables, Gantt views, and exports from uploaded inventory plus the minimal confirmed inputs.
+- [x] Update security documentation to state that RVTools parsing and plan generation are local/deterministic and require no internet or public AI egress.
+- [x] Add tests for multi-file parsing, aggregation, readiness rules, minimal-field validation, migration, synchronized rendering, and exports.
+- [x] Verify the revised desktop and mobile workflow with screenshots and create a new reviewable checkpoint.

@@ -263,6 +263,12 @@
         "resolved": "https://registry.npmjs.org/express/-/express-4.21.2.tgz",
         "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/express@4.21.2/node_modules/express"
       },
+      "fflate": {
+        "from": "fflate",
+        "version": "0.8.3",
+        "resolved": "https://registry.npmjs.org/fflate/-/fflate-0.8.3.tgz",
+        "path": "/home/ubuntu/fcp-builder-cdw/node_modules/.pnpm/fflate@0.8.3/node_modules/fflate"
+      },
       "framer-motion": {
         "from": "framer-motion",
         "version": "12.23.22",

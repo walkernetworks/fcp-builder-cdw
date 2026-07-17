@@ -2,36 +2,44 @@
 
 ## Automated release gate
 
-The final release gate is:
+The release gate is:
 
 ```bash
 pnpm test && pnpm check && pnpm build
 ```
 
-The current build passes **7 Vitest assertions across two test files**, TypeScript compilation, the Vite production client build, and the bundled Node server build.
+The redesigned suite contains **eight Vitest assertions across two test files**. It covers browser-local inventory aggregation, deterministic readiness and sequencing, legacy-document migration, synchronized export rendering, safe download filenames, authenticated access, and secure logout behavior.
 
 | Area | Evidence |
 |---|---|
-| Authentication | Unauthenticated engagement access is rejected. The logout procedure clears the secure session cookie. |
-| Meridian golden scenario | The deterministic draft asserts a four-month Dell hardware gate, three HCX waves, SRM/DR, VDefend inclusion, deferred acceleration, no Kubernetes/app-platform lane, and no same-lane overlap. |
-| Timeline integrity | Same-lane overlap is detected; concurrency is represented across distinct lanes. |
-| Synchronized rendering | Adoption Sequence, Private Cloud Gantt, Two-Year Gantt, Executive Roadmap, and Forward Delivery Plan are all present in one rendered document. |
+| Local multi-file parsing | Two RVTools-style CSV exports are parsed together; stable host and VM identifiers deduplicate repeated rows and preserve correct core, VM, power-state and version totals. |
+| Assessment transparency | Older ESXi versions and entitlement-to-observed-core gaps are flagged; hardware certification remains explicitly unknown rather than inferred. |
+| Deterministic sequencing | Hardware procurement, operations, automation, security and resilience lanes are produced from explicit inputs with no same-lane overlap. |
+| Backward compatibility | A version-one manual-intake document migrates to the minimal version-two model while retaining customer, inventory, hardware lead-time, security priority and timeline context. |
+| Synchronized rendering | Customer, inventory, readiness and timeline content are rendered from one versioned engagement object. |
 | Token sanitization | Exported HTML contains no unresolved `[[...]]` placeholders. |
-| HTML download | The authenticated procedure returns a safe filename, correct MIME type, customer content, and token-free standalone HTML. |
-| PDF download | A local smoke test rendered the same standalone HTML through `/usr/bin/chromium`, producing a 285,194-byte PDF from 18,648 bytes of HTML. |
+| HTML download | The authenticated procedure returns a safe filename and standalone document with the explicit “Generated without AI” provenance statement. |
+| Business-data authorization | Unauthenticated engagement and export access is rejected. |
+| Session handling | Logout clears the secure session cookie. |
 
-## Visual editor evidence
+## Inventory minimization evidence
 
-`GanttEditor.tsx` implements editable lane names, lane creation and deletion, explicit up/down lane reordering, activity creation and deletion, direct bar-label and stage-boundary edits, constrained legend colors, milestone/deferred controls, whole-bar dragging, and independent start/end resize handles. The `changeBar` guard rejects any edit that would overlap another bar in the same lane.
+`client/src/lib/rvtools.ts` uses the browser File API, `fflate`, and `DOMParser` to read XLSX/CSV content locally. There is no file-upload API procedure and no server-side RVTools parser. The parser stores only aggregate inventory facts and source metadata in the engagement document. Tests use RVTools-style CSV inputs to verify aggregation and stable-ID deduplication.
+
+## Readiness boundary evidence
+
+`assessReadiness()` produces evidence-based `good`, `attention`, or `unknown` results. Unknown is used for information RVTools cannot prove, including complete hardware/firmware/driver compatibility and network/identity/rack readiness. The UI and exported document both state that the result is a pre-assessment, not HCL certification or a final VCF deployment decision.
+
+## Timeline editor evidence
+
+`GanttEditor.tsx` retains editable lane names, lane creation/deletion/reordering, activity creation/deletion, constrained legend colors, milestone/deferred controls, whole-bar dragging, and independent start/end resize handles. The change guard rejects any edit that would overlap another activity in the same lane. “Rebuild plan” restores the transparent deterministic recommendation from the confirmed minimal inputs and aggregate inventory.
 
 ## Authentication boundary evidence
 
-All engagement, AI drafting, preview, HTML, and PDF procedures use the protected API contract. The unauthenticated surface is limited to the sign-in boundary, OAuth/session bootstrap, logout cookie clearing, and a non-data health probe. The self-hosted deployment additionally places the entire container behind the approved OIDC gateway and blocks direct container access.
+All engagement, preview, HTML and PDF procedures use the protected API contract. The unauthenticated surface is limited to the sign-in boundary, OAuth/session bootstrap, logout cookie clearing, and a non-data health probe. The self-hosted deployment additionally places the entire container behind the approved OIDC gateway and blocks direct access.
+
+There is no AI drafting procedure, LLM client module, model configuration, model credential, or inventory-upload API.
 
 ## Visual and responsive review
 
-The authenticated first-run workspace was reviewed at 1280×720 and 390×844. The desktop layout uses a compact engagement rail, an operational header, a three-step consulting workflow, and a timeline planning motif. The mobile layout stacks the same content without horizontal clipping or the previous empty-list spacer. The unauthenticated route was separately verified to expose only the protected CDW sign-in boundary.
-
-## Known release note
-
-The production client currently emits a non-failing Vite warning because the primary JavaScript chunk is larger than 500 kB after minification. This does not affect correctness; code splitting can be considered in a later performance-hardening pass.
+The authenticated upload-first workspace was reviewed at desktop width. It presents the security boundary first, followed by the four-step flow: Upload, Customer, Timeline, and Review. A mobile breakpoint review is included in the final release gate. The interface retains the compact engagement rail, live Gantt editor, synchronized preview, and direct HTML/PDF downloads while removing the previous multi-track discovery burden.

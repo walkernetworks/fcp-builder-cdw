@@ -83,7 +83,7 @@ export async function createEngagement(ownerId: number, title: string, data: Eng
     ownerId,
     title,
     customerName: data.fields.customerName || "Untitled customer",
-    customerShortName: data.fields.cust || "TBD",
+    customerShortName: data.fields.accountId || "TBD",
     data,
   };
   const result = await db.insert(engagements).values(values);
@@ -98,9 +98,9 @@ export async function updateEngagement(ownerId: number, id: number, title: strin
     .set({
       title,
       customerName: data.fields.customerName || "Untitled customer",
-      customerShortName: data.fields.cust || "TBD",
+      customerShortName: data.fields.accountId || "TBD",
       data,
-      status: data.fields.customerName && data.fields.entitlementEndDate ? "ready" : "draft",
+      status: data.fields.customerName && data.fields.entitlementEnd && data.inventory.hosts > 0 ? "ready" : "draft",
     })
     .where(and(eq(engagements.ownerId, ownerId), eq(engagements.id, id)));
   return getEngagement(ownerId, id);
@@ -119,6 +119,5 @@ export async function duplicateEngagement(ownerId: number, id: number) {
   const source = await getEngagement(ownerId, id);
   if (!source) return undefined;
   const copy = structuredClone(source.data);
-  copy.fields.updatedDate = new Date().toISOString().slice(0, 10);
   return createEngagement(ownerId, `${source.title} — Copy`, copy);
 }
