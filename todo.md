@@ -82,3 +82,10 @@
 - [x] Preserve protected export authorization and safe filenames on the direct download endpoint.
 - [x] Add regression tests for sign-in redirects, authenticated binary responses, MIME types, content disposition, and unauthorized access.
 - [x] Validate the explicit sign-in entry and both signed export responses in the hosted preview, then run the full release gate and save a corrected checkpoint.
+
+## Missing Engagement Recovery
+
+- [x] Trace the authenticated `Engagement not found` query to its selected-engagement source and reproduce the stale-ID condition.
+- [x] Gate workspace record queries on a settled owner-scoped list so cached stale IDs from reload, navigation, or deletion are not requested; safely recover the unavoidable list/get race with a null result.
+- [x] Recover gracefully by selecting a valid engagement or presenting a clear empty state instead of surfacing a raw API query error.
+- [x] Add workspace-selection controller regression coverage for reload refresh, stale-list fallback, empty-list recovery, and the list/get deletion race; run the full release gate before checkpointing.

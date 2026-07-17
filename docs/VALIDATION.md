@@ -8,7 +8,7 @@ The release gate is:
 pnpm test && pnpm check && pnpm build
 ```
 
-The suite contains **twenty-one Vitest assertions across five test files**. It covers browser-local inventory aggregation, entitlement fields, month generation, Plan/Design-only defaults, two-year planning, pointer-gesture transitions, legacy-document migration, synchronized export rendering, safe download filenames, browser Blob-download lifecycle, PDF decoding and signatures, authenticated access, hosted-preview OAuth URL construction, return-path preservation, open-redirect rejection, and secure logout behavior.
+The suite contains **twenty-six Vitest assertions across six test files**. It covers browser-local inventory aggregation, entitlement fields, month generation, Plan/Design-only defaults, two-year planning, pointer-gesture transitions, legacy-document migration, synchronized export rendering, safe download filenames, browser Blob-download lifecycle, PDF decoding and signatures, authenticated access, hosted-preview OAuth URL construction, return-path preservation, open-redirect rejection, stale engagement selection recovery, and secure logout behavior.
 
 | Area | Evidence |
 |---|---|
@@ -22,6 +22,7 @@ The suite contains **twenty-one Vitest assertions across five test files**. It c
 | Business-data authorization | Unauthenticated engagement and export access is rejected. |
 | Timeline pointer gestures | The same pure transition function used by the editor is tested for whole-activity month movement, independent start/end edge resizing, grid-bound rejection, and same-workstream overlap rejection. |
 | Hosted-preview sign-in | The protected entry exposes the explicit **Sign in with Manus** action. Tests verify the hosted callback URL, preserved local return path, and rejection of absolute or protocol-relative post-login destinations. |
+| Engagement recovery | The workspace prevents a stale selected ID from reaching the engagement query until the owner-scoped list confirms it is current. Tests prove stale IDs fall back to a valid record or empty state, while a record removed between list and get returns `null` rather than a visible API error. |
 | Session handling | Logout clears the secure session cookie. |
 
 ## Inventory minimization evidence
@@ -71,4 +72,12 @@ The export UI now saves the current engagement, requests a short-lived owner-sco
 
 A non-destructive smoke test issued short-lived tickets for an existing saved engagement and requested both files from the active hosted preview URL. The HTML response returned HTTP 200, `text/html; charset=utf-8`, an attachment filename, 20,861 bytes, and a `<!doctype html>` signature. The PDF response returned HTTP 200, `application/pdf`, an attachment filename, 391,701 bytes, and a `%PDF-` signature. Invalid or tampered tickets return HTTP 401. Automated route tests additionally verify ownership-scoped lookup, no-store headers, safe filenames, MIME types, content-disposition headers, and non-empty content.
 
-The final release gate passed on July 17, 2026: **5 test files and 21 tests passed**, TypeScript completed with no errors, and the production client/server build completed successfully. Vite reported only its advisory large-chunk warning; no build failure or runtime-blocking diagnostic was produced.
+The final release gate passed on July 17, 2026: **6 test files and 26 tests passed**, TypeScript completed with no errors, and the production client/server build completed successfully. Vite reported only its advisory large-chunk warning; no build failure or runtime-blocking diagnostic was produced.
+
+## Missing Engagement Recovery — July 17, 2026
+
+A hosted-preview session could retain a selected engagement ID after the owner-scoped engagement list became empty or changed. The stale ID was then submitted to `engagement.get`, which correctly returned `NOT_FOUND` but surfaced a disruptive **Engagement not found** API query error in the workspace.
+
+The workspace now gates the selected-record query on a current owner-scoped list membership check. Once that list resolves, a stale selection moves to the first available engagement or intentionally clears to the empty state. If an engagement is removed between the list and record requests, the owner-scoped `engagement.get` contract returns `null`; the client clears the stale selection and refreshes the list. No missing or no-longer-owned engagement is rendered, exported, updated, duplicated, or deleted through the stale selection.
+
+The regression suite includes five focused assertions for preserved selections, stale-ID fallback, empty-list recovery, the reload-time cached-list query gate, and the recoverable `null` lookup. Desktop visual verification confirmed the authenticated workspace rendered normally after the change.

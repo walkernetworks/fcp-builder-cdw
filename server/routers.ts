@@ -32,7 +32,7 @@ export const appRouter = router({
   }),
   engagement: router({
     list: protectedProcedure.query(({ ctx }) => db.listEngagements(ctx.user.id)),
-    get: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ ctx, input }) => requireRow(await db.getEngagement(ctx.user.id, input.id))),
+    get: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ ctx, input }) => (await db.getEngagement(ctx.user.id, input.id)) ?? null),
     create: protectedProcedure.input(z.object({ title: z.string().trim().min(1).max(240).default("New FCP engagement") })).mutation(async ({ ctx, input }) => requireRow(await db.createEngagement(ctx.user.id, input.title, createDefaultDocument()))),
     update: protectedProcedure.input(z.object({ id: z.number().int().positive(), title: z.string().trim().min(1).max(240), data: engagementDocumentSchema })).mutation(async ({ ctx, input }) => requireRow(await db.updateEngagement(ctx.user.id, input.id, input.title, input.data))),
     duplicate: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => requireRow(await db.duplicateEngagement(ctx.user.id, input.id))),

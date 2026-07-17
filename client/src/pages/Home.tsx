@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { engagementExists, reconcileSelectedEngagementId, shouldQuerySelectedEngagement } from "@/lib/engagementSelection";
 import { trpc } from "@/lib/trpc";
 import { createDefaultDocument, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "@shared/fcp";
 import { ArrowRight, CalendarRange, Copy, Download, FileSpreadsheet, Loader2, MoreHorizontal, Plus, RefreshCw, Save, ShieldCheck, Trash2, Workflow } from "lucide-react";
@@ -28,8 +29,14 @@ export default function Home() {
   const hydratedId = useRef<number | null>(null);
 
   const list = trpc.engagement.list.useQuery();
-  const getInput = useMemo(() => ({ id: selectedId || 0 }), [selectedId]);
-  const selected = trpc.engagement.get.useQuery(getInput, { enabled: Boolean(selectedId) });
+  const selectedIsListed = engagementExists(selectedId, list.data);
+  const canReconcileSelection = list.isSuccess && !list.isFetching;
+  const shouldQuerySelected = shouldQuerySelectedEngagement(selectedId, list.data, list.isFetching);
+  const getInput = useMemo(() => ({ id: selectedId ?? 0 }), [selectedId]);
+  const selected = trpc.engagement.get.useQuery(getInput, {
+    enabled: shouldQuerySelected,
+    retry: false,
+  });
   const create = trpc.engagement.create.useMutation({ onSuccess: async row => { await utils.engagement.list.invalidate(); setSelectedId(row.id); toast.success("Engagement created"); } });
   const update = trpc.engagement.update.useMutation({ onSuccess: async () => { setDirty(false); setSaveState("saved"); await utils.engagement.list.invalidate(); }, onError: error => { setSaveState("unsaved"); toast.error(error.message); } });
   const duplicate = trpc.engagement.duplicate.useMutation({ onSuccess: async row => { await utils.engagement.list.invalidate(); setSelectedId(row.id); toast.success("Engagement duplicated"); } });
@@ -37,7 +44,26 @@ export default function Home() {
   const preview = trpc.document.preview.useMutation({ onSuccess: result => setPreviewHtml(result.html) });
   const downloadTicket = trpc.document.downloadTicket.useMutation();
 
-  useEffect(() => { if (!selectedId && list.data?.length) setSelectedId(list.data[0].id); }, [list.data, selectedId]);
+  useEffect(() => {
+    if (!canReconcileSelection) return;
+    const nextId = reconcileSelectedEngagementId(selectedId, list.data);
+    if (nextId === selectedId) return;
+    setSelectedId(nextId);
+    hydratedId.current = null;
+    if (nextId === null) {
+      setTitle("New FCP Engagement");
+      setFcpDocument(createDefaultDocument());
+      setDirty(false);
+      setSaveState("saved");
+      setPreviewHtml("");
+    }
+  }, [canReconcileSelection, list.data, selectedId]);
+  useEffect(() => {
+    if (selected.data !== null) return;
+    setSelectedId(null);
+    hydratedId.current = null;
+    void utils.engagement.list.invalidate();
+  }, [selected.data, utils.engagement.list]);
   useEffect(() => {
     if (!selected.data || hydratedId.current === selected.data.id) return;
     hydratedId.current = selected.data.id;
@@ -101,14 +127,14 @@ export default function Home() {
     <div className="workspace-shell -m-4 min-h-[calc(100vh-1rem)] bg-[#f4f6f8]">
       <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <div className="flex min-w-0 items-center gap-3"><div className="rounded-md bg-[#c8102e] px-2.5 py-1 text-sm font-black tracking-[-0.08em] text-white">CDW</div><Separator orientation="vertical" className="h-7" /><div className="min-w-0"><div className="flex items-center gap-2"><Input className="h-8 max-w-[440px] border-transparent bg-transparent px-1 text-base font-semibold shadow-none focus-visible:border-slate-200" value={title} onChange={event => { setTitle(event.target.value); setDirty(true); }} aria-label="Engagement title" /><Badge variant="outline" className="hidden md:inline-flex">Internal</Badge></div><p className="px-1 text-xs text-slate-500">Functional Consumption Plan Builder</p></div></div>
-        <div className="flex items-center gap-2">{selectedId ? <><span className="hidden text-xs text-slate-500 sm:inline">{saveState === "saving" ? "Saving…" : saveState === "unsaved" ? "Unsaved Changes" : "Saved"}</span><Button variant="outline" size="sm" disabled={update.isPending} onClick={saveNow}>{update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button><Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={buildPlan}><RefreshCw className="size-4" /> Rebuild Plans</Button></> : <Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={() => create.mutate({ title: "New FCP Engagement" })}><Plus className="size-4" /> New Engagement</Button>}</div>
+        <div className="flex items-center gap-2">{selectedIsListed ? <><span className="hidden text-xs text-slate-500 sm:inline">{saveState === "saving" ? "Saving…" : saveState === "unsaved" ? "Unsaved Changes" : "Saved"}</span><Button variant="outline" size="sm" disabled={update.isPending} onClick={saveNow}>{update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button><Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={buildPlan}><RefreshCw className="size-4" /> Rebuild Plans</Button></> : <Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={() => create.mutate({ title: "New FCP Engagement" })}><Plus className="size-4" /> New Engagement</Button>}</div>
       </header>
 
       <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 xl:grid-cols-[270px_minmax(0,1fr)]">
-        <aside className="border-r border-slate-200 bg-white xl:min-h-[calc(100vh-64px)]"><div className="flex items-center justify-between px-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Workspace</p><h2 className="text-sm font-semibold text-slate-900">Engagements</h2></div><Button size="icon" className="size-9 bg-slate-950 hover:bg-slate-800" onClick={() => create.mutate({ title: "New FCP Engagement" })} aria-label="Create engagement"><Plus className="size-4" /></Button></div><ScrollArea className={`${(list.data?.length || 0) > 2 ? "h-[260px]" : (list.data?.length || 0) === 2 ? "h-[184px]" : (list.data?.length || 0) === 1 ? "h-[92px]" : "h-0"} xl:h-[calc(100vh-140px)]`}><div className="space-y-1 px-2 pb-4">{list.data?.map(item => <button key={item.id} className={`group w-full rounded-xl px-3 py-3 text-left transition-colors ${selectedId === item.id ? "bg-slate-950 text-white" : "hover:bg-slate-100"}`} onClick={() => { setSelectedId(item.id); hydratedId.current = null; }}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{item.title}</p><p className={`mt-1 truncate text-xs ${selectedId === item.id ? "text-slate-300" : "text-slate-500"}`}>{item.customerName}</p></div><MoreHorizontal className="size-4 shrink-0 opacity-50" /></div><div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-400"><span>{item.status}</span><span>{new Date(item.updatedAt).toLocaleDateString()}</span></div></button>)}</div></ScrollArea>{selectedId && <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-3"><Button variant="outline" size="sm" onClick={() => duplicate.mutate({ id: selectedId })}><Copy className="size-3.5" /> Duplicate</Button><Button variant="ghost" size="sm" className="text-red-600" onClick={() => { if (window.confirm("Delete this engagement? This cannot be undone.")) remove.mutate({ id: selectedId }); }}><Trash2 className="size-3.5" /> Delete</Button></div>}</aside>
+        <aside className="border-r border-slate-200 bg-white xl:min-h-[calc(100vh-64px)]"><div className="flex items-center justify-between px-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Workspace</p><h2 className="text-sm font-semibold text-slate-900">Engagements</h2></div><Button size="icon" className="size-9 bg-slate-950 hover:bg-slate-800" onClick={() => create.mutate({ title: "New FCP Engagement" })} aria-label="Create engagement"><Plus className="size-4" /></Button></div><ScrollArea className={`${(list.data?.length || 0) > 2 ? "h-[260px]" : (list.data?.length || 0) === 2 ? "h-[184px]" : (list.data?.length || 0) === 1 ? "h-[92px]" : "h-0"} xl:h-[calc(100vh-140px)]`}><div className="space-y-1 px-2 pb-4">{list.data?.map(item => <button key={item.id} className={`group w-full rounded-xl px-3 py-3 text-left transition-colors ${selectedId === item.id ? "bg-slate-950 text-white" : "hover:bg-slate-100"}`} onClick={() => { setSelectedId(item.id); hydratedId.current = null; }}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{item.title}</p><p className={`mt-1 truncate text-xs ${selectedId === item.id ? "text-slate-300" : "text-slate-500"}`}>{item.customerName}</p></div><MoreHorizontal className="size-4 shrink-0 opacity-50" /></div><div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-400"><span>{item.status}</span><span>{new Date(item.updatedAt).toLocaleDateString()}</span></div></button>)}</div></ScrollArea>{selectedIsListed && <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-3"><Button variant="outline" size="sm" onClick={() => duplicate.mutate({ id: selectedId })}><Copy className="size-3.5" /> Duplicate</Button><Button variant="ghost" size="sm" className="text-red-600" onClick={() => { if (window.confirm("Delete this engagement? This cannot be undone.")) remove.mutate({ id: selectedId }); }}><Trash2 className="size-3.5" /> Delete</Button></div>}</aside>
 
         <main className="min-w-0 p-4 md:p-6">
-          {!selectedId ? <EmptyState onCreate={() => create.mutate({ title: "New FCP Engagement" })} /> : selected.isLoading ? <div className="grid min-h-[65vh] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div> : (
+          {!selectedIsListed ? <EmptyState onCreate={() => create.mutate({ title: "New FCP Engagement" })} /> : selected.isLoading || !selected.data ? <div className="grid min-h-[65vh] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div> : (
             <Tabs value={workspaceTab} onValueChange={value => { const next = value as "setup" | "timeline" | "preview"; setWorkspaceTab(next); const url = new URL(window.location.href); if (next === "setup") url.searchParams.delete("tab"); else url.searchParams.set("tab", next); window.history.replaceState({}, "", url); }} className="space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-3"><TabsList className="h-11 rounded-xl bg-white p-1 shadow-sm"><TabsTrigger value="setup" className="rounded-lg px-5">Plan Setup</TabsTrigger><TabsTrigger value="timeline" className="rounded-lg px-5">Adoption Timelines</TabsTrigger><TabsTrigger value="preview" className="rounded-lg px-5">Review and Export</TabsTrigger></TabsList><div className="flex gap-2"><Button variant="outline" size="sm" disabled={Boolean(exportingFormat)} onClick={() => void startExport("html")}>{exportingFormat === "html" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} HTML</Button><Button variant="outline" size="sm" disabled={Boolean(exportingFormat)} onClick={() => void startExport("pdf")}>{exportingFormat === "pdf" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} PDF</Button></div></div>
 
