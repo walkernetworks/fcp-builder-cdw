@@ -12,6 +12,7 @@ export const timelineBarSchema = z.object({
   endCol: z.number().int().min(2),
   color: z.enum(TIMELINE_COLORS),
   label: z.string().min(1),
+  dependsOn: z.string().min(1).optional(),
   milestone: z.boolean().default(false),
   deferred: z.boolean().default(false),
 });
@@ -270,7 +271,18 @@ export const engagementDocumentV7Schema = z.object({
   twoYearPlan: timelineSchema,
   rationale: z.string(),
 });
-export type EngagementDocument = z.infer<typeof engagementDocumentV7Schema>;
+
+export const engagementDocumentV8Schema = z.object({
+  version: z.literal(8),
+  fields: minimalFieldsSchema,
+  inventorySources: z.array(inventorySourceSchema),
+  inventory: inventorySummarySchema,
+  readiness: readinessSchema,
+  adoptionTimeline: timelineSchema,
+  twoYearPlan: timelineSchema,
+  rationale: z.string(),
+});
+export type EngagementDocument = z.infer<typeof engagementDocumentV8Schema>;
 
 export function emptyInventory(): InventorySummary {
   return {
@@ -334,8 +346,8 @@ export function createDefaultFields(): MinimalFields {
   };
 }
 
-function bar(id: string, startCol: number, endCol: number, color: TimelineColor, label: string, milestone = false, deferred = false): TimelineBar {
-  return { id, startCol, endCol, color, label, milestone, deferred };
+function bar(id: string, startCol: number, endCol: number, color: TimelineColor, label: string, milestone = false, deferred = false, dependsOn?: string): TimelineBar {
+  return { id, startCol, endCol, color, label, milestone, deferred, ...(dependsOn ? { dependsOn } : {}) };
 }
 
 function parseMonth(value: string): Date | null {
@@ -412,6 +424,11 @@ function timelineStartDate(fields: MinimalFields): string {
 function timelineEndDate(fields: MinimalFields): string {
   const candidate = fields.targetComplete || fields.entitlementEnd;
   return parseIsoDate(candidate) ? candidate : "";
+}
+
+function followOnStartDate(fields: MinimalFields): string {
+  const start = parseIsoDate(timelineStartDate(fields)) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  return isoDate(addUtcMonths(start, 12));
 }
 
 function primaryColumns(fields: MinimalFields): string[] {
@@ -566,43 +583,87 @@ function buildPrimaryTimeline(fields: MinimalFields): Timeline {
   return { cadence, startDate: timelineStartDate(fields), columns, lanes };
 }
 
+const followOnServiceLabels: Record<Capability, Record<string, string>> = {
+  operations: {
+    lifecycle: "Lifecycle Service Cadence",
+    observability: "Operations Analytics and Diagnostics Expansion",
+    "capacity-cost": "Capacity Optimization Service",
+    "custom-dashboards": "Operations Dashboard Productization",
+    "identity-certificates": "Identity and Certificate Operations Hardening",
+    "event-integration": "Event and Incident Service Integration",
+  },
+  automation: {
+    "vm-self-service": "Self-Service Catalog Expansion",
+    "infrastructure-as-code": "Blueprint Factory and Policy-as-Code Adoption",
+    "day-2-automation": "Day-2 Automation Rollout",
+    governance: "Automation Governance Policy Rollout",
+    "application-provisioning": "Application Platform Service Expansion",
+  },
+  security: {
+    segmentation: "Segmented Workload Rollout",
+    "identity-rbac": "Access Governance Operationalization",
+    "hardening-compliance": "Compliance Evidence Automation",
+  },
+  resilience: {
+    "recovery-architecture": "Recovery Service Rollout",
+    "recovery-exercises": "Recovery Exercise Cadence",
+    "cyber-recovery": "Cyber-Recovery Pilot",
+  },
+  kubernetes: {
+    "workload-domains": "Workload-Domain Onboarding",
+    "platform-operations": "Kubernetes Fleet Expansion",
+    "developer-experience": "Developer Platform Adoption",
+  },
+  "private-ai": {
+    "gpu-capacity": "GPU-Enabled Workload Enablement",
+    "ai-guardrails": "Private AI Controls Operationalization",
+    "pilot-onboarding": "Private AI Pilot Expansion Decision",
+  },
+};
+
+function followOnActivities(fields: MinimalFields, capability: Capability): Array<{ label: string; dependsOn: string }> {
+  const focuses = selectedFocuses(fields, capability);
+  const yearOneActivities = activityLabelsForCapability(fields, capability);
+  if (!focuses.length) {
+    return [{
+      label: `${capabilityTitle(capability)} Follow-On Service Roadmap Decision`,
+      dependsOn: `Enabled by Year 1: ${yearOneActivities[0] || `${capabilityTitle(capability)} Design`}`,
+    }];
+  }
+  return focuses.map((focus, index) => ({
+    label: followOnServiceLabels[capability][focus] || `${capabilityTitle(capability)} Follow-On Service`,
+    dependsOn: `Enabled by Year 1: ${yearOneActivities[index] || `${capabilityTitle(capability)} Design`}`,
+  }));
+}
+
 function buildTwoYearPlan(fields: MinimalFields): Timeline {
-  const columns = buildTwoYearColumns(timelineStartDate(fields));
+  const startDate = followOnStartDate(fields);
+  const columns = buildTwoYearColumns(startDate);
   const lanes: TimelineLane[] = [
     {
       id: "lane-two-year-foundation",
-      name: "Foundation and Upgrade Services",
-      bars: [
-        bar("bar-year-one-foundation", 1, 8, "blue", "Year 1 Foundation and Upgrade Services"),
-        bar("bar-year-two-modernization", 14, 21, "slate", "Year 2 Modernization and Expansion"),
-      ],
+      name: "Platform Operationalization",
+      bars: [bar("bar-two-year-operations-handoff", 1, 5, "blue", "Operational Handoff and Lifecycle Cadence", false, false, `Enabled by Year 1: ${upgradeServiceLabel(fields.adoptionDetails.upgradePath)} and VCF Platform Design`)],
     },
     {
-      id: "lane-two-year-platform",
-      name: "Platform Evolution",
-      bars: [
-        bar("bar-year-one-platform", 1, 5, "teal", "Year 1 Platform Plan and Core Design"),
-        bar("bar-year-two-platform", 15, 20, "teal", "Year 2 Platform Expansion Design"),
-      ],
+      id: "lane-two-year-portfolio",
+      name: "Service Portfolio",
+      bars: [bar("bar-two-year-portfolio-review", 2, 6, "slate", "Follow-On Services Decision Review", false, false, "Enabled by Year 1: Platform Plan and Decision Log")],
     },
   ];
 
-  fields.priorities.forEach((priority, index) => {
-    const title = capabilityTitle(priority);
-    const firstFocus = activityLabelsForCapability(fields, priority)[0].replace(/ Plan$/, "").replace(/ Design$/, "");
-    const start = 5 + (index % 4) * 2;
-    const yearTwoStart = Math.min(20, start + 12);
-    lanes.push({
-      id: `lane-two-year-${priority}`,
-      name: `${title} Strategic Outlook`,
-      bars: [
-        bar(`bar-two-year-${priority}-foundation`, start, Math.min(13, start + 4), capabilityColor(priority), `Year 1 ${firstFocus}`),
-        bar(`bar-two-year-${priority}-expansion`, yearTwoStart, Math.min(25, yearTwoStart + 4), capabilityColor(priority), `Year 2 ${title} Expansion`),
-      ],
+  fields.priorities.forEach((priority, priorityIndex) => {
+    const activities = followOnActivities(fields, priority);
+    const slot = Math.max(2, Math.floor(20 / activities.length));
+    const bars = activities.map((activity, index) => {
+      const start = Math.min(23, 1 + (priorityIndex % 3) + index * slot);
+      const [safeStart, end] = boundedRange(start, Math.max(2, slot), columns.length);
+      return bar(`bar-follow-on-${priority}-${index + 1}`, safeStart, end, capabilityColor(priority), activity.label, false, false, activity.dependsOn);
     });
+    lanes.push({ id: `lane-follow-on-${priority}`, name: `${capabilityTitle(priority)} Follow-On Services`, bars });
   });
 
-  return { cadence: "month", startDate: timelineStartDate(fields), columns, lanes };
+  return { cadence: "month", startDate, columns, lanes };
 }
 
 export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
@@ -615,7 +676,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const cadence = fields.adoptionCadence === "week" ? "weekly execution windows" : "calendar-month execution windows";
   const detailCount = [fields.adoptionDetails.operations, fields.adoptionDetails.automation, fields.adoptionDetails.security, fields.adoptionDetails.resilience, fields.adoptionDetails.kubernetes, fields.adoptionDetails.privateAi].flat().length;
   const details = detailCount ? `${detailCount} confirmed detailed capability focus area${detailCount === 1 ? "" : "s"}` : "high-level outcome selections pending detailed discovery";
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Upgrade Services begins at the start of the target window while initial platform planning and design work run in parallel. The separate Two-Year Notional Adoption Outlook is a strategic expansion view, not a duplicate delivery schedule. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Upgrade Services begins at the start of the target window while initial platform planning and design work run in parallel. The separate Two-Year Follow-On Service Outlook begins after year one and maps only strategic services enabled by confirmed year-one work; it is not a duplicate delivery schedule or a service commitment. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -797,7 +858,7 @@ export function createDefaultDocument(): EngagementDocument {
   const inventory = emptyInventory();
   const readiness = assessReadiness(fields, inventory);
   const plans = buildAdoptionPlans(fields, inventory);
-  return { version: 7, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+  return { version: 8, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
 function stringValue(value: unknown): string {
@@ -820,15 +881,30 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
 }
 
 export function migrateDocument(value: unknown): EngagementDocument {
-  const current = engagementDocumentV7Schema.safeParse(value);
+  const current = engagementDocumentV8Schema.safeParse(value);
   if (current.success) return current.data;
+
+  const v7 = engagementDocumentV7Schema.safeParse(value);
+  if (v7.success) {
+    const plans = buildAdoptionPlans(v7.data.fields, v7.data.inventory);
+    return {
+      version: 8,
+      fields: v7.data.fields,
+      inventorySources: v7.data.inventorySources,
+      inventory: v7.data.inventory,
+      readiness: assessReadiness(v7.data.fields, v7.data.inventory, v7.data.inventorySources.flatMap(source => source.warnings)),
+      adoptionTimeline: plans.adoptionTimeline,
+      twoYearPlan: plans.twoYearPlan,
+      rationale: plans.rationale,
+    };
+  }
 
   const v6 = engagementDocumentV6Schema.safeParse(value);
   if (v6.success) {
     const fields = migrateFieldsToV7(v6.data.fields);
     const plans = buildAdoptionPlans(fields, v6.data.inventory);
     return {
-      version: 7,
+      version: 8,
       fields,
       inventorySources: v6.data.inventorySources,
       inventory: v6.data.inventory,
@@ -844,7 +920,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const fields = migrateFieldsToV7(migrateFieldsToV6(v5.data.fields));
     const plans = buildAdoptionPlans(fields, v5.data.inventory);
     return {
-      version: 7,
+      version: 8,
       fields,
       inventorySources: v5.data.inventorySources,
       inventory: v5.data.inventory,
@@ -862,7 +938,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const warnings = v4.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
-      version: 7,
+      version: 8,
       fields,
       inventorySources: v4.data.inventorySources,
       inventory,
@@ -880,7 +956,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const warnings = v3.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
-      version: 7,
+      version: 8,
       fields,
       inventorySources: v3.data.inventorySources,
       inventory,
@@ -922,7 +998,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const parsedSources = z.array(inventorySourceSchema).safeParse(legacy.inventorySources);
   const plans = buildAdoptionPlans(fields, inventory);
   return {
-    version: 7,
+    version: 8,
     fields,
     inventorySources: parsedSources.success ? parsedSources.data : [],
     inventory,
@@ -933,7 +1009,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   };
 }
 
-export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV7Schema);
+export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV8Schema);
 
 export function refreshDerivedDocument(document: EngagementDocument): EngagementDocument {
   const warnings = document.inventorySources.flatMap(source => source.warnings);

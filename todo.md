@@ -132,3 +132,16 @@
 
 - [x] Add component-level review-model regression coverage proving the selected industry template exposes its expected reviewable prompt set in the guided intake.
 - [x] Extend apply-and-clear coverage to preserve non-empty detailed capability selections and priorities, then rerun the full release gate.
+
+## Hosted Login Prompt Follow-up
+
+- [ ] Reproduce the hosted workspace login prompt and inspect whether the Sign in with Manus entry and intended return path are available.
+- [ ] Correct any hosted authentication entry or post-login return-path regression without weakening protected engagement access.
+- [ ] Add focused regression coverage and run the full release gate before checkpointing.
+
+## Year-One-to-Two-Year Service Alignment
+
+- [x] Research and define grounded follow-on VCF service patterns that logically begin after operational year-one work, without presenting them as committed scope.
+- [x] Replace the independent two-year notional plan generator with a traceable follow-on outlook derived from the year-one operational service sequence and confirmed intake.
+- [x] Clarify in the workspace and exported report which year-one services enable each two-year follow-on activity and distinguish strategic considerations from delivery commitments.
+- [x] Add regression coverage for year-one alignment, follow-on-only sequencing, migration, and report clarity; run the full release gate before checkpointing.
