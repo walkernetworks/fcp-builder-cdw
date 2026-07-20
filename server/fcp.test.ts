@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
 import { applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearColumns, buildWeekColumns, createDefaultDocument, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
+import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import type { TrpcContext } from "./_core/context";
 import { renderFcpHtml } from "./fcpRenderer";
 import { appRouter } from "./routers";
@@ -141,7 +142,7 @@ describe("calendar-month adoption plans", () => {
   it("migrates older engagements to entitlement-aware, normalized adoption plans", () => {
     const legacyTimeline = { columns: ["Wave 1", "Wave 2"], lanes: [{ id: "legacy", name: "readiness", bars: [{ id: "old", startCol: 1, endCol: 2, color: "blue", label: "workshop", milestone: false, deferred: false }] }] };
     const migrated = migrateDocument({ version: 1, fields: { customerName: "Meridian Health", cust: "MER", entitlement: "256", funds: "$1,750,000", termStart: "2027-01-01", termEnd: "2028-12-31", vmCount: "980", hostCount: "22", notes: "No December changes" }, timeline: legacyTimeline, rationale: "Old rationale" });
-    expect(migrated.version).toBe(6);
+    expect(migrated.version).toBe(7);
     expect(migrated.fields.customerName).toBe("Meridian Health");
     expect(migrated.fields.entitlementAmount).toBe(1_750_000);
     expect(migrated.fields.entitlementStart).toBe("2027-01-01");
@@ -211,6 +212,45 @@ describe("planning considerations, exports, and access boundary", () => {
     ]);
   });
 
+  it("provides reusable industry questions that can be applied and cleared without activating scope or generated activities", () => {
+    const document = createDefaultDocument();
+    document.fields.adoptionDetails.notes = "Customer confirmed an operations owner.";
+    const template = getIndustryDiscoveryTemplate("financial-services-insurance");
+    const originalDetails = structuredClone(document.fields.adoptionDetails);
+    const originalPriorities = [...document.fields.priorities];
+    const promptedNotes = appendIndustryDiscoveryPrompts(document.fields.adoptionDetails.notes, template.id);
+    const clearedNotes = removeIndustryDiscoveryPrompts(promptedNotes, template.id);
+
+    expect(industryDiscoveryTemplates).toHaveLength(6);
+    expect(template.label).toBe("Financial services and insurance");
+    expect(template.questions).toHaveLength(5);
+    expect(promptedNotes).toContain("Discovery prompts to confirm — Financial services and insurance");
+    expect(promptedNotes).toContain("discussion prompts only");
+    expect(appendIndustryDiscoveryPrompts(promptedNotes, template.id)).toBe(promptedNotes);
+    expect(clearedNotes).toBe("Customer confirmed an operations owner.");
+    expect(removeIndustryDiscoveryPrompts(clearedNotes, template.id)).toBe(clearedNotes);
+    expect(document.fields.adoptionDetails).toEqual(originalDetails);
+    expect(document.fields.priorities).toEqual(originalPriorities);
+    const labels = buildAdoptionPlans(document.fields, document.inventory).adoptionTimeline.lanes.flatMap(lane => lane.bars.map(activity => activity.label));
+    expect(labels).not.toContain("Custom Operations Dashboards Plan");
+    expect(labels).not.toContain("Infrastructure-as-Code Patterns Plan");
+  });
+
+  it("migrates V6 industry-template context to the general lens without changing confirmed scope", () => {
+    const document = createDefaultDocument();
+    document.fields.adoptionDetails.operations = ["custom-dashboards"];
+    document.fields.priorities = ["operations"];
+    const v6 = JSON.parse(JSON.stringify(document));
+    v6.version = 6;
+    delete v6.fields.adoptionDetails.industryTemplate;
+
+    const migrated = migrateDocument(v6);
+    expect(migrated.version).toBe(7);
+    expect(migrated.fields.adoptionDetails.industryTemplate).toBe("general-enterprise");
+    expect(migrated.fields.adoptionDetails.operations).toEqual(["custom-dashboards"]);
+    expect(migrated.fields.priorities).toEqual(["operations"]);
+  });
+
   it("migrates V4 platform evidence as estate-wide rather than per-platform", () => {
     const document = createDefaultDocument();
     Object.assign(document.inventory, {
@@ -224,7 +264,7 @@ describe("planning considerations, exports, and access boundary", () => {
     v4.inventory.hostModels.forEach((platform: { esxiVersions?: unknown; esxiCorrelation?: unknown }) => { delete platform.esxiVersions; delete platform.esxiCorrelation; });
     v4.readiness.hardwarePlatforms.forEach((platform: { esxiVersions?: unknown; esxiCorrelation?: unknown }) => { delete platform.esxiVersions; delete platform.esxiCorrelation; });
     const migrated = migrateDocument(v4);
-    expect(migrated.version).toBe(6);
+    expect(migrated.version).toBe(7);
     expect(migrated.inventory.hostModels[0]).toMatchObject({
       esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 2 }],
       esxiCorrelation: "estate-wide",

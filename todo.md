@@ -115,3 +115,20 @@
 ## Plan Summary Rendering Regression
 
 - [x] Add explicit regression coverage proving the exported Plan Summary uses stable text-led cards without numbered-circle marker elements, then rerun the full release gate.
+
+## Industry Discovery Templates
+
+- [x] Research and define reusable VCF discovery-question templates for priority customer industries without overstating regulatory or technical requirements.
+- [x] Add a mobile-friendly industry template selector to the guided detailed-adoption intake and allow users to apply, review, and clear suggested prompts.
+- [x] Preserve customer-confirmed scope by treating template questions as guidance only and keeping generated activities dependent on explicit intake selections.
+- [x] Add regression coverage for template availability, application behavior, and scope preservation; run the full release gate before checkpointing.
+
+## Industry Prompt Clearing
+
+- [x] Add an explicit intake action that removes the currently applied industry discovery prompts from notes without changing confirmed capabilities or priorities.
+- [x] Add regression coverage proving industry prompts can be applied, reviewed, and cleared independently of detailed capability selections, then rerun the full release gate.
+
+## Industry Prompt Review and Confirmed-Scope Regression
+
+- [x] Add component-level review-model regression coverage proving the selected industry template exposes its expected reviewable prompt set in the guided intake.
+- [x] Extend apply-and-clear coverage to preserve non-empty detailed capability selections and priorities, then rerun the full release gate.

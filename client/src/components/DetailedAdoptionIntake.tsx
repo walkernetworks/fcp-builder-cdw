@@ -1,8 +1,10 @@
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { AdoptionDetails, Capability, MinimalFields, UpgradePath } from "@shared/fcp";
+import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryReviewContent, industryDiscoveryPromptBlock, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "@shared/industryDiscovery";
+import type { AdoptionDetails, Capability, IndustryTemplateId, MinimalFields, UpgradePath } from "@shared/fcp";
 
 type DetailKey = "operations" | "automation" | "security" | "resilience" | "kubernetes" | "privateAi";
 
@@ -103,8 +105,16 @@ type Props = {
 
 export function DetailedAdoptionIntake({ fields, onPatch }: Props) {
   const details = fields.adoptionDetails;
+  const { template, promptItems } = getIndustryDiscoveryReviewContent(details.industryTemplate);
+  const templatePromptBlock = industryDiscoveryPromptBlock(details.industryTemplate);
+  const hasTemplatePrompts = details.notes.includes(templatePromptBlock);
 
   const updateDetails = (patch: Partial<AdoptionDetails>) => onPatch({ adoptionDetails: { ...details, ...patch } });
+
+  const setIndustryTemplate = (industryTemplate: IndustryTemplateId) => updateDetails({ industryTemplate });
+
+  const addTemplatePromptsToNotes = () => updateDetails({ notes: appendIndustryDiscoveryPrompts(details.notes, details.industryTemplate) });
+  const clearTemplatePromptsFromNotes = () => updateDetails({ notes: removeIndustryDiscoveryPrompts(details.notes, details.industryTemplate) });
 
   const toggleFocus = (group: DiscoveryGroup, value: string, checked: boolean) => {
     const selected = details[group.key] as string[];
@@ -116,6 +126,17 @@ export function DetailedAdoptionIntake({ fields, onPatch }: Props) {
   return (
     <section className="mt-7 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 md:p-5">
       <div className="max-w-3xl"><p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Detailed discovery</p><h3 className="mt-1 text-lg font-semibold text-slate-950">Confirm the outcomes that should shape the plan</h3><p className="mt-2 text-sm leading-6 text-slate-600">These answers create more specific planning activities. Select only outcomes the customer has confirmed; unselected items are not assumed to be in scope.</p></div>
+
+      <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><div><Label className="text-sm font-semibold">Start from an industry discovery lens</Label><p className="mt-1 text-xs leading-5 text-slate-500">Templates guide the conversation only. They never select scope, priorities, or activities for the customer.</p></div><span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">Reusable prompts</span></div>
+        <Select value={details.industryTemplate} onValueChange={value => setIndustryTemplate(value as IndustryTemplateId)}>
+          <SelectTrigger className="mt-3 bg-white"><SelectValue /></SelectTrigger>
+          <SelectContent>{industryDiscoveryTemplates.map(item => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent>
+        </Select>
+        <p className="mt-2 text-xs leading-5 text-slate-500">{template.description}</p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{promptItems.map(item => <article key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="text-[10px] font-black uppercase tracking-[.14em] text-[#c8102e]">{item.ordinal} · {item.theme}</div><p className="mt-1 text-xs leading-5 text-slate-700">{item.question}</p></article>)}</div>
+        <div className="mt-4 flex flex-wrap gap-2"><Button type="button" size="sm" variant="outline" onClick={addTemplatePromptsToNotes} disabled={hasTemplatePrompts}>Add prompts to notes</Button>{hasTemplatePrompts ? <Button type="button" size="sm" variant="ghost" onClick={clearTemplatePromptsFromNotes}>Clear selected prompts</Button> : null}{details.industryTemplate !== "general-enterprise" ? <Button type="button" size="sm" variant="ghost" onClick={() => setIndustryTemplate("general-enterprise")}>Use general template</Button> : null}</div>
+      </section>
 
       <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
         <Label className="text-sm font-semibold">What is the intended upgrade path?</Label>

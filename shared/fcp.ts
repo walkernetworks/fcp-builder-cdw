@@ -44,6 +44,16 @@ export type Capability = z.infer<typeof capabilitySchema>;
 export const upgradePathSchema = z.enum(["undecided", "in-place", "new-build", "migration-waves", "design-only"]);
 export type UpgradePath = z.infer<typeof upgradePathSchema>;
 
+export const industryTemplateSchema = z.enum([
+  "general-enterprise",
+  "healthcare-life-sciences",
+  "financial-services-insurance",
+  "manufacturing-retail-distributed",
+  "public-sector-education",
+  "digital-products-technology",
+]);
+export type IndustryTemplateId = z.infer<typeof industryTemplateSchema>;
+
 const operationsFocusSchema = z.enum(["lifecycle", "observability", "capacity-cost", "custom-dashboards", "identity-certificates", "event-integration"]);
 const automationFocusSchema = z.enum(["vm-self-service", "infrastructure-as-code", "day-2-automation", "governance", "application-provisioning"]);
 const securityFocusSchema = z.enum(["segmentation", "identity-rbac", "hardening-compliance"]);
@@ -51,7 +61,7 @@ const resilienceFocusSchema = z.enum(["recovery-architecture", "recovery-exercis
 const kubernetesFocusSchema = z.enum(["workload-domains", "platform-operations", "developer-experience"]);
 const privateAiFocusSchema = z.enum(["gpu-capacity", "ai-guardrails", "pilot-onboarding"]);
 
-export const adoptionDetailsSchema = z.object({
+const adoptionDetailsV6Schema = z.object({
   upgradePath: upgradePathSchema,
   operations: z.array(operationsFocusSchema).max(6),
   automation: z.array(automationFocusSchema).max(5),
@@ -60,6 +70,10 @@ export const adoptionDetailsSchema = z.object({
   kubernetes: z.array(kubernetesFocusSchema).max(3),
   privateAi: z.array(privateAiFocusSchema).max(3),
   notes: z.string().max(5000),
+});
+
+export const adoptionDetailsSchema = adoptionDetailsV6Schema.extend({
+  industryTemplate: industryTemplateSchema,
 });
 export type AdoptionDetails = z.infer<typeof adoptionDetailsSchema>;
 
@@ -78,6 +92,11 @@ const minimalFieldsV5Schema = z.object({
   hardwareLeadWeeks: z.number().int().min(0).max(104),
   priorities: z.array(capabilitySchema),
   timelineNotes: z.string().max(5000),
+});
+
+const minimalFieldsV6Schema = minimalFieldsV5Schema.extend({
+  adoptionCadence: timelineCadenceSchema,
+  adoptionDetails: adoptionDetailsV6Schema,
 });
 
 export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
@@ -232,6 +251,17 @@ export const engagementDocumentV5Schema = z.object({
 
 export const engagementDocumentV6Schema = z.object({
   version: z.literal(6),
+  fields: minimalFieldsV6Schema,
+  inventorySources: z.array(inventorySourceSchema),
+  inventory: inventorySummarySchema,
+  readiness: readinessSchema,
+  adoptionTimeline: timelineSchema,
+  twoYearPlan: timelineSchema,
+  rationale: z.string(),
+});
+
+export const engagementDocumentV7Schema = z.object({
+  version: z.literal(7),
   fields: minimalFieldsSchema,
   inventorySources: z.array(inventorySourceSchema),
   inventory: inventorySummarySchema,
@@ -240,7 +270,7 @@ export const engagementDocumentV6Schema = z.object({
   twoYearPlan: timelineSchema,
   rationale: z.string(),
 });
-export type EngagementDocument = z.infer<typeof engagementDocumentV6Schema>;
+export type EngagementDocument = z.infer<typeof engagementDocumentV7Schema>;
 
 export function emptyInventory(): InventorySummary {
   return {
@@ -279,6 +309,7 @@ export function createDefaultAdoptionDetails(): AdoptionDetails {
     kubernetes: [],
     privateAi: [],
     notes: "",
+    industryTemplate: "general-enterprise",
   };
 }
 
@@ -486,7 +517,7 @@ const focusLabels: Record<Capability, Record<string, string>> = {
 };
 
 function selectedFocuses(fields: MinimalFields, capability: Capability): string[] {
-  const detailKey: Record<Capability, keyof Omit<AdoptionDetails, "upgradePath" | "notes">> = {
+  const detailKey: Record<Capability, keyof Omit<AdoptionDetails, "upgradePath" | "notes" | "industryTemplate">> = {
     operations: "operations",
     automation: "automation",
     security: "security",
@@ -766,7 +797,7 @@ export function createDefaultDocument(): EngagementDocument {
   const inventory = emptyInventory();
   const readiness = assessReadiness(fields, inventory);
   const plans = buildAdoptionPlans(fields, inventory);
-  return { version: 6, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+  return { version: 7, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
 function stringValue(value: unknown): string {
@@ -778,20 +809,42 @@ function numberValue(value: unknown): number {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
 }
 
-function migrateFieldsToV6(fields: z.infer<typeof minimalFieldsV5Schema>): MinimalFields {
-  return { ...fields, adoptionCadence: "month", adoptionDetails: createDefaultAdoptionDetails() };
+function migrateFieldsToV6(fields: z.infer<typeof minimalFieldsV5Schema>): z.infer<typeof minimalFieldsV6Schema> {
+  const details = createDefaultAdoptionDetails();
+  const { industryTemplate: _industryTemplate, ...legacyDetails } = details;
+  return { ...fields, adoptionCadence: "month", adoptionDetails: legacyDetails };
+}
+
+function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): MinimalFields {
+  return { ...fields, adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise" } };
 }
 
 export function migrateDocument(value: unknown): EngagementDocument {
-  const current = engagementDocumentV6Schema.safeParse(value);
+  const current = engagementDocumentV7Schema.safeParse(value);
   if (current.success) return current.data;
+
+  const v6 = engagementDocumentV6Schema.safeParse(value);
+  if (v6.success) {
+    const fields = migrateFieldsToV7(v6.data.fields);
+    const plans = buildAdoptionPlans(fields, v6.data.inventory);
+    return {
+      version: 7,
+      fields,
+      inventorySources: v6.data.inventorySources,
+      inventory: v6.data.inventory,
+      readiness: assessReadiness(fields, v6.data.inventory, v6.data.inventorySources.flatMap(source => source.warnings)),
+      adoptionTimeline: plans.adoptionTimeline,
+      twoYearPlan: plans.twoYearPlan,
+      rationale: plans.rationale,
+    };
+  }
 
   const v5 = engagementDocumentV5Schema.safeParse(value);
   if (v5.success) {
-    const fields = migrateFieldsToV6(v5.data.fields);
+    const fields = migrateFieldsToV7(migrateFieldsToV6(v5.data.fields));
     const plans = buildAdoptionPlans(fields, v5.data.inventory);
     return {
-      version: 6,
+      version: 7,
       fields,
       inventorySources: v5.data.inventorySources,
       inventory: v5.data.inventory,
@@ -805,11 +858,11 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const v4 = engagementDocumentV4Schema.safeParse(value);
   if (v4.success) {
     const inventory = migrateInventoryToV5(v4.data.inventory);
-    const fields = migrateFieldsToV6(v4.data.fields);
+    const fields = migrateFieldsToV7(migrateFieldsToV6(v4.data.fields));
     const warnings = v4.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
-      version: 6,
+      version: 7,
       fields,
       inventorySources: v4.data.inventorySources,
       inventory,
@@ -823,11 +876,11 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const v3 = engagementDocumentV3Schema.safeParse(value);
   if (v3.success) {
     const inventory = migrateInventoryToV5(v3.data.inventory);
-    const fields = migrateFieldsToV6(v3.data.fields);
+    const fields = migrateFieldsToV7(migrateFieldsToV6(v3.data.fields));
     const warnings = v3.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
-      version: 6,
+      version: 7,
       fields,
       inventorySources: v3.data.inventorySources,
       inventory,
@@ -869,7 +922,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const parsedSources = z.array(inventorySourceSchema).safeParse(legacy.inventorySources);
   const plans = buildAdoptionPlans(fields, inventory);
   return {
-    version: 6,
+    version: 7,
     fields,
     inventorySources: parsedSources.success ? parsedSources.data : [],
     inventory,
@@ -880,7 +933,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   };
 }
 
-export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV6Schema);
+export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV7Schema);
 
 export function refreshDerivedDocument(document: EngagementDocument): EngagementDocument {
   const warnings = document.inventorySources.flatMap(source => source.warnings);
