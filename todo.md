@@ -145,3 +145,15 @@
 - [x] Replace the independent two-year notional plan generator with a traceable follow-on outlook derived from the year-one operational service sequence and confirmed intake.
 - [x] Clarify in the workspace and exported report which year-one services enable each two-year follow-on activity and distinguish strategic considerations from delivery commitments.
 - [x] Add regression coverage for year-one alignment, follow-on-only sequencing, migration, and report clarity; run the full release gate before checkpointing.
+
+## Research-Led Year 2 Service Roadmap
+
+- [x] Research authoritative VCF lifecycle, operations, automation, security, resilience, Kubernetes, and private-AI service progression after foundational Year 1 delivery.
+- [x] Replace generic Year 2 continuations with distinct, capability-specific follow-on service outcomes tied to confirmed Year 1 services.
+- [x] Explain the evidence-based Year 1-to-Year 2 service handoffs in the workspace and export without presenting recommendations as committed scope.
+- [x] Add regression coverage and complete release validation for the researched Year 2 roadmap.
+
+## Year 2 Roadmap Release Evidence Follow-up
+
+- [x] Run the production build for the researched Year 2 roadmap update and resolve any resulting issues.
+- [x] Record the Year 2 roadmap test, type-check, build, and visual-verification evidence in the release validation record before checkpointing.

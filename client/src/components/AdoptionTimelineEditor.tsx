@@ -177,7 +177,7 @@ export function AdoptionTimelineEditor({
                     style={{ gridColumn: `${activity.startCol} / ${activity.endCol}` }}
                     onClick={() => setSelected({ laneId: lane.id, barId: activity.id })}
                     onPointerDown={event => beginDrag(event, lane.id, activity, "move")}
-                    title={`${activity.label}: ${timeline.columns[activity.startCol - 1]} to ${timeline.columns[Math.max(activity.startCol - 1, activity.endCol - 2)]}${activity.dependsOn ? `\n${activity.dependsOn}` : ""}`}
+                    title={`${activity.label}: ${timeline.columns[activity.startCol - 1]} to ${timeline.columns[Math.max(activity.startCol - 1, activity.endCol - 2)]}${activity.outcome ? `\nYear 2 outcome: ${activity.outcome}` : ""}${activity.dependsOn ? `\n${activity.dependsOn}` : ""}`}
                   >
                     <button className="absolute inset-y-0 left-0 w-3 cursor-ew-resize touch-none border-r border-black/10 bg-black/10 sm:w-2" onPointerDown={event => beginDrag(event, lane.id, activity, "start")} aria-label={`Resize ${activity.label} start`} />
                     <span className="truncate">{activity.milestone && "◆ "}{activity.label}</span>
@@ -199,7 +199,8 @@ export function AdoptionTimelineEditor({
           <label className="space-y-1 text-xs font-semibold text-slate-600">Color<Select value={selectedBar.color} onValueChange={color => changeBar(selectedLane.id, selectedBar.id, { color: color as TimelineBar["color"], deferred: color === "deferred" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{TIMELINE_COLORS.map(color => <SelectItem key={color} value={color}>{color[0].toUpperCase() + color.slice(1)}</SelectItem>)}</SelectContent></Select></label>
           <Tooltip><TooltipTrigger asChild><label className="flex h-10 items-center gap-2 text-xs font-semibold text-slate-600"><Switch checked={selectedBar.milestone} onCheckedChange={milestone => changeBar(selectedLane.id, selectedBar.id, { milestone })} /><Flag className="size-4" /></label></TooltipTrigger><TooltipContent>Milestone Marker</TooltipContent></Tooltip>
           <Button variant="ghost" className="text-red-600" onClick={() => { changeLane(selectedLane.id, lane => ({ ...lane, bars: lane.bars.filter(bar => bar.id !== selectedBar.id) })); setSelected(null); }}><Trash2 className="size-4" /> Remove</Button>
-          {selectedBar.dependsOn && <div className="md:col-span-full rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950"><span className="font-semibold">Year-one prerequisite:</span> {selectedBar.dependsOn.replace(/^Enabled by Year 1:\s*/, "")}</div>}
+          {selectedBar.outcome && <div className="md:col-span-full rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-950"><span className="font-semibold">Year 2 service outcome:</span> {selectedBar.outcome}</div>}
+          {selectedBar.dependsOn && <div className="md:col-span-full rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950"><span className="font-semibold">Year 1 enabler and Year 2 entry condition:</span> {selectedBar.dependsOn.replace(/^Enabled by Year 1:\s*/, "")}</div>}
         </div>
       )}
     </section>

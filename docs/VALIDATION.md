@@ -110,3 +110,18 @@ Selecting a template persists only the active discovery lens. Applying its promp
 [1]: https://blogs.vmware.com/cloud-foundation/2025/06/17/vcf-9-0-use-cases/ "VMware Cloud Foundation 9.0: Modernize Infrastructure, Accelerate App Delivery, and Strengthen Security and Resiliency"
 [2]: https://blogs.vmware.com/cloud-foundation/2024/07/11/leveraging-vmware-cloud-foundation-for-hospital-as-a-service-success/ "Leveraging VMware Cloud Foundation for Hospital as a Service Success"
 [3]: https://www.vmware.com/solutions/industry/financial-it-services "Transform Financial Services with VMware Cloud Foundation"
+
+
+## Research-Led Year 2 Service Roadmap — July 20, 2026
+
+The former generic extension of Year 1 services has been replaced with a **Year 2 Service Roadmap covering Months 13–24**. It is generated only from confirmed detailed capability selections and begins after the operational adoption timeline. Each roadmap activity now carries three distinct elements: the researched service name, an intended Year 2 operating/scale/optimization/pilot outcome, and a Year 1 enabler plus a conditional entry requirement. The roadmap is explicitly a planning recommendation rather than a committed scope, duplicated delivery schedule, or blanket service rollout.
+
+The service map is grounded in VCF Operations, VCF Automation, VCF Security Operations, VMware Live Recovery/site-protection guidance, and the VCF Kubernetes/private-AI platform materials. It differentiates outcomes such as a **Capacity and Cost Optimization Service**, **Governed Catalog Launch Service**, **Segmentation Rollout Wave Service**, **Recovery Exercise Program**, **VKS Fleet Operations Service**, and conditionally gated **Private AI Pilot Onboarding Service**, rather than extending design activities from Year 1. The source mapping and entry conditions are retained in `docs/year2_service_roadmap_research.md`.
+
+| Validation area | Evidence captured July 20, 2026 |
+|---|---|
+| Domain and migration regression coverage | `pnpm test` passed: **7 test files and 34 tests**. Coverage proves 12-month Year 2 timing, capability-specific service outcomes, Year 1 enablers, explicit entry conditions, V8-to-V9 regeneration, export outcome/condition columns, and the protected-authentication suite. |
+| Static validation | `pnpm check` completed with no TypeScript errors. |
+| Production build | `pnpm build` completed successfully for the Vite client and bundled Node server. Vite emitted only its advisory large-chunk warning; there was no blocking build or runtime diagnostic. |
+| Visual verification | The hosted workspace rendered successfully after the update. The authenticated workspace remained usable and the source UI was updated to label the second planning view **Year 2 Service Roadmap (Months 13–24)**. |
+| User-facing report clarity | The standalone HTML/PDF renderer now labels the view **Year 2 Service Roadmap** and adds **Year 2 Outcome** plus **Year 1 Enabler and Entry Condition** to the service sequence table. |

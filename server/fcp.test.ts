@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
-import { applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearColumns, buildWeekColumns, createDefaultDocument, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
+import { applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildYearTwoColumns, buildWeekColumns, createDefaultDocument, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import type { TrpcContext } from "./_core/context";
 import { renderFcpHtml } from "./fcpRenderer";
@@ -46,12 +46,12 @@ describe("RVTools local import", () => {
 });
 
 describe("calendar-month adoption plans", () => {
-  it("builds inclusive entitlement-month columns and a 24-month follow-on outlook column set", () => {
+  it("builds inclusive entitlement-month columns and a 12-month Year 2 service-roadmap column set", () => {
     expect(buildMonthColumns("2027-01-15", "2027-06-30")).toEqual(["Jan 27", "Feb 27", "Mar 27", "Apr 27", "May 27", "Jun 27"]);
-    const twoYear = buildTwoYearColumns("2027-01-15");
-    expect(twoYear).toHaveLength(24);
-    expect(twoYear[0]).toBe("Jan 27");
-    expect(twoYear[23]).toBe("Dec 28");
+    const yearTwo = buildYearTwoColumns("2027-01-15");
+    expect(yearTwo).toHaveLength(12);
+    expect(yearTwo[0]).toBe("Jan 27");
+    expect(yearTwo[11]).toBe("Dec 27");
   });
 
   it("starts Upgrade Services while opening platform planning and design in parallel", () => {
@@ -61,6 +61,13 @@ describe("calendar-month adoption plans", () => {
       entitlementStart: "2027-01-01",
       entitlementEnd: "2027-12-31",
       priorities: ["operations", "automation", "security", "resilience"],
+      adoptionDetails: {
+        ...document.fields.adoptionDetails,
+        operations: ["capacity-cost"],
+        automation: ["vm-self-service"],
+        security: ["segmentation"],
+        resilience: ["recovery-exercises"],
+      },
     });
     Object.assign(document.inventory, { vmCount: 1800, poweredOnVms: 1600, hosts: 40 });
     const plans = buildAdoptionPlans(document.fields, document.inventory);
@@ -70,10 +77,18 @@ describe("calendar-month adoption plans", () => {
     const platformDesign = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-platform-design")!;
     expect(plans.adoptionTimeline.columns).toHaveLength(12);
     expect(plans.twoYearPlan).toMatchObject({ cadence: "month", startDate: "2028-01-01" });
-    expect(plans.twoYearPlan.columns).toHaveLength(24);
+    expect(plans.twoYearPlan.columns).toHaveLength(12);
     expect(plans.twoYearPlan.columns[0]).toBe("Jan 28");
-    expect(plans.twoYearPlan.lanes.flatMap(lane => lane.bars).map(activity => activity.label).join(" ")).not.toMatch(/Year 1 Foundation|Year 1 Platform|Year 1 .*Expansion/i);
-    expect(plans.twoYearPlan.lanes.flatMap(lane => lane.bars).some(activity => activity.dependsOn?.startsWith("Enabled by Year 1:"))).toBe(true);
+    const yearTwoActivities = plans.twoYearPlan.lanes.flatMap(lane => lane.bars);
+    expect(yearTwoActivities.map(activity => activity.label)).toEqual(expect.arrayContaining([
+      "Capacity and Cost Optimization Service",
+      "Governed Catalog Launch Service",
+      "Segmentation Rollout Wave Service",
+      "Recovery Exercise Program",
+    ]));
+    expect(yearTwoActivities.map(activity => activity.label).join(" ")).not.toMatch(/Year 1 Foundation|Year 1 Platform|Year 1 .*Expansion/i);
+    expect(yearTwoActivities.some(activity => activity.dependsOn?.startsWith("Enabled by Year 1:") && activity.dependsOn.includes("Proceed when:"))).toBe(true);
+    expect(yearTwoActivities.find(activity => activity.label === "Capacity and Cost Optimization Service")).toMatchObject({ outcome: "Run rightsizing, forecast, and cost-governance cycles against established capacity data." });
     expect(plans.rationale).toContain("$2,500,000");
     expect(labels).toContain("VCF 9.1 Upgrade Services Scope and Runbook");
     expect(labels.join(" ")).not.toMatch(/Consumption Plan|Workshop|Readiness|Assessment|Validation/i);
@@ -146,19 +161,19 @@ describe("calendar-month adoption plans", () => {
   it("migrates older engagements to entitlement-aware, normalized adoption plans", () => {
     const legacyTimeline = { columns: ["Wave 1", "Wave 2"], lanes: [{ id: "legacy", name: "readiness", bars: [{ id: "old", startCol: 1, endCol: 2, color: "blue", label: "workshop", milestone: false, deferred: false }] }] };
     const migrated = migrateDocument({ version: 1, fields: { customerName: "Meridian Health", cust: "MER", entitlement: "256", funds: "$1,750,000", termStart: "2027-01-01", termEnd: "2028-12-31", vmCount: "980", hostCount: "22", notes: "No December changes" }, timeline: legacyTimeline, rationale: "Old rationale" });
-    expect(migrated.version).toBe(8);
+    expect(migrated.version).toBe(9);
     expect(migrated.fields.customerName).toBe("Meridian Health");
     expect(migrated.fields.entitlementAmount).toBe(1_750_000);
     expect(migrated.fields.entitlementStart).toBe("2027-01-01");
     expect(migrated.adoptionTimeline.columns[0]).toBe("Jan 27");
     expect(migrated.twoYearPlan).toMatchObject({ startDate: "2028-01-01", cadence: "month" });
-    expect(migrated.twoYearPlan.columns).toHaveLength(24);
+    expect(migrated.twoYearPlan.columns).toHaveLength(12);
     expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Upgrade Services");
     expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).not.toMatch(/Consumption Plan|Workshop|Readiness|Assessment|Validation/i);
     expect(migrated.readiness.hardwarePlatforms).toEqual([]);
   });
 
-  it("regenerates V7 two-year plans as traceable post-year-one follow-on services", () => {
+  it("regenerates V8 plans as researched, traceable Year 2 service recommendations", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementStart: "2027-01-01",
@@ -167,18 +182,20 @@ describe("calendar-month adoption plans", () => {
       priorities: ["operations"],
       adoptionDetails: { ...document.fields.adoptionDetails, operations: ["custom-dashboards"] },
     });
-    const v7 = JSON.parse(JSON.stringify(document));
-    v7.version = 7;
+    const v8 = JSON.parse(JSON.stringify(document));
+    v8.version = 8;
 
-    const migrated = migrateDocument(v7);
+    const migrated = migrateDocument(v8);
     const operations = migrated.twoYearPlan.lanes.find(lane => lane.id === "lane-follow-on-operations");
-    expect(migrated.version).toBe(8);
+    expect(migrated.version).toBe(9);
     expect(migrated.twoYearPlan).toMatchObject({ cadence: "month", startDate: "2028-01-01" });
+    expect(migrated.twoYearPlan.columns).toHaveLength(12);
     expect(migrated.twoYearPlan.columns[0]).toBe("Jan 28");
     expect(operations?.bars).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        label: "Operations Dashboard Productization",
-        dependsOn: "Enabled by Year 1: Custom Operations Dashboards Plan",
+        label: "Operations Dashboard Product Service",
+        outcome: "Publish governed dashboards with support-team ownership, service measures, and a review cadence.",
+        dependsOn: "Enabled by Year 1: Custom Operations Dashboards Plan. Proceed when: dashboards, data sources, and an ownership model are accepted.",
       }),
     ]));
   });
@@ -275,7 +292,7 @@ describe("planning considerations, exports, and access boundary", () => {
     delete v6.fields.adoptionDetails.industryTemplate;
 
     const migrated = migrateDocument(v6);
-    expect(migrated.version).toBe(8);
+    expect(migrated.version).toBe(9);
     expect(migrated.fields.adoptionDetails.industryTemplate).toBe("general-enterprise");
     expect(migrated.fields.adoptionDetails.operations).toEqual(["custom-dashboards"]);
     expect(migrated.fields.priorities).toEqual(["operations"]);
@@ -294,7 +311,7 @@ describe("planning considerations, exports, and access boundary", () => {
     v4.inventory.hostModels.forEach((platform: { esxiVersions?: unknown; esxiCorrelation?: unknown }) => { delete platform.esxiVersions; delete platform.esxiCorrelation; });
     v4.readiness.hardwarePlatforms.forEach((platform: { esxiVersions?: unknown; esxiCorrelation?: unknown }) => { delete platform.esxiVersions; delete platform.esxiCorrelation; });
     const migrated = migrateDocument(v4);
-    expect(migrated.version).toBe(8);
+    expect(migrated.version).toBe(9);
     expect(migrated.inventory.hostModels[0]).toMatchObject({
       esxiVersions: [{ version: "8.0.3 build-25205845", hosts: 2 }],
       esxiCorrelation: "estate-wide",
@@ -303,7 +320,7 @@ describe("planning considerations, exports, and access boundary", () => {
 
   it("renders entitlement details and both synchronized adoption views with VCF 9.1 platform evidence", () => {
     const document = createDefaultDocument();
-    Object.assign(document.fields, { customerName: "Meridian Health", entitledCores: 128, entitlementAmount: 3_000_000, entitlementStart: "2027-01-01", entitlementEnd: "2028-12-31" });
+    Object.assign(document.fields, { customerName: "Meridian Health", entitledCores: 128, entitlementAmount: 3_000_000, entitlementStart: "2027-01-01", entitlementEnd: "2028-12-31", priorities: ["operations"], adoptionDetails: { ...document.fields.adoptionDetails, operations: ["custom-dashboards"] } });
     Object.assign(document.inventory, { sourceCount: 2, hosts: 4, physicalCores: 128, vmCount: 220, poweredOnVms: 200 });
     const plans = buildAdoptionPlans(document.fields, document.inventory);
     Object.assign(document, { readiness: assessReadiness(document.fields, document.inventory), ...plans });
@@ -311,10 +328,13 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Meridian Health");
     expect(html).toContain("$3,000,000");
     expect(html).toContain("Operational Adoption Timeline");
-    expect(html).toContain("Two-Year Follow-On Service Outlook");
+    expect(html).toContain("Year 2 Service Roadmap");
     expect(html).toContain("Execution view:");
-    expect(html).toContain("Follow-on service view:");
-    expect(html).toContain("Year-One Enabler");
+    expect(html).toContain("Year 2 roadmap view:");
+    expect(html).toContain("Year 2 Outcome");
+    expect(html).toContain("Year 1 Enabler and Entry Condition");
+    expect(html).toContain("Operations Dashboard Product Service");
+    expect(html).toContain("Publish governed dashboards with support-team ownership, service measures, and a review cadence.");
     expect(html).toContain("Enabled by Year 1:");
     expect(html).toContain("VCF 9.1 Hardware Platform Precheck");
     expect(html).toContain("Observed ESXi");
