@@ -125,3 +125,10 @@ The service map is grounded in VCF Operations, VCF Automation, VCF Security Oper
 | Production build | `pnpm build` completed successfully for the Vite client and bundled Node server. Vite emitted only its advisory large-chunk warning; there was no blocking build or runtime diagnostic. |
 | Visual verification | The hosted workspace rendered successfully after the update. The authenticated workspace remained usable and the source UI was updated to label the second planning view **Year 2 Service Roadmap (Months 13–24)**. |
 | User-facing report clarity | The standalone HTML/PDF renderer now labels the view **Year 2 Service Roadmap** and adds **Year 2 Outcome** plus **Year 1 Enabler and Entry Condition** to the service sequence table. |
+
+
+## Hosted Sign-In Prompt Follow-Up — July 20, 2026
+
+The hosted preview was opened directly without a session. It rendered the protected entry screen with the explicit **Sign in with Manus** action and did not surface a raw unauthorized error. The client login builder preserves a local destination in the signed OAuth state; regression coverage confirms the hosted callback URL, `/?tab=timelines#two-year` style local return paths, and rejection of absolute or protocol-relative destinations. The server callback requires the one-time nonce cookie to match the state nonce, then redirects only through `sanitizeOAuthReturnPath` after the session has been established. No access-control or return-path regression was found, so no corrective source change was needed.
+
+The focused hosted-authentication regression suite is included in the final release gate: **7 test files and 34 tests passed**, followed by a clean TypeScript check and successful production build. The build emitted only Vite’s existing advisory large-chunk warning.

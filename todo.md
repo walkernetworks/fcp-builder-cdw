@@ -135,9 +135,9 @@
 
 ## Hosted Login Prompt Follow-up
 
-- [ ] Reproduce the hosted workspace login prompt and inspect whether the Sign in with Manus entry and intended return path are available.
-- [ ] Correct any hosted authentication entry or post-login return-path regression without weakening protected engagement access.
-- [ ] Add focused regression coverage and run the full release gate before checkpointing.
+- [x] Reproduce the hosted workspace login prompt and inspect whether the Sign in with Manus entry and intended return path are available.
+- [x] Correct any hosted authentication entry or post-login return-path regression without weakening protected engagement access.
+- [x] Add focused regression coverage and run the full release gate before checkpointing.
 
 ## Year-One-to-Two-Year Service Alignment
 
