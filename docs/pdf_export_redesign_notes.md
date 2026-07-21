@@ -44,3 +44,35 @@ The redesigned preview now resolves the primary professionalism issue from the u
 | 4 | Subsequent planning content begins cleanly after the redesigned opening sequence. |
 
 A remaining polish note is that the executive snapshot narrative column is still text-heavy, but it now fits correctly and no longer forces a blank overflow page.
+
+## Hardware evidence PDF findings
+
+The current hardware evidence occupies separate pages because the print renderer retains responsive screen-layout containers.
+
+| Page | Observed issue | Print-native correction |
+|---|---|---|
+| Planning considerations | A two-column card grid resembles a responsive dashboard and leaves significant unused page area. | Keep concise readiness signals together in a denser print grid or summary strip. |
+| Observed versions and hardware | Two padded, rounded cards hold small tables and force the hardware section onto a separate mostly blank page. | Replace the paired cards with one full-width certification evidence section: a compact estate summary strip, a small ESXi table, and a full-width hardware precheck table. |
+| Document-wide print presentation | Rounded cards, generous page padding, and screen-first grid gaps make landscape paper look stretched. | Override cards, grid spacing, radii, and table typography within `@media print` for denser landscape composition. |
+
+## Hardware Compaction Review
+
+The revised hardware-certification content now fits on a single landscape page and reads as a print-native evidence sheet rather than stacked mobile cards. The readiness items, certification boundary, estate snapshot, and platform precheck remain visible without the prior multi-page sprawl.
+
+The remaining print-density issue is now in the operational timeline section rather than the hardware evidence. The operational adoption timeline and activity-sequence table paginate inefficiently, leaving a nearly empty follow-on page with only the last sequence row. The next refinement should tighten print spacing, row heights, and table rhythm in the operational and two-year sections so each section uses the page deliberately and avoids orphaned rows or large blank areas.
+
+## Landscape Density Verification
+
+The hardware-certification redesign is now materially improved. The entire hardware evidence section fits on a single landscape page with a compact readiness table, a concise boundary note, a small estate snapshot, and a full-width platform-precheck table. This resolves the prior multi-page hardware sprawl and removes the strongest mobile-card artifact.
+
+The operational adoption page is also denser and more report-like. The adoption timeline and operational activity sequence now share one page cleanly without the earlier wasted space.
+
+A final inefficiency remains in the Two-Year Notional sequence. Page 6 carries the timeline and most of the sequence table, but page 7 still contains only the final follow-on row with large unused whitespace. The remaining fix should slightly tighten the Two-Year Notional print density or reduce its intro footprint so the full service sequence fits on one page.
+
+## Final Pagination Review
+
+The final compacting pass improved the Two-Year Notional density but did not eliminate the final-row split: the last Year 2 automation follow-on row still falls onto a mostly blank page. At this point, further shrinking would undermine report readability. The appropriate print-native correction is to paginate the complete Two-Year Service Sequence deliberately as its own titled sheet instead of letting a table fragment at an arbitrary final row.
+
+## Final visual verification — compact hardware evidence pass
+
+The regenerated seven-page landscape preview places all hardware certification evidence on a single VCF 9.1 Hardware Evidence sheet. The section now uses one concise readiness matrix, a narrow certification-boundary notice, four aligned evidence metrics, and two compact evidence tables rather than responsive cards or repeated per-platform panels. Visual review confirmed the nearby Operational Adoption Timeline and the deliberate Two-Year Service Sequence sheets use consistent landscape report composition without a stranded final service row. The preview fixture contains limited vendor/model data, so the compact hardware table correctly presents the no-usable-host-data state without creating redundant pages.

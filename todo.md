@@ -171,3 +171,10 @@
 - [x] Redesign the executive-cover, summary, and early-detail layout so PDF pages no longer inherit a crowded web-layout appearance.
 - [x] Implement print-aware HTML/CSS renderer changes while preserving correct timeline, inventory, and export content.
 - [x] Add renderer regression checks, visually inspect the regenerated PDF, and complete the release gate before checkpointing.
+
+## Hardware Certification PDF Compaction
+
+- [x] Inspect the regenerated hardware-certification pages to identify responsive-layout and pagination waste.
+- [x] Replace multi-card hardware evidence presentation with a compact print-native landscape evidence table and concise certification context.
+- [x] Remove mobile-derived print styling that makes the PDF appear stretched or awkward on landscape paper.
+- [x] Add renderer assertions, regenerate the PDF, visually verify the hardware section, and complete the release gate before checkpointing.

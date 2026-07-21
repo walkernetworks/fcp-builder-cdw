@@ -352,7 +352,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Observed ESXi");
     expect(html).toContain("Upgrade Services");
     const planSummaryStart = html.indexOf('<div class="plan-summary">');
-    const observedInventoryStart = html.indexOf('<h2>Observed Versions and Hardware</h2>');
+    const observedInventoryStart = html.indexOf("Hardware certification evidence");
     const planSummary = html.slice(planSummaryStart, observedInventoryStart);
     expect(planSummaryStart).toBeGreaterThan(-1);
     expect(observedInventoryStart).toBeGreaterThan(planSummaryStart);
@@ -368,6 +368,11 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain(".executive-sheet{height:8.12in;min-height:8.12in");
     expect(html).toContain(".summary-plan{min-height:8.5in");
     expect(html).toContain("@page{size:letter landscape;margin:0}");
+    expect(html).toContain('<section class="hardware-evidence">');
+    expect(html).toContain('class="compact-table hardware-table"');
+    expect(html).toContain("Hardware certification evidence");
+    expect(html).toContain('class="two-year-sequence-sheet"');
+    expect(html).toContain("#two-year .two-year-sequence-sheet{page-break-before:always;break-before:page}");
     expect(html).toContain("page-break-after:always;break-after:page");
     expect(html).not.toMatch(/Gantt|Year [12] Consumption Plan|Workshop/i);
     expect(html).not.toMatch(/\[\[[^\]]+\]\]/);
