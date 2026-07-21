@@ -371,6 +371,13 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain('<section class="hardware-evidence">');
     expect(html).toContain('class="compact-table hardware-table"');
     expect(html).toContain("Hardware certification evidence");
+    expect(html).toContain('class="notional-year-sheet notional-year-one"');
+    expect(html).toContain('class="notional-year-sheet notional-year-two"');
+    expect(html).toContain("Months 1–12");
+    expect(html).toContain("Months 13–24");
+    expect(html).toContain("Year 2 Follow-On Services");
+    expect(html).toContain("#two-year .notional-year-sheet .timeline-grid{width:100%;min-width:0!important;grid-template-columns:1.45in repeat(12,minmax(0,1fr))!important}");
+    expect(html).toContain("#two-year .notional-year-two{page-break-before:always;break-before:page}");
     expect(html).toContain('class="two-year-sequence-sheet"');
     expect(html).toContain("#two-year .two-year-sequence-sheet{page-break-before:always;break-before:page}");
     expect(html).toContain("page-break-after:always;break-after:page");

@@ -178,3 +178,9 @@
 - [x] Replace multi-card hardware evidence presentation with a compact print-native landscape evidence table and concise certification context.
 - [x] Remove mobile-derived print styling that makes the PDF appear stretched or awkward on landscape paper.
 - [x] Add renderer assertions, regenerate the PDF, visually verify the hardware section, and complete the release gate before checkpointing.
+
+## Two-Year Notional PDF Width Correction
+
+- [x] Inspect the current Two-Year Notional PDF pages to confirm why Months 13–24 are clipped or absent.
+- [x] Redesign the print-only two-year timeline so both Years 1 and 2 fit legibly in landscape without responsive overflow.
+- [x] Add renderer coverage for visible Months 13–24, regenerate the PDF, visually verify the complete timeline, and complete the release gate before checkpointing.
