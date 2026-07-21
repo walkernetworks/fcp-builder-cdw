@@ -164,3 +164,10 @@
 - [x] Mirror the generated Year 1 operational services into Months 1–12 of the Two-Year Notional plan while preserving their sequencing and service labels.
 - [x] Place the researched, distinct follow-on services in Months 13–24 with their Year 1 enablers and entry conditions.
 - [x] Update workspace and export explanations, migration behavior, regression tests, and release validation for the continuous two-year roadmap.
+
+## PDF Opening-Page Design Redesign
+
+- [x] Inspect the supplied PDF and reference image to isolate the opening-page hierarchy, spacing, and pagination defects.
+- [x] Redesign the executive-cover, summary, and early-detail layout so PDF pages no longer inherit a crowded web-layout appearance.
+- [x] Implement print-aware HTML/CSS renderer changes while preserving correct timeline, inventory, and export content.
+- [x] Add renderer regression checks, visually inspect the regenerated PDF, and complete the release gate before checkpointing.

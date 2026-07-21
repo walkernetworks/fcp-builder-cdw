@@ -27,7 +27,7 @@ export async function renderPdf(html: string) {
       landscape: true,
       printBackground: true,
       preferCSSPageSize: true,
-      margin: { top: "0.35in", right: "0.35in", bottom: "0.35in", left: "0.35in" },
+      margin: { top: "0", right: "0", bottom: "0", left: "0" },
     });
   } finally {
     await page.close();
