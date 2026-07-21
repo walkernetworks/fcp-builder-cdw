@@ -157,3 +157,10 @@
 
 - [x] Run the production build for the researched Year 2 roadmap update and resolve any resulting issues.
 - [x] Record the Year 2 roadmap test, type-check, build, and visual-verification evidence in the release validation record before checkpointing.
+
+## Continuous Two-Year Notional Roadmap
+
+- [x] Restore the Two-Year Notional plan to a continuous 24-month calendar view rather than a standalone Year 2 roadmap.
+- [x] Mirror the generated Year 1 operational services into Months 1–12 of the Two-Year Notional plan while preserving their sequencing and service labels.
+- [x] Place the researched, distinct follow-on services in Months 13–24 with their Year 1 enablers and entry conditions.
+- [x] Update workspace and export explanations, migration behavior, regression tests, and release validation for the continuous two-year roadmap.

@@ -294,7 +294,18 @@ export const engagementDocumentV9Schema = z.object({
   twoYearPlan: timelineSchema,
   rationale: z.string(),
 });
-export type EngagementDocument = z.infer<typeof engagementDocumentV9Schema>;
+
+export const engagementDocumentV10Schema = z.object({
+  version: z.literal(10),
+  fields: minimalFieldsSchema,
+  inventorySources: z.array(inventorySourceSchema),
+  inventory: inventorySummarySchema,
+  readiness: readinessSchema,
+  adoptionTimeline: timelineSchema,
+  twoYearPlan: timelineSchema,
+  rationale: z.string(),
+});
+export type EngagementDocument = z.infer<typeof engagementDocumentV10Schema>;
 
 export function emptyInventory(): InventorySummary {
   return {
@@ -423,9 +434,9 @@ export function buildWeekColumns(startValue: string, endValue: string, fallbackC
   });
 }
 
-export function buildYearTwoColumns(startValue: string): string[] {
+export function buildTwoYearNotionalColumns(startValue: string): string[] {
   const start = parseMonth(startValue) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-  return Array.from({ length: 12 }, (_, index) => displayMonth(addUtcMonths(start, index)));
+  return Array.from({ length: 24 }, (_, index) => displayMonth(addUtcMonths(start, index)));
 }
 
 function timelineStartDate(fields: MinimalFields): string {
@@ -668,19 +679,41 @@ function followOnActivities(fields: MinimalFields, capability: Capability): Arra
   });
 }
 
-function buildTwoYearPlan(fields: MinimalFields): Timeline {
-  const startDate = followOnStartDate(fields);
-  const columns = buildYearTwoColumns(startDate);
+function mirrorYearOneLanes(adoptionTimeline: Timeline): TimelineLane[] {
+  const unitsPerYear = adoptionTimeline.cadence === "week" ? Math.min(52, adoptionTimeline.columns.length) : 12;
+  const normalizeStart = (value: number) => adoptionTimeline.cadence === "week"
+    ? Math.max(1, Math.floor(((value - 1) / unitsPerYear) * 12) + 1)
+    : value;
+  const normalizeEnd = (value: number) => adoptionTimeline.cadence === "week"
+    ? Math.max(2, Math.ceil(((value - 1) / unitsPerYear) * 12) + 1)
+    : value;
+
+  return adoptionTimeline.lanes.map(lane => ({
+    id: `lane-two-year-year-one-${lane.id}`,
+    name: `Year 1 · ${lane.name}`,
+    bars: lane.bars.flatMap(item => {
+      const startCol = Math.max(1, normalizeStart(item.startCol));
+      const endCol = Math.min(13, Math.max(startCol + 1, normalizeEnd(item.endCol)));
+      if (startCol >= 13 || endCol <= startCol) return [];
+      return [{ ...item, id: `bar-two-year-year-one-${item.id}`, startCol, endCol }];
+    }),
+  }));
+}
+
+function buildTwoYearPlan(fields: MinimalFields, adoptionTimeline: Timeline): Timeline {
+  const startDate = timelineStartDate(fields);
+  const columns = buildTwoYearNotionalColumns(startDate);
   const lanes: TimelineLane[] = [
+    ...mirrorYearOneLanes(adoptionTimeline),
     {
       id: "lane-two-year-foundation",
-      name: "Year 2 Service Operating Model",
-      bars: [bar("bar-two-year-operations-handoff", 1, 4, "blue", "Platform Service Operating Model", false, false, `Enabled by Year 1: ${upgradeServiceLabel(fields.adoptionDetails.upgradePath)} and VCF Platform Design. Proceed when: service ownership, support model, and lifecycle governance are confirmed.`, "Confirm service owners, operating cadence, lifecycle change governance, and the support handoff for the new platform.")],
+      name: "Year 2 · Service Operating Model",
+      bars: [bar("bar-two-year-operations-handoff", 13, 16, "blue", "Platform Service Operating Model", false, false, `Enabled by Year 1: ${upgradeServiceLabel(fields.adoptionDetails.upgradePath)} and VCF Platform Design. Proceed when: service ownership, support model, and lifecycle governance are confirmed.`, "Confirm service owners, operating cadence, lifecycle change governance, and the support handoff for the new platform.")],
     },
     {
       id: "lane-two-year-portfolio",
-      name: "Year 2 Service Portfolio",
-      bars: [bar("bar-two-year-portfolio-review", 2, 5, "slate", "Year 2 Service Portfolio Prioritization", false, false, "Enabled by Year 1: Platform Plan and Decision Log. Proceed when: customer priorities, business sponsors, and available operating capacity are reconfirmed.", "Prioritize only the capability services that have a confirmed outcome, accountable owner, and entry condition; this is not a blanket extension of Year 1 work.")],
+      name: "Year 2 · Service Portfolio",
+      bars: [bar("bar-two-year-portfolio-review", 14, 17, "slate", "Year 2 Service Portfolio Prioritization", false, false, "Enabled by Year 1: Platform Plan and Decision Log. Proceed when: customer priorities, business sponsors, and available operating capacity are reconfirmed.", "Prioritize only the capability services that have a confirmed outcome, accountable owner, and entry condition; this is not a blanket extension of Year 1 work.")],
     },
   ];
 
@@ -689,11 +722,11 @@ function buildTwoYearPlan(fields: MinimalFields): Timeline {
     const slot = Math.max(1, Math.floor(10 / activities.length));
     const duration = Math.max(1, Math.min(3, slot));
     const bars = activities.map((activity, index) => {
-      const start = Math.min(columns.length, 1 + (priorityIndex % 2) + index * slot);
+      const start = Math.min(columns.length, 13 + (priorityIndex % 2) + index * slot);
       const [safeStart, end] = boundedRange(start, duration, columns.length);
       return bar(`bar-follow-on-${priority}-${index + 1}`, safeStart, end, capabilityColor(priority), activity.label, false, false, activity.dependsOn, activity.outcome);
     });
-    lanes.push({ id: `lane-follow-on-${priority}`, name: `${capabilityTitle(priority)} Year 2 Services`, bars });
+    lanes.push({ id: `lane-follow-on-${priority}`, name: `Year 2 · ${capabilityTitle(priority)} Follow-On Services`, bars });
   });
 
   return { cadence: "month", startDate, columns, lanes };
@@ -701,7 +734,7 @@ function buildTwoYearPlan(fields: MinimalFields): Timeline {
 
 export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
   const adoptionTimeline = buildPrimaryTimeline(fields);
-  const twoYearPlan = buildTwoYearPlan(fields);
+  const twoYearPlan = buildTwoYearPlan(fields, adoptionTimeline);
   const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
   const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
   const term = fields.entitlementStart && fields.entitlementEnd ? `${fields.entitlementStart} through ${fields.entitlementEnd}` : "the confirmed entitlement term";
@@ -709,7 +742,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const cadence = fields.adoptionCadence === "week" ? "weekly execution windows" : "calendar-month execution windows";
   const detailCount = [fields.adoptionDetails.operations, fields.adoptionDetails.automation, fields.adoptionDetails.security, fields.adoptionDetails.resilience, fields.adoptionDetails.kubernetes, fields.adoptionDetails.privateAi].flat().length;
   const details = detailCount ? `${detailCount} confirmed detailed capability focus area${detailCount === 1 ? "" : "s"}` : "high-level outcome selections pending detailed discovery";
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Upgrade Services begins at the start of the target window while initial platform planning and design work run in parallel. The separate Year 2 Service Roadmap covers months 13–24 and maps researched, capability-specific operating, scale, optimization, and pilot services that are enabled by completed Year 1 work. Every Year 2 item names its intended outcome and entry condition; it is a planning recommendation, not a duplicate delivery schedule or a service commitment. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Upgrade Services begins at the start of the target window while initial platform planning and design work run in parallel. The Two-Year Notional plan is a continuous 24-month view: months 1–12 mirror the Year 1 operational services, while months 13–24 map researched, capability-specific operating, scale, optimization, and pilot services that are enabled by completed Year 1 work. Every follow-on item names its intended outcome and entry condition; it is a planning recommendation, not a service commitment. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -891,7 +924,7 @@ export function createDefaultDocument(): EngagementDocument {
   const inventory = emptyInventory();
   const readiness = assessReadiness(fields, inventory);
   const plans = buildAdoptionPlans(fields, inventory);
-  return { version: 9, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+  return { version: 10, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
 function stringValue(value: unknown): string {
@@ -914,14 +947,29 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
 }
 
 export function migrateDocument(value: unknown): EngagementDocument {
-  const current = engagementDocumentV9Schema.safeParse(value);
+  const current = engagementDocumentV10Schema.safeParse(value);
   if (current.success) return current.data;
+
+  const v9 = engagementDocumentV9Schema.safeParse(value);
+  if (v9.success) {
+    const plans = buildAdoptionPlans(v9.data.fields, v9.data.inventory);
+    return {
+      version: 10,
+      fields: v9.data.fields,
+      inventorySources: v9.data.inventorySources,
+      inventory: v9.data.inventory,
+      readiness: assessReadiness(v9.data.fields, v9.data.inventory, v9.data.inventorySources.flatMap(source => source.warnings)),
+      adoptionTimeline: plans.adoptionTimeline,
+      twoYearPlan: plans.twoYearPlan,
+      rationale: plans.rationale,
+    };
+  }
 
   const v8 = engagementDocumentV8Schema.safeParse(value);
   if (v8.success) {
     const plans = buildAdoptionPlans(v8.data.fields, v8.data.inventory);
     return {
-      version: 9,
+      version: 10,
       fields: v8.data.fields,
       inventorySources: v8.data.inventorySources,
       inventory: v8.data.inventory,
@@ -936,7 +984,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   if (v7.success) {
     const plans = buildAdoptionPlans(v7.data.fields, v7.data.inventory);
     return {
-      version: 9,
+      version: 10,
       fields: v7.data.fields,
       inventorySources: v7.data.inventorySources,
       inventory: v7.data.inventory,
@@ -952,7 +1000,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const fields = migrateFieldsToV7(v6.data.fields);
     const plans = buildAdoptionPlans(fields, v6.data.inventory);
     return {
-      version: 9,
+      version: 10,
       fields,
       inventorySources: v6.data.inventorySources,
       inventory: v6.data.inventory,
@@ -968,7 +1016,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const fields = migrateFieldsToV7(migrateFieldsToV6(v5.data.fields));
     const plans = buildAdoptionPlans(fields, v5.data.inventory);
     return {
-      version: 9,
+      version: 10,
       fields,
       inventorySources: v5.data.inventorySources,
       inventory: v5.data.inventory,
@@ -986,7 +1034,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const warnings = v4.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
-      version: 9,
+      version: 10,
       fields,
       inventorySources: v4.data.inventorySources,
       inventory,
@@ -1004,7 +1052,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const warnings = v3.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
-      version: 9,
+      version: 10,
       fields,
       inventorySources: v3.data.inventorySources,
       inventory,
@@ -1046,7 +1094,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const parsedSources = z.array(inventorySourceSchema).safeParse(legacy.inventorySources);
   const plans = buildAdoptionPlans(fields, inventory);
   return {
-    version: 9,
+    version: 10,
     fields,
     inventorySources: parsedSources.success ? parsedSources.data : [],
     inventory,
@@ -1057,7 +1105,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   };
 }
 
-export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV9Schema);
+export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV10Schema);
 
 export function refreshDerivedDocument(document: EngagementDocument): EngagementDocument {
   const warnings = document.inventorySources.flatMap(source => source.warnings);
