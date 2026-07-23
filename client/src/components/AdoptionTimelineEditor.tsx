@@ -200,7 +200,7 @@ export function AdoptionTimelineEditor({
           <Tooltip><TooltipTrigger asChild><label className="flex h-10 items-center gap-2 text-xs font-semibold text-slate-600"><Switch checked={selectedBar.milestone} onCheckedChange={milestone => changeBar(selectedLane.id, selectedBar.id, { milestone })} /><Flag className="size-4" /></label></TooltipTrigger><TooltipContent>Milestone Marker</TooltipContent></Tooltip>
           <Button variant="ghost" className="text-red-600" onClick={() => { changeLane(selectedLane.id, lane => ({ ...lane, bars: lane.bars.filter(bar => bar.id !== selectedBar.id) })); setSelected(null); }}><Trash2 className="size-4" /> Remove</Button>
           {selectedBar.outcome && <div className="md:col-span-full rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-950"><span className="font-semibold">Intended outcome:</span> {selectedBar.outcome}</div>}
-          {selectedBar.dependsOn && <div className="md:col-span-full rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950"><span className="font-semibold">Dependency or entry condition:</span> {selectedBar.dependsOn.replace(/^Enabled by Year 1:\s*/, "")}</div>}
+          {selectedBar.dependsOn && <div className="md:col-span-full rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950"><span className="font-semibold">Why this service is recommended and readiness to start:</span> {selectedBar.dependsOn}</div>}
         </div>
       )}
     </section>

@@ -68,7 +68,7 @@ describe("calendar-month adoption plans", () => {
         operations: ["capacity-cost"],
         automation: ["vm-self-service"],
         security: ["segmentation"],
-        resilience: ["recovery-exercises"],
+        resilience: ["recovery-architecture", "recovery-exercises"],
       },
     });
     Object.assign(document.inventory, { vmCount: 1800, poweredOnVms: 1600, hosts: 40 });
@@ -89,13 +89,15 @@ describe("calendar-month adoption plans", () => {
     const followOnActivities = twoYearActivities.filter(activity => activity.id.startsWith("bar-follow-on-"));
     expect(followOnActivities.every(activity => activity.startCol >= 13)).toBe(true);
     expect(followOnActivities.map(activity => activity.label)).toEqual(expect.arrayContaining([
-      "Capacity and Cost Optimization Service",
-      "Governed Catalog Launch Service",
-      "Segmentation Rollout Wave Service",
-      "Recovery Exercise Program",
+      "Capacity Forecasting and Cost Optimization",
+      "Launch a Governed VM Self-Service Catalog",
+      "Segment Workloads in Prioritized Rollout Waves",
+      "Onboard Priority Workloads to Recovery Services",
+      "Run Scheduled Recovery Exercises and Improve Runbooks",
     ]));
-    expect(followOnActivities.some(activity => activity.dependsOn?.startsWith("Enabled by Year 1:") && activity.dependsOn.includes("Proceed when:"))).toBe(true);
-    expect(followOnActivities.find(activity => activity.label === "Capacity and Cost Optimization Service")).toMatchObject({ outcome: "Run rightsizing, forecast, and cost-governance cycles against established capacity data." });
+    expect(followOnActivities.every(activity => activity.dependsOn?.startsWith("Recommended because") && activity.dependsOn.includes("Start after"))).toBe(true);
+    expect(followOnActivities.find(activity => activity.label === "Capacity Forecasting and Cost Optimization")).toMatchObject({ outcome: "Run rightsizing, forecasting, and cost-governance cycles against established capacity data." });
+    expect(plans.twoYearPlan.lanes.map(lane => lane.name).join(" ")).not.toMatch(/Year [12] ·/);
     expect(plans.rationale).toContain("$2,500,000");
     expect(labels).toContain("VCF 9.1 Upgrade Services Scope and Runbook");
     expect(labels.join(" ")).not.toMatch(/Consumption Plan|Workshop|Readiness|Assessment|Validation/i);
@@ -138,6 +140,64 @@ describe("calendar-month adoption plans", () => {
     expect(plans.twoYearPlan).toMatchObject({ cadence: "month", startDate: "2027-01-17" });
     expect(plans.rationale).toContain("weekly execution windows");
     expect(plans.rationale).toContain("3 confirmed detailed capability focus areas");
+  });
+
+  it("omits generic follow-on placeholders when detailed selections or required signals are incomplete", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, {
+      priorities: ["operations", "resilience", "private-ai"],
+      hardwareAvailability: "unknown",
+      adoptionDetails: {
+        ...document.fields.adoptionDetails,
+        operations: [],
+        resilience: ["recovery-exercises"],
+        privateAi: ["gpu-capacity", "ai-guardrails", "pilot-onboarding"],
+      },
+    });
+    Object.assign(document.inventory, { vmCount: 300, hosts: 6, poweredOnVms: 280 });
+
+    const plans = buildAdoptionPlans(document.fields, document.inventory);
+    const followOnLanes = plans.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-follow-on-"));
+    const labels = followOnLanes.flatMap(lane => lane.bars.map(activity => activity.label));
+
+    expect(followOnLanes).toEqual([]);
+    expect(labels).not.toContain("Run Scheduled Recovery Exercises and Improve Runbooks");
+    expect(labels).not.toContain("Onboard One Private AI Pilot With Success Measures");
+    expect(JSON.stringify(plans.twoYearPlan)).not.toMatch(/Service Prioritization Decision|Year [12] ·/);
+    expect(plans.rationale).toContain("no follow-on services are shown until a confirmed priority");
+  });
+
+  it("recommends compound services only after their detailed prerequisites and estate or hardware signals align", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, {
+      priorities: ["operations", "resilience", "kubernetes", "private-ai"],
+      hardwareAvailability: "new",
+      adoptionDetails: {
+        ...document.fields.adoptionDetails,
+        operations: ["observability", "custom-dashboards"],
+        resilience: ["recovery-architecture", "recovery-exercises"],
+        kubernetes: ["workload-domains", "platform-operations"],
+        privateAi: ["gpu-capacity", "ai-guardrails", "pilot-onboarding"],
+      },
+    });
+    Object.assign(document.inventory, { vmCount: 480, hosts: 12, poweredOnVms: 440 });
+
+    const plans = buildAdoptionPlans(document.fields, document.inventory);
+    const activities = plans.twoYearPlan.lanes.flatMap(lane => lane.bars).filter(activity => activity.id.startsWith("bar-follow-on-"));
+    const labels = activities.map(activity => activity.label);
+
+    expect(labels).toEqual(expect.arrayContaining([
+      "Operations Dashboards With Ownership and Review",
+      "Onboard Priority Workloads to Recovery Services",
+      "Run Scheduled Recovery Exercises and Improve Runbooks",
+      "Pilot Kubernetes Workload Zones and Namespaces",
+      "Operate the Kubernetes Fleet and Cluster Lifecycle",
+      "Validate GPU Capacity and Resilience for an AI Workload Domain",
+      "Define Private AI Data Boundaries and Governance",
+      "Onboard One Private AI Pilot With Success Measures",
+    ]));
+    expect(activities.every(activity => activity.dependsOn?.includes("the customer selected") && activity.dependsOn.includes("Start after"))).toBe(true);
+    expect(plans.rationale).toContain("follow-on service recommendations are shown");
   });
 
   it("normalizes custom labels to title-style Plan or Design language", () => {
@@ -187,8 +247,9 @@ describe("calendar-month adoption plans", () => {
       entitlementEnd: "2027-12-31",
       targetStart: "2027-01-17",
       priorities: ["operations"],
-      adoptionDetails: { ...document.fields.adoptionDetails, operations: ["custom-dashboards"] },
+      adoptionDetails: { ...document.fields.adoptionDetails, operations: ["observability", "custom-dashboards"] },
     });
+    Object.assign(document.inventory, { vmCount: 220, hosts: 4, poweredOnVms: 200 });
     const v9 = JSON.parse(JSON.stringify(document));
     v9.version = 9;
 
@@ -200,13 +261,14 @@ describe("calendar-month adoption plans", () => {
     expect(migrated.twoYearPlan.columns[0]).toBe("Jan 27");
     expect(migrated.twoYearPlan.columns[12]).toBe("Jan 28");
     expect(migrated.twoYearPlan.lanes.find(lane => lane.id === "lane-two-year-year-one-lane-operations")?.bars).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "Health, Logs, and Diagnostics Observability Plan", startCol: expect.any(Number) }),
       expect.objectContaining({ label: "Custom Operations Dashboards Plan", startCol: expect.any(Number) }),
     ]));
     expect(operations?.bars).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        label: "Operations Dashboard Product Service",
+        label: "Operations Dashboards With Ownership and Review",
         outcome: "Publish governed dashboards with support-team ownership, service measures, and a review cadence.",
-        dependsOn: "Enabled by Year 1: Custom Operations Dashboards Plan. Proceed when: dashboards, data sources, and an ownership model are accepted.",
+        dependsOn: "Recommended because the customer selected Custom Operations Dashboards and Health, Logs, and Diagnostics Observability under the Operations priority and the imported estate shows 220 VMs across 4 hosts. Start after Custom Operations Dashboards Plan, once the dashboards, data sources, and ownership model are accepted.",
       }),
     ]));
   });
@@ -331,7 +393,7 @@ describe("planning considerations, exports, and access boundary", () => {
 
   it("renders entitlement details and both synchronized adoption views with VCF 9.1 platform evidence", () => {
     const document = createDefaultDocument();
-    Object.assign(document.fields, { customerName: "Meridian Health", entitledCores: 128, entitlementAmount: 3_000_000, entitlementStart: "2027-01-01", entitlementEnd: "2028-12-31", priorities: ["operations"], adoptionDetails: { ...document.fields.adoptionDetails, operations: ["custom-dashboards"] } });
+    Object.assign(document.fields, { customerName: "Meridian Health", entitledCores: 128, entitlementAmount: 3_000_000, entitlementStart: "2027-01-01", entitlementEnd: "2028-12-31", priorities: ["operations"], adoptionDetails: { ...document.fields.adoptionDetails, operations: ["observability", "custom-dashboards"] } });
     Object.assign(document.inventory, { sourceCount: 2, hosts: 4, physicalCores: 128, vmCount: 220, poweredOnVms: 200 });
     const plans = buildAdoptionPlans(document.fields, document.inventory);
     Object.assign(document, { readiness: assessReadiness(document.fields, document.inventory), ...plans });
@@ -342,12 +404,12 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Two-Year Notional");
     expect(html).toContain("Execution view:");
     expect(html).toContain("Continuous planning view:");
-    expect(html).toContain("Months 1–12 mirror the operational Year 1 services");
+    expect(html).toContain("Months 1–12 mirror the operational service sequence");
     expect(html).toContain("Intended Outcome");
-    expect(html).toContain("Dependency or Entry Condition");
-    expect(html).toContain("Operations Dashboard Product Service");
+    expect(html).toContain("Why Recommended and Readiness to Start");
+    expect(html).toContain("Operations Dashboards With Ownership and Review");
     expect(html).toContain("Publish governed dashboards with support-team ownership, service measures, and a review cadence.");
-    expect(html).toContain("Enabled by Year 1:");
+    expect(html).toContain("Recommended because the customer selected");
     expect(html).toContain("VCF 9.1 Hardware Platform Precheck");
     expect(html).toContain("Observed ESXi");
     expect(html).toContain("Upgrade Services");
@@ -375,7 +437,8 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain('class="notional-year-sheet notional-year-two"');
     expect(html).toContain("Months 1–12");
     expect(html).toContain("Months 13–24");
-    expect(html).toContain("Year 2 Follow-On Services");
+    expect(html).toContain("Selected Follow-On Services");
+    expect(html).not.toContain("Year 2 Follow-On Services");
     expect(html).toContain("#two-year .notional-year-sheet .timeline-grid{width:100%;min-width:0!important;grid-template-columns:1.45in repeat(12,minmax(0,1fr))!important}");
     expect(html).toContain("#two-year .notional-year-two{page-break-before:always;break-before:page}");
     expect(html).toContain('class="two-year-sequence-sheet"');

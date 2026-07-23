@@ -184,3 +184,16 @@
 - [x] Inspect the current Two-Year Notional PDF pages to confirm why Months 13–24 are clipped or absent.
 - [x] Redesign the print-only two-year timeline so both Years 1 and 2 fit legibly in landscape without responsive overflow.
 - [x] Add renderer coverage for visible Months 13–24, regenerate the PDF, visually verify the complete timeline, and complete the release gate before checkpointing.
+
+## Selective Two-Year Service Recommendations
+
+- [ ] Audit current follow-on service labels, outcomes, and capability triggers to identify why recommendations are not self-explanatory or sufficiently selective.
+- [ ] Replace timeline-facing Year 1/Year 2 service naming with clear service names, outcome descriptions, and transparent recommendation rationale.
+- [ ] Gate follow-on services on the customer’s confirmed priorities, detailed capability selections, and relevant estate/readiness signals rather than generic defaults.
+- [ ] Update PDF/workspace explanations, add selection-regression coverage, visually validate the export, and complete the release gate before checkpointing.
+
+## Selective Follow-On Service Recommendations
+
+- [x] Replace generic follow-on placeholders with services that originate only from a confirmed priority, detailed capability selection, and relevant estate or hardware signal.
+- [x] Remove Year 1 and Year 2 prefixes from service and workstream names, and show each recommendation’s selection rationale and readiness condition in the workspace and export.
+- [x] Add regression coverage for omitted services when evidence is incomplete and included services when compound prerequisites align.

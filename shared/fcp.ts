@@ -606,76 +606,107 @@ function buildPrimaryTimeline(fields: MinimalFields): Timeline {
   return { cadence, startDate: timelineStartDate(fields), columns, lanes };
 }
 
+type FollowOnEligibility = {
+  requiresAllFocuses?: string[];
+  requiresAnyFocus?: string[];
+  requiresObservedInventory?: boolean;
+  requiresKnownHardwarePlan?: boolean;
+};
+
 type FollowOnServiceProfile = {
   label: string;
   outcome: string;
   entryCondition: string;
+  eligibility?: FollowOnEligibility;
 };
 
 const followOnServiceProfiles: Record<Capability, Record<string, FollowOnServiceProfile>> = {
   operations: {
-    lifecycle: { label: "Lifecycle Operating Service", outcome: "Establish a repeatable lifecycle calendar, change governance, certificate ownership, and exception review.", entryCondition: "an owner, change window, and supported upgrade path are confirmed" },
-    observability: { label: "Operations Intelligence Service", outcome: "Turn telemetry into service objectives, diagnostic patterns, and quarterly operational reviews.", entryCondition: "operational telemetry and an accountable operations team are available" },
-    "capacity-cost": { label: "Capacity and Cost Optimization Service", outcome: "Run rightsizing, forecast, and cost-governance cycles against established capacity data.", entryCondition: "capacity data, cost owners, and a review cadence are confirmed" },
-    "custom-dashboards": { label: "Operations Dashboard Product Service", outcome: "Publish governed dashboards with support-team ownership, service measures, and a review cadence.", entryCondition: "dashboards, data sources, and an ownership model are accepted" },
-    "identity-certificates": { label: "Platform Identity Operations Service", outcome: "Operate identity, credential, and certificate hygiene with ownership, evidence, and exception procedures.", entryCondition: "privileged-access owners and approved operating procedures are confirmed" },
-    "event-integration": { label: "Event-to-Incident Operations Service", outcome: "Integrate prioritized events into incident workflows with routing, escalation, and service-level reporting.", entryCondition: "the ITSM/event target, severity model, and resolver groups are agreed" },
+    lifecycle: { label: "VCF Lifecycle Management and Change Governance", outcome: "Set up a repeatable lifecycle calendar, change approvals, certificate ownership, and exception reviews for the VCF platform.", entryCondition: "the lifecycle owner, maintenance window, and supported upgrade path are confirmed" },
+    observability: { label: "Operations Telemetry and Service Health Reviews", outcome: "Use health, log, and diagnostic data to define service objectives, diagnostic patterns, and quarterly operational reviews.", entryCondition: "operational telemetry and an accountable operations team are available" },
+    "capacity-cost": { label: "Capacity Forecasting and Cost Optimization", outcome: "Run rightsizing, forecasting, and cost-governance cycles against established capacity data.", entryCondition: "capacity data, cost owners, and a review cadence are confirmed", eligibility: { requiresObservedInventory: true } },
+    "custom-dashboards": { label: "Operations Dashboards With Ownership and Review", outcome: "Publish governed dashboards with support-team ownership, service measures, and a review cadence.", entryCondition: "the dashboards, data sources, and ownership model are accepted", eligibility: { requiresAllFocuses: ["observability"], requiresObservedInventory: true } },
+    "identity-certificates": { label: "Identity, Credential, and Certificate Operations", outcome: "Operate identity, credential, and certificate hygiene with ownership, evidence, and exception procedures.", entryCondition: "privileged-access owners and approved operating procedures are confirmed" },
+    "event-integration": { label: "Event-to-Incident Integration and Escalation", outcome: "Route prioritized events into incident workflows with escalation paths and service-level reporting.", entryCondition: "the ITSM or event target, severity model, and resolver groups are agreed" },
   },
   automation: {
-    "vm-self-service": { label: "Governed Catalog Launch Service", outcome: "Launch a measured catalog for selected tenants with quotas, approvals, and support ownership.", entryCondition: "catalog blueprints, tenancy rules, and a support handoff are accepted" },
-    "infrastructure-as-code": { label: "Blueprint Factory and Policy-as-Code Service", outcome: "Establish reusable blueprints, source control, policy controls, and release practices.", entryCondition: "a source-control workflow, security review, and content owners are available" },
-    "day-2-automation": { label: "Day-2 Automation Operations Service", outcome: "Operationalize priority remediation and maintenance automations with runbook and rollback controls.", entryCondition: "priority workflows, approval paths, and rollback owners are confirmed" },
-    governance: { label: "Automation Governance Operating Service", outcome: "Run tenant, quota, policy, and exception governance as an ongoing service.", entryCondition: "the tenant model, quota policy, and exception authority are confirmed" },
-    "application-provisioning": { label: "Application Platform Onboarding Service", outcome: "Onboard a first application team using governed blueprints and a supported delivery path.", entryCondition: "a sponsored workload, application team, and service support model are confirmed" },
+    "vm-self-service": { label: "Launch a Governed VM Self-Service Catalog", outcome: "Launch a measured catalog for selected tenants with quotas, approvals, and support ownership.", entryCondition: "catalog blueprints, tenancy rules, and a support handoff are accepted" },
+    "infrastructure-as-code": { label: "Infrastructure-as-Code Blueprint Factory and Release Controls", outcome: "Establish reusable blueprints, source control, policy controls, and release practices.", entryCondition: "a source-control workflow, security review, and content owners are available" },
+    "day-2-automation": { label: "Operate Day-2 Remediation and Maintenance Automation", outcome: "Operationalize priority remediation and maintenance automations with runbook and rollback controls.", entryCondition: "priority workflows, approval paths, and rollback owners are confirmed" },
+    governance: { label: "Tenant, Quota, and Policy Governance", outcome: "Run tenant, quota, policy, and exception governance as an ongoing operating practice.", entryCondition: "the tenant model, quota policy, and exception authority are confirmed", eligibility: { requiresAnyFocus: ["vm-self-service", "infrastructure-as-code"] } },
+    "application-provisioning": { label: "Onboard the First Application Team to the Platform", outcome: "Onboard a first application team through governed blueprints and a supported delivery path.", entryCondition: "a sponsored workload, application team, and service support model are confirmed", eligibility: { requiresAnyFocus: ["vm-self-service", "infrastructure-as-code"] } },
   },
   security: {
-    segmentation: { label: "Segmentation Rollout Wave Service", outcome: "Apply and tune segmentation in prioritized workload waves with outcome review.", entryCondition: "wave scope, application dependencies, and change authority are confirmed" },
-    "identity-rbac": { label: "Access Governance Operations Service", outcome: "Operate access reviews, role recertification, and privilege exceptions.", entryCondition: "role owners, a review cadence, and evidence requirements are confirmed" },
-    "hardening-compliance": { label: "Continuous Compliance Evidence Service", outcome: "Establish drift and remediation workflow with usable compliance evidence for control owners.", entryCondition: "the control baseline, evidence consumer, and remediation authority are confirmed" },
+    segmentation: { label: "Segment Workloads in Prioritized Rollout Waves", outcome: "Apply and tune segmentation in prioritized workload waves with outcome review.", entryCondition: "wave scope, application dependencies, and change authority are confirmed", eligibility: { requiresObservedInventory: true } },
+    "identity-rbac": { label: "Run Access Reviews and Role Recertification", outcome: "Operate access reviews, role recertification, and privilege-exception handling.", entryCondition: "role owners, a review cadence, and evidence requirements are confirmed" },
+    "hardening-compliance": { label: "Continuous Compliance Evidence and Remediation", outcome: "Establish a drift and remediation workflow with usable compliance evidence for control owners.", entryCondition: "the control baseline, evidence consumer, and remediation authority are confirmed" },
   },
   resilience: {
-    "recovery-architecture": { label: "Recovery Service Readiness and Onboarding", outcome: "Implement the service operating model for a selected protected-workload set.", entryCondition: "recovery targets, a secondary-site or tooling decision, and RTO/RPO are confirmed" },
-    "recovery-exercises": { label: "Recovery Exercise Program", outcome: "Execute recurring, non-disruptive recovery exercises and improve runbooks.", entryCondition: "a tested runbook, owners, and an agreed exercise scope exist" },
-    "cyber-recovery": { label: "Cyber-Recovery Minimum Viable Service", outcome: "Pilot an isolated recovery capability with operational entry and exit criteria.", entryCondition: "business sponsors, a recovery-data policy, and an isolated-recovery design are confirmed" },
+    "recovery-architecture": { label: "Onboard Priority Workloads to Recovery Services", outcome: "Implement the recovery operating model for a selected protected-workload set.", entryCondition: "recovery targets, a secondary-site or tooling decision, and RTO/RPO are confirmed", eligibility: { requiresObservedInventory: true } },
+    "recovery-exercises": { label: "Run Scheduled Recovery Exercises and Improve Runbooks", outcome: "Execute recurring, non-disruptive recovery exercises and improve the associated runbooks.", entryCondition: "a tested runbook, owners, and an agreed exercise scope exist", eligibility: { requiresAllFocuses: ["recovery-architecture"], requiresObservedInventory: true } },
+    "cyber-recovery": { label: "Pilot an Isolated Cyber-Recovery Service", outcome: "Pilot an isolated recovery capability with operational entry and exit criteria.", entryCondition: "business sponsors, a recovery-data policy, and an isolated-recovery design are confirmed", eligibility: { requiresAllFocuses: ["recovery-architecture"], requiresObservedInventory: true } },
   },
   kubernetes: {
-    "workload-domains": { label: "VKS Workload-Zone and Namespace Pilot", outcome: "Onboard a governed Kubernetes pilot with namespaces, quotas, policy, and an initial workload.", entryCondition: "Supervisor/workload-zone design, network/security, and a sponsored workload are confirmed" },
-    "platform-operations": { label: "VKS Fleet Operations Service", outcome: "Establish cluster lifecycle, fleet visibility, policy, data protection, and support ownership.", entryCondition: "a supported cluster estate and Kubernetes operating model are accepted" },
-    "developer-experience": { label: "Developer Platform Golden-Path Pilot", outcome: "Provide a governed self-service path for a first development team, including deployment controls.", entryCondition: "an application team, GitOps/deployment workflow, and platform support model are confirmed" },
+    "workload-domains": { label: "Pilot Kubernetes Workload Zones and Namespaces", outcome: "Onboard a governed Kubernetes pilot with namespaces, quotas, policy, and an initial workload.", entryCondition: "the Supervisor or workload-zone design, network and security controls, and a sponsored workload are confirmed" },
+    "platform-operations": { label: "Operate the Kubernetes Fleet and Cluster Lifecycle", outcome: "Establish cluster lifecycle, fleet visibility, policy, data protection, and support ownership.", entryCondition: "a supported cluster estate and Kubernetes operating model are accepted", eligibility: { requiresAllFocuses: ["workload-domains"] } },
+    "developer-experience": { label: "Create a Developer Self-Service Golden Path", outcome: "Provide a governed self-service path for a first development team, including deployment controls.", entryCondition: "an application team, GitOps or deployment workflow, and platform support model are confirmed", eligibility: { requiresAllFocuses: ["workload-domains"] } },
   },
   "private-ai": {
-    "gpu-capacity": { label: "GPU Workload-Domain Readiness Service", outcome: "Validate capacity, performance, backup/restore, and disaster-recovery posture for an approved GPU workload domain.", entryCondition: "GPU hardware, workload profile, sizing evidence, and a capacity owner are confirmed" },
-    "ai-guardrails": { label: "Private AI Governance and Data-Boundary Service", outcome: "Define data access, model, security, audit, and operating guardrails for a candidate use case.", entryCondition: "a business use case, data classification, security owner, and governance authority are confirmed" },
-    "pilot-onboarding": { label: "Private AI Pilot Onboarding Service", outcome: "Onboard one approved pilot with success metrics, support ownership, and exit criteria.", entryCondition: "the use case, data boundary, GPU/platform readiness, and support model are approved" },
+    "gpu-capacity": { label: "Validate GPU Capacity and Resilience for an AI Workload Domain", outcome: "Validate capacity, performance, backup and restore, and disaster-recovery posture for an approved GPU workload domain.", entryCondition: "GPU hardware, workload profile, sizing evidence, and a capacity owner are confirmed", eligibility: { requiresKnownHardwarePlan: true } },
+    "ai-guardrails": { label: "Define Private AI Data Boundaries and Governance", outcome: "Define data access, model, security, audit, and operating guardrails for a candidate use case.", entryCondition: "a business use case, data classification, security owner, and governance authority are confirmed", eligibility: { requiresAllFocuses: ["gpu-capacity"], requiresKnownHardwarePlan: true } },
+    "pilot-onboarding": { label: "Onboard One Private AI Pilot With Success Measures", outcome: "Onboard one approved pilot with success metrics, support ownership, and exit criteria.", entryCondition: "the use case, data boundary, GPU and platform readiness, and support model are approved", eligibility: { requiresAllFocuses: ["gpu-capacity", "ai-guardrails"], requiresKnownHardwarePlan: true } },
   },
 };
 
-function followOnActivities(fields: MinimalFields, capability: Capability): Array<{ label: string; dependsOn: string; outcome: string }> {
+function focusTitle(capability: Capability, focus: string): string {
+  return focusLabels[capability][focus] || capabilityTitle(capability);
+}
+
+function humanList(values: string[]): string {
+  if (values.length <= 1) return values[0] || "the selected focus";
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
+}
+
+function estateRecommendationSignal(fields: MinimalFields, inventory: InventorySummary): string | null {
+  if (inventory.vmCount > 0 && inventory.hosts > 0) return `the imported estate shows ${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts`;
+  if (inventory.vmCount > 0) return `the imported estate shows ${inventory.vmCount.toLocaleString()} VMs`;
+  if (inventory.hosts > 0) return `the imported estate shows ${inventory.hosts.toLocaleString()} hosts`;
+  if (fields.hardwareAvailability === "new") return "a new hardware path is confirmed";
+  if (fields.hardwareAvailability === "existing") return "existing hardware is confirmed";
+  return null;
+}
+
+function followOnRecommendationReason(fields: MinimalFields, inventory: InventorySummary, capability: Capability, focus: string, profile: FollowOnServiceProfile): string | null {
   const focuses = selectedFocuses(fields, capability);
-  const yearOneActivities = activityLabelsForCapability(fields, capability);
-  if (!focuses.length) {
-    const prerequisite = yearOneActivities[0] || `${capabilityTitle(capability)} Design`;
-    return [{
-      label: `${capabilityTitle(capability)} Service Prioritization Decision`,
-      outcome: `Confirm whether a distinct ${capabilityTitle(capability).toLowerCase()} operating, scale, optimization, or pilot service is justified after the Year 1 foundation; no delivery scope is assumed.`,
-      dependsOn: `Enabled by Year 1: ${prerequisite}. Proceed when: the customer confirms a business outcome, accountable owner, and applicable operating prerequisites.`,
-    }];
-  }
-  return focuses.map((focus, index) => {
+  const eligibility = profile.eligibility;
+  const estateSignal = estateRecommendationSignal(fields, inventory);
+  const hasObservedInventory = inventory.vmCount > 0 || inventory.hosts > 0;
+  if (!estateSignal) return null;
+  if (eligibility?.requiresObservedInventory && !hasObservedInventory) return null;
+  if (eligibility?.requiresKnownHardwarePlan && fields.hardwareAvailability === "unknown") return null;
+  if (eligibility?.requiresAllFocuses?.some(required => !focuses.includes(required))) return null;
+  const supportingAnyFocus = eligibility?.requiresAnyFocus?.find(required => focuses.includes(required));
+  if (eligibility?.requiresAnyFocus?.length && !supportingAnyFocus) return null;
+
+  const contributingFocuses = [focus, ...(eligibility?.requiresAllFocuses || []), ...(supportingAnyFocus ? [supportingAnyFocus] : [])]
+    .filter((item, index, values) => values.indexOf(item) === index)
+    .map(item => focusTitle(capability, item));
+  return `the customer selected ${humanList(contributingFocuses)} under the ${capabilityTitle(capability)} priority and ${estateSignal}`;
+}
+
+function followOnActivities(fields: MinimalFields, inventory: InventorySummary, capability: Capability): Array<{ label: string; dependsOn: string; outcome: string }> {
+  return selectedFocuses(fields, capability).flatMap(focus => {
     const profile = followOnServiceProfiles[capability][focus];
-    const prerequisite = yearOneActivities[index] || `${capabilityTitle(capability)} Design`;
-    if (!profile) {
-      return {
-        label: `${capabilityTitle(capability)} Service Prioritization Decision`,
-        outcome: `Confirm the appropriate Year 2 ${capabilityTitle(capability).toLowerCase()} service outcome before any implementation scope is proposed.`,
-        dependsOn: `Enabled by Year 1: ${prerequisite}. Proceed when: the service owner and operational prerequisites are confirmed.`,
-      };
-    }
-    return {
+    if (!profile) return [];
+    const reason = followOnRecommendationReason(fields, inventory, capability, focus, profile);
+    if (!reason) return [];
+    const prerequisite = `${focusTitle(capability, focus)} Plan`;
+    return [{
       label: profile.label,
       outcome: profile.outcome,
-      dependsOn: `Enabled by Year 1: ${prerequisite}. Proceed when: ${profile.entryCondition}.`,
-    };
+      dependsOn: `Recommended because ${reason}. Start after ${prerequisite}, once ${profile.entryCondition}.`,
+    }];
   });
 }
 
@@ -690,7 +721,7 @@ function mirrorYearOneLanes(adoptionTimeline: Timeline): TimelineLane[] {
 
   return adoptionTimeline.lanes.map(lane => ({
     id: `lane-two-year-year-one-${lane.id}`,
-    name: `Year 1 · ${lane.name}`,
+    name: lane.name,
     bars: lane.bars.flatMap(item => {
       const startCol = Math.max(1, normalizeStart(item.startCol));
       const endCol = Math.min(13, Math.max(startCol + 1, normalizeEnd(item.endCol)));
@@ -700,25 +731,14 @@ function mirrorYearOneLanes(adoptionTimeline: Timeline): TimelineLane[] {
   }));
 }
 
-function buildTwoYearPlan(fields: MinimalFields, adoptionTimeline: Timeline): Timeline {
+function buildTwoYearPlan(fields: MinimalFields, inventory: InventorySummary, adoptionTimeline: Timeline): Timeline {
   const startDate = timelineStartDate(fields);
   const columns = buildTwoYearNotionalColumns(startDate);
-  const lanes: TimelineLane[] = [
-    ...mirrorYearOneLanes(adoptionTimeline),
-    {
-      id: "lane-two-year-foundation",
-      name: "Year 2 · Service Operating Model",
-      bars: [bar("bar-two-year-operations-handoff", 13, 16, "blue", "Platform Service Operating Model", false, false, `Enabled by Year 1: ${upgradeServiceLabel(fields.adoptionDetails.upgradePath)} and VCF Platform Design. Proceed when: service ownership, support model, and lifecycle governance are confirmed.`, "Confirm service owners, operating cadence, lifecycle change governance, and the support handoff for the new platform.")],
-    },
-    {
-      id: "lane-two-year-portfolio",
-      name: "Year 2 · Service Portfolio",
-      bars: [bar("bar-two-year-portfolio-review", 14, 17, "slate", "Year 2 Service Portfolio Prioritization", false, false, "Enabled by Year 1: Platform Plan and Decision Log. Proceed when: customer priorities, business sponsors, and available operating capacity are reconfirmed.", "Prioritize only the capability services that have a confirmed outcome, accountable owner, and entry condition; this is not a blanket extension of Year 1 work.")],
-    },
-  ];
+  const lanes: TimelineLane[] = [...mirrorYearOneLanes(adoptionTimeline)];
 
   fields.priorities.forEach((priority, priorityIndex) => {
-    const activities = followOnActivities(fields, priority);
+    const activities = followOnActivities(fields, inventory, priority);
+    if (!activities.length) return;
     const slot = Math.max(1, Math.floor(10 / activities.length));
     const duration = Math.max(1, Math.min(3, slot));
     const bars = activities.map((activity, index) => {
@@ -726,7 +746,7 @@ function buildTwoYearPlan(fields: MinimalFields, adoptionTimeline: Timeline): Ti
       const [safeStart, end] = boundedRange(start, duration, columns.length);
       return bar(`bar-follow-on-${priority}-${index + 1}`, safeStart, end, capabilityColor(priority), activity.label, false, false, activity.dependsOn, activity.outcome);
     });
-    lanes.push({ id: `lane-follow-on-${priority}`, name: `Year 2 · ${capabilityTitle(priority)} Follow-On Services`, bars });
+    lanes.push({ id: `lane-follow-on-${priority}`, name: `${capabilityTitle(priority)} Services`, bars });
   });
 
   return { cadence: "month", startDate, columns, lanes };
@@ -734,7 +754,7 @@ function buildTwoYearPlan(fields: MinimalFields, adoptionTimeline: Timeline): Ti
 
 export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
   const adoptionTimeline = buildPrimaryTimeline(fields);
-  const twoYearPlan = buildTwoYearPlan(fields, adoptionTimeline);
+  const twoYearPlan = buildTwoYearPlan(fields, inventory, adoptionTimeline);
   const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
   const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
   const term = fields.entitlementStart && fields.entitlementEnd ? `${fields.entitlementStart} through ${fields.entitlementEnd}` : "the confirmed entitlement term";
@@ -742,7 +762,11 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const cadence = fields.adoptionCadence === "week" ? "weekly execution windows" : "calendar-month execution windows";
   const detailCount = [fields.adoptionDetails.operations, fields.adoptionDetails.automation, fields.adoptionDetails.security, fields.adoptionDetails.resilience, fields.adoptionDetails.kubernetes, fields.adoptionDetails.privateAi].flat().length;
   const details = detailCount ? `${detailCount} confirmed detailed capability focus area${detailCount === 1 ? "" : "s"}` : "high-level outcome selections pending detailed discovery";
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Upgrade Services begins at the start of the target window while initial platform planning and design work run in parallel. The Two-Year Notional plan is a continuous 24-month view: months 1–12 mirror the Year 1 operational services, while months 13–24 map researched, capability-specific operating, scale, optimization, and pilot services that are enabled by completed Year 1 work. Every follow-on item names its intended outcome and entry condition; it is a planning recommendation, not a service commitment. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const followOnCount = twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-follow-on-")).flatMap(lane => lane.bars).length;
+  const followOnSummary = followOnCount
+    ? `${followOnCount} follow-on service recommendation${followOnCount === 1 ? " is" : "s are"} shown because the related priority, detailed intake selection, and estate or hardware signal are present`
+    : "no follow-on services are shown until a confirmed priority, detailed intake selection, and usable estate or hardware signal align";
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Upgrade Services begins at the start of the target window while initial platform planning and design work run in parallel. The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the operational sequence, while months 13–24 contain only selective services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and what must be ready before it starts; unmet prerequisites defer the service instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
