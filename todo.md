@@ -187,10 +187,10 @@
 
 ## Selective Two-Year Service Recommendations
 
-- [ ] Audit current follow-on service labels, outcomes, and capability triggers to identify why recommendations are not self-explanatory or sufficiently selective.
-- [ ] Replace timeline-facing Year 1/Year 2 service naming with clear service names, outcome descriptions, and transparent recommendation rationale.
-- [ ] Gate follow-on services on the customer’s confirmed priorities, detailed capability selections, and relevant estate/readiness signals rather than generic defaults.
-- [ ] Update PDF/workspace explanations, add selection-regression coverage, visually validate the export, and complete the release gate before checkpointing.
+- [x] Audit current follow-on service labels, outcomes, and capability triggers to identify why recommendations are not self-explanatory or sufficiently selective.
+- [x] Replace timeline-facing Year 1/Year 2 service naming with clear service names, outcome descriptions, and transparent recommendation rationale.
+- [x] Gate follow-on services on the customer’s confirmed priorities, detailed capability selections, and relevant estate/readiness signals rather than generic defaults.
+- [x] Update PDF/workspace explanations, add selection-regression coverage, visually validate the export, and complete the release gate before checkpointing.
 
 ## Selective Follow-On Service Recommendations
 
