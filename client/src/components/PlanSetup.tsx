@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { parseRvToolsFiles } from "@/lib/rvtools";
-import { assessReadiness, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
+import { applyScheduleFieldPatch, assessReadiness, refreshDerivedDocument, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
 import { AlertCircle, CheckCircle2, ExternalLink, FileSpreadsheet, HardDrive, Info, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -22,6 +22,14 @@ const capabilities: Array<{ value: Capability; label: string; description: strin
   { value: "private-ai", label: "Private AI", description: "AI-ready infrastructure after platform planning and design" },
 ];
 
+const scheduleInputFields = new Set<keyof EngagementDocument["fields"]>([
+  "entitlementStart",
+  "entitlementEnd",
+  "targetStart",
+  "targetComplete",
+  "adoptionCadence",
+]);
+
 type Props = { document: EngagementDocument; onChange: (document: EngagementDocument) => void };
 
 export function PlanSetup({ document, onChange }: Props) {
@@ -30,8 +38,10 @@ export function PlanSetup({ document, onChange }: Props) {
   const fields = document.fields;
 
   const updateFields = (patch: Partial<typeof fields>) => {
-    const nextFields = { ...fields, ...patch };
-    onChange({ ...document, fields: nextFields, readiness: assessReadiness(nextFields, document.inventory, document.inventorySources.flatMap(source => source.warnings)) });
+    const nextFields = applyScheduleFieldPatch(fields, patch);
+    const nextDocument = { ...document, fields: nextFields, readiness: assessReadiness(nextFields, document.inventory, document.inventorySources.flatMap(source => source.warnings)) };
+    const changesSchedule = Object.keys(patch).some(field => scheduleInputFields.has(field as keyof EngagementDocument["fields"]));
+    onChange(changesSchedule ? refreshDerivedDocument(nextDocument) : nextDocument);
   };
 
   const importFiles = async (files: File[]) => {
@@ -94,7 +104,7 @@ export function PlanSetup({ document, onChange }: Props) {
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
             <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Adoption window</p>
             <h2 className="mt-1 text-2xl font-semibold tracking-tight">Adoption Timeline and Outcomes</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Use weekly execution windows when a phase needs to begin in the middle of a month. The separate two-year outlook remains intentionally monthly and strategic.</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Use weekly execution windows when a phase needs to begin in the middle of a month. Changing the start date, completion date, linked entitlement dates, or cadence automatically reflows the generated operational plan. The separate two-year outlook remains intentionally monthly and strategic.</p>
             <div className="mt-6 grid gap-5 md:grid-cols-2">
               <Field label="Target start" required><Input type="date" value={fields.targetStart} onChange={event => updateFields({ targetStart: event.target.value })} /></Field>
               <Field label="Target completion" required><Input type="date" value={fields.targetComplete} onChange={event => updateFields({ targetComplete: event.target.value })} /></Field>

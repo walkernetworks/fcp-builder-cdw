@@ -422,12 +422,14 @@ export function buildMonthColumns(startValue: string, endValue: string, fallback
 
 export function buildWeekColumns(startValue: string, endValue: string, fallbackCount = 12, maximum = 104): string[] {
   const start = parseIsoDate(startValue) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-  const end = parseIsoDate(endValue);
-  const requested = end && end >= start ? Math.ceil((end.getTime() - start.getTime() + 86_400_000) / 604_800_000) : fallbackCount;
+  const parsedEnd = parseIsoDate(endValue);
+  const end = parsedEnd && parsedEnd >= start ? parsedEnd : null;
+  const requested = end ? Math.ceil((end.getTime() - start.getTime() + 86_400_000) / 604_800_000) : fallbackCount;
   const count = Math.max(2, Math.min(maximum, requested));
   return Array.from({ length: count }, (_, index) => {
     const weekStart = addUtcDays(start, index * 7);
-    const weekEnd = addUtcDays(weekStart, 6);
+    const candidateWeekEnd = addUtcDays(weekStart, 6);
+    const weekEnd = end && candidateWeekEnd > end ? end : candidateWeekEnd;
     const startLabel = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(weekStart);
     const endLabel = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "2-digit", timeZone: "UTC" }).format(weekEnd);
     return `${startLabel}–${endLabel}`;
@@ -447,6 +449,17 @@ function timelineStartDate(fields: MinimalFields): string {
 function timelineEndDate(fields: MinimalFields): string {
   const candidate = fields.targetComplete || fields.entitlementEnd;
   return parseIsoDate(candidate) ? candidate : "";
+}
+
+export function applyScheduleFieldPatch(fields: MinimalFields, patch: Partial<MinimalFields>): MinimalFields {
+  const targetStartTracksEntitlement = !fields.targetStart || fields.targetStart === fields.entitlementStart;
+  const targetCompleteTracksEntitlement = !fields.targetComplete || fields.targetComplete === fields.entitlementEnd;
+  return {
+    ...fields,
+    ...patch,
+    ...(patch.entitlementStart !== undefined && patch.targetStart === undefined && targetStartTracksEntitlement ? { targetStart: patch.entitlementStart } : {}),
+    ...(patch.entitlementEnd !== undefined && patch.targetComplete === undefined && targetCompleteTracksEntitlement ? { targetComplete: patch.entitlementEnd } : {}),
+  };
 }
 
 function followOnStartDate(fields: MinimalFields): string {
@@ -590,17 +603,27 @@ function buildPrimaryTimeline(fields: MinimalFields): Timeline {
     { id: "lane-platform-design", name: "Platform Design", bars: [bar("bar-platform-design", platformStart, platformEnd, "green", "VCF Platform Design") ] },
   ];
 
+  const capabilityStart = Math.max(2, Math.min(count, Math.ceil(count * 0.45)));
+  const priorityStagger = Math.max(0, Math.floor(count * 0.05));
   fields.priorities.forEach((priority, priorityIndex) => {
     const labels = activityLabelsForCapability(fields, priority);
-    const baseStart = Math.min(count - 1, Math.max(2, platformStart + (priorityIndex % 3)));
-    const duration = Math.max(labels.length, Math.min(count - baseStart + 1, Math.ceil(count * 0.28)));
-    const slot = Math.max(1, Math.ceil(duration / labels.length));
-    const bars = labels.map((label, index) => {
-      const start = Math.min(count, baseStart + index * slot);
-      const [safeStart, end] = boundedRange(start, slot, count);
-      return bar(`bar-${priority}-${index + 1}`, safeStart, end, capabilityColor(priority), label);
-    });
-    lanes.push({ id: `lane-${priority}`, name: `${capabilityTitle(priority)} Outcomes`, bars });
+    const baseStart = Math.min(count, capabilityStart + (priorityIndex % 3) * priorityStagger);
+    const availableWindows = Math.max(1, count - baseStart + 1);
+    const laneCount = Math.max(1, Math.ceil(labels.length / availableWindows));
+    const labelsPerLane = Math.ceil(labels.length / laneCount);
+
+    for (let laneIndex = 0; laneIndex < laneCount; laneIndex += 1) {
+      const laneLabels = labels.slice(laneIndex * labelsPerLane, (laneIndex + 1) * labelsPerLane);
+      const slot = Math.max(1, Math.floor(availableWindows / laneLabels.length));
+      const bars = laneLabels.map((label, index) => {
+        const start = baseStart + index * slot;
+        const end = index === laneLabels.length - 1 ? count + 1 : Math.min(count + 1, start + slot);
+        return bar(`bar-${priority}-${laneIndex * labelsPerLane + index + 1}`, start, end, capabilityColor(priority), label);
+      });
+      const suffix = laneCount > 1 ? ` ${laneIndex + 1}` : "";
+      const laneId = laneIndex === 0 ? `lane-${priority}` : `lane-${priority}-${laneIndex + 1}`;
+      lanes.push({ id: laneId, name: `${capabilityTitle(priority)} Outcomes${suffix}`, bars });
+    }
   });
 
   return { cadence, startDate: timelineStartDate(fields), columns, lanes };

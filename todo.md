@@ -197,3 +197,10 @@
 - [x] Replace generic follow-on placeholders with services that originate only from a confirmed priority, detailed capability selection, and relevant estate or hardware signal.
 - [x] Remove Year 1 and Year 2 prefixes from service and workstream names, and show each recommendation’s selection rationale and readiness condition in the workspace and export.
 - [x] Add regression coverage for omitted services when evidence is incomplete and included services when compound prerequisites align.
+
+## Adoption Duration and Weekly Sequencing Fix
+
+- [x] Reproduce why changing the entitlement end date does not proportionally extend generated adoption services.
+- [x] Correct monthly duration allocation so an extended plan window distributes service timing across the available calendar span.
+- [x] Correct weekly scheduling so generated services avoid same-workstream overlaps and remain within the selected execution window.
+- [x] Add regression coverage, validate the repaired views, and checkpoint the fix.

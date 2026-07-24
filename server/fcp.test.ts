@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
-import { applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, createDefaultDocument, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
+import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, createDefaultDocument, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import type { TrpcContext } from "./_core/context";
 import { renderFcpHtml } from "./fcpRenderer";
@@ -110,7 +110,7 @@ describe("calendar-month adoption plans", () => {
 
   it("creates exact weekly operational windows and detailed customer-confirmed capability activities", () => {
     expect(buildWeekColumns("2027-01-17", "2027-02-15")).toEqual([
-      "Jan 17–Jan 23, 27", "Jan 24–Jan 30, 27", "Jan 31–Feb 6, 27", "Feb 7–Feb 13, 27", "Feb 14–Feb 20, 27",
+      "Jan 17–Jan 23, 27", "Jan 24–Jan 30, 27", "Jan 31–Feb 6, 27", "Feb 7–Feb 13, 27", "Feb 14–Feb 15, 27",
     ]);
     const document = createDefaultDocument();
     Object.assign(document.fields, {
@@ -140,6 +140,43 @@ describe("calendar-month adoption plans", () => {
     expect(plans.twoYearPlan).toMatchObject({ cadence: "month", startDate: "2027-01-17" });
     expect(plans.rationale).toContain("weekly execution windows");
     expect(plans.rationale).toContain("3 confirmed detailed capability focus areas");
+  });
+
+  it("reflows linked entitlement dates and splits dense weekly services into non-overlapping workstreams", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, {
+      entitlementStart: "2027-01-01",
+      entitlementEnd: "2027-06-30",
+      targetStart: "2027-01-01",
+      targetComplete: "2027-06-30",
+      adoptionCadence: "month",
+      priorities: ["automation"],
+      adoptionDetails: { ...document.fields.adoptionDetails, automation: ["vm-self-service", "infrastructure-as-code", "approval-guardrails"] },
+    });
+
+    const original = buildAdoptionPlans(document.fields, document.inventory).adoptionTimeline;
+    const extendedFields = applyScheduleFieldPatch(document.fields, { entitlementEnd: "2027-07-31" });
+    const extended = buildAdoptionPlans(extendedFields, document.inventory).adoptionTimeline;
+    const originalAutomation = original.lanes.find(lane => lane.id === "lane-automation")!;
+    const extendedAutomation = extended.lanes.find(lane => lane.id === "lane-automation")!;
+    expect(extendedFields.targetComplete).toBe("2027-07-31");
+    expect(original.columns).toHaveLength(6);
+    expect(extended.columns).toHaveLength(7);
+    expect(extendedAutomation.bars[0].startCol).toBeGreaterThan(originalAutomation.bars[0].startCol);
+    expect(extendedAutomation.bars.at(-1)?.endCol).toBe(extended.columns.length + 1);
+    expect(validateTimeline(extended)).toEqual([]);
+
+    const weeklyFields = {
+      ...document.fields,
+      targetStart: "2027-01-17",
+      targetComplete: "2027-01-24",
+      adoptionCadence: "week" as const,
+      adoptionDetails: { ...document.fields.adoptionDetails, automation: ["vm-self-service", "infrastructure-as-code", "day-2-automation", "governance", "application-provisioning"] },
+    };
+    const weekly = buildAdoptionPlans(weeklyFields, document.inventory).adoptionTimeline;
+    expect(weekly.columns).toEqual(["Jan 17–Jan 23, 27", "Jan 24–Jan 24, 27"]);
+    expect(weekly.lanes.filter(lane => lane.id.startsWith("lane-automation")).length).toBeGreaterThan(1);
+    expect(validateTimeline(weekly)).toEqual([]);
   });
 
   it("omits generic follow-on placeholders when detailed selections or required signals are incomplete", () => {
