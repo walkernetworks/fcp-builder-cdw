@@ -240,3 +240,10 @@
 - [x] Trace why observed RVTools host platforms with usable identity and ESXi evidence can still receive an indeterminate VCF 9.1 message.
 - [x] Define a non-certifying but actionable planning path for every observed platform, including platforms requiring official compatibility confirmation.
 - [x] Surface host-specific planning actions in readiness and generated plan outputs, add regressions, validate the behavior, and checkpoint the change.
+
+## Compatibility-First Delivery Workflow and Actionable Follow-On Guidance
+
+- [x] Remove managed per-host timeline lanes and trace the evidence available for a consolidated compatibility-first delivery work package.
+- [x] Implement a consolidated compatibility assessment outcome that helps delivery teams prioritize eligible, upgrade-required, and evidence-incomplete host cohorts without claiming certification.
+- [x] Replace the generic Two-Year Notional empty state with explicit missing selections, estate signals, and recommended next actions for targeted follow-on services.
+- [x] Add regression coverage, validate the revised readiness and planning views, and checkpoint the change.

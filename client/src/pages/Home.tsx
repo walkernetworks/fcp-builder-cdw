@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { engagementExists, reconcileSelectedEngagementId, shouldQuerySelectedEngagement } from "@/lib/engagementSelection";
 import { trpc } from "@/lib/trpc";
-import { createDefaultDocument, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "@shared/fcp";
+import { createDefaultDocument, getFollowOnReadinessGuidance, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "@shared/fcp";
 import { ArrowRight, CalendarRange, Copy, Download, FileSpreadsheet, Loader2, MoreHorizontal, Plus, RefreshCw, Save, ShieldCheck, Trash2, Workflow } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -119,6 +119,10 @@ export default function Home() {
     create.mutate({ title: requestedTitle });
   };
   const canCreateEngagement = newEngagementTitle.trim().length > 0 && newEngagementTitle.trim().length <= 240;
+  const followOnGuidance = useMemo(
+    () => getFollowOnReadinessGuidance(fcpDocument.fields, fcpDocument.inventory),
+    [fcpDocument.fields, fcpDocument.inventory],
+  );
   const mutateDocument = (next: EngagementDocument) => { setFcpDocument(next); setDirty(true); };
   const buildPlan = () => { mutateDocument(refreshDerivedDocument(fcpDocument)); toast.success("Adoption plans rebuilt from the confirmed inputs"); };
   const saveNow = () => { if (!selectedId) return; setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument }); };
@@ -218,7 +222,7 @@ export default function Home() {
                 <Tabs defaultValue="adoption" className="space-y-4">
                   <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl bg-white p-1 shadow-sm"><TabsTrigger value="adoption" className="gap-2 rounded-lg px-4 py-2"><CalendarRange className="size-4" /> Operational Adoption Timeline</TabsTrigger><TabsTrigger value="two-year" className="gap-2 rounded-lg px-4 py-2"><Workflow className="size-4" /><span className="sm:hidden">2-Year Notional</span><span className="hidden sm:inline">Two-Year Notional</span></TabsTrigger></TabsList>
                   <TabsContent value="adoption"><AdoptionTimelineEditor timeline={fcpDocument.adoptionTimeline} onChange={adoptionTimeline => mutateDocument({ ...fcpDocument, adoptionTimeline })} title="Operational Adoption Timeline" description={fcpDocument.adoptionTimeline.cadence === "week" ? "Weekly execution windows begin on the selected target-start date, allowing mid-month starts. Drag activities or their edges to refine the schedule." : "Calendar-month execution windows follow the target dates. Drag activities or their edges to refine the schedule."} /></TabsContent>
-                  <TabsContent value="two-year"><AdoptionTimelineEditor timeline={fcpDocument.twoYearPlan} onChange={twoYearPlan => mutateDocument({ ...fcpDocument, twoYearPlan })} title="Two-Year Notional (Months 1–24)" description="This continuous two-year notional mirrors the operational service sequence in Months 1–12. Months 13–24 show only services supported by the customer’s confirmed priority, detailed capability selection, and relevant estate or hardware signal. Select a service to see why it was recommended, its intended outcome, and what must be ready before it starts. Every item remains editable and is a planning recommendation, not a service commitment." /></TabsContent>
+                  <TabsContent value="two-year" className="space-y-4">{followOnGuidance.blocked && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-amber-800">Follow-On Readiness</p><h3 className="mt-1 text-base font-semibold text-slate-950">{followOnGuidance.title}</h3><p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">{followOnGuidance.detail}</p><div className="mt-3 border-t border-amber-200 pt-3"><p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Next actions</p><ul className="mt-2 space-y-1.5 text-sm leading-5 text-slate-700">{followOnGuidance.actions.map(action => <li key={action} className="flex gap-2"><span className="text-amber-700">•</span><span>{action}</span></li>)}</ul></div></section>}<AdoptionTimelineEditor timeline={fcpDocument.twoYearPlan} onChange={twoYearPlan => mutateDocument({ ...fcpDocument, twoYearPlan })} title="Two-Year Notional (Months 1–24)" description="This continuous two-year notional mirrors the operational service sequence in Months 1–12. Months 13–24 show only services backed by confirmed priority, detailed-focus, and estate evidence. When a service is deferred, the readiness panel lists the exact remaining inputs and next actions. Every item remains editable and is a planning recommendation, not a service commitment." /></TabsContent>
                 </Tabs>
               </TabsContent>
 

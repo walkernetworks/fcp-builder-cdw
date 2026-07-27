@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
-import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, createDefaultDocument, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
+import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, createDefaultDocument, getFollowOnReadinessGuidance, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import type { TrpcContext } from "./_core/context";
 import { renderFcpHtml } from "./fcpRenderer";
@@ -56,7 +56,7 @@ describe("calendar-month adoption plans", () => {
     expect(twoYearNotional[23]).toBe("Dec 28");
   });
 
-  it("starts Upgrade Services while opening platform planning and design in parallel", () => {
+  it("starts the compatibility assessment before Upgrade Services while platform design opens in parallel", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementAmount: 2_500_000,
@@ -100,8 +100,9 @@ describe("calendar-month adoption plans", () => {
     expect(plans.twoYearPlan.lanes.map(lane => lane.name).join(" ")).not.toMatch(/Year [12] ·/);
     expect(plans.rationale).toContain("$2,500,000");
     expect(labels).toContain("VCF 9.1 Upgrade Services Scope and Runbook");
-    expect(labels.join(" ")).not.toMatch(/Consumption Plan|Workshop|Readiness|Assessment|Validation/i);
-    expect(upgrade.bars[0].startCol).toBe(1);
+    expect(labels.join(" ")).not.toMatch(/Consumption Plan|Workshop|Readiness|Validation/i);
+    expect(labels).toContain("VCF 9.1 Compatibility Evidence Intake");
+    expect(upgrade.bars[0].startCol).toBe(platformPlan.bars[0].endCol);
     expect(platformPlan.bars[0].startCol).toBe(1);
     expect(platformDesign.bars[0].startCol).toBeLessThan(upgrade.bars[0].endCol);
     expect(validateTimeline(plans.adoptionTimeline)).toEqual([]);
@@ -201,7 +202,8 @@ describe("calendar-month adoption plans", () => {
     expect(labels).not.toContain("Run Scheduled Recovery Exercises and Improve Runbooks");
     expect(labels).not.toContain("Onboard One Private AI Pilot With Success Measures");
     expect(JSON.stringify(plans.twoYearPlan)).not.toMatch(/Service Prioritization Decision|Year [12] ·/);
-    expect(plans.rationale).toContain("no follow-on services are shown until a confirmed priority");
+    expect(plans.rationale).toContain("Follow-on services are waiting on the inputs listed below.");
+    expect(plans.rationale).toContain("Confirm Hardware availability as Existing or New in Plan Setup.");
   });
 
   it("recommends compound services only after their detailed prerequisites and estate or hardware signals align", () => {
@@ -273,7 +275,8 @@ describe("calendar-month adoption plans", () => {
     expect(migrated.twoYearPlan).toMatchObject({ startDate: "2027-01-01", cadence: "month" });
     expect(migrated.twoYearPlan.columns).toHaveLength(24);
     expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Upgrade Services");
-    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).not.toMatch(/Consumption Plan|Workshop|Readiness|Assessment|Validation/i);
+    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).not.toMatch(/Consumption Plan|Workshop|Readiness|Validation/i);
+    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Compatibility Evidence Intake");
     expect(migrated.readiness.hardwarePlatforms).toEqual([]);
   });
 
@@ -417,7 +420,7 @@ describe("planning considerations, exports, and access boundary", () => {
     ]);
   });
 
-  it("creates a concrete host-platform planning lane for every observed RVTools platform without treating it as certification", () => {
+  it("consolidates observed RVTools host platforms into one compatibility decision log without per-host timeline lanes", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementStart: "2027-01-01",
@@ -435,27 +438,23 @@ describe("planning considerations, exports, and access boundary", () => {
     });
 
     const plans = buildAdoptionPlans(document.fields, document.inventory);
-    const platformLanes = plans.adoptionTimeline.lanes.filter(lane => lane.id.startsWith("lane-host-platform-"));
-    const mirroredPlatformLanes = plans.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"));
+    const assessment = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-platform-plan")?.bars[0];
+    const mirroredAssessment = plans.twoYearPlan.lanes.find(lane => lane.id === "lane-two-year-year-one-lane-platform-plan")?.bars[0];
 
-    expect(platformLanes).toHaveLength(2);
-    expect(mirroredPlatformLanes).toHaveLength(2);
-    expect(platformLanes.map(lane => lane.name)).toEqual(expect.arrayContaining([
-      "Host Platform · HPE ProLiant DL380 Gen10",
-      "Host Platform · Unknown vendor Unknown model",
-    ]));
-    expect(platformLanes.flatMap(lane => lane.bars).map(activity => activity.label)).toEqual(expect.arrayContaining([
-      "Compatibility Confirmation",
-      "Platform Evidence Collection",
-    ]));
-    expect(platformLanes.flatMap(lane => lane.bars).every(activity => activity.outcome?.includes("observed host") && activity.dependsOn?.startsWith("Observed evidence:"))).toBe(true);
-    expect(plans.rationale).toContain("2 observed host-platform planning lanes are included");
-    expect(plans.rationale).toContain("not VCF certification claims");
+    expect(assessment).toMatchObject({
+      label: "VCF 9.1 Compatibility Assessment and Decision Log",
+      outcome: expect.stringContaining("one delivery-owned compatibility matrix"),
+      dependsOn: expect.stringContaining("6 observed hosts across 2 platform cohorts"),
+    });
+    expect(mirroredAssessment?.label).toBe("VCF 9.1 Compatibility Assessment and Decision Log");
+    expect(plans.adoptionTimeline.lanes.some(lane => lane.id.startsWith("lane-host-platform-"))).toBe(false);
+    expect(plans.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"))).toBe(false);
+    expect(plans.rationale).toContain("one cohort-based delivery decision log");
     expect(validateTimeline(plans.adoptionTimeline)).toEqual([]);
     expect(validateTimeline(plans.twoYearPlan)).toEqual([]);
   });
 
-  it("refreshes a current engagement with missing managed host-platform lanes when it is reopened", () => {
+  it("refreshes a current engagement to remove legacy host lanes and retain one consolidated compatibility assessment", () => {
     const document = createDefaultDocument();
     Object.assign(document.inventory, {
       hosts: 4,
@@ -463,11 +462,31 @@ describe("planning considerations, exports, and access boundary", () => {
       hostModels: [{ vendor: "HPE", model: "ProLiant DL380 Gen10", cpuModel: "Intel Xeon", hosts: 4, physicalCores: 256, esxiVersions: [{ version: "VMware ESXi 8.0.3 build-24784735", hosts: 4 }], esxiCorrelation: "per-platform" }],
     });
     const reopened = migrateDocument(JSON.parse(JSON.stringify(document)));
-    expect(reopened.adoptionTimeline.lanes.find(lane => lane.id.startsWith("lane-host-platform-"))?.bars[0]).toMatchObject({
-      label: "Compatibility Confirmation",
-      outcome: expect.stringContaining("4 observed hosts"),
+    expect(reopened.adoptionTimeline.lanes.find(lane => lane.id === "lane-platform-plan")?.bars[0]).toMatchObject({
+      label: "VCF 9.1 Compatibility Assessment and Decision Log",
+      outcome: expect.stringContaining("one delivery-owned compatibility matrix"),
     });
-    expect(reopened.twoYearPlan.lanes.find(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"))).toBeDefined();
+    expect(reopened.adoptionTimeline.lanes.some(lane => lane.id.startsWith("lane-host-platform-"))).toBe(false);
+    expect(reopened.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"))).toBe(false);
+  });
+
+  it("explains the exact missing inputs when selected follow-on services are intentionally deferred", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, {
+      priorities: ["operations"],
+      adoptionDetails: { ...document.fields.adoptionDetails, operations: ["capacity-cost"] },
+      hardwareAvailability: "unknown",
+    });
+    const guidance = getFollowOnReadinessGuidance(document.fields, document.inventory);
+
+    expect(guidance).toMatchObject({
+      blocked: true,
+      title: "Follow-on services are waiting on the inputs listed below.",
+    });
+    expect(guidance.actions).toEqual(expect.arrayContaining([
+      "Upload RVTools inventory or confirm Hardware availability as Existing or New in Plan Setup.",
+      "Upload RVTools inventory with usable host or VM evidence.",
+    ]));
   });
 
   it("provides reusable industry questions that can be applied and cleared without activating scope or generated activities", () => {

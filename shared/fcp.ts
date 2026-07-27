@@ -587,72 +587,62 @@ function activityLabelsForCapability(fields: MinimalFields, capability: Capabili
   return focuses.map(focus => `${focusLabels[capability][focus] || capabilityTitle(capability)} Plan`);
 }
 
-const platformPlanningLanePrefix = "lane-host-platform-";
+const legacyHostPlatformLanePrefix = "lane-host-platform-";
 
-function hostPlatformActionLabel(platform: HardwarePlatformAssessment): string {
-  if (platform.status === "upgrade-required") return "Replacement or Exception Decision";
-  if (platform.status === "unavailable") return "Platform Evidence Collection";
-  return "Compatibility Confirmation";
-}
+type CompatibilityAssessmentActivity = Pick<TimelineBar, "label" | "color" | "dependsOn" | "outcome">;
 
-function hostPlatformActionOutcome(platform: HardwarePlatformAssessment): string {
-  const identity = `${platform.vendor} ${platform.model}`.trim() || "observed host platform";
-  if (platform.status === "upgrade-required") {
-    return `${platform.hosts} observed host${platform.hosts === 1 ? "" : "s"} on ${identity}: determine the replacement, repurpose, or formal exception path before Upgrade Services begins.`;
-  }
-  if (platform.status === "unavailable") {
-    return `${platform.hosts} observed host${platform.hosts === 1 ? "" : "s"}: collect the platform identity and configuration evidence required to select a VCF 9.1 path.`;
-  }
-  return `${platform.hosts} observed host${platform.hosts === 1 ? "" : "s"} on ${identity}: confirm the exact configuration and implementation path before Upgrade Services begins.`;
-}
+function buildCompatibilityAssessmentActivity(inventory: InventorySummary): CompatibilityAssessmentActivity {
+  const platforms = assessHardwarePlatforms(inventory);
+  const observedHosts = platforms.reduce((total, platform) => total + platform.hosts, 0);
+  const candidates = platforms.filter(platform => platform.status === "candidate").reduce((total, platform) => total + platform.hosts, 0);
+  const upgradeRequired = platforms.filter(platform => platform.status === "upgrade-required").reduce((total, platform) => total + platform.hosts, 0);
+  const reviewRequired = platforms.filter(platform => platform.status === "review-required").reduce((total, platform) => total + platform.hosts, 0);
+  const evidenceMissing = platforms.filter(platform => platform.status === "unavailable").reduce((total, platform) => total + platform.hosts, 0);
+  const cohorts = [
+    candidates ? `${candidates} candidate host${candidates === 1 ? "" : "s"}` : "",
+    upgradeRequired ? `${upgradeRequired} host${upgradeRequired === 1 ? "" : "s"} requiring replacement or exception review` : "",
+    reviewRequired ? `${reviewRequired} host${reviewRequired === 1 ? "" : "s"} requiring configuration review` : "",
+    evidenceMissing ? `${evidenceMissing} host${evidenceMissing === 1 ? "" : "s"} missing platform evidence` : "",
+  ].filter(Boolean);
 
-function hostPlatformActionColor(platform: HardwarePlatformAssessment): TimelineColor {
-  if (platform.status === "upgrade-required") return "red";
-  if (platform.status === "unavailable" || platform.status === "review-required") return "amber";
-  return "teal";
-}
-
-function buildHostPlatformPlanningLanes(inventory: InventorySummary, columnCount: number, planStart: number, planEnd: number): TimelineLane[] {
-  const standardDuration = Math.max(1, planEnd - planStart);
-  return assessHardwarePlatforms(inventory).map((platform, index) => {
-    const start = Math.min(columnCount, planStart + Math.min(index % 3, Math.max(0, columnCount - planStart)));
-    const duration = Math.min(standardDuration, Math.max(1, columnCount - start + 1));
-    const end = Math.min(columnCount + 1, start + duration);
-    const observedEsxi = platform.esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ") || "No per-platform ESXi version evidence";
-    const identity = `${platform.vendor} ${platform.model}`.trim() || "Observed host platform";
+  if (!platforms.length) {
     return {
-      id: `${platformPlanningLanePrefix}${platform.id}`,
-      name: `Host Platform · ${identity}`,
-      bars: [bar(
-        `bar-host-platform-${platform.id}`,
-        start,
-        Math.max(start + 1, end),
-        hostPlatformActionColor(platform),
-        hostPlatformActionLabel(platform),
-        false,
-        false,
-        `Observed evidence: ${platform.hosts} host${platform.hosts === 1 ? "" : "s"}; ${observedEsxi}. ${platform.nextAction}`,
-        hostPlatformActionOutcome(platform),
-      )],
+      label: "VCF 9.1 Compatibility Evidence Intake",
+      color: "amber",
+      dependsOn: "Upload RVTools vHost data with server make, model, CPU, adapters, storage-controller, and ESXi evidence before compatibility assessment begins.",
+      outcome: "Establish the host inventory and configuration evidence needed to build the delivery compatibility matrix.",
     };
-  });
+  }
+
+  const cohortSummary = humanList(cohorts);
+  return {
+    label: "VCF 9.1 Compatibility Assessment and Decision Log",
+    color: upgradeRequired || evidenceMissing ? "amber" : "teal",
+    dependsOn: `RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${platforms.length} platform cohort${platforms.length === 1 ? "" : "s"}: ${cohortSummary}. Validate each exact server configuration, CPU, NIC, storage controller, firmware, driver, and vSAN/ReadyNode requirement in the Broadcom Compatibility Guide, then record supported, remediation, or evidence-gap outcomes before Upgrade Services begins.`,
+    outcome: "Create one delivery-owned compatibility matrix and decision log that groups identical platforms, prioritizes evidence gaps and replacement decisions, and confirms the implementation path before service execution.",
+  };
 }
 
-function withHostPlatformPlanningLanes(timeline: Timeline, inventory: InventorySummary): Timeline {
-  const platformPlan = timeline.lanes.find(lane => lane.id === "lane-platform-plan")?.bars[0];
-  const planStart = platformPlan?.startCol ?? 1;
-  const planEnd = platformPlan?.endCol ?? Math.min(timeline.columns.length + 1, planStart + Math.max(1, Math.ceil(timeline.columns.length * 0.22)));
-  const managedLanes = buildHostPlatformPlanningLanes(inventory, timeline.columns.length, planStart, planEnd);
-  let inserted = false;
-  const lanes = timeline.lanes.flatMap(lane => {
-    if (lane.id.startsWith(platformPlanningLanePrefix)) return [];
-    if (lane.id === "lane-platform-plan") {
-      inserted = true;
-      return [lane, ...managedLanes];
-    }
-    return [lane];
-  });
-  return { ...timeline, lanes: inserted ? lanes : [...managedLanes, ...lanes] };
+function withConsolidatedCompatibilityAssessment(timeline: Timeline, inventory: InventorySummary): Timeline {
+  const assessment = buildCompatibilityAssessmentActivity(inventory);
+  return {
+    ...timeline,
+    lanes: timeline.lanes
+      .filter(lane => !lane.id.startsWith(legacyHostPlatformLanePrefix))
+      .map(lane => lane.id === "lane-platform-plan"
+        ? {
+          ...lane,
+          bars: lane.bars.map(activity => activity.id === "bar-platform-plan"
+            ? { ...activity, ...assessment }
+            : activity),
+        }
+        : lane),
+  };
+}
+
+function withoutLegacyHostPlatformTwoYearLanes(timeline: Timeline): Timeline {
+  const legacyPrefix = `lane-two-year-year-one-${legacyHostPlatformLanePrefix}`;
+  return { ...timeline, lanes: timeline.lanes.filter(lane => !lane.id.startsWith(legacyPrefix)) };
 }
 
 function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary): Timeline {
@@ -660,15 +650,15 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const count = columns.length;
   const cadence = fields.adoptionCadence;
   const upgradeDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.36)));
-  const planDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.22)));
+  const assessmentDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.22)));
   const designDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.3)));
-  const [upgradeStart, upgradeEnd] = boundedRange(1, upgradeDuration, count);
-  const [planStart, planEnd] = boundedRange(1, planDuration, count);
-  const [platformStart, platformEnd] = boundedRange(Math.max(2, planEnd - 1), designDuration, count);
+  const [assessmentStart, assessmentEnd] = boundedRange(1, assessmentDuration, count);
+  const [upgradeStart, upgradeEnd] = boundedRange(Math.min(count, assessmentEnd), upgradeDuration, count);
+  const [platformStart, platformEnd] = boundedRange(Math.min(count, Math.max(assessmentEnd, upgradeStart)), designDuration, count);
+  const compatibilityAssessment = buildCompatibilityAssessmentActivity(inventory);
   const lanes: TimelineLane[] = [
-    { id: "lane-upgrade-services", name: "Upgrade Services", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", upgradeServiceLabel(fields.adoptionDetails.upgradePath))] },
-    { id: "lane-platform-plan", name: "Platform Plan", bars: [bar("bar-platform-plan", planStart, planEnd, "teal", "Platform Plan and Decision Log")] },
-    ...buildHostPlatformPlanningLanes(inventory, count, planStart, planEnd),
+    { id: "lane-platform-plan", name: "Platform Plan", bars: [bar("bar-platform-plan", assessmentStart, assessmentEnd, compatibilityAssessment.color, compatibilityAssessment.label, false, false, compatibilityAssessment.dependsOn, compatibilityAssessment.outcome)] },
+    { id: "lane-upgrade-services", name: "Upgrade Services", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, "Start after the compatibility assessment has recorded supported, remediation, or evidence-gap outcomes for every observed platform cohort.")] },
     { id: "lane-platform-design", name: "Platform Design", bars: [bar("bar-platform-design", platformStart, platformEnd, "green", "VCF Platform Design") ] },
   ];
 
@@ -769,22 +759,75 @@ function estateRecommendationSignal(fields: MinimalFields, inventory: InventoryS
   return null;
 }
 
-function followOnRecommendationReason(fields: MinimalFields, inventory: InventorySummary, capability: Capability, focus: string, profile: FollowOnServiceProfile): string | null {
+function followOnBlockers(fields: MinimalFields, inventory: InventorySummary, capability: Capability, profile: FollowOnServiceProfile): string[] {
   const focuses = selectedFocuses(fields, capability);
   const eligibility = profile.eligibility;
   const estateSignal = estateRecommendationSignal(fields, inventory);
   const hasObservedInventory = inventory.vmCount > 0 || inventory.hosts > 0;
-  if (!estateSignal) return null;
-  if (eligibility?.requiresObservedInventory && !hasObservedInventory) return null;
-  if (eligibility?.requiresKnownHardwarePlan && fields.hardwareAvailability === "unknown") return null;
-  if (eligibility?.requiresAllFocuses?.some(required => !focuses.includes(required))) return null;
+  const blockers: string[] = [];
+  if (!estateSignal) blockers.push("Upload RVTools inventory or confirm Hardware availability as Existing or New in Plan Setup");
+  if (eligibility?.requiresObservedInventory && !hasObservedInventory) blockers.push("Upload RVTools inventory with usable host or VM evidence");
+  if (eligibility?.requiresKnownHardwarePlan && fields.hardwareAvailability === "unknown") blockers.push("Confirm Hardware availability as Existing or New in Plan Setup");
+  const missingAll = (eligibility?.requiresAllFocuses || []).filter(required => !focuses.includes(required));
+  if (missingAll.length) blockers.push(`Select ${humanList(missingAll.map(focus => focusTitle(capability, focus)))} under ${capabilityTitle(capability)}`);
+  const hasSupportingAny = (eligibility?.requiresAnyFocus || []).some(required => focuses.includes(required));
+  if (eligibility?.requiresAnyFocus?.length && !hasSupportingAny) blockers.push(`Select at least one of ${humanList(eligibility.requiresAnyFocus.map(focus => focusTitle(capability, focus)))} under ${capabilityTitle(capability)}`);
+  return blockers.filter((item, index, values) => values.indexOf(item) === index);
+}
+
+function followOnRecommendationReason(fields: MinimalFields, inventory: InventorySummary, capability: Capability, focus: string, profile: FollowOnServiceProfile): string | null {
+  const focuses = selectedFocuses(fields, capability);
+  const eligibility = profile.eligibility;
+  const estateSignal = estateRecommendationSignal(fields, inventory);
+  if (followOnBlockers(fields, inventory, capability, profile).length) return null;
   const supportingAnyFocus = eligibility?.requiresAnyFocus?.find(required => focuses.includes(required));
-  if (eligibility?.requiresAnyFocus?.length && !supportingAnyFocus) return null;
 
   const contributingFocuses = [focus, ...(eligibility?.requiresAllFocuses || []), ...(supportingAnyFocus ? [supportingAnyFocus] : [])]
     .filter((item, index, values) => values.indexOf(item) === index)
     .map(item => focusTitle(capability, item));
   return `the customer selected ${humanList(contributingFocuses)} under the ${capabilityTitle(capability)} priority and ${estateSignal}`;
+}
+
+export type FollowOnReadinessGuidance = {
+  blocked: boolean;
+  title: string;
+  detail: string;
+  actions: string[];
+};
+
+export function getFollowOnReadinessGuidance(fields: MinimalFields, inventory: InventorySummary): FollowOnReadinessGuidance {
+  if (!fields.priorities.length) {
+    return {
+      blocked: true,
+      title: "Choose a customer outcome to unlock follow-on services.",
+      detail: "Months 13–24 remain intentionally empty until at least one customer priority and its detailed capability focus are confirmed.",
+      actions: ["In Plan Setup, select one or more Customer priorities.", "Choose a detailed capability focus beneath the selected priority."],
+    };
+  }
+
+  const selectedProfiles = fields.priorities.flatMap(capability => selectedFocuses(fields, capability)
+    .map(focus => ({ capability, focus, profile: followOnServiceProfiles[capability][focus] }))
+    .filter((item): item is { capability: Capability; focus: string; profile: FollowOnServiceProfile } => Boolean(item.profile)));
+  if (!selectedProfiles.length) {
+    return {
+      blocked: true,
+      title: "Choose a detailed capability focus for the selected priority.",
+      detail: `The selected ${humanList(fields.priorities.map(capabilityTitle))} outcome${fields.priorities.length === 1 ? " is" : "s are"} recorded, but no detailed focus has been selected to target a follow-on service.`,
+      actions: ["Open Plan Setup and select a detailed capability focus under one of the chosen priorities."],
+    };
+  }
+
+  const recommended = selectedProfiles.some(({ capability, focus, profile }) => Boolean(followOnRecommendationReason(fields, inventory, capability, focus, profile)));
+  if (recommended) return { blocked: false, title: "", detail: "", actions: [] };
+
+  const actions = selectedProfiles.flatMap(({ capability, profile }) => followOnBlockers(fields, inventory, capability, profile))
+    .filter((item, index, values) => values.indexOf(item) === index);
+  return {
+    blocked: true,
+    title: "Follow-on services are waiting on the inputs listed below.",
+    detail: "The selected priority and detailed focus are retained; Months 13–24 will populate automatically when the remaining service prerequisites are confirmed.",
+    actions: actions.length ? actions.map(action => `${action}.`) : ["Review the selected capability focus and estate evidence in Plan Setup."],
+  };
 }
 
 function followOnActivities(fields: MinimalFields, inventory: InventorySummary, capability: Capability): Array<{ label: string; dependsOn: string; outcome: string }> {
@@ -823,21 +866,6 @@ function mirrorYearOneLanes(adoptionTimeline: Timeline): TimelineLane[] {
   }));
 }
 
-function withHostPlatformPlanningTwoYearLanes(twoYearPlan: Timeline, adoptionTimeline: Timeline): Timeline {
-  const managedLanePrefix = `lane-two-year-year-one-${platformPlanningLanePrefix}`;
-  const managedLanes = mirrorYearOneLanes(adoptionTimeline).filter(lane => lane.id.startsWith(managedLanePrefix));
-  let inserted = false;
-  const lanes = twoYearPlan.lanes.flatMap(lane => {
-    if (lane.id.startsWith(managedLanePrefix)) return [];
-    if (lane.id === "lane-two-year-year-one-lane-platform-plan") {
-      inserted = true;
-      return [lane, ...managedLanes];
-    }
-    return [lane];
-  });
-  return { ...twoYearPlan, lanes: inserted ? lanes : [...managedLanes, ...lanes] };
-}
-
 function buildTwoYearPlan(fields: MinimalFields, inventory: InventorySummary, adoptionTimeline: Timeline): Timeline {
   const startDate = timelineStartDate(fields);
   const columns = buildTwoYearNotionalColumns(startDate);
@@ -870,14 +898,12 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const detailCount = [fields.adoptionDetails.operations, fields.adoptionDetails.automation, fields.adoptionDetails.security, fields.adoptionDetails.resilience, fields.adoptionDetails.kubernetes, fields.adoptionDetails.privateAi].flat().length;
   const details = detailCount ? `${detailCount} confirmed detailed capability focus area${detailCount === 1 ? "" : "s"}` : "high-level outcome selections pending detailed discovery";
   const followOnCount = twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-follow-on-")).flatMap(lane => lane.bars).length;
+  const followOnGuidance = getFollowOnReadinessGuidance(fields, inventory);
   const followOnSummary = followOnCount
     ? `${followOnCount} follow-on service recommendation${followOnCount === 1 ? " is" : "s are"} shown because the related priority, detailed intake selection, and estate or hardware signal are present`
-    : "no follow-on services are shown until a confirmed priority, detailed intake selection, and usable estate or hardware signal align";
-  const hostPlatformPlanCount = adoptionTimeline.lanes.filter(lane => lane.id.startsWith(platformPlanningLanePrefix)).length;
-  const hostPlatformSummary = hostPlatformPlanCount
-    ? `${hostPlatformPlanCount} observed host-platform planning lane${hostPlatformPlanCount === 1 ? " is" : "s are"} included so every imported platform has a concrete evidence-collection, compatibility-confirmation, or replacement/exception action; these are planning actions, not VCF certification claims.`
-    : "host-platform planning lanes will appear when RVTools provides host-model evidence.";
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Upgrade Services begins at the start of the target window while initial platform planning and design work run in parallel. ${hostPlatformSummary} The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the operational sequence, while months 13–24 contain only selective services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and what must be ready before it starts; unmet prerequisites defer the service instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+    : `${followOnGuidance.title} ${followOnGuidance.actions.join("; ")}`;
+  const compatibilitySummary = buildCompatibilityAssessmentActivity(inventory).outcome;
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Compatibility assessment begins at the start of the target window and records one cohort-based delivery decision log before Upgrade Services begins. ${compatibilitySummary} The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the operational sequence, while months 13–24 contain only selective services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and what must be ready before it starts; unmet prerequisites are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -1104,8 +1130,8 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
 export function migrateDocument(value: unknown): EngagementDocument {
   const current = engagementDocumentV10Schema.safeParse(value);
   if (current.success) {
-    const adoptionTimeline = withHostPlatformPlanningLanes(current.data.adoptionTimeline, current.data.inventory);
-    const twoYearPlan = withHostPlatformPlanningTwoYearLanes(current.data.twoYearPlan, adoptionTimeline);
+    const adoptionTimeline = withConsolidatedCompatibilityAssessment(current.data.adoptionTimeline, current.data.inventory);
+    const twoYearPlan = withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan);
     const generated = buildAdoptionPlans(current.data.fields, current.data.inventory);
     return {
       ...current.data,
