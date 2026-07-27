@@ -24,6 +24,40 @@ export const WORKSTREAM_TYPES = [
 ] as const;
 export type WorkstreamType = (typeof WORKSTREAM_TYPES)[number];
 
+/** Maps prior saved labels to the exact customer-facing labels without widening the visible taxonomy. */
+const legacyWorkstreamTypeAliases: Record<string, WorkstreamType> = {
+  "governance": "Governance",
+  "operating model / platform": "Operating Model / Platform",
+  "operating model/platform": "Operating Model / Platform",
+  "infrastructure build": "Infrastructure Build",
+  "migration waves": "Migration Waves",
+  "consume / handover": "Consume / Handover",
+  "consume/handover": "Consume / Handover",
+  "security & resiliency": "Security & Resiliency",
+  "security and resiliency": "Security & Resiliency",
+};
+
+function normalizePersistedWorkstreamType(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  return legacyWorkstreamTypeAliases[value.trim().replace(/\s+/g, " ").toLowerCase()] || value;
+}
+
+const workstreamTypeSchema = z.preprocess(normalizePersistedWorkstreamType, z.enum(WORKSTREAM_TYPES));
+
+/** Color is determined solely by the displayed workstream type. */
+export const WORKSTREAM_TYPE_COLORS: Record<WorkstreamType, TimelineColor> = {
+  "Governance": "green",
+  "Operating Model / Platform": "blue",
+  "Infrastructure Build": "amber",
+  "Migration Waves": "teal",
+  "Consume / Handover": "slate",
+  "Security & Resiliency": "red",
+};
+
+export function colorForWorkstreamType(workstreamType: WorkstreamType): TimelineColor {
+  return WORKSTREAM_TYPE_COLORS[workstreamType];
+}
+
 export const timelineCadenceSchema = z.enum(["month", "week"]);
 export type TimelineCadence = z.infer<typeof timelineCadenceSchema>;
 
@@ -43,7 +77,7 @@ export const timelineLaneSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   category: z.enum(TIMELINE_CATEGORIES).default("Program Management & Governance"),
-  workstreamType: z.enum(WORKSTREAM_TYPES).default("Governance"),
+  workstreamType: workstreamTypeSchema.default("Governance"),
   bars: z.array(timelineBarSchema),
 });
 
@@ -577,18 +611,31 @@ function inferredLaneMetadata(laneId: string): TimelineLaneMetadata | null {
   return capabilityMatch ? capabilityLaneMetadata(capabilityMatch[1] as Capability) : null;
 }
 
-export function normalizeTimelineTaxonomy(timeline: Timeline): Timeline {
+export function applyWorkstreamPresentation(timeline: Timeline): Timeline {
   return {
+    ...timeline,
+    lanes: timeline.lanes.map(lane => ({
+      ...lane,
+      // The visible timeline lane is the workstream type; activities remain the detailed delivery content.
+      name: lane.workstreamType,
+      bars: lane.bars.map(activity => ({
+        ...activity,
+        color: colorForWorkstreamType(lane.workstreamType),
+        deferred: false,
+      })),
+    })),
+  };
+}
+
+export function normalizeTimelineTaxonomy(timeline: Timeline): Timeline {
+  const normalized = {
     ...timeline,
     lanes: timeline.lanes.map(lane => {
       const inferred = inferredLaneMetadata(lane.id);
       return { ...lane, ...(inferred || {}) };
     }),
   };
-}
-
-function capabilityColor(capability: Capability): TimelineColor {
-  return capability === "security" ? "red" : capability === "resilience" ? "blue" : capability === "automation" ? "amber" : capability === "operations" ? "teal" : "green";
+  return applyWorkstreamPresentation(normalized);
 }
 
 function upgradeServiceLabel(path: UpgradePath): string {
@@ -718,9 +765,9 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const [platformStart, platformEnd] = boundedRange(Math.min(count, Math.max(inventoryEnd, upgradeStart)), designDuration, count);
   const platformInventory = buildPlatformInventoryActivity(inventory);
   const lanes: TimelineLane[] = [
-    { id: "lane-platform-plan", name: "Platform Plan", ...DEFAULT_TIMELINE_LANE_METADATA, bars: [bar("bar-platform-plan", inventoryStart, inventoryEnd, platformInventory.color, platformInventory.label, false, false, platformInventory.dependsOn, platformInventory.outcome)] },
-    { id: "lane-upgrade-services", name: "Upgrade Services", category: "Modernize Infrastructure", workstreamType: "Migration Waves", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, "Start after the platform inventory and delivery plan records the path for every observed host group.")] },
-    { id: "lane-platform-design", name: "Platform Design", category: "Modernize Cloud", workstreamType: "Operating Model / Platform", bars: [bar("bar-platform-design", platformStart, platformEnd, "green", "VCF Platform Design") ] },
+    { id: "lane-platform-plan", name: "Governance", ...DEFAULT_TIMELINE_LANE_METADATA, bars: [bar("bar-platform-plan", inventoryStart, inventoryEnd, colorForWorkstreamType("Governance"), platformInventory.label, false, false, platformInventory.dependsOn, platformInventory.outcome)] },
+    { id: "lane-upgrade-services", name: "Migration Waves", category: "Modernize Infrastructure", workstreamType: "Migration Waves", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, colorForWorkstreamType("Migration Waves"), upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, "Start after the platform inventory and delivery plan records the path for every observed host group.")] },
+    { id: "lane-platform-design", name: "Operating Model / Platform", category: "Modernize Cloud", workstreamType: "Operating Model / Platform", bars: [bar("bar-platform-design", platformStart, platformEnd, colorForWorkstreamType("Operating Model / Platform"), "VCF Platform Design") ] },
   ];
 
   const capabilityStart = Math.max(2, Math.min(count, Math.ceil(count * 0.45)));
@@ -738,11 +785,11 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       const bars = laneLabels.map((label, index) => {
         const start = baseStart + index * slot;
         const end = index === laneLabels.length - 1 ? count + 1 : Math.min(count + 1, start + slot);
-        return bar(`bar-${priority}-${laneIndex * labelsPerLane + index + 1}`, start, end, capabilityColor(priority), label);
+        return bar(`bar-${priority}-${laneIndex * labelsPerLane + index + 1}`, start, end, colorForWorkstreamType(capabilityLaneMetadata(priority).workstreamType), label);
       });
-      const suffix = laneCount > 1 ? ` ${laneIndex + 1}` : "";
       const laneId = laneIndex === 0 ? `lane-${priority}` : `lane-${priority}-${laneIndex + 1}`;
-      lanes.push({ id: laneId, name: `${capabilityTitle(priority)} Outcomes${suffix}`, ...capabilityLaneMetadata(priority), bars });
+      const metadata = capabilityLaneMetadata(priority);
+      lanes.push({ id: laneId, name: metadata.workstreamType, ...metadata, bars });
     }
   });
 
@@ -929,6 +976,50 @@ function mirrorYearOneLanes(adoptionTimeline: Timeline): TimelineLane[] {
   }));
 }
 
+function baselineYearTwoLanes(): TimelineLane[] {
+  const baseline: Array<{ id: string; category: TimelineCategory; workstreamType: WorkstreamType; start: number; end: number; label: string; outcome: string }> = [
+    {
+      id: "governance",
+      category: "Program Management & Governance",
+      workstreamType: "Governance",
+      start: 13,
+      end: 25,
+      label: "Delivery Governance and Value Tracking",
+      outcome: "Maintain executive alignment, delivery ownership, adoption measures, and continuous value tracking through the second year.",
+    },
+    {
+      id: "operating-model",
+      category: "Operations",
+      workstreamType: "Operating Model / Platform",
+      start: 13,
+      end: 21,
+      label: "Platform Operating Model and Lifecycle Adoption",
+      outcome: "Embed platform lifecycle, service ownership, operational cadence, and consumption practices.",
+    },
+    {
+      id: "handover",
+      category: "Modernize Cloud",
+      workstreamType: "Consume / Handover",
+      start: 18,
+      end: 25,
+      label: "Service Consumption and Handover",
+      outcome: "Extend consumption, complete handover, and establish the next service-expansion sequence.",
+    },
+  ];
+
+  return baseline.map(item => ({
+    id: `lane-two-year-baseline-${item.id}`,
+    name: item.workstreamType,
+    category: item.category,
+    workstreamType: item.workstreamType,
+    bars: [bar(`bar-two-year-baseline-${item.id}`, item.start, item.end, colorForWorkstreamType(item.workstreamType), item.label, false, false, undefined, item.outcome)],
+  }));
+}
+
+function hasYearTwoActivity(timeline: Timeline): boolean {
+  return timeline.lanes.some(lane => lane.bars.some(activity => activity.endCol > 13));
+}
+
 function buildTwoYearPlan(fields: MinimalFields, inventory: InventorySummary, adoptionTimeline: Timeline): Timeline {
   const startDate = timelineStartDate(fields);
   const columns = buildTwoYearNotionalColumns(startDate);
@@ -942,12 +1033,16 @@ function buildTwoYearPlan(fields: MinimalFields, inventory: InventorySummary, ad
     const bars = activities.map((activity, index) => {
       const start = Math.min(columns.length, 13 + (priorityIndex % 2) + index * slot);
       const [safeStart, end] = boundedRange(start, duration, columns.length);
-      return bar(`bar-follow-on-${priority}-${index + 1}`, safeStart, end, capabilityColor(priority), activity.label, false, false, activity.dependsOn, activity.outcome);
+      return bar(`bar-follow-on-${priority}-${index + 1}`, safeStart, end, colorForWorkstreamType(capabilityLaneMetadata(priority).workstreamType), activity.label, false, false, activity.dependsOn, activity.outcome);
     });
-      lanes.push({ id: `lane-follow-on-${priority}`, name: `${capabilityTitle(priority)} Services`, ...capabilityLaneMetadata(priority), bars });
+      const metadata = capabilityLaneMetadata(priority);
+      lanes.push({ id: `lane-follow-on-${priority}`, name: metadata.workstreamType, ...metadata, bars });
   });
 
-  return { cadence: "month", startDate, columns, lanes };
+  // Every notional remains continuous through Month 24; selected services are added alongside this standard sequence.
+  lanes.push(...baselineYearTwoLanes());
+
+  return applyWorkstreamPresentation({ cadence: "month", startDate, columns, lanes });
 }
 
 export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
@@ -959,14 +1054,13 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const priorities = fields.priorities.length ? fields.priorities.map(capabilityTitle).join(", ") : "the selected customer outcomes";
   const cadence = fields.adoptionCadence === "week" ? "weekly execution windows" : "calendar-month execution windows";
   const detailCount = [fields.adoptionDetails.operations, fields.adoptionDetails.automation, fields.adoptionDetails.security, fields.adoptionDetails.resilience, fields.adoptionDetails.kubernetes, fields.adoptionDetails.privateAi].flat().length;
-  const details = detailCount ? `${detailCount} confirmed detailed capability focus area${detailCount === 1 ? "" : "s"}` : "high-level outcome selections pending detailed discovery";
+  const details = detailCount ? `${detailCount} selected detailed capability focus area${detailCount === 1 ? "" : "s"}` : "the initial customer outcome selections";
   const followOnCount = twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-follow-on-")).flatMap(lane => lane.bars).length;
-  const followOnGuidance = getFollowOnReadinessGuidance(fields, inventory);
   const followOnSummary = followOnCount
-    ? `${followOnCount} follow-on service recommendation${followOnCount === 1 ? " is" : "s are"} shown because the related priority, detailed intake selection, and estate or hardware signal are present`
-    : `${followOnGuidance.title} ${followOnGuidance.actions.join("; ")}`;
+    ? `${followOnCount} selected follow-on service${followOnCount === 1 ? " is" : "s are"} included in the second-year delivery sequence`
+    : "the standard second-year governance, platform operating model, and handover sequence is included";
   const platformInventorySummary = buildPlatformInventoryActivity(inventory).outcome;
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Platform inventory and delivery planning begins at the start of the target window and maintains one consolidated host inventory and delivery path before Upgrade Services begins. ${platformInventorySummary} The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the operational sequence, while months 13–24 contain only selective services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Platform inventory and delivery planning begins at the start of the target window and maintains one consolidated host inventory and delivery path before Upgrade Services begins. ${platformInventorySummary} The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the operational sequence, while months 13–24 continue with the standard governance, platform, and handover sequence plus any selected services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -1262,12 +1356,70 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
   return { ...fields, adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise" } };
 }
 
+function canonicalWorkstreamType(value: unknown): WorkstreamType | null {
+  const raw = String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+  return legacyWorkstreamTypeAliases[raw] || null;
+}
+
+function canonicalTimelineCategory(value: unknown): TimelineCategory | null {
+  const raw = String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+  const aliases: Record<string, TimelineCategory> = {
+    "program management & governance": "Program Management & Governance",
+    "program management and governance": "Program Management & Governance",
+    "hardware refresh": "Hardware Refresh",
+    "modernize cloud": "Modernize Cloud",
+    "operations": "Operations",
+    "modernize infrastructure": "Modernize Infrastructure",
+    "modernize security & reliance": "Modernize Security & Reliance",
+    "modernize security and reliance": "Modernize Security & Reliance",
+    "modernize app platform & ai": "Modernize App Platform & AI",
+    "modernize app platform and ai": "Modernize App Platform & AI",
+  };
+  if (aliases[raw]) return aliases[raw];
+  if (/(program|govern)/.test(raw)) return "Program Management & Governance";
+  if (/hardware/.test(raw)) return "Hardware Refresh";
+  if (/modernize.*cloud|cloud/.test(raw)) return "Modernize Cloud";
+  if (/operations?/.test(raw)) return "Operations";
+  if (/infrastructure/.test(raw)) return "Modernize Infrastructure";
+  if (/(security|reliance)/.test(raw)) return "Modernize Security & Reliance";
+  if (/(app|platform|ai)/.test(raw)) return "Modernize App Platform & AI";
+  return null;
+}
+
+function normalizeRawTimelineTaxonomy(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const document = value as Record<string, unknown>;
+  const normalizeTimeline = (timeline: unknown) => {
+    if (!timeline || typeof timeline !== "object") return timeline;
+    const candidate = timeline as Record<string, unknown>;
+    if (!Array.isArray(candidate.lanes)) return timeline;
+    return {
+      ...candidate,
+      lanes: candidate.lanes.map(lane => {
+        if (!lane || typeof lane !== "object") return lane;
+        const rawLane = lane as Record<string, unknown>;
+        const inferred = typeof rawLane.id === "string" ? inferredLaneMetadata(rawLane.id) : null;
+        const category = inferred?.category || canonicalTimelineCategory(rawLane.category) || DEFAULT_TIMELINE_LANE_METADATA.category;
+        const workstreamType = inferred?.workstreamType || canonicalWorkstreamType(rawLane.workstreamType) || DEFAULT_TIMELINE_LANE_METADATA.workstreamType;
+        return { ...rawLane, category, workstreamType, name: workstreamType, bars: Array.isArray(rawLane.bars) ? rawLane.bars.map(bar => ({ ...(bar as Record<string, unknown>), color: colorForWorkstreamType(workstreamType), deferred: false })) : rawLane.bars };
+      }),
+    };
+  };
+  return {
+    ...document,
+    adoptionTimeline: normalizeTimeline(document.adoptionTimeline),
+    twoYearPlan: normalizeTimeline(document.twoYearPlan),
+  };
+}
+
 export function migrateDocument(value: unknown): EngagementDocument {
-  const current = engagementDocumentV10Schema.safeParse(value);
+  const normalizedValue = normalizeRawTimelineTaxonomy(value);
+  const current = engagementDocumentV10Schema.safeParse(normalizedValue);
   if (current.success) {
-    const adoptionTimeline = normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory));
-    const twoYearPlan = normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan));
+      const adoptionTimeline = normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory));
     const generated = buildAdoptionPlans(current.data.fields, current.data.inventory);
+    const candidateTwoYearPlan = normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan));
+    const twoYearPlan = hasYearTwoActivity(candidateTwoYearPlan) ? candidateTwoYearPlan : generated.twoYearPlan;
     return {
       ...current.data,
       readiness: assessReadiness(
@@ -1281,7 +1433,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     };
   }
 
-  const v9 = engagementDocumentV9Schema.safeParse(value);
+  const v9 = engagementDocumentV9Schema.safeParse(normalizedValue);
   if (v9.success) {
     const plans = buildAdoptionPlans(v9.data.fields, v9.data.inventory);
     return {
@@ -1296,7 +1448,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     };
   }
 
-  const v8 = engagementDocumentV8Schema.safeParse(value);
+  const v8 = engagementDocumentV8Schema.safeParse(normalizedValue);
   if (v8.success) {
     const plans = buildAdoptionPlans(v8.data.fields, v8.data.inventory);
     return {
@@ -1311,7 +1463,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     };
   }
 
-  const v7 = engagementDocumentV7Schema.safeParse(value);
+  const v7 = engagementDocumentV7Schema.safeParse(normalizedValue);
   if (v7.success) {
     const plans = buildAdoptionPlans(v7.data.fields, v7.data.inventory);
     return {
@@ -1326,7 +1478,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     };
   }
 
-  const v6 = engagementDocumentV6Schema.safeParse(value);
+  const v6 = engagementDocumentV6Schema.safeParse(normalizedValue);
   if (v6.success) {
     const fields = migrateFieldsToV7(v6.data.fields);
     const plans = buildAdoptionPlans(fields, v6.data.inventory);
@@ -1342,7 +1494,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     };
   }
 
-  const v5 = engagementDocumentV5Schema.safeParse(value);
+  const v5 = engagementDocumentV5Schema.safeParse(normalizedValue);
   if (v5.success) {
     const fields = migrateFieldsToV7(migrateFieldsToV6(v5.data.fields));
     const plans = buildAdoptionPlans(fields, v5.data.inventory);
@@ -1358,7 +1510,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     };
   }
 
-  const v4 = engagementDocumentV4Schema.safeParse(value);
+  const v4 = engagementDocumentV4Schema.safeParse(normalizedValue);
   if (v4.success) {
     const inventory = migrateInventoryToV5(v4.data.inventory);
     const fields = migrateFieldsToV7(migrateFieldsToV6(v4.data.fields));
@@ -1376,7 +1528,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     };
   }
 
-  const v3 = engagementDocumentV3Schema.safeParse(value);
+  const v3 = engagementDocumentV3Schema.safeParse(normalizedValue);
   if (v3.success) {
     const inventory = migrateInventoryToV5(v3.data.inventory);
     const fields = migrateFieldsToV7(migrateFieldsToV6(v3.data.fields));
@@ -1394,7 +1546,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     };
   }
 
-  const legacy = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const legacy = (normalizedValue && typeof normalizedValue === "object" ? normalizedValue : {}) as Record<string, unknown>;
   const oldFields = (legacy.fields && typeof legacy.fields === "object" ? legacy.fields : {}) as Record<string, unknown>;
   const fields: MinimalFields = {
     ...createDefaultFields(),

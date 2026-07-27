@@ -270,3 +270,19 @@
 - [x] Add regression coverage for prohibited report language, concise host reporting, and authenticated PDF download behavior.
 - [x] Validate the revised workspace, HTML/PDF output, and download flow; then checkpoint the repair.
 - [x] Replace the remaining customer-visible “Review” workflow-step label with neutral planning language discovered during final visual validation.
+
+## Clifton Two-Year Notional Initialization Defect
+
+- [x] Reproduce the newly created Clifton engagement with an empty Two-Year Notional plan.
+- [x] Trace creation, default-document, and derived-plan generation paths to identify the initialization gap.
+- [x] Repair automatic continuous 24-month Two-Year Notional population for new engagements without altering existing plans unexpectedly.
+- [x] Add regression coverage, validate the corrected engagement flow, and checkpoint the fix.
+
+## Exact Adoption Timeline Taxonomy and Color Mapping
+
+- [x] Restrict every timeline category to the user's exact seven-label list, including “Modernize App Platform & AI”.
+- [x] Restrict every timeline workstream type to the user's exact six capitalized labels: Governance, Operating Model / Platform, Infrastructure Build, Migration Waves, Consume / Handover, and Security & Resiliency.
+- [x] Show category and workstream type as distinct visible labels, not as a combined label or an activity name.
+- [x] Map all timeline activity colors consistently to workstream types and render a visible legend.
+- [x] Apply taxonomy normalization and color mapping to generated, editable, migrated, previewed, HTML, and PDF timelines.
+- [x] Add regression coverage and visual verification for exact taxonomy labels, colors, and the continuous Two-Year Notional plan.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
-import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, createDefaultDocument, getFollowOnReadinessGuidance, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
+import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, colorForWorkstreamType, createDefaultDocument, getFollowOnReadinessGuidance, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import type { TrpcContext } from "./_core/context";
 import { renderFcpHtml } from "./fcpRenderer";
@@ -155,7 +155,7 @@ describe("calendar-month adoption plans", () => {
     ]));
     expect(plans.twoYearPlan).toMatchObject({ cadence: "month", startDate: "2027-01-17" });
     expect(plans.rationale).toContain("weekly execution windows");
-    expect(plans.rationale).toContain("3 confirmed detailed capability focus areas");
+    expect(plans.rationale).toContain("3 selected detailed capability focus areas");
   });
 
   it("reflows linked entitlement dates and splits dense weekly services into non-overlapping workstreams", () => {
@@ -217,8 +217,10 @@ describe("calendar-month adoption plans", () => {
     expect(labels).not.toContain("Run Scheduled Recovery Exercises and Improve Runbooks");
     expect(labels).not.toContain("Onboard One Private AI Pilot With Success Measures");
     expect(JSON.stringify(plans.twoYearPlan)).not.toMatch(/Service Prioritization Decision|Year [12] ·/);
-    expect(plans.rationale).toContain("Follow-on services are waiting on the inputs listed below.");
-    expect(plans.rationale).toContain("Confirm Hardware availability as Existing or New in Plan Setup.");
+    const baselineLanes = plans.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-baseline-"));
+    expect(baselineLanes).toHaveLength(3);
+    expect(baselineLanes.some(lane => lane.bars.some(activity => activity.startCol === 13 && activity.endCol === 25))).toBe(true);
+    expect(plans.rationale).toContain("the standard second-year governance, platform operating model, and handover sequence is included");
   });
 
   it("recommends compound services only after their detailed prerequisites and estate or hardware signals align", () => {
@@ -251,7 +253,7 @@ describe("calendar-month adoption plans", () => {
       "Onboard One Private AI Pilot With Success Measures",
     ]));
     expect(activities.every(activity => activity.dependsOn?.includes("the customer selected") && activity.dependsOn.includes("Start after"))).toBe(true);
-    expect(plans.rationale).toContain("follow-on service recommendations are shown");
+    expect(plans.rationale).toContain("selected follow-on services are included in the second-year delivery sequence");
   });
 
   it("normalizes custom labels to title-style Plan or Design language", () => {
@@ -622,6 +624,20 @@ describe("planning considerations, exports, and access boundary", () => {
     const lanes = [...plans.adoptionTimeline.lanes, ...plans.twoYearPlan.lanes];
     expect(lanes.length).toBeGreaterThan(0);
     expect(lanes.every(lane => canonicalCategories.has(lane.category) && canonicalWorkstreamTypes.has(lane.workstreamType))).toBe(true);
+    expect(lanes.every(lane => lane.name === lane.workstreamType)).toBe(true);
+    expect(lanes.every(lane => lane.bars.every(activity => activity.color === colorForWorkstreamType(lane.workstreamType)))).toBe(true);
+  });
+
+  it("creates a continuous default Year 2 sequence and repairs an existing notional with no Year 2 activities", () => {
+    const document = createDefaultDocument();
+    const baselineLanes = document.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-baseline-"));
+    expect(baselineLanes).toHaveLength(3);
+    expect(baselineLanes.flatMap(lane => lane.bars).some(activity => activity.startCol === 13 && activity.endCol === 25)).toBe(true);
+
+    const staleDocument = JSON.parse(JSON.stringify(document));
+    staleDocument.twoYearPlan.lanes = staleDocument.twoYearPlan.lanes.map((lane: { bars: unknown[] }) => ({ ...lane, bars: [] }));
+    const migrated = migrateDocument(staleDocument);
+    expect(migrated.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-baseline-") && lane.bars.some(activity => activity.endCol > 13))).toBe(true);
   });
 
   it("renders entitlement details and both synchronized adoption views with VCF 9.1 platform evidence", () => {
@@ -647,6 +663,9 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("VCF 9.1 Delivery Inventory");
     expect(html).toContain("Reported ESXi");
     expect(html).toContain("Upgrade Services");
+    expect(html).toContain("Category / Workstream Type");
+    expect(html).toContain("Workstream color key");
+    expect(html).toContain("Infrastructure Build");
     const planSummaryStart = html.indexOf('<div class="plan-summary">');
     const observedInventoryStart = html.indexOf("Observed host inventory");
     const planSummary = html.slice(planSummaryStart, observedInventoryStart);
@@ -671,7 +690,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain('class="notional-year-sheet notional-year-two"');
     expect(html).toContain("Months 1–12");
     expect(html).toContain("Months 13–24");
-    expect(html).toContain("Selected Follow-On Services");
+    expect(html).toContain("Continuous Year 2 Delivery");
     expect(html).not.toContain("Year 2 Follow-On Services");
     expect(html).toContain("#two-year .notional-year-sheet .timeline-grid{width:100%;min-width:0!important;grid-template-columns:1.45in repeat(12,minmax(0,1fr))!important}");
     expect(html).toContain("#two-year .notional-year-two{page-break-before:always;break-before:page}");

@@ -42,6 +42,11 @@ describe("engagement naming at creation", () => {
       "Meridian Health VCF Adoption",
       expect.objectContaining({ version: expect.any(Number) }),
     );
+    const [, , createdDocument] = vi.mocked(db.createEngagement).mock.calls[0]!;
+    const baselineLanes = createdDocument.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-baseline-"));
+    expect(baselineLanes).toHaveLength(3);
+    expect(baselineLanes.every(lane => lane.name === lane.workstreamType)).toBe(true);
+    expect(baselineLanes.some(lane => lane.bars.some(activity => activity.startCol === 13 && activity.endCol === 25))).toBe(true);
     expect(result).toBe(row);
   });
 
