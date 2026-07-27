@@ -2,6 +2,7 @@ import { AdoptionTimelineEditor } from "@/components/AdoptionTimelineEditor";
 import { PlanSetup } from "@/components/PlanSetup";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -13,10 +14,14 @@ import { ArrowRight, CalendarRange, Copy, Download, FileSpreadsheet, Loader2, Mo
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
+const DEFAULT_ENGAGEMENT_TITLE = "New FCP Engagement";
+
 export default function Home() {
   const utils = trpc.useUtils();
   const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [title, setTitle] = useState("New FCP Engagement");
+  const [title, setTitle] = useState(DEFAULT_ENGAGEMENT_TITLE);
+  const [newEngagementTitle, setNewEngagementTitle] = useState(DEFAULT_ENGAGEMENT_TITLE);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [fcpDocument, setFcpDocument] = useState<EngagementDocument>(() => createDefaultDocument());
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "unsaved">("saved");
@@ -37,10 +42,24 @@ export default function Home() {
     enabled: shouldQuerySelected,
     retry: false,
   });
-  const create = trpc.engagement.create.useMutation({ onSuccess: async row => { await utils.engagement.list.invalidate(); setSelectedId(row.id); toast.success("Engagement created"); } });
+  const create = trpc.engagement.create.useMutation({
+    onSuccess: async row => {
+      await utils.engagement.list.invalidate();
+      hydratedId.current = null;
+      setTitle(row.title);
+      setFcpDocument(createDefaultDocument());
+      setDirty(false);
+      setSaveState("saved");
+      setSelectedId(row.id);
+      setIsCreateDialogOpen(false);
+      setNewEngagementTitle(DEFAULT_ENGAGEMENT_TITLE);
+      toast.success(`Created ${row.title}`);
+    },
+    onError: error => toast.error(error.message),
+  });
   const update = trpc.engagement.update.useMutation({ onSuccess: async () => { setDirty(false); setSaveState("saved"); await utils.engagement.list.invalidate(); }, onError: error => { setSaveState("unsaved"); toast.error(error.message); } });
   const duplicate = trpc.engagement.duplicate.useMutation({ onSuccess: async row => { await utils.engagement.list.invalidate(); setSelectedId(row.id); toast.success("Engagement duplicated"); } });
-  const remove = trpc.engagement.delete.useMutation({ onSuccess: async () => { setSelectedId(null); hydratedId.current = null; setFcpDocument(createDefaultDocument()); setTitle("New FCP Engagement"); await utils.engagement.list.invalidate(); toast.success("Engagement deleted"); } });
+  const remove = trpc.engagement.delete.useMutation({ onSuccess: async () => { setSelectedId(null); hydratedId.current = null; setFcpDocument(createDefaultDocument()); setTitle(DEFAULT_ENGAGEMENT_TITLE); await utils.engagement.list.invalidate(); toast.success("Engagement deleted"); } });
   const preview = trpc.document.preview.useMutation({ onSuccess: result => setPreviewHtml(result.html) });
   const downloadTicket = trpc.document.downloadTicket.useMutation();
 
@@ -51,7 +70,7 @@ export default function Home() {
     setSelectedId(nextId);
     hydratedId.current = null;
     if (nextId === null) {
-      setTitle("New FCP Engagement");
+      setTitle(DEFAULT_ENGAGEMENT_TITLE);
       setFcpDocument(createDefaultDocument());
       setDirty(false);
       setSaveState("saved");
@@ -86,6 +105,20 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [fcpDocument, title, selectedId]);
 
+  const openCreateDialog = () => {
+    if (create.isPending) return;
+    setNewEngagementTitle(DEFAULT_ENGAGEMENT_TITLE);
+    setIsCreateDialogOpen(true);
+  };
+  const submitNewEngagement = () => {
+    const requestedTitle = newEngagementTitle.trim();
+    if (!requestedTitle) {
+      toast.error("Enter an engagement name to continue.");
+      return;
+    }
+    create.mutate({ title: requestedTitle });
+  };
+  const canCreateEngagement = newEngagementTitle.trim().length > 0 && newEngagementTitle.trim().length <= 240;
   const mutateDocument = (next: EngagementDocument) => { setFcpDocument(next); setDirty(true); };
   const buildPlan = () => { mutateDocument(refreshDerivedDocument(fcpDocument)); toast.success("Adoption plans rebuilt from the confirmed inputs"); };
   const saveNow = () => { if (!selectedId) return; setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument }); };
@@ -126,17 +159,55 @@ export default function Home() {
   if (list.isLoading) return <div className="grid min-h-[70vh] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div>;
 
   return (
-    <div className="workspace-shell -m-4 min-h-[calc(100vh-1rem)] bg-[#f4f6f8]">
+    <>
+      <Dialog
+        open={isCreateDialogOpen}
+        onOpenChange={open => {
+          if (create.isPending) return;
+          setIsCreateDialogOpen(open);
+          if (!open) setNewEngagementTitle(DEFAULT_ENGAGEMENT_TITLE);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <form onSubmit={event => { event.preventDefault(); submitNewEngagement(); }}>
+            <DialogHeader>
+              <DialogTitle>Name the engagement</DialogTitle>
+              <DialogDescription>Give this functional consumption plan a clear customer or project name. You can edit it later from the workspace header.</DialogDescription>
+            </DialogHeader>
+            <div className="py-5">
+              <label htmlFor="new-engagement-title" className="text-sm font-medium text-slate-900">Engagement name</label>
+              <Input
+                id="new-engagement-title"
+                className="mt-2"
+                value={newEngagementTitle}
+                onChange={event => setNewEngagementTitle(event.target.value)}
+                placeholder="For example, Meridian Health VCF Adoption"
+                maxLength={240}
+                autoFocus
+                aria-describedby="new-engagement-title-help"
+              />
+              <p id="new-engagement-title-help" className="mt-2 text-xs text-slate-500">Use a recognizable customer, account, or project name.</p>
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => setIsCreateDialogOpen(false)} disabled={create.isPending}>Cancel</Button>
+              <Button type="submit" className="bg-[#c8102e] hover:bg-[#a80d27]" disabled={!canCreateEngagement || create.isPending}>
+                {create.isPending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} Create engagement
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <div className="workspace-shell -m-4 min-h-[calc(100vh-1rem)] bg-[#f4f6f8]">
       <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <div className="flex min-w-0 items-center gap-3"><div className="rounded-md bg-[#c8102e] px-2.5 py-1 text-sm font-black tracking-[-0.08em] text-white">CDW</div><Separator orientation="vertical" className="h-7" /><div className="min-w-0"><div className="flex items-center gap-2"><Input className="h-8 max-w-[440px] border-transparent bg-transparent px-1 text-base font-semibold shadow-none focus-visible:border-slate-200" value={title} onChange={event => { setTitle(event.target.value); setDirty(true); }} aria-label="Engagement title" /><Badge variant="outline" className="hidden md:inline-flex">Internal</Badge></div><p className="px-1 text-xs text-slate-500">Functional Consumption Plan Builder</p></div></div>
-        <div className="flex items-center gap-2">{selectedIsListed ? <><span className="hidden text-xs text-slate-500 sm:inline">{saveState === "saving" ? "Saving…" : saveState === "unsaved" ? "Unsaved Changes" : "Saved"}</span><Button variant="outline" size="sm" disabled={update.isPending} onClick={saveNow}>{update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button><Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={buildPlan}><RefreshCw className="size-4" /> Rebuild Plans</Button></> : <Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={() => create.mutate({ title: "New FCP Engagement" })}><Plus className="size-4" /> New Engagement</Button>}</div>
+        <div className="flex items-center gap-2">{selectedIsListed ? <><span className="hidden text-xs text-slate-500 sm:inline">{saveState === "saving" ? "Saving…" : saveState === "unsaved" ? "Unsaved Changes" : "Saved"}</span><Button variant="outline" size="sm" disabled={update.isPending} onClick={saveNow}>{update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button><Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={buildPlan}><RefreshCw className="size-4" /> Rebuild Plans</Button></> : <Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={openCreateDialog}><Plus className="size-4" /> New Engagement</Button>}</div>
       </header>
 
       <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 xl:grid-cols-[270px_minmax(0,1fr)]">
-        <aside className="border-r border-slate-200 bg-white xl:min-h-[calc(100vh-64px)]"><div className="flex items-center justify-between px-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Workspace</p><h2 className="text-sm font-semibold text-slate-900">Engagements</h2></div><Button size="icon" className="size-9 bg-slate-950 hover:bg-slate-800" onClick={() => create.mutate({ title: "New FCP Engagement" })} aria-label="Create engagement"><Plus className="size-4" /></Button></div><ScrollArea className={`${(list.data?.length || 0) > 2 ? "h-[260px]" : (list.data?.length || 0) === 2 ? "h-[184px]" : (list.data?.length || 0) === 1 ? "h-[92px]" : "h-0"} xl:h-[calc(100vh-140px)]`}><div className="space-y-1 px-2 pb-4">{list.data?.map(item => <button key={item.id} className={`group w-full rounded-xl px-3 py-3 text-left transition-colors ${selectedId === item.id ? "bg-slate-950 text-white" : "hover:bg-slate-100"}`} onClick={() => { setSelectedId(item.id); hydratedId.current = null; }}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{item.title}</p><p className={`mt-1 truncate text-xs ${selectedId === item.id ? "text-slate-300" : "text-slate-500"}`}>{item.customerName}</p></div><MoreHorizontal className="size-4 shrink-0 opacity-50" /></div><div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-400"><span>{item.status}</span><span>{new Date(item.updatedAt).toLocaleDateString()}</span></div></button>)}</div></ScrollArea>{selectedIsListed && <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-3"><Button variant="outline" size="sm" onClick={() => duplicate.mutate({ id: selectedId })}><Copy className="size-3.5" /> Duplicate</Button><Button variant="ghost" size="sm" className="text-red-600" onClick={() => { if (window.confirm("Delete this engagement? This cannot be undone.")) remove.mutate({ id: selectedId }); }}><Trash2 className="size-3.5" /> Delete</Button></div>}</aside>
+        <aside className="border-r border-slate-200 bg-white xl:min-h-[calc(100vh-64px)]"><div className="flex items-center justify-between px-4 py-4"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Workspace</p><h2 className="text-sm font-semibold text-slate-900">Engagements</h2></div><Button size="icon" className="size-9 bg-slate-950 hover:bg-slate-800" onClick={openCreateDialog} aria-label="Create engagement"><Plus className="size-4" /></Button></div><ScrollArea className={`${(list.data?.length || 0) > 2 ? "h-[260px]" : (list.data?.length || 0) === 2 ? "h-[184px]" : (list.data?.length || 0) === 1 ? "h-[92px]" : "h-0"} xl:h-[calc(100vh-140px)]`}><div className="space-y-1 px-2 pb-4">{list.data?.map(item => <button key={item.id} className={`group w-full rounded-xl px-3 py-3 text-left transition-colors ${selectedId === item.id ? "bg-slate-950 text-white" : "hover:bg-slate-100"}`} onClick={() => { setSelectedId(item.id); hydratedId.current = null; }}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{item.title}</p><p className={`mt-1 truncate text-xs ${selectedId === item.id ? "text-slate-300" : "text-slate-500"}`}>{item.customerName}</p></div><MoreHorizontal className="size-4 shrink-0 opacity-50" /></div><div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-wide text-slate-400"><span>{item.status}</span><span>{new Date(item.updatedAt).toLocaleDateString()}</span></div></button>)}</div></ScrollArea>{selectedIsListed && <div className="grid grid-cols-2 gap-2 border-t border-slate-200 p-3"><Button variant="outline" size="sm" onClick={() => duplicate.mutate({ id: selectedId })}><Copy className="size-3.5" /> Duplicate</Button><Button variant="ghost" size="sm" className="text-red-600" onClick={() => { if (window.confirm("Delete this engagement? This cannot be undone.")) remove.mutate({ id: selectedId }); }}><Trash2 className="size-3.5" /> Delete</Button></div>}</aside>
 
         <main className="min-w-0 p-4 md:p-6">
-          {!selectedIsListed ? <EmptyState onCreate={() => create.mutate({ title: "New FCP Engagement" })} /> : selected.isLoading || !selected.data ? <div className="grid min-h-[65vh] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div> : (
+          {!selectedIsListed ? <EmptyState onCreate={openCreateDialog} /> : selected.isLoading || !selected.data ? <div className="grid min-h-[65vh] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div> : (
             <Tabs value={workspaceTab} onValueChange={value => { const next = value as "setup" | "timeline" | "preview"; setWorkspaceTab(next); const url = new URL(window.location.href); if (next === "setup") url.searchParams.delete("tab"); else url.searchParams.set("tab", next); window.history.replaceState({}, "", url); }} className="space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-3"><TabsList className="h-11 rounded-xl bg-white p-1 shadow-sm"><TabsTrigger value="setup" className="rounded-lg px-5">Plan Setup</TabsTrigger><TabsTrigger value="timeline" className="rounded-lg px-5">Adoption Timelines</TabsTrigger><TabsTrigger value="preview" className="rounded-lg px-5">Review and Export</TabsTrigger></TabsList><div className="flex gap-2"><Button variant="outline" size="sm" disabled={Boolean(exportingFormat)} onClick={() => void startExport("html")}>{exportingFormat === "html" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} HTML</Button><Button variant="outline" size="sm" disabled={Boolean(exportingFormat)} onClick={() => void startExport("pdf")}>{exportingFormat === "pdf" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} PDF</Button></div></div>
 
@@ -156,7 +227,8 @@ export default function Home() {
           )}
         </main>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

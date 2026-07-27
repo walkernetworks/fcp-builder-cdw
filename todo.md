@@ -210,3 +210,15 @@
 - [x] Reproduce and isolate the hosted `invalid redirect_uri` failure caused by the temporary preview domain.
 - [x] Update the secure OAuth entry flow to use the active allowed application origin while preserving the nonce and return-path protections.
 - [x] Add redirect regression coverage, validate hosted sign-in, and checkpoint the repaired authentication flow.
+
+## Active Preview OAuth Handoff Verification
+
+- [x] Verify that the active preview runtime exposes a platform-managed temporary origin rather than a separately configured published callback origin.
+- [x] Preserve the confirmed published-domain sign-in path and remove the unverified temporary-preview override experiment.
+- [x] Confirm the user can access the application through the published FCP domain; no unverified preview-domain workaround is released.
+
+## Engagement Naming at Creation
+
+- [x] Inspect the current new-engagement action and title persistence path.
+- [x] Add an accessible engagement-name input to the new-engagement flow, with a sensible default and validation.
+- [x] Persist and display the selected name, add regression coverage, validate the interaction, and checkpoint the change.
