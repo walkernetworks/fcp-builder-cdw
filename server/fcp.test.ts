@@ -417,6 +417,59 @@ describe("planning considerations, exports, and access boundary", () => {
     ]);
   });
 
+  it("creates a concrete host-platform planning lane for every observed RVTools platform without treating it as certification", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, {
+      entitlementStart: "2027-01-01",
+      entitlementEnd: "2027-12-31",
+      targetStart: "2027-01-01",
+      targetComplete: "2027-12-31",
+    });
+    Object.assign(document.inventory, {
+      hosts: 6,
+      physicalCores: 384,
+      hostModels: [
+        { vendor: "HPE", model: "ProLiant DL380 Gen10", cpuModel: "Intel Xeon", hosts: 4, physicalCores: 256, esxiVersions: [{ version: "VMware ESXi 8.0.3 build-24784735", hosts: 4 }], esxiCorrelation: "per-platform" },
+        { vendor: "Unknown vendor", model: "Unknown model", cpuModel: "Unknown CPU", hosts: 2, physicalCores: 128, esxiVersions: [], esxiCorrelation: "unavailable" },
+      ],
+    });
+
+    const plans = buildAdoptionPlans(document.fields, document.inventory);
+    const platformLanes = plans.adoptionTimeline.lanes.filter(lane => lane.id.startsWith("lane-host-platform-"));
+    const mirroredPlatformLanes = plans.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"));
+
+    expect(platformLanes).toHaveLength(2);
+    expect(mirroredPlatformLanes).toHaveLength(2);
+    expect(platformLanes.map(lane => lane.name)).toEqual(expect.arrayContaining([
+      "Host Platform · HPE ProLiant DL380 Gen10",
+      "Host Platform · Unknown vendor Unknown model",
+    ]));
+    expect(platformLanes.flatMap(lane => lane.bars).map(activity => activity.label)).toEqual(expect.arrayContaining([
+      "Compatibility Confirmation",
+      "Platform Evidence Collection",
+    ]));
+    expect(platformLanes.flatMap(lane => lane.bars).every(activity => activity.outcome?.includes("observed host") && activity.dependsOn?.startsWith("Observed evidence:"))).toBe(true);
+    expect(plans.rationale).toContain("2 observed host-platform planning lanes are included");
+    expect(plans.rationale).toContain("not VCF certification claims");
+    expect(validateTimeline(plans.adoptionTimeline)).toEqual([]);
+    expect(validateTimeline(plans.twoYearPlan)).toEqual([]);
+  });
+
+  it("refreshes a current engagement with missing managed host-platform lanes when it is reopened", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      hosts: 4,
+      physicalCores: 256,
+      hostModels: [{ vendor: "HPE", model: "ProLiant DL380 Gen10", cpuModel: "Intel Xeon", hosts: 4, physicalCores: 256, esxiVersions: [{ version: "VMware ESXi 8.0.3 build-24784735", hosts: 4 }], esxiCorrelation: "per-platform" }],
+    });
+    const reopened = migrateDocument(JSON.parse(JSON.stringify(document)));
+    expect(reopened.adoptionTimeline.lanes.find(lane => lane.id.startsWith("lane-host-platform-"))?.bars[0]).toMatchObject({
+      label: "Compatibility Confirmation",
+      outcome: expect.stringContaining("4 observed hosts"),
+    });
+    expect(reopened.twoYearPlan.lanes.find(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"))).toBeDefined();
+  });
+
   it("provides reusable industry questions that can be applied and cleared without activating scope or generated activities", () => {
     const document = createDefaultDocument();
     document.fields.adoptionDetails.notes = "Customer confirmed an operations owner.";

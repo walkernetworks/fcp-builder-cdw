@@ -587,7 +587,75 @@ function activityLabelsForCapability(fields: MinimalFields, capability: Capabili
   return focuses.map(focus => `${focusLabels[capability][focus] || capabilityTitle(capability)} Plan`);
 }
 
-function buildPrimaryTimeline(fields: MinimalFields): Timeline {
+const platformPlanningLanePrefix = "lane-host-platform-";
+
+function hostPlatformActionLabel(platform: HardwarePlatformAssessment): string {
+  if (platform.status === "upgrade-required") return "Replacement or Exception Decision";
+  if (platform.status === "unavailable") return "Platform Evidence Collection";
+  return "Compatibility Confirmation";
+}
+
+function hostPlatformActionOutcome(platform: HardwarePlatformAssessment): string {
+  const identity = `${platform.vendor} ${platform.model}`.trim() || "observed host platform";
+  if (platform.status === "upgrade-required") {
+    return `${platform.hosts} observed host${platform.hosts === 1 ? "" : "s"} on ${identity}: determine the replacement, repurpose, or formal exception path before Upgrade Services begins.`;
+  }
+  if (platform.status === "unavailable") {
+    return `${platform.hosts} observed host${platform.hosts === 1 ? "" : "s"}: collect the platform identity and configuration evidence required to select a VCF 9.1 path.`;
+  }
+  return `${platform.hosts} observed host${platform.hosts === 1 ? "" : "s"} on ${identity}: confirm the exact configuration and implementation path before Upgrade Services begins.`;
+}
+
+function hostPlatformActionColor(platform: HardwarePlatformAssessment): TimelineColor {
+  if (platform.status === "upgrade-required") return "red";
+  if (platform.status === "unavailable" || platform.status === "review-required") return "amber";
+  return "teal";
+}
+
+function buildHostPlatformPlanningLanes(inventory: InventorySummary, columnCount: number, planStart: number, planEnd: number): TimelineLane[] {
+  const standardDuration = Math.max(1, planEnd - planStart);
+  return assessHardwarePlatforms(inventory).map((platform, index) => {
+    const start = Math.min(columnCount, planStart + Math.min(index % 3, Math.max(0, columnCount - planStart)));
+    const duration = Math.min(standardDuration, Math.max(1, columnCount - start + 1));
+    const end = Math.min(columnCount + 1, start + duration);
+    const observedEsxi = platform.esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ") || "No per-platform ESXi version evidence";
+    const identity = `${platform.vendor} ${platform.model}`.trim() || "Observed host platform";
+    return {
+      id: `${platformPlanningLanePrefix}${platform.id}`,
+      name: `Host Platform · ${identity}`,
+      bars: [bar(
+        `bar-host-platform-${platform.id}`,
+        start,
+        Math.max(start + 1, end),
+        hostPlatformActionColor(platform),
+        hostPlatformActionLabel(platform),
+        false,
+        false,
+        `Observed evidence: ${platform.hosts} host${platform.hosts === 1 ? "" : "s"}; ${observedEsxi}. ${platform.nextAction}`,
+        hostPlatformActionOutcome(platform),
+      )],
+    };
+  });
+}
+
+function withHostPlatformPlanningLanes(timeline: Timeline, inventory: InventorySummary): Timeline {
+  const platformPlan = timeline.lanes.find(lane => lane.id === "lane-platform-plan")?.bars[0];
+  const planStart = platformPlan?.startCol ?? 1;
+  const planEnd = platformPlan?.endCol ?? Math.min(timeline.columns.length + 1, planStart + Math.max(1, Math.ceil(timeline.columns.length * 0.22)));
+  const managedLanes = buildHostPlatformPlanningLanes(inventory, timeline.columns.length, planStart, planEnd);
+  let inserted = false;
+  const lanes = timeline.lanes.flatMap(lane => {
+    if (lane.id.startsWith(platformPlanningLanePrefix)) return [];
+    if (lane.id === "lane-platform-plan") {
+      inserted = true;
+      return [lane, ...managedLanes];
+    }
+    return [lane];
+  });
+  return { ...timeline, lanes: inserted ? lanes : [...managedLanes, ...lanes] };
+}
+
+function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary): Timeline {
   const columns = primaryColumns(fields);
   const count = columns.length;
   const cadence = fields.adoptionCadence;
@@ -600,6 +668,7 @@ function buildPrimaryTimeline(fields: MinimalFields): Timeline {
   const lanes: TimelineLane[] = [
     { id: "lane-upgrade-services", name: "Upgrade Services", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", upgradeServiceLabel(fields.adoptionDetails.upgradePath))] },
     { id: "lane-platform-plan", name: "Platform Plan", bars: [bar("bar-platform-plan", planStart, planEnd, "teal", "Platform Plan and Decision Log")] },
+    ...buildHostPlatformPlanningLanes(inventory, count, planStart, planEnd),
     { id: "lane-platform-design", name: "Platform Design", bars: [bar("bar-platform-design", platformStart, platformEnd, "green", "VCF Platform Design") ] },
   ];
 
@@ -754,6 +823,21 @@ function mirrorYearOneLanes(adoptionTimeline: Timeline): TimelineLane[] {
   }));
 }
 
+function withHostPlatformPlanningTwoYearLanes(twoYearPlan: Timeline, adoptionTimeline: Timeline): Timeline {
+  const managedLanePrefix = `lane-two-year-year-one-${platformPlanningLanePrefix}`;
+  const managedLanes = mirrorYearOneLanes(adoptionTimeline).filter(lane => lane.id.startsWith(managedLanePrefix));
+  let inserted = false;
+  const lanes = twoYearPlan.lanes.flatMap(lane => {
+    if (lane.id.startsWith(managedLanePrefix)) return [];
+    if (lane.id === "lane-two-year-year-one-lane-platform-plan") {
+      inserted = true;
+      return [lane, ...managedLanes];
+    }
+    return [lane];
+  });
+  return { ...twoYearPlan, lanes: inserted ? lanes : [...managedLanes, ...lanes] };
+}
+
 function buildTwoYearPlan(fields: MinimalFields, inventory: InventorySummary, adoptionTimeline: Timeline): Timeline {
   const startDate = timelineStartDate(fields);
   const columns = buildTwoYearNotionalColumns(startDate);
@@ -776,7 +860,7 @@ function buildTwoYearPlan(fields: MinimalFields, inventory: InventorySummary, ad
 }
 
 export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
-  const adoptionTimeline = buildPrimaryTimeline(fields);
+  const adoptionTimeline = buildPrimaryTimeline(fields, inventory);
   const twoYearPlan = buildTwoYearPlan(fields, inventory, adoptionTimeline);
   const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
   const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
@@ -789,7 +873,11 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const followOnSummary = followOnCount
     ? `${followOnCount} follow-on service recommendation${followOnCount === 1 ? " is" : "s are"} shown because the related priority, detailed intake selection, and estate or hardware signal are present`
     : "no follow-on services are shown until a confirmed priority, detailed intake selection, and usable estate or hardware signal align";
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Upgrade Services begins at the start of the target window while initial platform planning and design work run in parallel. The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the operational sequence, while months 13–24 contain only selective services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and what must be ready before it starts; unmet prerequisites defer the service instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const hostPlatformPlanCount = adoptionTimeline.lanes.filter(lane => lane.id.startsWith(platformPlanningLanePrefix)).length;
+  const hostPlatformSummary = hostPlatformPlanCount
+    ? `${hostPlatformPlanCount} observed host-platform planning lane${hostPlatformPlanCount === 1 ? " is" : "s are"} included so every imported platform has a concrete evidence-collection, compatibility-confirmation, or replacement/exception action; these are planning actions, not VCF certification claims.`
+    : "host-platform planning lanes will appear when RVTools provides host-model evidence.";
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Upgrade Services begins at the start of the target window while initial platform planning and design work run in parallel. ${hostPlatformSummary} The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the operational sequence, while months 13–24 contain only selective services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and what must be ready before it starts; unmet prerequisites defer the service instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -828,8 +916,8 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       esxiVersions,
       esxiCorrelation,
       status: "unavailable",
-      detail: `A VCF 9.1 platform precheck cannot be formed because RVTools did not provide a usable vendor and model.${esxiDetail}`,
-      nextAction: "Collect the server make, model, CPU, BIOS, firmware, adapter, and storage-controller details before compatibility review.",
+      detail: `RVTools observed this host group but did not provide a usable vendor and model, so the plan begins with platform evidence collection before a VCF 9.1 path can be selected.${esxiDetail}`,
+      nextAction: "Run the Platform Evidence Collection plan: collect the server make, model, CPU, BIOS, firmware, adapter, and storage-controller details before compatibility review.",
     };
   }
 
@@ -844,8 +932,8 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       esxiVersions,
       esxiCorrelation,
       status: "upgrade-required",
-      detail: `This legacy Dell PowerEdge generation should be treated as a replacement or exception decision for VCF 9.1 planning, not as an assumed in-place upgrade target.${esxiDetail}`,
-      nextAction: "Validate the exact configuration in the Broadcom Compatibility Guide and determine the replacement, repurpose, or exception path before the Upgrade Services workstream begins.",
+      detail: `This legacy Dell PowerEdge generation has a replacement or exception decision plan for VCF 9.1; it is not assumed to be an in-place upgrade target.${esxiDetail}`,
+      nextAction: "Run the Replacement or Exception Decision plan: validate the exact configuration in the Broadcom Compatibility Guide and determine the replacement, repurpose, or exception path before Upgrade Services begins.",
     };
   }
 
@@ -860,8 +948,8 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       esxiVersions,
       esxiCorrelation,
       status: "candidate",
-      detail: `This current-generation Dell PowerEdge model is a candidate for VCF 9.1 infrastructure validation; RVTools alone cannot establish a supported server configuration.${esxiDetail}`,
-      nextAction: "Validate the exact server, CPU, NIC, storage controller, firmware, driver, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
+      detail: `This current-generation Dell PowerEdge model has a configuration compatibility confirmation plan; RVTools alone cannot establish a supported server configuration.${esxiDetail}`,
+      nextAction: "Run the Compatibility Confirmation plan: validate the exact server, CPU, NIC, storage controller, firmware, driver, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
     };
   }
 
@@ -875,8 +963,8 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
     esxiVersions,
     esxiCorrelation,
     status: "review-required",
-    detail: `RVTools provides a usable platform identity, but no deterministic VCF 9.1 outcome can be inferred from this model alone.${esxiDetail}`,
-    nextAction: "Validate the exact server, CPU, adapters, storage controllers, firmware, drivers, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
+    detail: `RVTools provides a usable platform identity, so the plan starts with configuration compatibility confirmation; the server model alone cannot establish an official VCF 9.1 outcome.${esxiDetail}`,
+    nextAction: "Run the Compatibility Confirmation plan: validate the exact server, CPU, adapters, storage controllers, firmware, drivers, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
   };
 }
 
@@ -942,7 +1030,7 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
         ? `${upgradeRequiredPlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) are on legacy platform generations that need a replacement or formal exception decision for VCF 9.1 planning. ${candidatePlatforms.length ? `${candidatePlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) remain candidate platforms pending exact configuration validation.` : ""}`
         : candidatePlatforms.length
           ? `${candidatePlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) are on candidate platform generation(s); exact configuration validation is still required.`
-          : "Platform identities are available for a VCF 9.1 compatibility review, but RVTools cannot determine final certification.",
+          : "Every observed platform has a configuration compatibility confirmation plan; RVTools cannot determine final certification from server identity alone.",
     evidence: hardwarePlatforms.map(platform => `${platform.vendor} ${platform.model} (${platform.hosts}): ${platform.status}`).join("; ") || "No host model data",
   });
 
@@ -1016,6 +1104,9 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
 export function migrateDocument(value: unknown): EngagementDocument {
   const current = engagementDocumentV10Schema.safeParse(value);
   if (current.success) {
+    const adoptionTimeline = withHostPlatformPlanningLanes(current.data.adoptionTimeline, current.data.inventory);
+    const twoYearPlan = withHostPlatformPlanningTwoYearLanes(current.data.twoYearPlan, adoptionTimeline);
+    const generated = buildAdoptionPlans(current.data.fields, current.data.inventory);
     return {
       ...current.data,
       readiness: assessReadiness(
@@ -1023,6 +1114,9 @@ export function migrateDocument(value: unknown): EngagementDocument {
         current.data.inventory,
         current.data.inventorySources.flatMap(source => source.warnings),
       ),
+      adoptionTimeline,
+      twoYearPlan,
+      rationale: generated.rationale,
     };
   }
 

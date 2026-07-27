@@ -234,3 +234,9 @@
 - [x] Trace why an existing engagement can display an old unknown software-baseline finding despite detected RVTools ESXi 8.0.3 evidence.
 - [x] Recompute deterministic readiness findings for existing engagement documents when they are loaded or saved after rule updates.
 - [x] Add regression coverage for persisted legacy readiness plus ESXi 8.0.3 evidence, validate the displayed summary, and checkpoint the repair.
+
+## Observed Host Platform Planning
+
+- [x] Trace why observed RVTools host platforms with usable identity and ESXi evidence can still receive an indeterminate VCF 9.1 message.
+- [x] Define a non-certifying but actionable planning path for every observed platform, including platforms requiring official compatibility confirmation.
+- [x] Surface host-specific planning actions in readiness and generated plan outputs, add regressions, validate the behavior, and checkpoint the change.
