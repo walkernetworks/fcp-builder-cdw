@@ -222,3 +222,9 @@
 - [x] Inspect the current new-engagement action and title persistence path.
 - [x] Add an accessible engagement-name input to the new-engagement flow, with a sensible default and validation.
 - [x] Persist and display the selected name, add regression coverage, validate the interaction, and checkpoint the change.
+
+## ESXi Baseline Evidence Consistency
+
+- [x] Trace why detected RVTools ESXi versions can still render an unknown baseline status with an unavailable-evidence message.
+- [x] Correct readiness classification and report wording so detected versions, unsupported baselines, and truly unavailable evidence are distinguishable.
+- [x] Add regression coverage, validate the readiness summary and export wording, and checkpoint the correction.

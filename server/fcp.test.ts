@@ -322,6 +322,29 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(considerations.label).toBe("Inventory-Informed VCF 9.1 Planning Considerations");
   });
 
+  it("classifies RVTools-formatted legacy ESXi values instead of reporting them as unavailable", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      esxiVersions: [
+        { version: "VMware ESXi 6.5.0 build-10719125", hosts: 27 },
+        { version: "VMware ESXi 6.5.0 build-9298722", hosts: 1 },
+      ],
+    });
+
+    const baseline = assessReadiness(document.fields, document.inventory).items.find(item => item.id === "software-baseline");
+    expect(baseline).toMatchObject({
+      status: "attention",
+      detail: "28 host(s) report ESXi 7.x or older.",
+      evidence: "VMware ESXi 6.5.0 build-10719125: 27; VMware ESXi 6.5.0 build-9298722: 1",
+    });
+  });
+
+  it("reports unavailable only when no ESXi version evidence exists", () => {
+    const document = createDefaultDocument();
+    const baseline = assessReadiness(document.fields, document.inventory).items.find(item => item.id === "software-baseline");
+    expect(baseline).toMatchObject({ status: "unknown", detail: "ESXi versions were not available." });
+  });
+
   it("classifies RVTools host platforms into VCF 9.1 candidate and upgrade-required precheck outcomes", () => {
     const document = createDefaultDocument();
     Object.assign(document.inventory, {

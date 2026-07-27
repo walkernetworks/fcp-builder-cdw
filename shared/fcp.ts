@@ -884,6 +884,15 @@ export function assessHardwarePlatforms(inventory: InventorySummary): HardwarePl
   return inventory.hostModels.map(hardwarePlatformAssessment);
 }
 
+function extractEsxiMajorVersion(version: string): number | null {
+  const text = version.trim();
+  const explicitMatch = text.match(/\b(?:VMware\s+)?ESXi(?:\s+Version)?\s*[:=-]?\s*(\d+)(?:\.\d+){0,2}\b/i);
+  const dottedMatch = text.match(/\b(\d+)\.\d+(?:\.\d+)?\b/);
+  const bareMatch = text.match(/^(\d+)(?:\.\d+){0,2}(?:\b|$)/);
+  const major = Number(explicitMatch?.[1] ?? dottedMatch?.[1] ?? bareMatch?.[1]);
+  return Number.isInteger(major) && major >= 0 && major <= 99 ? major : null;
+}
+
 export function assessReadiness(fields: MinimalFields, inventory: InventorySummary, sourceWarnings: string[] = []): ReadinessAssessment {
   const items: ReadinessItem[] = [];
   items.push({
@@ -895,15 +904,26 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     evidence: sourceWarnings.length ? sourceWarnings.join(" ") : "Required vHost and vInfo data detected.",
   });
 
-  const legacyHosts = inventory.esxiVersions.filter(item => /^(?:[0-7])(?:\.|$)/.test(item.version.trim())).reduce((sum, item) => sum + item.hosts, 0);
-  const v8Hosts = inventory.esxiVersions.filter(item => /^8(?:\.|$)/.test(item.version.trim())).reduce((sum, item) => sum + item.hosts, 0);
-  const v9Hosts = inventory.esxiVersions.filter(item => /^9(?:\.|$)/.test(item.version.trim())).reduce((sum, item) => sum + item.hosts, 0);
+  const observedEsxiVersions = inventory.esxiVersions.map(item => ({ ...item, major: extractEsxiMajorVersion(item.version) }));
+  const legacyHosts = observedEsxiVersions.filter(item => item.major !== null && item.major <= 7).reduce((sum, item) => sum + item.hosts, 0);
+  const v8Hosts = observedEsxiVersions.filter(item => item.major === 8).reduce((sum, item) => sum + item.hosts, 0);
+  const v9Hosts = observedEsxiVersions.filter(item => item.major !== null && item.major >= 9).reduce((sum, item) => sum + item.hosts, 0);
+  const unclassifiedEsxiHosts = observedEsxiVersions.filter(item => item.major === null).reduce((sum, item) => sum + item.hosts, 0);
+  const hasEsxiEvidence = observedEsxiVersions.length > 0;
   items.push({
     id: "software-baseline",
     category: "software",
-    status: legacyHosts ? "attention" : v9Hosts ? "good" : v8Hosts ? "info" : "unknown",
+    status: legacyHosts ? "attention" : v9Hosts ? "good" : v8Hosts ? "info" : hasEsxiEvidence ? "info" : "unknown",
     title: "vSphere Software Baseline",
-    detail: legacyHosts ? `${legacyHosts} host(s) report ESXi 7.x or older.` : v9Hosts ? `${v9Hosts} host(s) report a 9.x ESXi baseline.` : v8Hosts ? `${v8Hosts} host(s) report ESXi 8.x.` : "ESXi versions were not available.",
+    detail: legacyHosts
+      ? `${legacyHosts} host(s) report ESXi 7.x or older.`
+      : v9Hosts
+        ? `${v9Hosts} host(s) report a 9.x or later ESXi baseline.`
+        : v8Hosts
+          ? `${v8Hosts} host(s) report ESXi 8.x.`
+          : hasEsxiEvidence
+            ? `${unclassifiedEsxiHosts} host(s) report ESXi version data, but the major release could not be classified from the RVTools value.`
+            : "ESXi versions were not available.",
     evidence: inventory.esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ") || "No vHost version data",
   });
 
