@@ -247,3 +247,17 @@
 - [x] Implement a consolidated compatibility assessment outcome that helps delivery teams prioritize eligible, upgrade-required, and evidence-incomplete host cohorts without claiming certification.
 - [x] Replace the generic Two-Year Notional empty state with explicit missing selections, estate signals, and recommended next actions for targeted follow-on services.
 - [x] Add regression coverage, validate the revised readiness and planning views, and checkpoint the change.
+
+## Canonical Adoption Timeline Taxonomy
+
+- [x] Audit generated, editable, migrated, and exported Adoption Timeline categories and workstream labels.
+- [x] Restrict timeline categories to Program Management & Governance, Hardware Refresh, Modernize Cloud, Operations, Modernize Infrastructure, Modernize Security & Reliance, and Modernize App Platform & AI.
+- [x] Restrict workstream types to Governance, Operating Model / Platform, Infrastructure Build, Migration Waves, Consume / Handover, and Security & Resiliency, with exact capitalization.
+- [x] Normalize existing engagements, add regression coverage, validate exports and workspace labels, and checkpoint the taxonomy change.
+
+## VCF 9.1 Host Compatibility Readiness Deepening
+
+- [x] Define RVTools-observable VCF 9.1 deployment-guide checks and their certification boundary.
+- [x] Assess each host cohort for ESXi baseline, CPU-generation risk, model-generation evidence, and cluster-size signals with actionable outcomes.
+- [x] Surface detailed cohort findings and evidence gaps in the readiness workspace, generated plans, and PDF export.
+- [x] Add regression coverage, validate the revised readiness experience, and checkpoint the compatibility enhancement.

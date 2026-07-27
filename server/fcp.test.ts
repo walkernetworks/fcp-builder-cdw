@@ -20,9 +20,9 @@ function authenticatedContext(): TrpcContext {
 describe("RVTools local import", () => {
   it("aggregates multiple CSV exports and deduplicates stable host and VM identifiers", async () => {
     const vHost = csvFile("vHost.csv", [
-      ["UUID", "Datacenter", "Cluster", "Host", "# Cores", "ESX Version", "Vendor", "Model", "CPU Model"],
-      ["host-1", "DC1", "Cluster-A", "esx01", "32", "8.0.3", "Dell", "R760", "Intel Xeon"],
-      ["host-2", "DC1", "Cluster-A", "esx02", "32", "7.0.3", "Dell", "R760", "Intel Xeon"],
+      ["UUID", "Datacenter", "Cluster", "Host", "# Cores", "ESX Version", "Vendor", "Model", "CPU Model", "Memory Total MiB"],
+      ["host-1", "DC1", "Cluster-A", "esx01", "32", "8.0.3", "Dell", "R760", "Intel Xeon", "1048576"],
+      ["host-2", "DC1", "Cluster-A", "esx02", "32", "7.0.3", "Dell", "R760", "Intel Xeon", "2097152"],
     ]);
     const vInfo = csvFile("vInfo.csv", [
       ["VM UUID", "VM", "Powerstate", "CPUs", "Memory", "OS according to the configuration file"],
@@ -41,7 +41,11 @@ describe("RVTools local import", () => {
       model: "R760",
       esxiCorrelation: "per-platform",
       esxiVersions: [{ version: "8.0.3", hosts: 1 }, { version: "7.0.3", hosts: 1 }],
+      clusterMembership: [{ name: "DC1 / Cluster-A", hosts: 2 }],
+      minimumMemoryGiB: 1024,
+      maximumMemoryGiB: 2048,
     });
+    expect(result.summary.clusterProfiles).toEqual([{ name: "DC1 / Cluster-A", hosts: 2 }]);
   });
 });
 
@@ -548,6 +552,67 @@ describe("planning considerations, exports, and access boundary", () => {
     });
   });
 
+  it("evaluates VCF 9.1 host-cohort, topology, and sizing evidence without presenting RVTools as certification", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      hosts: 6,
+      physicalCores: 384,
+      clusters: 1,
+      clusterProfiles: [{ name: "DC1 / Mgmt", hosts: 6 }],
+      esxiVersions: [{ version: "VMware ESXi 9.1.0 build-25370933", hosts: 6 }],
+      hostModels: [
+        { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel Xeon Gold", hosts: 3, physicalCores: 192, esxiVersions: [{ version: "VMware ESXi 9.1.0 build-25370933", hosts: 3 }], esxiCorrelation: "per-platform", clusterMembership: [{ name: "DC1 / Mgmt", hosts: 3 }], minimumMemoryGiB: 1024, maximumMemoryGiB: 1024 },
+        { vendor: "HPE", model: "ProLiant DL380 Gen10", cpuModel: "Intel Xeon Gold", hosts: 3, physicalCores: 192, esxiVersions: [{ version: "VMware ESXi 9.1.0 build-25370933", hosts: 3 }], esxiCorrelation: "per-platform", clusterMembership: [{ name: "DC1 / Mgmt", hosts: 3 }], minimumMemoryGiB: 768, maximumMemoryGiB: 768 },
+      ],
+    });
+
+    const readiness = assessReadiness(document.fields, document.inventory);
+    expect(readiness.items.find(item => item.id === "software-baseline")).toMatchObject({
+      status: "info",
+      title: "VCF 9.1 ESX BOM Alignment Signal",
+      detail: expect.stringContaining("not confirmation of the required exact build"),
+    });
+    expect(readiness.items.find(item => item.id === "management-domain-cohort-uniformity")).toMatchObject({
+      status: "attention",
+      title: "Management-Domain Cohort Uniformity",
+      detail: expect.stringContaining("more than one hardware vendor"),
+      evidence: "DC1 / Mgmt: 6 hosts",
+    });
+    expect(readiness.items.find(item => item.id === "deployment-topology-sizing-evidence")).toMatchObject({
+      status: "info",
+      title: "VCF 9.1 Topology and N-1 Sizing Evidence",
+      detail: expect.stringContaining("at least four hosts"),
+      evidence: expect.stringContaining("Dell Inc. PowerEdge R760: 1,024–1,024 GiB per host"),
+    });
+    expect(readiness.disclaimer).toContain("one hardware vendor for the selected management domain");
+  });
+
+  it("uses only the canonical categories and workstream types in generated adoption plans", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, {
+      entitlementStart: "2027-01-01",
+      entitlementEnd: "2027-12-31",
+      targetStart: "2027-01-01",
+      targetComplete: "2027-12-31",
+      priorities: ["operations", "automation", "security", "resilience", "kubernetes", "private-ai"],
+      adoptionDetails: {
+        ...document.fields.adoptionDetails,
+        operations: ["capacity-cost"],
+        automation: ["vm-self-service"],
+        security: ["segmentation"],
+        resilience: ["recovery-architecture"],
+        kubernetes: ["workload-domains"],
+        privateAi: ["gpu-capacity"],
+      },
+    });
+    const plans = buildAdoptionPlans(document.fields, document.inventory);
+    const canonicalCategories = new Set(["Program Management & Governance", "Hardware Refresh", "Modernize Cloud", "Operations", "Modernize Infrastructure", "Modernize Security & Reliance", "Modernize App Platform & AI"]);
+    const canonicalWorkstreamTypes = new Set(["Governance", "Operating Model / Platform", "Infrastructure Build", "Migration Waves", "Consume / Handover", "Security & Resiliency"]);
+    const lanes = [...plans.adoptionTimeline.lanes, ...plans.twoYearPlan.lanes];
+    expect(lanes.length).toBeGreaterThan(0);
+    expect(lanes.every(lane => canonicalCategories.has(lane.category) && canonicalWorkstreamTypes.has(lane.workstreamType))).toBe(true);
+  });
+
   it("renders entitlement details and both synchronized adoption views with VCF 9.1 platform evidence", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, { customerName: "Meridian Health", entitledCores: 128, entitlementAmount: 3_000_000, entitlementStart: "2027-01-01", entitlementEnd: "2028-12-31", priorities: ["operations"], adoptionDetails: { ...document.fields.adoptionDetails, operations: ["observability", "custom-dashboards"] } });
@@ -568,6 +633,8 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Publish governed dashboards with support-team ownership, service measures, and a review cadence.");
     expect(html).toContain("Recommended because the customer selected");
     expect(html).toContain("VCF 9.1 Hardware Platform Precheck");
+    expect(html).toContain("VCF 9.1 Host Cohort Precheck");
+    expect(html).toContain("Cohort / Memory Evidence");
     expect(html).toContain("Observed ESXi");
     expect(html).toContain("Upgrade Services");
     const planSummaryStart = html.indexOf('<div class="plan-summary">');

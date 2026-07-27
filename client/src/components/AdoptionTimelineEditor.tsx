@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { applyTimelineGesture, normalizeActivityLabel, normalizeWorkstreamLabel, TIMELINE_COLORS, validateTimeline, type Timeline, type TimelineBar } from "@shared/fcp";
+import { applyTimelineGesture, normalizeActivityLabel, normalizeWorkstreamLabel, TIMELINE_CATEGORIES, TIMELINE_COLORS, validateTimeline, WORKSTREAM_TYPES, type Timeline, type TimelineBar } from "@shared/fcp";
 import { ArrowDown, ArrowUp, CalendarRange, Flag, GripVertical, Plus, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -103,7 +103,7 @@ export function AdoptionTimelineEditor({
 
   const addLane = () => {
     const laneId = id("lane");
-    onChange({ ...timeline, lanes: [...timeline.lanes, { id: laneId, name: "New Workstream", bars: [] }] });
+    onChange({ ...timeline, lanes: [...timeline.lanes, { id: laneId, name: "New Workstream", category: "Program Management & Governance", workstreamType: "Governance", bars: [] }] });
   };
 
   const addBar = (laneId: string) => {
@@ -151,6 +151,10 @@ export function AdoptionTimelineEditor({
                 <div className="flex min-w-0 items-center gap-1">
                   <GripVertical className="size-4 shrink-0 text-slate-300" />
                   <Input value={lane.name} onChange={event => changeLane(lane.id, item => ({ ...item, name: event.target.value }))} onBlur={event => changeLane(lane.id, item => ({ ...item, name: normalizeWorkstreamLabel(event.target.value) }))} className="h-8 min-w-0 border-transparent bg-transparent px-1 text-xs font-semibold shadow-none focus-visible:border-slate-200" aria-label="Workstream name" />
+                </div>
+                <div className="flex min-w-0 flex-wrap gap-1 pl-5">
+                  <Select value={lane.category} onValueChange={category => changeLane(lane.id, item => ({ ...item, category: category as Timeline["lanes"][number]["category"] }))}><SelectTrigger className="h-6 min-w-0 flex-1 border-slate-200 bg-slate-50 px-2 text-[10px]" aria-label="Timeline category"><SelectValue /></SelectTrigger><SelectContent>{TIMELINE_CATEGORIES.map(category => <SelectItem key={category} value={category}>{category}</SelectItem>)}</SelectContent></Select>
+                  <Select value={lane.workstreamType} onValueChange={workstreamType => changeLane(lane.id, item => ({ ...item, workstreamType: workstreamType as Timeline["lanes"][number]["workstreamType"] }))}><SelectTrigger className="h-6 min-w-0 flex-1 border-slate-200 bg-slate-50 px-2 text-[10px]" aria-label="Workstream type"><SelectValue /></SelectTrigger><SelectContent>{WORKSTREAM_TYPES.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select>
                 </div>
                 <div className="flex justify-end">
                   <Button size="icon" variant="ghost" className="size-7" disabled={laneIndex === 0} onClick={() => moveLane(lane.id, -1)} aria-label="Move workstream up"><ArrowUp className="size-3.5" /></Button>

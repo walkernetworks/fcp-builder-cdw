@@ -3,6 +3,27 @@ import { z } from "zod";
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
 export type TimelineColor = (typeof TIMELINE_COLORS)[number];
 
+export const TIMELINE_CATEGORIES = [
+  "Program Management & Governance",
+  "Hardware Refresh",
+  "Modernize Cloud",
+  "Operations",
+  "Modernize Infrastructure",
+  "Modernize Security & Reliance",
+  "Modernize App Platform & AI",
+] as const;
+export type TimelineCategory = (typeof TIMELINE_CATEGORIES)[number];
+
+export const WORKSTREAM_TYPES = [
+  "Governance",
+  "Operating Model / Platform",
+  "Infrastructure Build",
+  "Migration Waves",
+  "Consume / Handover",
+  "Security & Resiliency",
+] as const;
+export type WorkstreamType = (typeof WORKSTREAM_TYPES)[number];
+
 export const timelineCadenceSchema = z.enum(["month", "week"]);
 export type TimelineCadence = z.infer<typeof timelineCadenceSchema>;
 
@@ -21,6 +42,8 @@ export const timelineBarSchema = z.object({
 export const timelineLaneSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  category: z.enum(TIMELINE_CATEGORIES).default("Program Management & Governance"),
+  workstreamType: z.enum(WORKSTREAM_TYPES).default("Governance"),
   bars: z.array(timelineBarSchema),
 });
 
@@ -117,6 +140,7 @@ export const inventorySourceSchema = z.object({
 });
 
 export const inventoryVersionSchema = z.object({ version: z.string(), hosts: z.number().int().nonnegative() });
+export const inventoryClusterProfileSchema = z.object({ name: z.string(), hosts: z.number().int().nonnegative() });
 
 const inventoryHostModelV4Schema = z.object({
   vendor: z.string(),
@@ -129,12 +153,16 @@ const inventoryHostModelV4Schema = z.object({
 export const inventoryHostModelSchema = inventoryHostModelV4Schema.extend({
   esxiVersions: z.array(inventoryVersionSchema),
   esxiCorrelation: z.enum(["per-platform", "estate-wide", "unavailable"]),
+  clusterMembership: z.array(inventoryClusterProfileSchema).default([]),
+  minimumMemoryGiB: z.number().nonnegative().default(0),
+  maximumMemoryGiB: z.number().nonnegative().default(0),
 });
 
 const inventorySummaryBaseSchema = z.object({
   sourceCount: z.number().int().nonnegative(),
   datacenters: z.number().int().nonnegative(),
   clusters: z.number().int().nonnegative(),
+  clusterProfiles: z.array(inventoryClusterProfileSchema).default([]),
   hosts: z.number().int().nonnegative(),
   physicalCores: z.number().int().nonnegative(),
   vmCount: z.number().int().nonnegative(),
@@ -195,6 +223,9 @@ const hardwarePlatformAssessmentV4Schema = z.object({
 export const hardwarePlatformAssessmentSchema = hardwarePlatformAssessmentV4Schema.extend({
   esxiVersions: z.array(inventoryVersionSchema),
   esxiCorrelation: platformEsxiCorrelationSchema,
+  clusterMembership: z.array(inventoryClusterProfileSchema).default([]),
+  minimumMemoryGiB: z.number().nonnegative().default(0),
+  maximumMemoryGiB: z.number().nonnegative().default(0),
 });
 export type HardwarePlatformAssessment = z.infer<typeof hardwarePlatformAssessmentSchema>;
 
@@ -312,6 +343,7 @@ export function emptyInventory(): InventorySummary {
     sourceCount: 0,
     datacenters: 0,
     clusters: 0,
+    clusterProfiles: [],
     hosts: 0,
     physicalCores: 0,
     vmCount: 0,
@@ -516,6 +548,45 @@ export function normalizeWorkstreamLabel(value: string): string {
   return titleCase(cleaned || "Custom Workstream");
 }
 
+type TimelineLaneMetadata = Pick<TimelineLane, "category" | "workstreamType">;
+
+const DEFAULT_TIMELINE_LANE_METADATA: TimelineLaneMetadata = {
+  category: "Program Management & Governance",
+  workstreamType: "Governance",
+};
+
+function capabilityLaneMetadata(capability: Capability): TimelineLaneMetadata {
+  const metadata: Record<Capability, TimelineLaneMetadata> = {
+    operations: { category: "Operations", workstreamType: "Operating Model / Platform" },
+    automation: { category: "Modernize Cloud", workstreamType: "Consume / Handover" },
+    security: { category: "Modernize Security & Reliance", workstreamType: "Security & Resiliency" },
+    resilience: { category: "Modernize Security & Reliance", workstreamType: "Security & Resiliency" },
+    kubernetes: { category: "Modernize App Platform & AI", workstreamType: "Consume / Handover" },
+    "private-ai": { category: "Modernize App Platform & AI", workstreamType: "Consume / Handover" },
+  };
+  return metadata[capability];
+}
+
+function inferredLaneMetadata(laneId: string): TimelineLaneMetadata | null {
+  const id = laneId.replace(/^lane-two-year-year-one-/, "");
+  if (id === "lane-platform-plan") return DEFAULT_TIMELINE_LANE_METADATA;
+  if (id === "lane-hardware-refresh") return { category: "Hardware Refresh", workstreamType: "Infrastructure Build" };
+  if (id === "lane-upgrade-services") return { category: "Modernize Infrastructure", workstreamType: "Migration Waves" };
+  if (id === "lane-platform-design") return { category: "Modernize Cloud", workstreamType: "Operating Model / Platform" };
+  const capabilityMatch = id.match(/^lane-(?:follow-on-)?(operations|automation|security|resilience|kubernetes|private-ai)(?:-\d+)?$/);
+  return capabilityMatch ? capabilityLaneMetadata(capabilityMatch[1] as Capability) : null;
+}
+
+export function normalizeTimelineTaxonomy(timeline: Timeline): Timeline {
+  return {
+    ...timeline,
+    lanes: timeline.lanes.map(lane => {
+      const inferred = inferredLaneMetadata(lane.id);
+      return { ...lane, ...(inferred || {}) };
+    }),
+  };
+}
+
 function capabilityColor(capability: Capability): TimelineColor {
   return capability === "security" ? "red" : capability === "resilience" ? "blue" : capability === "automation" ? "amber" : capability === "operations" ? "teal" : "green";
 }
@@ -657,9 +728,9 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const [platformStart, platformEnd] = boundedRange(Math.min(count, Math.max(assessmentEnd, upgradeStart)), designDuration, count);
   const compatibilityAssessment = buildCompatibilityAssessmentActivity(inventory);
   const lanes: TimelineLane[] = [
-    { id: "lane-platform-plan", name: "Platform Plan", bars: [bar("bar-platform-plan", assessmentStart, assessmentEnd, compatibilityAssessment.color, compatibilityAssessment.label, false, false, compatibilityAssessment.dependsOn, compatibilityAssessment.outcome)] },
-    { id: "lane-upgrade-services", name: "Upgrade Services", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, "Start after the compatibility assessment has recorded supported, remediation, or evidence-gap outcomes for every observed platform cohort.")] },
-    { id: "lane-platform-design", name: "Platform Design", bars: [bar("bar-platform-design", platformStart, platformEnd, "green", "VCF Platform Design") ] },
+    { id: "lane-platform-plan", name: "Platform Plan", ...DEFAULT_TIMELINE_LANE_METADATA, bars: [bar("bar-platform-plan", assessmentStart, assessmentEnd, compatibilityAssessment.color, compatibilityAssessment.label, false, false, compatibilityAssessment.dependsOn, compatibilityAssessment.outcome)] },
+    { id: "lane-upgrade-services", name: "Upgrade Services", category: "Modernize Infrastructure", workstreamType: "Migration Waves", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, "Start after the compatibility assessment has recorded supported, remediation, or evidence-gap outcomes for every observed platform cohort.")] },
+    { id: "lane-platform-design", name: "Platform Design", category: "Modernize Cloud", workstreamType: "Operating Model / Platform", bars: [bar("bar-platform-design", platformStart, platformEnd, "green", "VCF Platform Design") ] },
   ];
 
   const capabilityStart = Math.max(2, Math.min(count, Math.ceil(count * 0.45)));
@@ -681,7 +752,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       });
       const suffix = laneCount > 1 ? ` ${laneIndex + 1}` : "";
       const laneId = laneIndex === 0 ? `lane-${priority}` : `lane-${priority}-${laneIndex + 1}`;
-      lanes.push({ id: laneId, name: `${capabilityTitle(priority)} Outcomes${suffix}`, bars });
+      lanes.push({ id: laneId, name: `${capabilityTitle(priority)} Outcomes${suffix}`, ...capabilityLaneMetadata(priority), bars });
     }
   });
 
@@ -857,6 +928,8 @@ function mirrorYearOneLanes(adoptionTimeline: Timeline): TimelineLane[] {
   return adoptionTimeline.lanes.map(lane => ({
     id: `lane-two-year-year-one-${lane.id}`,
     name: lane.name,
+    category: lane.category,
+    workstreamType: lane.workstreamType,
     bars: lane.bars.flatMap(item => {
       const startCol = Math.max(1, normalizeStart(item.startCol));
       const endCol = Math.min(13, Math.max(startCol + 1, normalizeEnd(item.endCol)));
@@ -881,7 +954,7 @@ function buildTwoYearPlan(fields: MinimalFields, inventory: InventorySummary, ad
       const [safeStart, end] = boundedRange(start, duration, columns.length);
       return bar(`bar-follow-on-${priority}-${index + 1}`, safeStart, end, capabilityColor(priority), activity.label, false, false, activity.dependsOn, activity.outcome);
     });
-    lanes.push({ id: `lane-follow-on-${priority}`, name: `${capabilityTitle(priority)} Services`, bars });
+      lanes.push({ id: `lane-follow-on-${priority}`, name: `${capabilityTitle(priority)} Services`, ...capabilityLaneMetadata(priority), bars });
   });
 
   return { cadence: "month", startDate, columns, lanes };
@@ -920,8 +993,11 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
   const vendor = platform.vendor.trim();
   const model = platform.model.trim();
   const cpuModel = platform.cpuModel.trim();
-  const esxiVersions = platform.esxiVersions;
-  const esxiCorrelation = platform.esxiCorrelation;
+  const esxiVersions = Array.isArray(platform.esxiVersions) ? platform.esxiVersions : [];
+  const esxiCorrelation = platform.esxiCorrelation || "unavailable";
+  const clusterMembership = Array.isArray(platform.clusterMembership) ? platform.clusterMembership : [];
+  const minimumMemoryGiB = Number.isFinite(platform.minimumMemoryGiB) ? platform.minimumMemoryGiB : 0;
+  const maximumMemoryGiB = Number.isFinite(platform.maximumMemoryGiB) ? platform.maximumMemoryGiB : 0;
   const observedEsxi = esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ");
   const esxiDetail = observedEsxi
     ? ` Observed ESXi ${observedEsxi}${esxiCorrelation === "estate-wide" ? " (estate-wide evidence; not uniquely correlated to this platform)" : ""}.`
@@ -941,6 +1017,9 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       physicalCores: platform.physicalCores,
       esxiVersions,
       esxiCorrelation,
+      clusterMembership,
+      minimumMemoryGiB,
+      maximumMemoryGiB,
       status: "unavailable",
       detail: `RVTools observed this host group but did not provide a usable vendor and model, so the plan begins with platform evidence collection before a VCF 9.1 path can be selected.${esxiDetail}`,
       nextAction: "Run the Platform Evidence Collection plan: collect the server make, model, CPU, BIOS, firmware, adapter, and storage-controller details before compatibility review.",
@@ -957,6 +1036,9 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       physicalCores: platform.physicalCores,
       esxiVersions,
       esxiCorrelation,
+      clusterMembership,
+      minimumMemoryGiB,
+      maximumMemoryGiB,
       status: "upgrade-required",
       detail: `This legacy Dell PowerEdge generation has a replacement or exception decision plan for VCF 9.1; it is not assumed to be an in-place upgrade target.${esxiDetail}`,
       nextAction: "Run the Replacement or Exception Decision plan: validate the exact configuration in the Broadcom Compatibility Guide and determine the replacement, repurpose, or exception path before Upgrade Services begins.",
@@ -973,6 +1055,9 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       physicalCores: platform.physicalCores,
       esxiVersions,
       esxiCorrelation,
+      clusterMembership,
+      minimumMemoryGiB,
+      maximumMemoryGiB,
       status: "candidate",
       detail: `This current-generation Dell PowerEdge model has a configuration compatibility confirmation plan; RVTools alone cannot establish a supported server configuration.${esxiDetail}`,
       nextAction: "Run the Compatibility Confirmation plan: validate the exact server, CPU, NIC, storage controller, firmware, driver, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
@@ -988,6 +1073,9 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
     physicalCores: platform.physicalCores,
     esxiVersions,
     esxiCorrelation,
+    clusterMembership: platform.clusterMembership,
+    minimumMemoryGiB: platform.minimumMemoryGiB,
+    maximumMemoryGiB: platform.maximumMemoryGiB,
     status: "review-required",
     detail: `RVTools provides a usable platform identity, so the plan starts with configuration compatibility confirmation; the server model alone cannot establish an official VCF 9.1 outcome.${esxiDetail}`,
     nextAction: "Run the Compatibility Confirmation plan: validate the exact server, CPU, adapters, storage controllers, firmware, drivers, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
@@ -1027,12 +1115,12 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
   items.push({
     id: "software-baseline",
     category: "software",
-    status: legacyHosts ? "attention" : v9Hosts ? "good" : v8Hosts ? "info" : hasEsxiEvidence ? "info" : "unknown",
-    title: "vSphere Software Baseline",
+    status: legacyHosts ? "attention" : v9Hosts ? "info" : v8Hosts ? "info" : hasEsxiEvidence ? "info" : "unknown",
+    title: "VCF 9.1 ESX BOM Alignment Signal",
     detail: legacyHosts
       ? `${legacyHosts} host(s) report ESXi 7.x or older.`
       : v9Hosts
-        ? `${v9Hosts} host(s) report a 9.x or later ESXi baseline.`
+        ? `${v9Hosts} host(s) report a 9.x or later ESXi baseline. This is a VCF 9.1 BOM-family signal, not confirmation of the required exact build, OEM image, or driver set.`
         : v8Hosts
           ? `${v8Hosts} host(s) report ESXi 8.x.`
           : hasEsxiEvidence
@@ -1060,6 +1148,60 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     evidence: hardwarePlatforms.map(platform => `${platform.vendor} ${platform.model} (${platform.hosts}): ${platform.status}`).join("; ") || "No host model data",
   });
 
+  const cohortByCluster = new Map<string, Set<string>>();
+  const vendorByCluster = new Map<string, Set<string>>();
+  for (const platform of hardwarePlatforms) {
+    for (const membership of platform.clusterMembership || []) {
+      const cohort = `${platform.vendor} ${platform.model} / ${platform.cpuModel}`;
+      const cohorts = cohortByCluster.get(membership.name) || new Set<string>();
+      const vendors = vendorByCluster.get(membership.name) || new Set<string>();
+      cohorts.add(cohort);
+      vendors.add(platform.vendor);
+      cohortByCluster.set(membership.name, cohorts);
+      vendorByCluster.set(membership.name, vendors);
+    }
+  }
+  const clustersWithoutCohortEvidence = inventory.clusterProfiles.filter(cluster => !cohortByCluster.has(cluster.name));
+  const crossVendorClusters = Array.from(vendorByCluster.entries()).filter(([, vendors]) => vendors.size > 1).map(([name]) => name);
+  const mixedProfileClusters = Array.from(cohortByCluster.entries()).filter(([, cohorts]) => cohorts.size > 1).map(([name]) => name);
+  items.push({
+    id: "management-domain-cohort-uniformity",
+    category: "hardware",
+    status: !inventory.clusterProfiles.length || clustersWithoutCohortEvidence.length ? "unknown" : crossVendorClusters.length ? "attention" : mixedProfileClusters.length ? "attention" : "info",
+    title: "Management-Domain Cohort Uniformity",
+    detail: !inventory.clusterProfiles.length
+      ? "RVTools did not provide cluster membership, so the prospective management-domain host cohort cannot be evaluated for the VCF 9.1 uniform-hardware and single-vendor requirement."
+      : clustersWithoutCohortEvidence.length
+        ? `${clustersWithoutCohortEvidence.length} observed cluster(s) lack usable vendor/model cohort evidence; select the management-domain hosts and collect the missing identities before design sign-off.`
+        : crossVendorClusters.length
+          ? `${crossVendorClusters.length} observed cluster(s) contain more than one hardware vendor. A VCF management domain must use hosts from one vendor, so choose a single-vendor cohort or remediate the topology before deployment.`
+          : mixedProfileClusters.length
+            ? `${mixedProfileClusters.length} observed cluster(s) contain more than one hardware profile. Confirm a uniform management-domain host cohort or document the remediation design before deployment.`
+            : `${inventory.clusterProfiles.length} observed cluster(s) show one vendor and one hardware cohort in the imported host rows. This is useful selection evidence; the designated management-domain hosts still require exact compatibility confirmation.`,
+    evidence: inventory.clusterProfiles.map(cluster => `${cluster.name}: ${cluster.hosts} hosts`).join("; ") || "No RVTools cluster membership data",
+  });
+
+  const clustersBelowThreeHosts = inventory.clusterProfiles.filter(cluster => cluster.hosts > 0 && cluster.hosts < 3);
+  const threeHostClusters = inventory.clusterProfiles.filter(cluster => cluster.hosts === 3);
+  const cohortsMissingMemory = hardwarePlatforms.filter(platform => !platform.minimumMemoryGiB || platform.minimumMemoryGiB <= 0);
+  const observedMemory = hardwarePlatforms.filter(platform => platform.minimumMemoryGiB && platform.minimumMemoryGiB > 0).map(platform => `${platform.vendor} ${platform.model}: ${platform.minimumMemoryGiB.toLocaleString()}–${(platform.maximumMemoryGiB || platform.minimumMemoryGiB).toLocaleString()} GiB per host`);
+  items.push({
+    id: "deployment-topology-sizing-evidence",
+    category: "planning",
+    status: !inventory.clusterProfiles.length ? "unknown" : clustersBelowThreeHosts.length ? "attention" : cohortsMissingMemory.length ? "unknown" : "info",
+    title: "VCF 9.1 Topology and N-1 Sizing Evidence",
+    detail: !inventory.clusterProfiles.length
+      ? "RVTools cluster membership is unavailable. The selected management-domain topology, storage model, host count, N-1 capacity, CPU, and RAM sizing inputs still need to be captured in the VCF Planning and Preparation Workbook."
+      : clustersBelowThreeHosts.length
+        ? `${clustersBelowThreeHosts.length} observed cluster(s) have fewer than three hosts. Validate the selected storage and availability design: the VCF 9.1 workbook describes two supported servers for a simple NFS/FC management domain, three for vSAN, and four for high availability. RVTools cannot establish which deployment model applies.`
+        : cohortsMissingMemory.length
+          ? `Cluster-size evidence is present, but ${cohortsMissingMemory.length} hardware cohort(s) lack per-host physical-memory evidence. Capture memory and validate the selected deployment model's N-1 sizing inputs in the VCF workbook; its example host memory values are not universal VCF minimums.`
+          : threeHostClusters.length
+            ? `${threeHostClusters.length} observed cluster(s) have three hosts, which is a vSAN minimum signal in the VCF workbook; it recommends at least four production nodes. Validate N-1 CPU and RAM sizing against the selected topology.`
+            : `All ${inventory.clusterProfiles.length} observed cluster(s) have at least four hosts. Use the observed CPU and per-host memory ranges to validate the selected management-domain and workload-domain N-1 sizing model; this is planning evidence, not a deployment approval.`,
+    evidence: `${inventory.clusterProfiles.map(cluster => `${cluster.name}: ${cluster.hosts} hosts`).join("; ") || "No cluster evidence"}${observedMemory.length ? ` | ${observedMemory.join("; ")}` : ""}`,
+  });
+
   const capacityAttention = inventory.highCpuHosts + inventory.highMemoryHosts + inventory.overcommittedDatastores;
   items.push({
     id: "capacity-signals",
@@ -1085,7 +1227,7 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     label: "Inventory-Informed VCF 9.1 Planning Considerations",
     items,
     hardwarePlatforms,
-    disclaimer: "These considerations summarize RVTools-observable inventory for planning. A candidate, upgrade-required, review-required, or unavailable platform result is not a VCF 9.1 certification. Confirm the exact server, CPU, NIC, HBA/controller, firmware, driver, vSAN/ReadyNode, licensing, sizing, architecture, networking, identity, and implementation requirements through the Broadcom Compatibility Guide and the appropriate CDW and vendor processes.",
+    disclaimer: "These considerations summarize RVTools-observable inventory for planning. VCF 9.1 host preparation requires a release-note-supported ESX version, a uniform hardware profile, and one hardware vendor for the selected management domain. A candidate, upgrade-required, review-required, or unavailable platform result is not a VCF 9.1 certification. Confirm the exact server, CPU, NIC, HBA/controller, firmware, driver, storage, vSAN/ReadyNode, stateless-installation status, licensing, sizing, architecture, networking, identity, and implementation requirements through the Broadcom Compatibility Guide, the VCF 9.1 Planning and Preparation Workbook, and the appropriate CDW and vendor processes.",
   };
 }
 
@@ -1096,6 +1238,9 @@ function migrateInventoryToV5(inventory: z.infer<typeof inventorySummaryV4Schema
       ...platform,
       esxiVersions: inventory.esxiVersions,
       esxiCorrelation: inventory.esxiVersions.length ? "estate-wide" as const : "unavailable" as const,
+      clusterMembership: [],
+      minimumMemoryGiB: 0,
+      maximumMemoryGiB: 0,
     })),
   };
 }
@@ -1130,8 +1275,8 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
 export function migrateDocument(value: unknown): EngagementDocument {
   const current = engagementDocumentV10Schema.safeParse(value);
   if (current.success) {
-    const adoptionTimeline = withConsolidatedCompatibilityAssessment(current.data.adoptionTimeline, current.data.inventory);
-    const twoYearPlan = withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan);
+    const adoptionTimeline = normalizeTimelineTaxonomy(withConsolidatedCompatibilityAssessment(current.data.adoptionTimeline, current.data.inventory));
+    const twoYearPlan = normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan));
     const generated = buildAdoptionPlans(current.data.fields, current.data.inventory);
     return {
       ...current.data,

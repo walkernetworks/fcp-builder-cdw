@@ -37,6 +37,16 @@ function first(row: Row, names: string[]): Cell {
   return "";
 }
 
+function hostMemoryGiB(row: Row): number {
+  const mib = number(first(row, ["Memory Total MiB", "Memory MiB", "Memory Size MiB"]));
+  if (mib > 0) return Math.round(mib / 102.4) / 10;
+  const gib = number(first(row, ["Memory Total GiB", "Memory GiB", "Memory Size GiB", "Memory Total GB", "Memory GB", "Memory Size GB"]));
+  if (gib > 0) return Math.round(gib * 10) / 10;
+  const generic = number(first(row, ["Memory", "Memory Size", "Memory Total"]));
+  if (!generic) return 0;
+  return Math.round((generic >= 8192 ? generic / 1024 : generic) * 10) / 10;
+}
+
 function xml(data: Uint8Array): Document {
   const document = new DOMParser().parseFromString(textDecoder.decode(data), "application/xml");
   if (document.querySelector("parsererror")) throw new Error("The XLSX package contains invalid XML.");
@@ -175,11 +185,16 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
 
   const datacenters = new Set<string>();
   const clusters = new Set<string>();
+  const clusterProfiles = new Map<string, number>();
   const versions = new Map<string, number>();
-  const models = new Map<string, { vendor: string; model: string; cpuModel: string; hosts: number; physicalCores: number; esxiVersions: Map<string, number> }>();
+  const models = new Map<string, { vendor: string; model: string; cpuModel: string; hosts: number; physicalCores: number; esxiVersions: Map<string, number>; clusterMembership: Map<string, number>; memoryGiB: number[] }>();
   for (const row of Array.from(hostRows.values())) {
     const datacenter = norm(first(row, ["Datacenter"])); if (datacenter) datacenters.add(datacenter);
-    const cluster = norm(first(row, ["Cluster"])); if (cluster) clusters.add(`${datacenter}|${cluster}`);
+    const cluster = norm(first(row, ["Cluster"]));
+    const clusterKey = cluster ? `${datacenter}|${cluster}` : "";
+    const clusterName = cluster ? (datacenter ? `${datacenter} / ${cluster}` : cluster) : "";
+    if (clusterKey) clusters.add(clusterKey);
+    if (clusterName) clusterProfiles.set(clusterName, (clusterProfiles.get(clusterName) || 0) + 1);
     const cores = Math.round(number(first(row, ["# Cores", "Cores", "NumCpuCores"])));
     summary.physicalCores += Math.max(0, cores);
     const cpuUsage = number(first(row, ["CPU usage %", "CPU usage", "CPU %"])); if (cpuUsage >= 80) summary.highCpuHosts += 1;
@@ -191,24 +206,33 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
     const model = norm(first(row, ["Model"])) || "Unknown model";
     const cpuModel = norm(first(row, ["CPU Model"])) || "Unknown CPU";
     const modelKey = `${vendor}|${model}|${cpuModel}`;
-    const existing = models.get(modelKey) || { vendor, model, cpuModel, hosts: 0, physicalCores: 0, esxiVersions: new Map<string, number>() };
+    const existing = models.get(modelKey) || { vendor, model, cpuModel, hosts: 0, physicalCores: 0, esxiVersions: new Map<string, number>(), clusterMembership: new Map<string, number>(), memoryGiB: [] };
     existing.hosts += 1;
     existing.physicalCores += Math.max(0, cores);
     existing.esxiVersions.set(version, (existing.esxiVersions.get(version) || 0) + 1);
+    if (clusterName) existing.clusterMembership.set(clusterName, (existing.clusterMembership.get(clusterName) || 0) + 1);
+    const memoryGiB = hostMemoryGiB(row); if (memoryGiB > 0) existing.memoryGiB.push(memoryGiB);
     models.set(modelKey, existing);
   }
   summary.datacenters = datacenters.size;
   summary.clusters = clusters.size;
+  summary.clusterProfiles = Array.from(clusterProfiles.entries()).map(([name, hosts]) => ({ name, hosts })).sort((a, b) => b.hosts - a.hosts || a.name.localeCompare(b.name));
   summary.esxiVersions = Array.from(versions.entries()).map(([version, hosts]) => ({ version, hosts })).sort((a, b) => b.hosts - a.hosts);
-  summary.hostModels = Array.from(models.values()).map(model => ({
-    vendor: model.vendor,
-    model: model.model,
-    cpuModel: model.cpuModel,
-    hosts: model.hosts,
-    physicalCores: model.physicalCores,
-    esxiVersions: Array.from(model.esxiVersions.entries()).map(([version, hosts]) => ({ version, hosts })).sort((a, b) => b.hosts - a.hosts),
-    esxiCorrelation: "per-platform" as const,
-  })).sort((a, b) => b.hosts - a.hosts);
+  summary.hostModels = Array.from(models.values()).map(model => {
+    const observedMemory = model.memoryGiB.filter(value => value > 0);
+    return {
+      vendor: model.vendor,
+      model: model.model,
+      cpuModel: model.cpuModel,
+      hosts: model.hosts,
+      physicalCores: model.physicalCores,
+      esxiVersions: Array.from(model.esxiVersions.entries()).map(([version, hosts]) => ({ version, hosts })).sort((a, b) => b.hosts - a.hosts),
+      esxiCorrelation: "per-platform" as const,
+      clusterMembership: Array.from(model.clusterMembership.entries()).map(([name, hosts]) => ({ name, hosts })).sort((a, b) => b.hosts - a.hosts || a.name.localeCompare(b.name)),
+      minimumMemoryGiB: observedMemory.length ? Math.min(...observedMemory) : 0,
+      maximumMemoryGiB: observedMemory.length ? Math.max(...observedMemory) : 0,
+    };
+  }).sort((a, b) => b.hosts - a.hosts);
 
   const operatingSystems = new Map<string, number>();
   for (const row of Array.from(vmRows.values())) {
