@@ -47,6 +47,17 @@ describe("RVTools local import", () => {
     });
     expect(result.summary.clusterProfiles).toEqual([{ name: "DC1 / Cluster-A", hosts: 2 }]);
   });
+
+  it("consolidates host models whose RVTools fields differ only by whitespace", async () => {
+    const vHost = csvFile("vHost.csv", [
+      ["UUID", "Datacenter", "Cluster", "Host", "# Cores", "ESX Version", "Vendor", "Model", "CPU Model", "Memory Total MiB"],
+      ["host-1", "DC1", "Cluster-A", "esx01", "32", "8.0.3", "HPE", "ProLiant DL380 Gen10", "Intel Xeon Gold", "1048576"],
+      ["host-2", "DC1", "Cluster-A", "esx02", "32", "8.0.3", " HPE ", "ProLiant  DL380  Gen10 ", "Intel Xeon Gold", "1048576"],
+    ]);
+    const result = await parseRvToolsFiles([vHost]);
+    expect(result.summary.hostModels).toHaveLength(1);
+    expect(result.summary.hostModels[0]).toMatchObject({ vendor: "HPE", model: "ProLiant DL380 Gen10", hosts: 2, physicalCores: 64 });
+  });
 });
 
 describe("calendar-month adoption plans", () => {
@@ -60,7 +71,7 @@ describe("calendar-month adoption plans", () => {
     expect(twoYearNotional[23]).toBe("Dec 28");
   });
 
-  it("starts the compatibility assessment before Upgrade Services while platform design opens in parallel", () => {
+  it("starts the platform inventory before Upgrade Services while platform design opens in parallel", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementAmount: 2_500_000,
@@ -105,7 +116,7 @@ describe("calendar-month adoption plans", () => {
     expect(plans.rationale).toContain("$2,500,000");
     expect(labels).toContain("VCF 9.1 Upgrade Services Scope and Runbook");
     expect(labels.join(" ")).not.toMatch(/Consumption Plan|Workshop|Readiness|Validation/i);
-    expect(labels).toContain("VCF 9.1 Compatibility Evidence Intake");
+    expect(labels).toContain("VCF 9.1 Platform Inventory");
     expect(upgrade.bars[0].startCol).toBe(platformPlan.bars[0].endCol);
     expect(platformPlan.bars[0].startCol).toBe(1);
     expect(platformDesign.bars[0].startCol).toBeLessThan(upgrade.bars[0].endCol);
@@ -230,12 +241,12 @@ describe("calendar-month adoption plans", () => {
     const labels = activities.map(activity => activity.label);
 
     expect(labels).toEqual(expect.arrayContaining([
-      "Operations Dashboards With Ownership and Review",
+      "Operations Dashboards With Ownership",
       "Onboard Priority Workloads to Recovery Services",
       "Run Scheduled Recovery Exercises and Improve Runbooks",
       "Pilot Kubernetes Workload Zones and Namespaces",
       "Operate the Kubernetes Fleet and Cluster Lifecycle",
-      "Validate GPU Capacity and Resilience for an AI Workload Domain",
+      "Plan GPU Capacity and Resilience for an AI Workload Domain",
       "Define Private AI Data Boundaries and Governance",
       "Onboard One Private AI Pilot With Success Measures",
     ]));
@@ -279,8 +290,8 @@ describe("calendar-month adoption plans", () => {
     expect(migrated.twoYearPlan).toMatchObject({ startDate: "2027-01-01", cadence: "month" });
     expect(migrated.twoYearPlan.columns).toHaveLength(24);
     expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Upgrade Services");
-    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).not.toMatch(/Consumption Plan|Workshop|Readiness|Validation/i);
-    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Compatibility Evidence Intake");
+    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).not.toMatch(/Consumption Plan|Workshop|Readiness|Validation|Assessment|Review|Validate/i);
+    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("VCF 9.1 Platform Inventory");
     expect(migrated.readiness.hardwarePlatforms).toEqual([]);
   });
 
@@ -310,8 +321,8 @@ describe("calendar-month adoption plans", () => {
     ]));
     expect(operations?.bars).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        label: "Operations Dashboards With Ownership and Review",
-        outcome: "Publish governed dashboards with support-team ownership, service measures, and a review cadence.",
+        label: "Operations Dashboards With Ownership",
+        outcome: "Publish governed dashboards with support-team ownership, service measures, and an operating cadence.",
         dependsOn: "Recommended because the customer selected Custom Operations Dashboards and Health, Logs, and Diagnostics Observability under the Operations priority and the imported estate shows 220 VMs across 4 hosts. Start after Custom Operations Dashboards Plan, once the dashboards, data sources, and ownership model are accepted.",
       }),
     ]));
@@ -446,14 +457,14 @@ describe("planning considerations, exports, and access boundary", () => {
     const mirroredAssessment = plans.twoYearPlan.lanes.find(lane => lane.id === "lane-two-year-year-one-lane-platform-plan")?.bars[0];
 
     expect(assessment).toMatchObject({
-      label: "VCF 9.1 Compatibility Assessment and Decision Log",
-      outcome: expect.stringContaining("one delivery-owned compatibility matrix"),
-      dependsOn: expect.stringContaining("6 observed hosts across 2 platform cohorts"),
+      label: "VCF 9.1 Platform Inventory and Delivery Plan",
+      outcome: expect.stringContaining("one delivery-owned host inventory"),
+      dependsOn: expect.stringContaining("6 observed hosts across 1 host model"),
     });
-    expect(mirroredAssessment?.label).toBe("VCF 9.1 Compatibility Assessment and Decision Log");
+    expect(mirroredAssessment?.label).toBe("VCF 9.1 Platform Inventory and Delivery Plan");
     expect(plans.adoptionTimeline.lanes.some(lane => lane.id.startsWith("lane-host-platform-"))).toBe(false);
     expect(plans.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"))).toBe(false);
-    expect(plans.rationale).toContain("one cohort-based delivery decision log");
+    expect(plans.rationale).toContain("one consolidated host inventory and delivery path");
     expect(validateTimeline(plans.adoptionTimeline)).toEqual([]);
     expect(validateTimeline(plans.twoYearPlan)).toEqual([]);
   });
@@ -467,8 +478,8 @@ describe("planning considerations, exports, and access boundary", () => {
     });
     const reopened = migrateDocument(JSON.parse(JSON.stringify(document)));
     expect(reopened.adoptionTimeline.lanes.find(lane => lane.id === "lane-platform-plan")?.bars[0]).toMatchObject({
-      label: "VCF 9.1 Compatibility Assessment and Decision Log",
-      outcome: expect.stringContaining("one delivery-owned compatibility matrix"),
+      label: "VCF 9.1 Platform Inventory and Delivery Plan",
+      outcome: expect.stringContaining("one delivery-owned host inventory"),
     });
     expect(reopened.adoptionTimeline.lanes.some(lane => lane.id.startsWith("lane-host-platform-"))).toBe(false);
     expect(reopened.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"))).toBe(false);
@@ -628,17 +639,16 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Continuous planning view:");
     expect(html).toContain("Months 1–12 mirror the operational service sequence");
     expect(html).toContain("Intended Outcome");
-    expect(html).toContain("Why Recommended and Readiness to Start");
-    expect(html).toContain("Operations Dashboards With Ownership and Review");
-    expect(html).toContain("Publish governed dashboards with support-team ownership, service measures, and a review cadence.");
+    expect(html).toContain("Sequence Notes");
+    expect(html).toContain("Operations Dashboards With Ownership");
+    expect(html).toContain("Publish governed dashboards with support-team ownership, service measures, and an operating cadence.");
     expect(html).toContain("Recommended because the customer selected");
-    expect(html).toContain("VCF 9.1 Hardware Platform Precheck");
-    expect(html).toContain("VCF 9.1 Host Cohort Precheck");
-    expect(html).toContain("Cohort / Memory Evidence");
-    expect(html).toContain("Observed ESXi");
+    expect(html).toContain("Observed host inventory");
+    expect(html).toContain("VCF 9.1 Delivery Inventory");
+    expect(html).toContain("Reported ESXi");
     expect(html).toContain("Upgrade Services");
     const planSummaryStart = html.indexOf('<div class="plan-summary">');
-    const observedInventoryStart = html.indexOf("Hardware certification evidence");
+    const observedInventoryStart = html.indexOf("Observed host inventory");
     const planSummary = html.slice(planSummaryStart, observedInventoryStart);
     expect(planSummaryStart).toBeGreaterThan(-1);
     expect(observedInventoryStart).toBeGreaterThan(planSummaryStart);
@@ -656,7 +666,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("@page{size:letter landscape;margin:0}");
     expect(html).toContain('<section class="hardware-evidence">');
     expect(html).toContain('class="compact-table hardware-table"');
-    expect(html).toContain("Hardware certification evidence");
+    expect(html).toContain("VCF 9.1 Delivery Inventory");
     expect(html).toContain('class="notional-year-sheet notional-year-one"');
     expect(html).toContain('class="notional-year-sheet notional-year-two"');
     expect(html).toContain("Months 1–12");
@@ -668,6 +678,8 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain('class="two-year-sequence-sheet"');
     expect(html).toContain("#two-year .two-year-sequence-sheet{page-break-before:always;break-before:page}");
     expect(html).toContain("page-break-after:always;break-after:page");
+    const visibleReport = html.replace(/<style>[\s\S]*?<\/style>/i, "");
+    expect(visibleReport).not.toMatch(/\b(assessment|readiness|workshop|validation|validate|review)\b/i);
     expect(html).not.toMatch(/Gantt|Year [12] Consumption Plan|Workshop/i);
     expect(html).not.toMatch(/\[\[[^\]]+\]\]/);
   });

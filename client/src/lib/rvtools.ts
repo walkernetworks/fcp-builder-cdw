@@ -21,7 +21,7 @@ export type RvToolsImportResult = {
 };
 
 const textDecoder = new TextDecoder("utf-8");
-const norm = (value: unknown) => String(value ?? "").trim();
+const norm = (value: unknown) => String(value ?? "").replace(/\s+/g, " ").trim();
 const key = (value: unknown) => norm(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
 const number = (value: unknown) => {
   const parsed = Number(String(value ?? "").replace(/,/g, "").replace(/[^0-9.-]/g, ""));

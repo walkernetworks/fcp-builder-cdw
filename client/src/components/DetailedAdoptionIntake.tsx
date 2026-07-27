@@ -62,7 +62,7 @@ const discoveryGroups: DiscoveryGroup[] = [
     prompt: "Which recovery outcomes should be planned?",
     options: [
       { value: "recovery-architecture", label: "Recovery architecture", description: "Recovery topology, priorities, and dependency design." },
-      { value: "recovery-exercises", label: "Recovery exercises", description: "Runbooks, exercises, and measurable recovery validation." },
+      { value: "recovery-exercises", label: "Recovery exercises", description: "Runbooks, exercises, and measurable recovery objectives." },
       { value: "cyber-recovery", label: "Cyber recovery", description: "Isolated recovery, cyber recovery, and response objectives." },
     ],
   },
@@ -83,7 +83,7 @@ const discoveryGroups: DiscoveryGroup[] = [
     title: "Private AI outcomes",
     prompt: "Which AI-platform discovery outcomes are in scope?",
     options: [
-      { value: "gpu-capacity", label: "Capacity and GPU readiness", description: "Capacity, GPU, and foundational readiness planning." },
+      { value: "gpu-capacity", label: "Capacity and GPU planning", description: "Capacity, GPU, and foundational platform planning." },
       { value: "ai-guardrails", label: "AI guardrails", description: "Access, data, and operational guardrail design." },
       { value: "pilot-onboarding", label: "Pilot onboarding", description: "A bounded private-AI pilot onboarding path." },
     ],

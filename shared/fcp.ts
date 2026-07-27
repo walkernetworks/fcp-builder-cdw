@@ -634,7 +634,7 @@ const focusLabels: Record<Capability, Record<string, string>> = {
     "developer-experience": "Developer Experience and Guardrails",
   },
   "private-ai": {
-    "gpu-capacity": "AI Capacity and GPU Readiness",
+    "gpu-capacity": "AI Capacity and GPU Planning",
     "ai-guardrails": "Private AI Guardrails",
     "pilot-onboarding": "Private AI Pilot Onboarding",
   },
@@ -660,42 +660,32 @@ function activityLabelsForCapability(fields: MinimalFields, capability: Capabili
 
 const legacyHostPlatformLanePrefix = "lane-host-platform-";
 
-type CompatibilityAssessmentActivity = Pick<TimelineBar, "label" | "color" | "dependsOn" | "outcome">;
+type PlatformInventoryActivity = Pick<TimelineBar, "label" | "color" | "dependsOn" | "outcome">;
 
-function buildCompatibilityAssessmentActivity(inventory: InventorySummary): CompatibilityAssessmentActivity {
+function buildPlatformInventoryActivity(inventory: InventorySummary): PlatformInventoryActivity {
   const platforms = assessHardwarePlatforms(inventory);
   const observedHosts = platforms.reduce((total, platform) => total + platform.hosts, 0);
-  const candidates = platforms.filter(platform => platform.status === "candidate").reduce((total, platform) => total + platform.hosts, 0);
-  const upgradeRequired = platforms.filter(platform => platform.status === "upgrade-required").reduce((total, platform) => total + platform.hosts, 0);
-  const reviewRequired = platforms.filter(platform => platform.status === "review-required").reduce((total, platform) => total + platform.hosts, 0);
-  const evidenceMissing = platforms.filter(platform => platform.status === "unavailable").reduce((total, platform) => total + platform.hosts, 0);
-  const cohorts = [
-    candidates ? `${candidates} candidate host${candidates === 1 ? "" : "s"}` : "",
-    upgradeRequired ? `${upgradeRequired} host${upgradeRequired === 1 ? "" : "s"} requiring replacement or exception review` : "",
-    reviewRequired ? `${reviewRequired} host${reviewRequired === 1 ? "" : "s"} requiring configuration review` : "",
-    evidenceMissing ? `${evidenceMissing} host${evidenceMissing === 1 ? "" : "s"} missing platform evidence` : "",
-  ].filter(Boolean);
+  const observedModels = new Set(platforms.map(platform => `${platform.vendor} ${platform.model}`.trim().replace(/\s+/g, " ").toLowerCase()).filter(model => model && model !== "unknown vendor unknown model")).size;
 
   if (!platforms.length) {
     return {
-      label: "VCF 9.1 Compatibility Evidence Intake",
+      label: "VCF 9.1 Platform Inventory",
       color: "amber",
-      dependsOn: "Upload RVTools vHost data with server make, model, CPU, adapters, storage-controller, and ESXi evidence before compatibility assessment begins.",
-      outcome: "Establish the host inventory and configuration evidence needed to build the delivery compatibility matrix.",
+      dependsOn: "Upload RVTools vHost data with server make, model, CPU, adapters, storage-controller, and ESXi fields before platform design begins.",
+      outcome: "Consolidate the host inventory and configuration details used in delivery design.",
     };
   }
 
-  const cohortSummary = humanList(cohorts);
   return {
-    label: "VCF 9.1 Compatibility Assessment and Decision Log",
-    color: upgradeRequired || evidenceMissing ? "amber" : "teal",
-    dependsOn: `RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${platforms.length} platform cohort${platforms.length === 1 ? "" : "s"}: ${cohortSummary}. Validate each exact server configuration, CPU, NIC, storage controller, firmware, driver, and vSAN/ReadyNode requirement in the Broadcom Compatibility Guide, then record supported, remediation, or evidence-gap outcomes before Upgrade Services begins.`,
-    outcome: "Create one delivery-owned compatibility matrix and decision log that groups identical platforms, prioritizes evidence gaps and replacement decisions, and confirms the implementation path before service execution.",
+    label: "VCF 9.1 Platform Inventory and Delivery Plan",
+    color: "teal",
+    dependsOn: `RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${observedModels || platforms.length} host model${(observedModels || platforms.length) === 1 ? "" : "s"}. Consolidate the server configuration, CPU, NIC, storage controller, firmware, driver, and vSAN/ReadyNode details in the delivery plan before Upgrade Services begins.`,
+    outcome: "Create one delivery-owned host inventory that groups identical platforms and records the delivery path for each model before service execution.",
   };
 }
 
-function withConsolidatedCompatibilityAssessment(timeline: Timeline, inventory: InventorySummary): Timeline {
-  const assessment = buildCompatibilityAssessmentActivity(inventory);
+function withConsolidatedPlatformInventory(timeline: Timeline, inventory: InventorySummary): Timeline {
+  const platformInventory = buildPlatformInventoryActivity(inventory);
   return {
     ...timeline,
     lanes: timeline.lanes
@@ -704,7 +694,7 @@ function withConsolidatedCompatibilityAssessment(timeline: Timeline, inventory: 
         ? {
           ...lane,
           bars: lane.bars.map(activity => activity.id === "bar-platform-plan"
-            ? { ...activity, ...assessment }
+            ? { ...activity, ...platformInventory }
             : activity),
         }
         : lane),
@@ -723,13 +713,13 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const upgradeDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.36)));
   const assessmentDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.22)));
   const designDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.3)));
-  const [assessmentStart, assessmentEnd] = boundedRange(1, assessmentDuration, count);
-  const [upgradeStart, upgradeEnd] = boundedRange(Math.min(count, assessmentEnd), upgradeDuration, count);
-  const [platformStart, platformEnd] = boundedRange(Math.min(count, Math.max(assessmentEnd, upgradeStart)), designDuration, count);
-  const compatibilityAssessment = buildCompatibilityAssessmentActivity(inventory);
+  const [inventoryStart, inventoryEnd] = boundedRange(1, assessmentDuration, count);
+  const [upgradeStart, upgradeEnd] = boundedRange(Math.min(count, inventoryEnd), upgradeDuration, count);
+  const [platformStart, platformEnd] = boundedRange(Math.min(count, Math.max(inventoryEnd, upgradeStart)), designDuration, count);
+  const platformInventory = buildPlatformInventoryActivity(inventory);
   const lanes: TimelineLane[] = [
-    { id: "lane-platform-plan", name: "Platform Plan", ...DEFAULT_TIMELINE_LANE_METADATA, bars: [bar("bar-platform-plan", assessmentStart, assessmentEnd, compatibilityAssessment.color, compatibilityAssessment.label, false, false, compatibilityAssessment.dependsOn, compatibilityAssessment.outcome)] },
-    { id: "lane-upgrade-services", name: "Upgrade Services", category: "Modernize Infrastructure", workstreamType: "Migration Waves", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, "Start after the compatibility assessment has recorded supported, remediation, or evidence-gap outcomes for every observed platform cohort.")] },
+    { id: "lane-platform-plan", name: "Platform Plan", ...DEFAULT_TIMELINE_LANE_METADATA, bars: [bar("bar-platform-plan", inventoryStart, inventoryEnd, platformInventory.color, platformInventory.label, false, false, platformInventory.dependsOn, platformInventory.outcome)] },
+    { id: "lane-upgrade-services", name: "Upgrade Services", category: "Modernize Infrastructure", workstreamType: "Migration Waves", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, "blue", upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, "Start after the platform inventory and delivery plan records the path for every observed host group.")] },
     { id: "lane-platform-design", name: "Platform Design", category: "Modernize Cloud", workstreamType: "Operating Model / Platform", bars: [bar("bar-platform-design", platformStart, platformEnd, "green", "VCF Platform Design") ] },
   ];
 
@@ -775,23 +765,23 @@ type FollowOnServiceProfile = {
 
 const followOnServiceProfiles: Record<Capability, Record<string, FollowOnServiceProfile>> = {
   operations: {
-    lifecycle: { label: "VCF Lifecycle Management and Change Governance", outcome: "Set up a repeatable lifecycle calendar, change approvals, certificate ownership, and exception reviews for the VCF platform.", entryCondition: "the lifecycle owner, maintenance window, and supported upgrade path are confirmed" },
-    observability: { label: "Operations Telemetry and Service Health Reviews", outcome: "Use health, log, and diagnostic data to define service objectives, diagnostic patterns, and quarterly operational reviews.", entryCondition: "operational telemetry and an accountable operations team are available" },
-    "capacity-cost": { label: "Capacity Forecasting and Cost Optimization", outcome: "Run rightsizing, forecasting, and cost-governance cycles against established capacity data.", entryCondition: "capacity data, cost owners, and a review cadence are confirmed", eligibility: { requiresObservedInventory: true } },
-    "custom-dashboards": { label: "Operations Dashboards With Ownership and Review", outcome: "Publish governed dashboards with support-team ownership, service measures, and a review cadence.", entryCondition: "the dashboards, data sources, and ownership model are accepted", eligibility: { requiresAllFocuses: ["observability"], requiresObservedInventory: true } },
+    lifecycle: { label: "VCF Lifecycle Management and Change Governance", outcome: "Set up a repeatable lifecycle calendar, change approvals, certificate ownership, and exception handling for the VCF platform.", entryCondition: "the lifecycle owner, maintenance window, and supported upgrade path are confirmed" },
+    observability: { label: "Operations Telemetry and Service Health Management", outcome: "Use health and log data to define service objectives, operational patterns, and an ongoing service cadence.", entryCondition: "operational telemetry and an accountable operations team are available" },
+    "capacity-cost": { label: "Capacity Forecasting and Cost Optimization", outcome: "Run rightsizing, forecasting, and cost-governance cycles against established capacity data.", entryCondition: "capacity data, cost owners, and an operating cadence are confirmed", eligibility: { requiresObservedInventory: true } },
+    "custom-dashboards": { label: "Operations Dashboards With Ownership", outcome: "Publish governed dashboards with support-team ownership, service measures, and an operating cadence.", entryCondition: "the dashboards, data sources, and ownership model are accepted", eligibility: { requiresAllFocuses: ["observability"], requiresObservedInventory: true } },
     "identity-certificates": { label: "Identity, Credential, and Certificate Operations", outcome: "Operate identity, credential, and certificate hygiene with ownership, evidence, and exception procedures.", entryCondition: "privileged-access owners and approved operating procedures are confirmed" },
     "event-integration": { label: "Event-to-Incident Integration and Escalation", outcome: "Route prioritized events into incident workflows with escalation paths and service-level reporting.", entryCondition: "the ITSM or event target, severity model, and resolver groups are agreed" },
   },
   automation: {
     "vm-self-service": { label: "Launch a Governed VM Self-Service Catalog", outcome: "Launch a measured catalog for selected tenants with quotas, approvals, and support ownership.", entryCondition: "catalog blueprints, tenancy rules, and a support handoff are accepted" },
-    "infrastructure-as-code": { label: "Infrastructure-as-Code Blueprint Factory and Release Controls", outcome: "Establish reusable blueprints, source control, policy controls, and release practices.", entryCondition: "a source-control workflow, security review, and content owners are available" },
+    "infrastructure-as-code": { label: "Infrastructure-as-Code Blueprint Factory and Release Controls", outcome: "Establish reusable blueprints, source control, policy controls, and release practices.", entryCondition: "a source-control workflow, security alignment, and content owners are available" },
     "day-2-automation": { label: "Operate Day-2 Remediation and Maintenance Automation", outcome: "Operationalize priority remediation and maintenance automations with runbook and rollback controls.", entryCondition: "priority workflows, approval paths, and rollback owners are confirmed" },
     governance: { label: "Tenant, Quota, and Policy Governance", outcome: "Run tenant, quota, policy, and exception governance as an ongoing operating practice.", entryCondition: "the tenant model, quota policy, and exception authority are confirmed", eligibility: { requiresAnyFocus: ["vm-self-service", "infrastructure-as-code"] } },
     "application-provisioning": { label: "Onboard the First Application Team to the Platform", outcome: "Onboard a first application team through governed blueprints and a supported delivery path.", entryCondition: "a sponsored workload, application team, and service support model are confirmed", eligibility: { requiresAnyFocus: ["vm-self-service", "infrastructure-as-code"] } },
   },
   security: {
-    segmentation: { label: "Segment Workloads in Prioritized Rollout Waves", outcome: "Apply and tune segmentation in prioritized workload waves with outcome review.", entryCondition: "wave scope, application dependencies, and change authority are confirmed", eligibility: { requiresObservedInventory: true } },
-    "identity-rbac": { label: "Run Access Reviews and Role Recertification", outcome: "Operate access reviews, role recertification, and privilege-exception handling.", entryCondition: "role owners, a review cadence, and evidence requirements are confirmed" },
+    segmentation: { label: "Segment Workloads in Prioritized Rollout Waves", outcome: "Apply and tune segmentation in prioritized workload waves with defined outcomes.", entryCondition: "wave scope, application dependencies, and change authority are confirmed", eligibility: { requiresObservedInventory: true } },
+    "identity-rbac": { label: "Operate Access Governance and Role Recertification", outcome: "Operate access governance, role recertification, and privilege-exception handling.", entryCondition: "role owners, an operating cadence, and evidence requirements are confirmed" },
     "hardening-compliance": { label: "Continuous Compliance Evidence and Remediation", outcome: "Establish a drift and remediation workflow with usable compliance evidence for control owners.", entryCondition: "the control baseline, evidence consumer, and remediation authority are confirmed" },
   },
   resilience: {
@@ -805,9 +795,9 @@ const followOnServiceProfiles: Record<Capability, Record<string, FollowOnService
     "developer-experience": { label: "Create a Developer Self-Service Golden Path", outcome: "Provide a governed self-service path for a first development team, including deployment controls.", entryCondition: "an application team, GitOps or deployment workflow, and platform support model are confirmed", eligibility: { requiresAllFocuses: ["workload-domains"] } },
   },
   "private-ai": {
-    "gpu-capacity": { label: "Validate GPU Capacity and Resilience for an AI Workload Domain", outcome: "Validate capacity, performance, backup and restore, and disaster-recovery posture for an approved GPU workload domain.", entryCondition: "GPU hardware, workload profile, sizing evidence, and a capacity owner are confirmed", eligibility: { requiresKnownHardwarePlan: true } },
+    "gpu-capacity": { label: "Plan GPU Capacity and Resilience for an AI Workload Domain", outcome: "Plan capacity, performance, backup and restore, and disaster-recovery needs for an approved GPU workload domain.", entryCondition: "GPU hardware, workload profile, sizing evidence, and a capacity owner are confirmed", eligibility: { requiresKnownHardwarePlan: true } },
     "ai-guardrails": { label: "Define Private AI Data Boundaries and Governance", outcome: "Define data access, model, security, audit, and operating guardrails for a candidate use case.", entryCondition: "a business use case, data classification, security owner, and governance authority are confirmed", eligibility: { requiresAllFocuses: ["gpu-capacity"], requiresKnownHardwarePlan: true } },
-    "pilot-onboarding": { label: "Onboard One Private AI Pilot With Success Measures", outcome: "Onboard one approved pilot with success metrics, support ownership, and exit criteria.", entryCondition: "the use case, data boundary, GPU and platform readiness, and support model are approved", eligibility: { requiresAllFocuses: ["gpu-capacity", "ai-guardrails"], requiresKnownHardwarePlan: true } },
+    "pilot-onboarding": { label: "Onboard One Private AI Pilot With Success Measures", outcome: "Onboard one approved pilot with success metrics, support ownership, and exit criteria.", entryCondition: "the use case, data boundary, GPU and platform foundation, and support model are approved", eligibility: { requiresAllFocuses: ["gpu-capacity", "ai-guardrails"], requiresKnownHardwarePlan: true } },
   },
 };
 
@@ -897,7 +887,7 @@ export function getFollowOnReadinessGuidance(fields: MinimalFields, inventory: I
     blocked: true,
     title: "Follow-on services are waiting on the inputs listed below.",
     detail: "The selected priority and detailed focus are retained; Months 13–24 will populate automatically when the remaining service prerequisites are confirmed.",
-    actions: actions.length ? actions.map(action => `${action}.`) : ["Review the selected capability focus and estate evidence in Plan Setup."],
+    actions: actions.length ? actions.map(action => `${action}.`) : ["Use the selected capability focus and estate evidence in Plan Setup."],
   };
 }
 
@@ -975,8 +965,8 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const followOnSummary = followOnCount
     ? `${followOnCount} follow-on service recommendation${followOnCount === 1 ? " is" : "s are"} shown because the related priority, detailed intake selection, and estate or hardware signal are present`
     : `${followOnGuidance.title} ${followOnGuidance.actions.join("; ")}`;
-  const compatibilitySummary = buildCompatibilityAssessmentActivity(inventory).outcome;
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Compatibility assessment begins at the start of the target window and records one cohort-based delivery decision log before Upgrade Services begins. ${compatibilitySummary} The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the operational sequence, while months 13–24 contain only selective services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and what must be ready before it starts; unmet prerequisites are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const platformInventorySummary = buildPlatformInventoryActivity(inventory).outcome;
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Platform inventory and delivery planning begins at the start of the target window and maintains one consolidated host inventory and delivery path before Upgrade Services begins. ${platformInventorySummary} The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the operational sequence, while months 13–24 contain only selective services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -1275,7 +1265,7 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
 export function migrateDocument(value: unknown): EngagementDocument {
   const current = engagementDocumentV10Schema.safeParse(value);
   if (current.success) {
-    const adoptionTimeline = normalizeTimelineTaxonomy(withConsolidatedCompatibilityAssessment(current.data.adoptionTimeline, current.data.inventory));
+    const adoptionTimeline = normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory));
     const twoYearPlan = normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan));
     const generated = buildAdoptionPlans(current.data.fields, current.data.inventory);
     return {

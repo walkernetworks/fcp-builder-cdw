@@ -261,3 +261,12 @@
 - [x] Assess each host cohort for ESXi baseline, CPU-generation risk, model-generation evidence, and cluster-size signals with actionable outcomes.
 - [x] Surface detailed cohort findings and evidence gaps in the readiness workspace, generated plans, and PDF export.
 - [x] Add regression coverage, validate the revised readiness experience, and checkpoint the compatibility enhancement.
+
+## Customer-Facing Language and PDF Download Repair
+
+- [x] Remove assessment, readiness, workshop, validation, and similar diagnostic terminology from customer-facing report, timeline, workspace, HTML, and PDF content.
+- [x] Replace repetitive per-platform review-status dumps with concise host inventory grouping and delivery-oriented next-step language.
+- [x] Trace and repair the hosted PDF download failure without weakening protected export access.
+- [x] Add regression coverage for prohibited report language, concise host reporting, and authenticated PDF download behavior.
+- [x] Validate the revised workspace, HTML/PDF output, and download flow; then checkpoint the repair.
+- [x] Replace the remaining customer-visible “Review” workflow-step label with neutral planning language discovered during final visual validation.

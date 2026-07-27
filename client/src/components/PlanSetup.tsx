@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { parseRvToolsFiles } from "@/lib/rvtools";
 import { applyScheduleFieldPatch, assessReadiness, refreshDerivedDocument, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
-import { AlertCircle, CheckCircle2, ExternalLink, FileSpreadsheet, HardDrive, Info, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
+import { ExternalLink, FileSpreadsheet, HardDrive, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -72,7 +72,7 @@ export function PlanSetup({ document, onChange }: Props) {
           <TabsTrigger value="upload" className="rounded-lg py-2.5"><span className="mr-2 text-[10px] font-black text-[#c8102e]">01</span> Upload</TabsTrigger>
           <TabsTrigger value="customer" className="rounded-lg py-2.5"><span className="mr-2 text-[10px] font-black text-[#c8102e]">02</span> Customer</TabsTrigger>
           <TabsTrigger value="timeline" className="rounded-lg py-2.5"><span className="mr-2 text-[10px] font-black text-[#c8102e]">03</span> Adoption</TabsTrigger>
-          <TabsTrigger value="review" className="rounded-lg py-2.5"><span className="mr-2 text-[10px] font-black text-[#c8102e]">04</span> Review</TabsTrigger>
+          <TabsTrigger value="review" className="rounded-lg py-2.5"><span className="mr-2 text-[10px] font-black text-[#c8102e]">04</span> Plan Output</TabsTrigger>
         </TabsList>
 
         <TabsContent value="upload" className="space-y-5">
@@ -120,7 +120,7 @@ export function PlanSetup({ document, onChange }: Props) {
 
         <TabsContent value="review" className="space-y-5">
           <InventoryCards document={document} />
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">VCF 9.1</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Inventory-Informed Planning Considerations</h2></div><Badge variant="outline" className="border-slate-300">Planning View</Badge></div><div className="mt-6 grid gap-3 md:grid-cols-2">{document.readiness.items.map(item => <ReadinessCard key={item.id} item={item} />)}</div><HardwarePlatformPrecheck platforms={document.readiness.hardwarePlatforms} /><div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600"><strong className="text-slate-900">Planning boundary:</strong> {document.readiness.disclaimer}</div></section>
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Current estate</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Observed host inventory</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Grouped host, software, cluster, and memory fields imported from RVTools.</p></div><Badge variant="outline" className="border-slate-300">RVTools source</Badge></div><HostInventory platforms={document.readiness.hardwarePlatforms} /></section>
         </TabsContent>
       </Tabs>
     </div>
@@ -142,25 +142,56 @@ function InventoryCards({ document }: { document: EngagementDocument }) {
   return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map(card => <article key={card.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{card.label}</p><card.icon className="size-4 text-slate-400" /></div><strong className="mt-3 block text-3xl tracking-tight text-slate-950">{card.value || "—"}</strong><p className="mt-1 text-xs text-slate-500">{card.detail}</p></article>)}</div>;
 }
 
-function HardwarePlatformPrecheck({ platforms }: { platforms: HardwarePlatformAssessment[] }) {
-  const statusStyles: Record<HardwarePlatformAssessment["status"], string> = {
-    candidate: "border-blue-200 bg-blue-50 text-blue-800",
-    "upgrade-required": "border-amber-200 bg-amber-50 text-amber-800",
-    "review-required": "border-slate-200 bg-slate-50 text-slate-700",
-    unavailable: "border-slate-200 bg-slate-50 text-slate-500",
-  };
-  const statusLabels: Record<HardwarePlatformAssessment["status"], string> = {
-    candidate: "Candidate",
-    "upgrade-required": "Upgrade required",
-    "review-required": "Review required",
-    unavailable: "Evidence unavailable",
+function HostInventory({ platforms }: { platforms: HardwarePlatformAssessment[] }) {
+  const normalizeHostGroupText = (input: string) => input.trim().replace(/\s+/g, " ");
+  const groups = new Map<string, {
+    vendor: string;
+    model: string;
+    hosts: number;
+    physicalCores: number;
+    cpuModels: Set<string>;
+    esxiVersions: Map<string, number>;
+    clusters: Map<string, number>;
+    minimumMemoryGiB: number | null;
+    maximumMemoryGiB: number | null;
+    statuses: Set<HardwarePlatformAssessment["status"]>;
+  }>();
+
+  for (const platform of platforms) {
+    const vendor = normalizeHostGroupText(platform.vendor) || "Unknown vendor";
+    const model = normalizeHostGroupText(platform.model) || "Unknown model";
+    const key = `${vendor}::${model}`.toLowerCase();
+    const group = groups.get(key) || {
+      vendor,
+      model,
+      hosts: 0,
+      physicalCores: 0,
+      cpuModels: new Set<string>(),
+      esxiVersions: new Map<string, number>(),
+      clusters: new Map<string, number>(),
+      minimumMemoryGiB: null,
+      maximumMemoryGiB: null,
+      statuses: new Set<HardwarePlatformAssessment["status"]>(),
+    };
+    group.hosts += platform.hosts;
+    group.physicalCores += platform.physicalCores;
+    if (platform.cpuModel && platform.cpuModel !== "Unknown CPU") group.cpuModels.add(platform.cpuModel);
+    for (const version of platform.esxiVersions) group.esxiVersions.set(version.version, (group.esxiVersions.get(version.version) || 0) + version.hosts);
+    for (const cluster of platform.clusterMembership) group.clusters.set(cluster.name, (group.clusters.get(cluster.name) || 0) + cluster.hosts);
+    if (platform.minimumMemoryGiB > 0) {
+      group.minimumMemoryGiB = group.minimumMemoryGiB === null ? platform.minimumMemoryGiB : Math.min(group.minimumMemoryGiB, platform.minimumMemoryGiB);
+      group.maximumMemoryGiB = Math.max(group.maximumMemoryGiB || 0, platform.maximumMemoryGiB || platform.minimumMemoryGiB);
+    }
+    group.statuses.add(platform.status);
+    groups.set(key, group);
+  }
+
+  const rows = Array.from(groups.values()).sort((left, right) => right.hosts - left.hosts || left.model.localeCompare(right.model));
+  const deliveryContext = (statuses: Set<HardwarePlatformAssessment["status"]>) => {
+    if (statuses.has("upgrade-required")) return "Plan refresh or exception work before platform services.";
+    if (statuses.has("unavailable")) return "Capture the missing server and CPU details from the source estate.";
+    return "Use the observed model and configuration details in delivery design.";
   };
 
-  return <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.14em] text-[#c8102e]">Hardware compatibility</p><h3 className="mt-1 text-base font-semibold text-slate-950">VCF 9.1 platform precheck</h3><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Observed platforms are grouped into one delivery-owned compatibility assessment. Use the cohort evidence to prioritize configuration checks, remediation decisions, and missing evidence; RVTools alone does not certify an exact server configuration.</p></div><a href="https://compatibilityguide.broadcom.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100">Open Broadcom guide <ExternalLink className="size-3.5" /></a></div>{platforms.length ? <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="min-w-[1180px] w-full text-left text-xs"><thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2.5">Observed platform</th><th className="px-3 py-2.5">Estate</th><th className="px-3 py-2.5">Observed ESXi</th><th className="px-3 py-2.5">Cohort / memory evidence</th><th className="px-3 py-2.5">VCF 9.1 precheck</th><th className="px-3 py-2.5">Compatibility assessment action</th></tr></thead><tbody>{platforms.map(platform => { const esxiEvidence = platform.esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ") || "Not available"; const correlation = platform.esxiCorrelation === "per-platform" ? "Correlated to the same RVTools host rows" : platform.esxiCorrelation === "estate-wide" ? "Estate-wide evidence; not uniquely correlated" : "Unavailable in RVTools host rows"; const clusterEvidence = platform.clusterMembership.map(cluster => `${cluster.name}: ${cluster.hosts}`).join("; ") || "Cluster membership unavailable"; const memoryEvidence = platform.minimumMemoryGiB > 0 ? `${platform.minimumMemoryGiB.toLocaleString()}–${platform.maximumMemoryGiB.toLocaleString()} GiB per host` : "Physical memory unavailable"; return <tr key={platform.id} className="border-t border-slate-100 align-top"><td className="px-3 py-3"><p className="font-semibold text-slate-900">{platform.vendor} {platform.model}</p><p className="mt-1 text-slate-500">{platform.cpuModel}</p></td><td className="px-3 py-3 text-slate-700">{platform.hosts} host{platform.hosts === 1 ? "" : "s"}<br /><span className="text-slate-500">{platform.physicalCores.toLocaleString()} cores</span></td><td className="px-3 py-3 leading-5 text-slate-700">{esxiEvidence}<br /><span className="text-slate-500">{correlation}</span></td><td className="px-3 py-3 leading-5 text-slate-700">{clusterEvidence}<br /><span className="text-slate-500">{memoryEvidence}</span></td><td className="px-3 py-3"><Badge variant="outline" className={`border ${statusStyles[platform.status]}`}>{statusLabels[platform.status]}</Badge><p className="mt-2 max-w-sm leading-5 text-slate-600">{platform.detail}</p></td><td className="px-3 py-3 leading-5 text-slate-700">{platform.nextAction}</td></tr>; })}</tbody></table></div> : <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-4 text-xs leading-5 text-slate-500">No usable host vendor and model rows were found in the imported RVTools data. Upload a vHost export to build the compatibility precheck.</p>}</section>;
-}
-
-function ReadinessCard({ item }: { item: EngagementDocument["readiness"]["items"][number] }) {
-  const styles = item.status === "good" ? "border-emerald-200 bg-emerald-50" : item.status === "attention" ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50";
-  const Icon = item.status === "good" ? CheckCircle2 : item.status === "attention" ? AlertCircle : Info;
-  return <article className={`rounded-xl border p-4 ${styles}`}><div className="flex items-start gap-3"><Icon className={`mt-0.5 size-5 shrink-0 ${item.status === "good" ? "text-emerald-700" : item.status === "attention" ? "text-amber-700" : "text-slate-500"}`} /><div><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold text-slate-950">{item.title}</h3><Badge variant="outline" className="h-5 text-[9px] uppercase">{item.status}</Badge></div><p className="mt-1 text-xs leading-5 text-slate-700">{item.detail}</p><p className="mt-2 text-[11px] leading-5 text-slate-500">{item.evidence}</p></div></div></article>;
+  return <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.14em] text-[#c8102e]">Host inventory</p><h3 className="mt-1 text-base font-semibold text-slate-950">VCF 9.1 delivery inventory</h3><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Host models are consolidated so the delivery team sees a concise estate view rather than repeated status entries.</p></div><a href="https://compatibilityguide.broadcom.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100">Open configuration reference <ExternalLink className="size-3.5" /></a></div>{rows.length ? <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="min-w-[1040px] w-full text-left text-xs"><thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2.5">Observed host group</th><th className="px-3 py-2.5">Estate</th><th className="px-3 py-2.5">Reported ESXi</th><th className="px-3 py-2.5">Cluster / memory</th><th className="px-3 py-2.5">Delivery context</th></tr></thead><tbody>{rows.map(group => { const esxiEvidence = Array.from(group.esxiVersions.entries()).map(([version, hosts]) => `${version}: ${hosts}`).join("; ") || "Not reported"; const clusterEvidence = Array.from(group.clusters.entries()).map(([name, hosts]) => `${name}: ${hosts}`).join("; ") || "Not reported"; const memoryEvidence = group.minimumMemoryGiB !== null ? `${group.minimumMemoryGiB.toLocaleString()}–${(group.maximumMemoryGiB || group.minimumMemoryGiB).toLocaleString()} GiB per host` : "Not reported"; const cpuEvidence = Array.from(group.cpuModels).join("; ") || "CPU model not reported"; return <tr key={`${group.vendor}-${group.model}`} className="border-t border-slate-100 align-top"><td className="px-3 py-3"><p className="font-semibold text-slate-900">{group.vendor} {group.model}</p><p className="mt-1 text-slate-500">{cpuEvidence}</p></td><td className="px-3 py-3 text-slate-700">{group.hosts} host{group.hosts === 1 ? "" : "s"}<br /><span className="text-slate-500">{group.physicalCores.toLocaleString()} cores</span></td><td className="px-3 py-3 leading-5 text-slate-700">{esxiEvidence}</td><td className="px-3 py-3 leading-5 text-slate-700">{clusterEvidence}<br /><span className="text-slate-500">{memoryEvidence}</span></td><td className="px-3 py-3 leading-5 text-slate-700">{deliveryContext(group.statuses)}</td></tr>; })}</tbody></table></div> : <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-4 text-xs leading-5 text-slate-500">No usable host vendor and model data were found in the imported RVTools data.</p>}</section>;
 }
