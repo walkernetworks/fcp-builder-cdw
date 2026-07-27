@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildManusLoginUrl, MANUS_SIGN_IN_LABEL } from "../client/src/lib/auth";
+import { buildManusLoginUrl, getOAuthHandoffUrl, MANUS_SIGN_IN_LABEL } from "../client/src/lib/auth";
 import { decodeOAuthState, sanitizeOAuthReturnPath } from "../shared/const";
 
 describe("hosted preview Manus sign-in", () => {
@@ -29,6 +29,26 @@ describe("hosted preview Manus sign-in", () => {
       nonce: "nonce-123",
       returnTo: "/?tab=timelines#two-year",
     });
+  });
+
+  it("hands temporary previews off to the configured published origin before OAuth begins", () => {
+    const configuredAppOrigin = process.env.VITE_APP_ORIGIN;
+    expect(configuredAppOrigin).toMatch(/^https:\/\/.+/);
+    expect(getOAuthHandoffUrl({
+      currentOrigin: "https://3000-preview.manus.computer",
+      configuredAppOrigin,
+      currentPath: "/?tab=timelines#two-year",
+    })).toBe(`${configuredAppOrigin}/?tab=timelines#two-year`);
+    expect(getOAuthHandoffUrl({
+      currentOrigin: "https://fcpbuilder-mwqw3amr.manus.space",
+      configuredAppOrigin,
+      currentPath: "/",
+    })).toBeNull();
+    expect(getOAuthHandoffUrl({
+      currentOrigin: "https://3000-preview.manus.computer",
+      configuredAppOrigin: "http://insecure.example",
+      currentPath: "/",
+    })).toBeNull();
   });
 
   it("rejects external or protocol-relative post-login redirect targets", () => {

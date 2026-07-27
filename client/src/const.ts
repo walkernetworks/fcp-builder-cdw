@@ -1,5 +1,5 @@
 import { OAUTH_STATE_COOKIE } from "@shared/const";
-import { buildManusLoginUrl } from "@/lib/auth";
+import { buildManusLoginUrl, getOAuthHandoffUrl } from "@/lib/auth";
 
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
@@ -14,6 +14,17 @@ export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 // with "invalid oauth state". It returns void by design, so there is no URL to
 // stash across renders.
 export const startLogin = () => {
+  const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  const handoffUrl = getOAuthHandoffUrl({
+    currentOrigin: window.location.origin,
+    configuredAppOrigin: import.meta.env.VITE_APP_ORIGIN,
+    currentPath,
+  });
+  if (handoffUrl) {
+    window.location.assign(handoffUrl);
+    return;
+  }
+
   const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
   const appId = import.meta.env.VITE_APP_ID;
   const nonce = crypto.randomUUID();
@@ -22,7 +33,7 @@ export const startLogin = () => {
     oauthPortalUrl,
     appId,
     origin: window.location.origin,
-    currentPath: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    currentPath,
     nonce,
   });
 

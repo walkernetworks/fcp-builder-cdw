@@ -204,3 +204,9 @@
 - [x] Correct monthly duration allocation so an extended plan window distributes service timing across the available calendar span.
 - [x] Correct weekly scheduling so generated services avoid same-workstream overlaps and remain within the selected execution window.
 - [x] Add regression coverage, validate the repaired views, and checkpoint the fix.
+
+## Hosted OAuth Redirect-Domain Repair
+
+- [x] Reproduce and isolate the hosted `invalid redirect_uri` failure caused by the temporary preview domain.
+- [x] Update the secure OAuth entry flow to use the active allowed application origin while preserving the nonce and return-path protections.
+- [x] Add redirect regression coverage, validate hosted sign-in, and checkpoint the repaired authentication flow.
