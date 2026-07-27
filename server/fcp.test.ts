@@ -345,6 +345,31 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(baseline).toMatchObject({ status: "unknown", detail: "ESXi versions were not available." });
   });
 
+  it("refreshes stale persisted baseline findings from ESXi 8.0.3 RVTools evidence", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      esxiVersions: [
+        { version: "VMware ESXi 8.0.3 build-24784735", hosts: 267 },
+        { version: "VMware ESXi 8.0.3 build-24859861", hosts: 18 },
+        { version: "VMware ESXi 8.0.3 build-24585383", hosts: 1 },
+      ],
+    });
+    const storedBaseline = document.readiness.items.find(item => item.id === "software-baseline");
+    if (!storedBaseline) throw new Error("Expected default software baseline readiness item");
+    Object.assign(storedBaseline, {
+      status: "unknown",
+      evidence: "VMware ESXi 8.0.3 build-24784735: 267; VMware ESXi 8.0.3 build-24859861: 18; VMware ESXi 8.0.3 build-24585383: 1",
+      detail: "ESXi versions were not available.",
+    });
+
+    const refreshedBaseline = migrateDocument(document).readiness.items.find(item => item.id === "software-baseline");
+    expect(refreshedBaseline).toMatchObject({
+      status: "info",
+      detail: "286 host(s) report ESXi 8.x.",
+      evidence: "VMware ESXi 8.0.3 build-24784735: 267; VMware ESXi 8.0.3 build-24859861: 18; VMware ESXi 8.0.3 build-24585383: 1",
+    });
+  });
+
   it("classifies RVTools host platforms into VCF 9.1 candidate and upgrade-required precheck outcomes", () => {
     const document = createDefaultDocument();
     Object.assign(document.inventory, {

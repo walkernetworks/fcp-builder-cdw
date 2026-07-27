@@ -228,3 +228,9 @@
 - [x] Trace why detected RVTools ESXi versions can still render an unknown baseline status with an unavailable-evidence message.
 - [x] Correct readiness classification and report wording so detected versions, unsupported baselines, and truly unavailable evidence are distinguishable.
 - [x] Add regression coverage, validate the readiness summary and export wording, and checkpoint the correction.
+
+## Persisted ESXi Readiness Refresh
+
+- [x] Trace why an existing engagement can display an old unknown software-baseline finding despite detected RVTools ESXi 8.0.3 evidence.
+- [x] Recompute deterministic readiness findings for existing engagement documents when they are loaded or saved after rule updates.
+- [x] Add regression coverage for persisted legacy readiness plus ESXi 8.0.3 evidence, validate the displayed summary, and checkpoint the repair.

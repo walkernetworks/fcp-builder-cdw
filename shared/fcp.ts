@@ -1015,7 +1015,16 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
 
 export function migrateDocument(value: unknown): EngagementDocument {
   const current = engagementDocumentV10Schema.safeParse(value);
-  if (current.success) return current.data;
+  if (current.success) {
+    return {
+      ...current.data,
+      readiness: assessReadiness(
+        current.data.fields,
+        current.data.inventory,
+        current.data.inventorySources.flatMap(source => source.warnings),
+      ),
+    };
+  }
 
   const v9 = engagementDocumentV9Schema.safeParse(value);
   if (v9.success) {
