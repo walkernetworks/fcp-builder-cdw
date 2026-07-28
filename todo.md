@@ -326,3 +326,10 @@
 - [x] Update workspace, HTML, and PDF activity-sequence presentation to show workstream types through bar colors rather than repeated timeline rows.
 - [x] Add regression coverage, visually validate the corrected category-row output, and checkpoint the update.
 - [x] Match the supplied structural reference: one category swimlane, a shared time grid, and multiple independently positioned colored bars without using the reference image’s sample data.
+
+## Input-Responsive Planning and Weekly Mobilisation Timing
+
+- [x] Trace how intended upgrade path, customer objectives, constraints, timeline notes, and industry discovery lens affect generated activities, timing, rationale, and exports.
+- [x] Make confirmed planning inputs visibly and deterministically change the relevant generated delivery workstreams or narrative.
+- [x] Correct the two-week mobilisation and delivery-baseline activity with cadence-aligned labelling: Weeks 1–2 for weekly execution and Month 1 for calendar-month execution.
+- [x] Add regression coverage, validate the input-sensitive outputs and weekly timing, and checkpoint the update.

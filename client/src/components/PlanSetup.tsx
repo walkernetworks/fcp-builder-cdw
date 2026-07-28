@@ -23,12 +23,19 @@ const capabilities: Array<{ value: Capability; label: string; description: strin
   { value: "private-ai", label: "Private AI", description: "AI-ready infrastructure after platform planning and design" },
 ];
 
-const scheduleInputFields = new Set<keyof EngagementDocument["fields"]>([
+const derivedPlanInputFields = new Set<keyof EngagementDocument["fields"]>([
+  "entitledCores",
+  "entitlementAmount",
   "entitlementStart",
   "entitlementEnd",
   "targetStart",
   "targetComplete",
   "adoptionCadence",
+  "hardwareAvailability",
+  "hardwareLeadWeeks",
+  "priorities",
+  "timelineNotes",
+  "adoptionDetails",
 ]);
 
 type Props = { document: EngagementDocument; onChange: (document: EngagementDocument) => void };
@@ -41,8 +48,8 @@ export function PlanSetup({ document, onChange }: Props) {
   const updateFields = (patch: Partial<typeof fields>) => {
     const nextFields = applyScheduleFieldPatch(fields, patch);
     const nextDocument = { ...document, fields: nextFields, readiness: assessReadiness(nextFields, document.inventory, document.inventorySources.flatMap(source => source.warnings)) };
-    const changesSchedule = Object.keys(patch).some(field => scheduleInputFields.has(field as keyof EngagementDocument["fields"]));
-    onChange(changesSchedule ? refreshDerivedDocument(nextDocument) : nextDocument);
+    const changesDerivedPlan = Object.keys(patch).some(field => derivedPlanInputFields.has(field as keyof EngagementDocument["fields"]));
+    onChange(changesDerivedPlan ? refreshDerivedDocument(nextDocument) : nextDocument);
   };
 
   const importFiles = async (files: File[]) => {
@@ -105,7 +112,7 @@ export function PlanSetup({ document, onChange }: Props) {
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
             <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Adoption window</p>
             <h2 className="mt-1 text-2xl font-semibold tracking-tight">Adoption Timeline and Outcomes</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Use weekly execution windows when a phase needs to begin in the middle of a month. Changing the start date, completion date, linked entitlement dates, or cadence automatically reflows the generated operational plan. The separate two-year outlook remains intentionally monthly and strategic.</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Use weekly execution windows when a phase needs to begin in the middle of a month. Changing schedule inputs, confirmed outcomes, implementation path, customer constraints, timeline notes, or industry lens immediately refreshes the deterministic operational plan. The separate two-year outlook remains intentionally monthly and strategic.</p>
             <div className="mt-6 grid gap-5 md:grid-cols-2">
               <Field label="Target start" required><Input type="date" value={fields.targetStart} onChange={event => updateFields({ targetStart: event.target.value })} /></Field>
               <Field label="Target completion" required><Input type="date" value={fields.targetComplete} onChange={event => updateFields({ targetComplete: event.target.value })} /></Field>
