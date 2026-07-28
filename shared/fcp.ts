@@ -97,7 +97,7 @@ export type TimelineBar = z.infer<typeof timelineBarSchema>;
 export type TimelineLane = z.infer<typeof timelineLaneSchema>;
 export type Timeline = z.infer<typeof timelineSchema>;
 
-export const capabilitySchema = z.enum(["operations", "automation", "security", "resilience", "kubernetes", "private-ai"]);
+export const capabilitySchema = z.enum(["operations", "automation", "networking", "security", "resilience", "kubernetes", "private-ai"]);
 export type Capability = z.infer<typeof capabilitySchema>;
 
 export const upgradePathSchema = z.enum(["undecided", "in-place", "new-build", "migration-waves", "design-only"]);
@@ -115,6 +115,7 @@ export type IndustryTemplateId = z.infer<typeof industryTemplateSchema>;
 
 const operationsFocusSchema = z.enum(["lifecycle", "observability", "capacity-cost", "custom-dashboards", "identity-certificates", "event-integration"]);
 const automationFocusSchema = z.enum(["vm-self-service", "infrastructure-as-code", "day-2-automation", "governance", "application-provisioning"]);
+const networkingFocusSchema = z.enum(["physical-fabric", "edge-cluster-routing", "overlay-transport", "network-operations"]);
 const securityFocusSchema = z.enum(["segmentation", "identity-rbac", "hardening-compliance"]);
 const resilienceFocusSchema = z.enum(["recovery-architecture", "recovery-exercises", "cyber-recovery"]);
 const kubernetesFocusSchema = z.enum(["workload-domains", "platform-operations", "developer-experience"]);
@@ -124,6 +125,7 @@ const adoptionDetailsV6Schema = z.object({
   upgradePath: upgradePathSchema,
   operations: z.array(operationsFocusSchema).max(6),
   automation: z.array(automationFocusSchema).max(5),
+  networking: z.array(networkingFocusSchema).max(4).default([]),
   security: z.array(securityFocusSchema).max(3),
   resilience: z.array(resilienceFocusSchema).max(3),
   kubernetes: z.array(kubernetesFocusSchema).max(3),
@@ -405,6 +407,7 @@ export function createDefaultAdoptionDetails(): AdoptionDetails {
     upgradePath: "undecided",
     operations: [],
     automation: [],
+    networking: [],
     security: [],
     resilience: [],
     kubernetes: [],
@@ -548,6 +551,7 @@ function capabilityTitle(capability: Capability): string {
   const labels: Record<Capability, string> = {
     operations: "Operations",
     automation: "Automation and Self-Service",
+    networking: "VCF Networking and NSX",
     security: "Security",
     resilience: "Resilience",
     kubernetes: "Kubernetes",
@@ -593,6 +597,7 @@ function capabilityLaneMetadata(capability: Capability): TimelineLaneMetadata {
   const metadata: Record<Capability, TimelineLaneMetadata> = {
     operations: { category: "Operations", workstreamType: "Operating Model / Platform" },
     automation: { category: "Modernize Cloud", workstreamType: "Consume / Handover" },
+    networking: { category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" },
     security: { category: "Modernize Security & Reliance", workstreamType: "Security & Resiliency" },
     resilience: { category: "Modernize Security & Reliance", workstreamType: "Security & Resiliency" },
     kubernetes: { category: "Modernize App Platform & AI", workstreamType: "Consume / Handover" },
@@ -606,8 +611,9 @@ function inferredLaneMetadata(laneId: string): TimelineLaneMetadata | null {
   if (id === "lane-platform-plan") return DEFAULT_TIMELINE_LANE_METADATA;
   if (id === "lane-hardware-refresh") return { category: "Hardware Refresh", workstreamType: "Infrastructure Build" };
   if (id === "lane-upgrade-services") return { category: "Modernize Infrastructure", workstreamType: "Migration Waves" };
+  if (id === "lane-vcf-networking-nsx") return { category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" };
   if (id === "lane-platform-design") return { category: "Modernize Cloud", workstreamType: "Operating Model / Platform" };
-  const capabilityMatch = id.match(/^lane-(?:follow-on-)?(operations|automation|security|resilience|kubernetes|private-ai)(?:-\d+)?$/);
+  const capabilityMatch = id.match(/^lane-(?:follow-on-)?(operations|automation|networking|security|resilience|kubernetes|private-ai)(?:-\d+)?$/);
   return capabilityMatch ? capabilityLaneMetadata(capabilityMatch[1] as Capability) : null;
 }
 
@@ -665,6 +671,12 @@ const focusLabels: Record<Capability, Record<string, string>> = {
     governance: "Organization and Policy Governance",
     "application-provisioning": "Application Platform Provisioning",
   },
+  networking: {
+    "physical-fabric": "Physical Fabric, VLAN, and MTU Design",
+    "edge-cluster-routing": "NSX Edge Cluster and Routing Design",
+    "overlay-transport": "NSX Overlay Transport and Host Connectivity",
+    "network-operations": "VCF Networking and NSX Operating Model",
+  },
   security: {
     segmentation: "Segmentation and Security Policy",
     "identity-rbac": "Identity and RBAC Design",
@@ -691,6 +703,7 @@ function selectedFocuses(fields: MinimalFields, capability: Capability): string[
   const detailKey: Record<Capability, keyof Omit<AdoptionDetails, "upgradePath" | "notes" | "industryTemplate">> = {
     operations: "operations",
     automation: "automation",
+    networking: "networking",
     security: "security",
     resilience: "resilience",
     kubernetes: "kubernetes",
@@ -758,15 +771,18 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const count = columns.length;
   const cadence = fields.adoptionCadence;
   const upgradeDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.36)));
-  const assessmentDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.22)));
+  const inventoryDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.22)));
   const designDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.3)));
-  const [inventoryStart, inventoryEnd] = boundedRange(1, assessmentDuration, count);
+  const networkingDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.42)));
+  const [inventoryStart, inventoryEnd] = boundedRange(1, inventoryDuration, count);
   const [upgradeStart, upgradeEnd] = boundedRange(Math.min(count, inventoryEnd), upgradeDuration, count);
+  const [networkingStart, networkingEnd] = boundedRange(Math.min(count, inventoryEnd), networkingDuration, count);
   const [platformStart, platformEnd] = boundedRange(Math.min(count, Math.max(inventoryEnd, upgradeStart)), designDuration, count);
   const platformInventory = buildPlatformInventoryActivity(inventory);
   const lanes: TimelineLane[] = [
     { id: "lane-platform-plan", name: "Governance", ...DEFAULT_TIMELINE_LANE_METADATA, bars: [bar("bar-platform-plan", inventoryStart, inventoryEnd, colorForWorkstreamType("Governance"), platformInventory.label, false, false, platformInventory.dependsOn, platformInventory.outcome)] },
     { id: "lane-upgrade-services", name: "Migration Waves", category: "Modernize Infrastructure", workstreamType: "Migration Waves", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, colorForWorkstreamType("Migration Waves"), upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, "Start after the platform inventory and delivery plan records the path for every observed host group.")] },
+    { id: "lane-vcf-networking-nsx", name: "Infrastructure Build", category: "Modernize Infrastructure", workstreamType: "Infrastructure Build", bars: [bar("bar-vcf-networking-nsx", networkingStart, networkingEnd, colorForWorkstreamType("Infrastructure Build"), "VCF Networking and NSX Foundation", false, false, "Begin after the platform inventory establishes the delivery path; coordinate physical-fabric, NSX edge, overlay, and routing dependencies with the network team.", "Establish the VCF networking and NSX foundation independently from security services, including physical-fabric alignment, Edge Cluster planning, overlay transport, and the networking operating model.")] },
     { id: "lane-platform-design", name: "Operating Model / Platform", category: "Modernize Cloud", workstreamType: "Operating Model / Platform", bars: [bar("bar-platform-design", platformStart, platformEnd, colorForWorkstreamType("Operating Model / Platform"), "VCF Platform Design") ] },
   ];
 
@@ -825,6 +841,12 @@ const followOnServiceProfiles: Record<Capability, Record<string, FollowOnService
     "day-2-automation": { label: "Operate Day-2 Remediation and Maintenance Automation", outcome: "Operationalize priority remediation and maintenance automations with runbook and rollback controls.", entryCondition: "priority workflows, approval paths, and rollback owners are confirmed" },
     governance: { label: "Tenant, Quota, and Policy Governance", outcome: "Run tenant, quota, policy, and exception governance as an ongoing operating practice.", entryCondition: "the tenant model, quota policy, and exception authority are confirmed", eligibility: { requiresAnyFocus: ["vm-self-service", "infrastructure-as-code"] } },
     "application-provisioning": { label: "Onboard the First Application Team to the Platform", outcome: "Onboard a first application team through governed blueprints and a supported delivery path.", entryCondition: "a sponsored workload, application team, and service support model are confirmed", eligibility: { requiresAnyFocus: ["vm-self-service", "infrastructure-as-code"] } },
+  },
+  networking: {
+    "physical-fabric": { label: "VCF Network Foundation and Physical Fabric Alignment", outcome: "Align transport VLANs, MTU, routing handoffs, and physical-fabric dependencies for the VCF platform.", entryCondition: "network owners, VLAN and MTU standards, and routing handoffs are confirmed" },
+    "edge-cluster-routing": { label: "NSX Edge Cluster and North-South Routing", outcome: "Implement the agreed Edge Cluster topology, north-south connectivity, and routing model for the target workload domains.", entryCondition: "edge placement, external connectivity, and routing ownership are confirmed", eligibility: { requiresAllFocuses: ["physical-fabric"] } },
+    "overlay-transport": { label: "NSX Overlay Transport and Host Connectivity", outcome: "Roll out NSX transport, host connectivity, and overlay network services through a controlled delivery sequence.", entryCondition: "transport zones, host preparation sequencing, and workload-domain dependencies are confirmed", eligibility: { requiresAllFocuses: ["physical-fabric"] } },
+    "network-operations": { label: "Networking and NSX Operating Model", outcome: "Establish shared networking and platform ownership, lifecycle practices, troubleshooting paths, and service handover.", entryCondition: "network and platform operating ownership, lifecycle roles, and support escalation paths are agreed" },
   },
   security: {
     segmentation: { label: "Segment Workloads in Prioritized Rollout Waves", outcome: "Apply and tune segmentation in prioritized workload waves with defined outcomes.", entryCondition: "wave scope, application dependencies, and change authority are confirmed", eligibility: { requiresObservedInventory: true } },
@@ -1005,6 +1027,15 @@ function baselineYearTwoLanes(): TimelineLane[] {
       label: "Service Consumption and Handover",
       outcome: "Extend consumption, complete handover, and establish the next service-expansion sequence.",
     },
+    {
+      id: "networking-nsx",
+      category: "Modernize Infrastructure",
+      workstreamType: "Operating Model / Platform",
+      start: 13,
+      end: 25,
+      label: "VCF Networking and NSX Lifecycle Progression",
+      outcome: "Continue VCF networking and NSX platform operations, edge and overlay lifecycle planning, and network-service handover through the second year.",
+    },
   ];
 
   return baseline.map(item => ({
@@ -1053,7 +1084,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const term = fields.entitlementStart && fields.entitlementEnd ? `${fields.entitlementStart} through ${fields.entitlementEnd}` : "the confirmed entitlement term";
   const priorities = fields.priorities.length ? fields.priorities.map(capabilityTitle).join(", ") : "the selected customer outcomes";
   const cadence = fields.adoptionCadence === "week" ? "weekly execution windows" : "calendar-month execution windows";
-  const detailCount = [fields.adoptionDetails.operations, fields.adoptionDetails.automation, fields.adoptionDetails.security, fields.adoptionDetails.resilience, fields.adoptionDetails.kubernetes, fields.adoptionDetails.privateAi].flat().length;
+  const detailCount = [fields.adoptionDetails.operations, fields.adoptionDetails.automation, fields.adoptionDetails.networking, fields.adoptionDetails.security, fields.adoptionDetails.resilience, fields.adoptionDetails.kubernetes, fields.adoptionDetails.privateAi].flat().length;
   const details = detailCount ? `${detailCount} selected detailed capability focus area${detailCount === 1 ? "" : "s"}` : "the initial customer outcome selections";
   const followOnCount = twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-follow-on-")).flatMap(lane => lane.bars).length;
   const followOnSummary = followOnCount
@@ -1416,10 +1447,16 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const normalizedValue = normalizeRawTimelineTaxonomy(value);
   const current = engagementDocumentV10Schema.safeParse(normalizedValue);
   if (current.success) {
-      const adoptionTimeline = normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory));
+    const normalizedAdoptionTimeline = normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory));
     const generated = buildAdoptionPlans(current.data.fields, current.data.inventory);
+    const adoptionTimeline = normalizedAdoptionTimeline.lanes.some(lane => lane.id === "lane-vcf-networking-nsx")
+      ? normalizedAdoptionTimeline
+      : { ...normalizedAdoptionTimeline, lanes: [...normalizedAdoptionTimeline.lanes, ...generated.adoptionTimeline.lanes.filter(lane => lane.id === "lane-vcf-networking-nsx")] };
     const candidateTwoYearPlan = normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan));
-    const twoYearPlan = hasYearTwoActivity(candidateTwoYearPlan) ? candidateTwoYearPlan : generated.twoYearPlan;
+    const continuousTwoYearPlan = hasYearTwoActivity(candidateTwoYearPlan) ? candidateTwoYearPlan : generated.twoYearPlan;
+    const twoYearPlan = continuousTwoYearPlan.lanes.some(lane => lane.id === "lane-two-year-baseline-networking-nsx")
+      ? continuousTwoYearPlan
+      : { ...continuousTwoYearPlan, lanes: [...continuousTwoYearPlan.lanes, ...generated.twoYearPlan.lanes.filter(lane => lane.id === "lane-two-year-baseline-networking-nsx")] };
     return {
       ...current.data,
       readiness: assessReadiness(

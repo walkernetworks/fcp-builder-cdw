@@ -286,3 +286,13 @@
 - [x] Map all timeline activity colors consistently to workstream types and render a visible legend.
 - [x] Apply taxonomy normalization and color mapping to generated, editable, migrated, previewed, HTML, and PDF timelines.
 - [x] Add regression coverage and visual verification for exact taxonomy labels, colors, and the continuous Two-Year Notional plan.
+
+## VCF Networking and NSX Delivery Domain
+
+- [x] Research and define VCF networking and NSX delivery activities independently from security and VDefend services.
+- [x] Add a confirmed networking/NSX planning selection and model fields without creating a new timeline category outside the approved taxonomy.
+- [x] Generate dedicated VCF networking and NSX work under Modernize Infrastructure with appropriate Governance, Operating Model / Platform, Infrastructure Build, Migration Waves, and Consume / Handover sequencing.
+- [x] Add a distinct continuous Two-Year Notional networking and NSX progression, separate from security work.
+- [x] Render networking/NSX work clearly in the timeline editor, customer workspace, HTML, and PDF exports.
+- [x] Add regression coverage, validate the revised networking experience, and checkpoint the release.
+- [x] Verify the VCF networking and NSX timeline/export presentation through generated rendered outputs without interactive workspace sign-in.

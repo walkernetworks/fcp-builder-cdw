@@ -16,6 +16,7 @@ import { toast } from "sonner";
 const capabilities: Array<{ value: Capability; label: string; description: string }> = [
   { value: "operations", label: "Operations", description: "Health, capacity, lifecycle and fleet operations" },
   { value: "automation", label: "Automation & self-service", description: "Governed infrastructure consumption" },
+  { value: "networking", label: "VCF networking & NSX", description: "Physical fabric, NSX edge and overlay, routing, and network operations" },
   { value: "security", label: "Security", description: "Segmentation, policy and hardening" },
   { value: "resilience", label: "Resilience", description: "Recovery architecture and exercises" },
   { value: "kubernetes", label: "Kubernetes", description: "Modern application platform consumption" },

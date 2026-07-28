@@ -218,8 +218,8 @@ describe("calendar-month adoption plans", () => {
     expect(labels).not.toContain("Onboard One Private AI Pilot With Success Measures");
     expect(JSON.stringify(plans.twoYearPlan)).not.toMatch(/Service Prioritization Decision|Year [12] ·/);
     const baselineLanes = plans.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-baseline-"));
-    expect(baselineLanes).toHaveLength(3);
-    expect(baselineLanes.some(lane => lane.bars.some(activity => activity.startCol === 13 && activity.endCol === 25))).toBe(true);
+    expect(baselineLanes).toHaveLength(4);
+    expect(baselineLanes.some(lane => lane.id === "lane-two-year-baseline-networking-nsx" && lane.bars.some(activity => activity.startCol === 13 && activity.endCol === 25))).toBe(true);
     expect(plans.rationale).toContain("the standard second-year governance, platform operating model, and handover sequence is included");
   });
 
@@ -631,13 +631,56 @@ describe("planning considerations, exports, and access boundary", () => {
   it("creates a continuous default Year 2 sequence and repairs an existing notional with no Year 2 activities", () => {
     const document = createDefaultDocument();
     const baselineLanes = document.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-baseline-"));
-    expect(baselineLanes).toHaveLength(3);
+    expect(baselineLanes).toHaveLength(4);
     expect(baselineLanes.flatMap(lane => lane.bars).some(activity => activity.startCol === 13 && activity.endCol === 25)).toBe(true);
+    expect(baselineLanes.find(lane => lane.id === "lane-two-year-baseline-networking-nsx")).toMatchObject({
+      category: "Modernize Infrastructure",
+      workstreamType: "Operating Model / Platform",
+      bars: [expect.objectContaining({ label: "VCF Networking and NSX Lifecycle Progression", startCol: 13, endCol: 25 })],
+    });
 
     const staleDocument = JSON.parse(JSON.stringify(document));
     staleDocument.twoYearPlan.lanes = staleDocument.twoYearPlan.lanes.map((lane: { bars: unknown[] }) => ({ ...lane, bars: [] }));
     const migrated = migrateDocument(staleDocument);
     expect(migrated.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-baseline-") && lane.bars.some(activity => activity.endCol > 13))).toBe(true);
+  });
+
+  it("keeps VCF networking and NSX distinct from security across primary delivery and migrated engagements", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, {
+      entitlementStart: "2027-01-01",
+      entitlementEnd: "2027-12-31",
+      targetStart: "2027-01-01",
+      targetComplete: "2027-12-31",
+    });
+    const plans = buildAdoptionPlans(document.fields, document.inventory);
+    const primaryNetworking = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-vcf-networking-nsx");
+    const continuousNetworking = plans.twoYearPlan.lanes.find(lane => lane.id === "lane-two-year-baseline-networking-nsx");
+
+    expect(primaryNetworking).toMatchObject({
+      category: "Modernize Infrastructure",
+      workstreamType: "Infrastructure Build",
+      bars: [expect.objectContaining({ label: "VCF Networking and NSX Foundation" })],
+    });
+    expect(primaryNetworking?.bars[0].outcome).toContain("independently from security services");
+    expect(continuousNetworking).toMatchObject({
+      category: "Modernize Infrastructure",
+      workstreamType: "Operating Model / Platform",
+      bars: [expect.objectContaining({ label: "VCF Networking and NSX Lifecycle Progression", startCol: 13, endCol: 25 })],
+    });
+
+    const existing = JSON.parse(JSON.stringify(document));
+    existing.adoptionTimeline.lanes = existing.adoptionTimeline.lanes.filter((lane: { id: string }) => lane.id !== "lane-vcf-networking-nsx");
+    existing.twoYearPlan.lanes = existing.twoYearPlan.lanes.filter((lane: { id: string }) => lane.id !== "lane-two-year-baseline-networking-nsx");
+    const migrated = migrateDocument(existing);
+    expect(migrated.adoptionTimeline.lanes.find(lane => lane.id === "lane-vcf-networking-nsx")).toMatchObject({
+      category: "Modernize Infrastructure",
+      workstreamType: "Infrastructure Build",
+    });
+    expect(migrated.twoYearPlan.lanes.find(lane => lane.id === "lane-two-year-baseline-networking-nsx")).toMatchObject({
+      category: "Modernize Infrastructure",
+      workstreamType: "Operating Model / Platform",
+    });
   });
 
   it("renders entitlement details and both synchronized adoption views with VCF 9.1 platform evidence", () => {
@@ -666,6 +709,9 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Category / Workstream Type");
     expect(html).toContain("Workstream color key");
     expect(html).toContain("Infrastructure Build");
+    expect(html).toContain("VCF Networking and NSX Foundation");
+    expect(html).toContain("VCF Networking and NSX Lifecycle Progression");
+    expect(html).toContain("independently from security services");
     const planSummaryStart = html.indexOf('<div class="plan-summary">');
     const observedInventoryStart = html.indexOf("Observed host inventory");
     const planSummary = html.slice(planSummaryStart, observedInventoryStart);

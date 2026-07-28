@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryReviewContent, industryDiscoveryPromptBlock, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "@shared/industryDiscovery";
 import type { AdoptionDetails, Capability, IndustryTemplateId, MinimalFields, UpgradePath } from "@shared/fcp";
 
-type DetailKey = "operations" | "automation" | "security" | "resilience" | "kubernetes" | "privateAi";
+type DetailKey = "operations" | "automation" | "networking" | "security" | "resilience" | "kubernetes" | "privateAi";
 
 type DiscoveryGroup = {
   capability: Capability;
@@ -42,6 +42,18 @@ const discoveryGroups: DiscoveryGroup[] = [
       { value: "day-2-automation", label: "Day-2 automation", description: "Lifecycle, configuration, and remediation automation." },
       { value: "governance", label: "Organization governance", description: "Projects, organizations, quotas, and policy guardrails." },
       { value: "application-provisioning", label: "Application provisioning", description: "Application-platform or service provisioning workflows." },
+    ],
+  },
+  {
+    capability: "networking",
+    key: "networking",
+    title: "VCF networking and NSX outcomes",
+    prompt: "Which VCF networking and NSX outcomes should be planned independently from security services?",
+    options: [
+      { value: "physical-fabric", label: "Physical fabric, VLANs, and MTU", description: "Transport VLANs, MTU, routing handoffs, and physical-fabric dependencies." },
+      { value: "edge-cluster-routing", label: "NSX Edge Cluster and routing", description: "Edge node placement, north-south routing, and external connectivity." },
+      { value: "overlay-transport", label: "NSX overlay transport", description: "Transport zones, host connectivity, and overlay network rollout." },
+      { value: "network-operations", label: "Networking and NSX operating model", description: "Network ownership, lifecycle, troubleshooting, and service handover." },
     ],
   },
   {
