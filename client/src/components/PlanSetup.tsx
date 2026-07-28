@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { parseRvToolsFiles } from "@/lib/rvtools";
-import { applyScheduleFieldPatch, assessReadiness, refreshDerivedDocument, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
+import { applyScheduleFieldPatch, assessReadiness, calculateEntitlementEndDate, refreshDerivedDocument, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
 import { HCL_OFFLINE_LIMITATION, hclStatusLabel } from "@shared/hcl";
 import { ExternalLink, FileSpreadsheet, HardDrive, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
@@ -105,7 +105,7 @@ export function PlanSetup({ document, onChange }: Props) {
             <Field label="Entitled physical cores" required hint="Compared with observed RVTools physical cores."><Input type="number" min={0} value={fields.entitledCores || ""} onChange={event => updateFields({ entitledCores: Math.max(0, Number(event.target.value) || 0) })} placeholder="0" /></Field>
             <Field label="Entitlement amount (USD)" required hint="Total customer entitlement funds available for this term."><Input type="number" min={0} step="1000" value={fields.entitlementAmount || ""} onChange={event => updateFields({ entitlementAmount: Math.max(0, Number(event.target.value) || 0) })} placeholder="0" /></Field>
             <Field label="Entitlement starts" required><Input type="date" value={fields.entitlementStart} onChange={event => updateFields({ entitlementStart: event.target.value })} /></Field>
-            <Field label="Entitlement ends" required><Input type="date" value={fields.entitlementEnd} onChange={event => updateFields({ entitlementEnd: event.target.value })} /></Field>
+            <Field label="Entitlement ends" required hint="Calculated as twelve calendar months after the entitlement start date."><Input type="date" value={calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd} readOnly aria-readonly="true" className="bg-slate-50 text-slate-600" /></Field>
           </div></section>
         </TabsContent>
 
@@ -113,7 +113,7 @@ export function PlanSetup({ document, onChange }: Props) {
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
             <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Adoption window</p>
             <h2 className="mt-1 text-2xl font-semibold tracking-tight">Adoption Timeline and Outcomes</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Use weekly execution windows when a phase needs to begin in the middle of a month. Changing schedule inputs, confirmed outcomes, implementation path, customer constraints, timeline notes, or industry lens immediately refreshes the deterministic operational plan. The separate two-year outlook remains intentionally monthly and strategic.</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Use weekly execution windows when a phase needs to begin in the middle of a month. Changing schedule inputs, confirmed outcomes, implementation path, customer constraints, timeline notes, or industry lens immediately refreshes the deterministic operational plan. The separate Notional remains monthly and runs from the actual service start through the calculated entitlement end.</p>
             <div className="mt-6 grid gap-5 md:grid-cols-2">
               <Field label="Target start" required><Input type="date" value={fields.targetStart} onChange={event => updateFields({ targetStart: event.target.value })} /></Field>
               <Field label="Target completion" required><Input type="date" value={fields.targetComplete} onChange={event => updateFields({ targetComplete: event.target.value })} /></Field>

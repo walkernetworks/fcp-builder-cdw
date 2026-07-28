@@ -44,9 +44,7 @@ describe("engagement naming at creation", () => {
     );
     const [, , createdDocument] = vi.mocked(db.createEngagement).mock.calls[0]!;
     const baselineLanes = createdDocument.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-baseline-"));
-    expect(baselineLanes).toHaveLength(4);
-    expect(baselineLanes.every(lane => lane.name === lane.workstreamType)).toBe(true);
-    expect(baselineLanes.some(lane => lane.id === "lane-two-year-baseline-networking-nsx" && lane.bars.some(activity => activity.startCol === 13 && activity.endCol === 25))).toBe(true);
+    expect(baselineLanes).toEqual([]);
     expect(result).toBe(row);
   });
 

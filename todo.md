@@ -341,3 +341,10 @@
 - [x] Implement deterministic matching from parsed vHost inventory to HCL records, with exact-match, partial-evidence, unsupported, and unknown states.
 - [x] Surface matched HCL evidence and confidence in the vHost readiness workspace and customer-safe plan/export language without representing the result as an official certification.
 - [x] Add automated tests using representative HCL records and vHost rows, visually validate the experience, and checkpoint the published integration.
+
+## Entitlement-Aligned Two-Year Notional Horizon
+
+- [x] Trace all fixed 24-month Two-Year Notional date calculations, headings, and export wording that conflict with the service-start-to-entitlement-end planning window.
+- [x] Generate the Notional timeline from the actual service start date through the entitlement end date, preserving a 12-month entitlement term when that is the confirmed customer term.
+- [x] Synchronize workspace, plan rationale, HTML/PDF exports, and migration behavior with the entitlement-aligned horizon.
+- [x] Add regression coverage for service starts that differ from entitlement starts, validate the visible timeline, and checkpoint the published correction.

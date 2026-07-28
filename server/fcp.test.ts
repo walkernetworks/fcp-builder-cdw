@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
-import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, colorForWorkstreamType, createDefaultDocument, getFollowOnReadinessGuidance, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, validateTimeline, type Timeline } from "../shared/fcp";
+import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, getFollowOnReadinessGuidance, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import { assessHclPlatform } from "../shared/hcl";
 import type { TrpcContext } from "./_core/context";
@@ -62,14 +62,14 @@ describe("RVTools local import", () => {
 });
 
 describe("calendar-month adoption plans", () => {
-  it("builds inclusive entitlement-month columns and a continuous 24-month Two-Year Notional column set", () => {
+  it("builds inclusive entitlement-month columns and an entitlement-bounded Notional column set", () => {
     expect(buildMonthColumns("2027-01-15", "2027-06-30")).toEqual(["Jan 27", "Feb 27", "Mar 27", "Apr 27", "May 27", "Jun 27"]);
-    const twoYearNotional = buildTwoYearNotionalColumns("2027-01-15");
-    expect(twoYearNotional).toHaveLength(24);
-    expect(twoYearNotional[0]).toBe("Jan 27");
-    expect(twoYearNotional[11]).toBe("Dec 27");
-    expect(twoYearNotional[12]).toBe("Jan 28");
-    expect(twoYearNotional[23]).toBe("Dec 28");
+    expect(calculateEntitlementEndDate("2027-01-15")).toBe("2028-01-15");
+    const notional = buildTwoYearNotionalColumns("2027-01-15", "2028-01-15");
+    expect(notional).toHaveLength(13);
+    expect(notional[0]).toBe("Jan 27");
+    expect(notional[11]).toBe("Dec 27");
+    expect(notional[12]).toBe("Jan 28");
   });
 
   it("time-boxes discovery and then sequences the concrete VCF implementation workstreams", () => {
@@ -98,15 +98,16 @@ describe("calendar-month adoption plans", () => {
     const handover = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-platform-design")!;
     expect(plans.adoptionTimeline.columns).toHaveLength(12);
     expect(plans.twoYearPlan).toMatchObject({ cadence: "month", startDate: "2027-01-01" });
-    expect(plans.twoYearPlan.columns).toHaveLength(24);
+    expect(plans.twoYearPlan.columns).toHaveLength(13);
     expect(plans.twoYearPlan.columns[0]).toBe("Jan 27");
     expect(plans.twoYearPlan.columns[11]).toBe("Dec 27");
     expect(plans.twoYearPlan.columns[12]).toBe("Jan 28");
+    expect(plans.twoYearPlan.lanes.flatMap(lane => lane.bars).every(activity => activity.endCol <= plans.twoYearPlan.columns.length + 1)).toBe(true);
     const twoYearActivities = plans.twoYearPlan.lanes.flatMap(lane => lane.bars);
     const mirroredUpgrade = plans.twoYearPlan.lanes.find(lane => lane.id === "lane-two-year-year-one-lane-upgrade-services")?.bars[0];
     expect(mirroredUpgrade).toMatchObject({ label: upgrade.bars[0].label, startCol: upgrade.bars[0].startCol, endCol: upgrade.bars[0].endCol });
     const followOnActivities = twoYearActivities.filter(activity => activity.id.startsWith("bar-follow-on-"));
-    expect(followOnActivities.every(activity => activity.startCol >= 13)).toBe(true);
+    expect(followOnActivities.every(activity => activity.startCol >= 13 && activity.endCol <= plans.twoYearPlan.columns.length + 1)).toBe(true);
     expect(followOnActivities.map(activity => activity.label)).toEqual(expect.arrayContaining([
       "Capacity Forecasting and Cost Optimization",
       "Launch a Governed VM Self-Service Catalog",
@@ -119,6 +120,7 @@ describe("calendar-month adoption plans", () => {
     expect(plans.twoYearPlan.lanes.map(lane => lane.name).join(" ")).not.toMatch(/Year [12] ·/);
     expect(plans.rationale).toContain("$2,500,000");
     expect(plans.rationale).toContain("Mobilisation and delivery-baseline work are deliberately limited to the first calendar month");
+    expect(plans.rationale).toContain("The entitlement-aligned Notional runs from the actual service start (2027-01-01) through entitlement end (2028-01-01)");
     expect(labels).toEqual(expect.arrayContaining([
       "Month 1: Mobilize and Validate VCF Delivery Inputs",
       "Deploy VCF Management Domain and Core Control Plane",
@@ -210,7 +212,7 @@ describe("calendar-month adoption plans", () => {
     expect(designOnly.rationale).toContain("design-only path intentionally stops before migration execution");
   });
 
-  it("reflows linked entitlement dates and splits dense weekly services into non-overlapping workstreams", () => {
+  it("reflows calculated entitlement dates and splits dense weekly services into non-overlapping workstreams", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementStart: "2027-01-01",
@@ -223,13 +225,14 @@ describe("calendar-month adoption plans", () => {
     });
 
     const original = buildAdoptionPlans(document.fields, document.inventory).adoptionTimeline;
-    const extendedFields = applyScheduleFieldPatch(document.fields, { entitlementEnd: "2027-07-31" });
+    const extendedFields = applyScheduleFieldPatch(document.fields, { entitlementStart: "2027-02-01" });
     const extended = buildAdoptionPlans(extendedFields, document.inventory).adoptionTimeline;
     const originalAutomation = original.lanes.find(lane => lane.id === "lane-automation")!;
     const extendedAutomation = extended.lanes.find(lane => lane.id === "lane-automation")!;
-    expect(extendedFields.targetComplete).toBe("2027-07-31");
+    expect(extendedFields.entitlementEnd).toBe("2028-02-01");
+    expect(extendedFields.targetComplete).toBe("2028-02-01");
     expect(original.columns).toHaveLength(6);
-    expect(extended.columns).toHaveLength(7);
+    expect(extended.columns).toHaveLength(13);
     expect(extendedAutomation.bars[0].startCol).toBeGreaterThanOrEqual(originalAutomation.bars[0].startCol);
     expect(extendedAutomation.bars.at(-1)?.endCol).toBe(extended.columns.length + 1);
     expect(validateTimeline(extended)).toEqual([]);
@@ -270,14 +273,17 @@ describe("calendar-month adoption plans", () => {
     expect(labels).not.toContain("Onboard One Private AI Pilot With Success Measures");
     expect(JSON.stringify(plans.twoYearPlan)).not.toMatch(/Service Prioritization Decision|Year [12] ·/);
     const baselineLanes = plans.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-baseline-"));
-    expect(baselineLanes).toHaveLength(4);
-    expect(baselineLanes.some(lane => lane.id === "lane-two-year-baseline-networking-nsx" && lane.bars.some(activity => activity.startCol === 13 && activity.endCol === 25))).toBe(true);
-    expect(plans.rationale).toContain("the standard second-year governance, platform operating model, and handover sequence is included");
+    expect(baselineLanes).toEqual([]);
+    expect(plans.rationale).toContain("continuing governance, operating-model, and handover work is bounded by the remaining entitlement period");
   });
 
   it("recommends compound services only after their detailed prerequisites and estate or hardware signals align", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
+      entitlementStart: "2027-01-01",
+      entitlementEnd: "2028-01-01",
+      targetStart: "2027-01-01",
+      targetComplete: "2027-09-30",
       priorities: ["operations", "resilience", "kubernetes", "private-ai"],
       hardwareAvailability: "new",
       adoptionDetails: {
@@ -305,7 +311,7 @@ describe("calendar-month adoption plans", () => {
       "Onboard One Private AI Pilot With Success Measures",
     ]));
     expect(activities.every(activity => activity.dependsOn?.includes("the customer selected") && activity.dependsOn.includes("Start after"))).toBe(true);
-    expect(plans.rationale).toContain("selected follow-on services are included in the second-year delivery sequence");
+    expect(plans.rationale).toContain("selected follow-on services are placed only within the remaining entitlement period");
   });
 
   it("normalizes custom labels to title-style Plan or Design language", () => {
@@ -340,21 +346,23 @@ describe("calendar-month adoption plans", () => {
     expect(migrated.fields.customerName).toBe("Meridian Health");
     expect(migrated.fields.entitlementAmount).toBe(1_750_000);
     expect(migrated.fields.entitlementStart).toBe("2027-01-01");
+    expect(migrated.fields.entitlementEnd).toBe("2028-01-01");
     expect(migrated.adoptionTimeline.columns[0]).toBe("Jan 27");
     expect(migrated.twoYearPlan).toMatchObject({ startDate: "2027-01-01", cadence: "month" });
-    expect(migrated.twoYearPlan.columns).toHaveLength(24);
+    expect(migrated.twoYearPlan.columns).toHaveLength(13);
     expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Deploy VCF Management Domain and Core Control Plane");
     expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).not.toMatch(/Consumption Plan|Workshop|Assessment|Review/i);
     expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Month 1: Mobilize and Validate VCF Delivery Inputs");
     expect(migrated.readiness.hardwarePlatforms).toEqual([]);
   });
 
-  it("regenerates V9 plans as continuous Two-Year Notionals with researched follow-on services after Year 1", () => {
+  it("regenerates V9 plans as entitlement-aligned Notionals with follow-on services only where time remains", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementStart: "2027-01-01",
       entitlementEnd: "2027-12-31",
       targetStart: "2027-01-17",
+      targetComplete: "2027-09-30",
       priorities: ["operations"],
       adoptionDetails: { ...document.fields.adoptionDetails, operations: ["observability", "custom-dashboards"] },
     });
@@ -366,7 +374,7 @@ describe("calendar-month adoption plans", () => {
     const operations = migrated.twoYearPlan.lanes.find(lane => lane.id === "lane-follow-on-operations");
     expect(migrated.version).toBe(10);
     expect(migrated.twoYearPlan).toMatchObject({ cadence: "month", startDate: "2027-01-17" });
-    expect(migrated.twoYearPlan.columns).toHaveLength(24);
+    expect(migrated.twoYearPlan.columns).toHaveLength(13);
     expect(migrated.twoYearPlan.columns[0]).toBe("Jan 27");
     expect(migrated.twoYearPlan.columns[12]).toBe("Jan 28");
     expect(migrated.twoYearPlan.lanes.find(lane => lane.id === "lane-two-year-year-one-lane-operations")?.bars).toEqual(expect.arrayContaining([
@@ -722,21 +730,26 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(lanes.every(lane => lane.bars.every(activity => activity.color === colorForWorkstreamType(lane.workstreamType)))).toBe(true);
   });
 
-  it("creates a continuous default Year 2 sequence and repairs an existing notional with no Year 2 activities", () => {
+  it("bounds default continuation work to the entitlement period and repairs a stale Notional", () => {
     const document = createDefaultDocument();
+    Object.assign(document.fields, { entitlementStart: "2027-01-01", entitlementEnd: "2028-01-01", targetStart: "2027-01-01", targetComplete: "2027-12-31" });
+    const plans = buildAdoptionPlans(document.fields, document.inventory);
+    Object.assign(document, plans);
     const baselineLanes = document.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-baseline-"));
+    expect(document.twoYearPlan.columns).toHaveLength(13);
     expect(baselineLanes).toHaveLength(4);
-    expect(baselineLanes.flatMap(lane => lane.bars).some(activity => activity.startCol === 13 && activity.endCol === 25)).toBe(true);
+    expect(baselineLanes.flatMap(lane => lane.bars).every(activity => activity.startCol === 13 && activity.endCol === 14)).toBe(true);
     expect(baselineLanes.find(lane => lane.id === "lane-two-year-baseline-networking-nsx")).toMatchObject({
       category: "Modernize Infrastructure",
       workstreamType: "Operating Model / Platform",
-      bars: [expect.objectContaining({ label: "VCF Networking and NSX Lifecycle Progression", startCol: 13, endCol: 25 })],
+      bars: [expect.objectContaining({ label: "VCF Networking and NSX Lifecycle Progression", startCol: 13, endCol: 14 })],
     });
 
     const staleDocument = JSON.parse(JSON.stringify(document));
     staleDocument.twoYearPlan.lanes = staleDocument.twoYearPlan.lanes.map((lane: { bars: unknown[] }) => ({ ...lane, bars: [] }));
     const migrated = migrateDocument(staleDocument);
-    expect(migrated.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-baseline-") && lane.bars.some(activity => activity.endCol > 13))).toBe(true);
+    expect(migrated.twoYearPlan.columns).toHaveLength(13);
+    expect(migrated.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-baseline-") && lane.bars.some(activity => activity.endCol === migrated.twoYearPlan.columns.length + 1))).toBe(true);
   });
 
   it("keeps VCF networking and NSX distinct from security across primary delivery and migrated engagements", () => {
@@ -760,7 +773,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(continuousNetworking).toMatchObject({
       category: "Modernize Infrastructure",
       workstreamType: "Operating Model / Platform",
-      bars: [expect.objectContaining({ label: "VCF Networking and NSX Lifecycle Progression", startCol: 13, endCol: 25 })],
+      bars: [expect.objectContaining({ label: "VCF Networking and NSX Lifecycle Progression", startCol: 13, endCol: 14 })],
     });
 
     const existing = JSON.parse(JSON.stringify(document));
@@ -779,7 +792,7 @@ describe("planning considerations, exports, and access boundary", () => {
 
   it("renders entitlement details and both synchronized adoption views with VCF 9.1 platform evidence", () => {
     const document = createDefaultDocument();
-    Object.assign(document.fields, { customerName: "Meridian Health", entitledCores: 128, entitlementAmount: 3_000_000, entitlementStart: "2027-01-01", entitlementEnd: "2028-12-31", priorities: ["operations"], adoptionDetails: { ...document.fields.adoptionDetails, operations: ["observability", "custom-dashboards"] } });
+    Object.assign(document.fields, { customerName: "Meridian Health", entitledCores: 128, entitlementAmount: 3_000_000, entitlementStart: "2027-01-01", entitlementEnd: "2028-01-01", targetStart: "2027-01-01", targetComplete: "2027-09-30", priorities: ["operations"], adoptionDetails: { ...document.fields.adoptionDetails, operations: ["observability", "custom-dashboards"] } });
     Object.assign(document.inventory, { sourceCount: 2, hosts: 4, physicalCores: 128, vmCount: 220, poweredOnVms: 200, hostModels: [{ vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6430", hosts: 4, physicalCores: 128, esxiVersions: [{ version: "8.0.3", hosts: 4 }], esxiCorrelation: "per-platform" }] });
     const plans = buildAdoptionPlans(document.fields, document.inventory);
     Object.assign(document, { readiness: assessReadiness(document.fields, document.inventory), ...plans });
@@ -787,10 +800,11 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Meridian Health");
     expect(html).toContain("$3,000,000");
     expect(html).toContain("Operational Adoption Timeline");
-    expect(html).toContain("Two-Year Notional");
+    expect(html).toContain("Entitlement Notional");
     expect(html).toContain("Execution view:");
-    expect(html).toContain("Continuous planning view:");
-    expect(html).toContain("Months 1–12 mirror the implementation sequence");
+    expect(html).toContain("Entitlement-period planning view:");
+    expect(html).toContain("Service Start Through Entitlement End");
+    expect(html).toContain("2027-01-01 through 2028-01-01");
     expect(html).toContain("Intended Outcome");
     expect(html).toContain("Sequence Notes");
     expect(html).toContain("Operations Dashboards With Ownership");
@@ -841,13 +855,14 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain('class="compact-table hardware-table"');
     expect(html).toContain("VCF 9.1 Delivery Inventory");
     expect(html).toContain('class="notional-year-sheet notional-year-one"');
-    expect(html).toContain('class="notional-year-sheet notional-year-two"');
-    expect(html).toContain("Months 1–12");
-    expect(html).toContain("Months 13–24");
-    expect(html).toContain("Continuous Year 2 Delivery");
+    expect(html).not.toContain('class="notional-year-sheet notional-year-two"');
+    expect(html).toContain("Service Start Through Entitlement End");
+    expect(html).toContain("Entitlement-Aligned Delivery Outlook");
+    expect(html).not.toContain("Months 13–24");
+    expect(html).not.toContain("Continuous Year 2 Delivery");
     expect(html).not.toContain("Year 2 Follow-On Services");
     expect(html).toContain("#two-year .notional-year-sheet .timeline-grid{width:100%;min-width:0!important;grid-template-columns:1.45in repeat(12,minmax(0,1fr))!important}");
-    expect(html).toContain("#two-year .notional-year-two{page-break-before:always;break-before:page}");
+    expect(html).not.toContain("#two-year .notional-year-two{page-break-before:always;break-before:page}");
     expect(html).toContain('class="two-year-sequence-sheet"');
     expect(html).toContain("#two-year .two-year-sequence-sheet{page-break-before:always;break-before:page}");
     expect(html).toContain("page-break-after:always;break-after:page");

@@ -524,6 +524,20 @@ function addUtcDays(date: Date, days: number): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days));
 }
 
+function addUtcCalendarMonths(date: Date, months: number): Date {
+  const totalMonths = date.getUTCMonth() + months;
+  const year = date.getUTCFullYear() + Math.floor(totalMonths / 12);
+  const month = ((totalMonths % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(date.getUTCDate(), lastDay)));
+}
+
+/** The entitlement end date: twelve calendar months after the confirmed entitlement start. */
+export function calculateEntitlementEndDate(startValue: string): string {
+  const start = parseIsoDate(startValue);
+  return start ? isoDate(addUtcCalendarMonths(start, 12)) : "";
+}
+
 function monthDifference(start: Date, end: Date): number {
   return (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + end.getUTCMonth() - start.getUTCMonth();
 }
@@ -556,9 +570,12 @@ export function buildWeekColumns(startValue: string, endValue: string, fallbackC
   });
 }
 
-export function buildTwoYearNotionalColumns(startValue: string): string[] {
-  const start = parseMonth(startValue) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-  return Array.from({ length: 24 }, (_, index) => displayMonth(addUtcMonths(start, index)));
+export function buildTwoYearNotionalColumns(serviceStartValue: string, entitlementEndValue = ""): string[] {
+  const start = parseMonth(serviceStartValue) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const end = parseMonth(entitlementEndValue);
+  const requested = end && end >= start ? monthDifference(start, end) + 1 : 12;
+  const count = Math.max(2, Math.min(36, requested));
+  return Array.from({ length: count }, (_, index) => displayMonth(addUtcMonths(start, index)));
 }
 
 function timelineStartDate(fields: MinimalFields): string {
@@ -574,17 +591,20 @@ function timelineEndDate(fields: MinimalFields): string {
 export function applyScheduleFieldPatch(fields: MinimalFields, patch: Partial<MinimalFields>): MinimalFields {
   const targetStartTracksEntitlement = !fields.targetStart || fields.targetStart === fields.entitlementStart;
   const targetCompleteTracksEntitlement = !fields.targetComplete || fields.targetComplete === fields.entitlementEnd;
+  const nextEntitlementStart = patch.entitlementStart ?? fields.entitlementStart;
+  const calculatedEntitlementEnd = calculateEntitlementEndDate(nextEntitlementStart);
+  const nextEntitlementEnd = calculatedEntitlementEnd || patch.entitlementEnd || fields.entitlementEnd;
   return {
     ...fields,
     ...patch,
+    entitlementEnd: nextEntitlementEnd,
     ...(patch.entitlementStart !== undefined && patch.targetStart === undefined && targetStartTracksEntitlement ? { targetStart: patch.entitlementStart } : {}),
-    ...(patch.entitlementEnd !== undefined && patch.targetComplete === undefined && targetCompleteTracksEntitlement ? { targetComplete: patch.entitlementEnd } : {}),
+    ...(patch.entitlementStart !== undefined && patch.targetComplete === undefined && targetCompleteTracksEntitlement ? { targetComplete: nextEntitlementEnd } : {}),
   };
 }
 
-function followOnStartDate(fields: MinimalFields): string {
-  const start = parseIsoDate(timelineStartDate(fields)) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-  return isoDate(addUtcMonths(start, 12));
+function entitlementNotionalEndDate(fields: MinimalFields): string {
+  return calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd;
 }
 
 function primaryColumns(fields: MinimalFields): string[] {
@@ -1134,13 +1154,13 @@ function followOnActivities(fields: MinimalFields, inventory: InventorySummary, 
   });
 }
 
-function mirrorYearOneLanes(adoptionTimeline: Timeline): TimelineLane[] {
-  const unitsPerYear = adoptionTimeline.cadence === "week" ? Math.min(52, adoptionTimeline.columns.length) : 12;
+function mirrorEntitlementLanes(adoptionTimeline: Timeline, columnCount: number): TimelineLane[] {
+  const weeklyImplementationUnits = Math.min(52, adoptionTimeline.columns.length);
   const normalizeStart = (value: number) => adoptionTimeline.cadence === "week"
-    ? Math.max(1, Math.floor(((value - 1) / unitsPerYear) * 12) + 1)
+    ? Math.max(1, Math.floor(((value - 1) / weeklyImplementationUnits) * 12) + 1)
     : value;
   const normalizeEnd = (value: number) => adoptionTimeline.cadence === "week"
-    ? Math.max(2, Math.ceil(((value - 1) / unitsPerYear) * 12) + 1)
+    ? Math.max(2, Math.ceil(((value - 1) / weeklyImplementationUnits) * 12) + 1)
     : value;
 
   return adoptionTimeline.lanes.map(lane => ({
@@ -1150,50 +1170,55 @@ function mirrorYearOneLanes(adoptionTimeline: Timeline): TimelineLane[] {
     workstreamType: lane.workstreamType,
     bars: lane.bars.flatMap(item => {
       const startCol = Math.max(1, normalizeStart(item.startCol));
-      const endCol = Math.min(13, Math.max(startCol + 1, normalizeEnd(item.endCol)));
-      if (startCol >= 13 || endCol <= startCol) return [];
+      const endCol = Math.min(columnCount + 1, Math.max(startCol + 1, normalizeEnd(item.endCol)));
+      if (startCol > columnCount || endCol <= startCol) return [];
       return [{ ...item, id: `bar-two-year-year-one-${item.id}`, startCol, endCol }];
     }),
   }));
 }
 
-function baselineYearTwoLanes(): TimelineLane[] {
+function baselineEntitlementLanes(startColumn: number, columnCount: number): TimelineLane[] {
+  if (startColumn > columnCount) return [];
+  const end = columnCount + 1;
+  const remainingColumns = Math.max(1, end - startColumn);
+  const operatingModelStart = Math.min(columnCount, startColumn + Math.max(1, Math.floor(remainingColumns / 5)));
+  const handoverStart = Math.min(columnCount, startColumn + Math.max(1, Math.floor((remainingColumns * 3) / 5)));
   const baseline: Array<{ id: string; category: TimelineCategory; workstreamType: WorkstreamType; start: number; end: number; label: string; outcome: string }> = [
     {
       id: "governance",
       category: "Program Management & Governance",
       workstreamType: "Governance",
-      start: 13,
-      end: 25,
+      start: startColumn,
+      end,
       label: "Delivery Governance and Value Tracking",
-      outcome: "Maintain executive alignment, delivery ownership, adoption measures, and continuous value tracking through the second year.",
+      outcome: "Maintain executive alignment, delivery ownership, adoption measures, and value tracking through the remaining entitlement period.",
     },
     {
       id: "operating-model",
       category: "Operations",
       workstreamType: "Operating Model / Platform",
-      start: 13,
-      end: 21,
+      start: operatingModelStart,
+      end,
       label: "Platform Operating Model and Lifecycle Adoption",
-      outcome: "Embed platform lifecycle, service ownership, operational cadence, and consumption practices.",
+      outcome: "Embed platform lifecycle, service ownership, operational cadence, and consumption practices before entitlement end.",
     },
     {
       id: "handover",
       category: "Modernize Cloud",
       workstreamType: "Consume / Handover",
-      start: 18,
-      end: 25,
+      start: handoverStart,
+      end,
       label: "Service Consumption and Handover",
-      outcome: "Extend consumption, complete handover, and establish the next service-expansion sequence.",
+      outcome: "Complete service consumption, handover, and the next service-expansion decision within the entitlement period.",
     },
     {
       id: "networking-nsx",
       category: "Modernize Infrastructure",
       workstreamType: "Operating Model / Platform",
-      start: 13,
-      end: 25,
+      start: startColumn,
+      end,
       label: "VCF Networking and NSX Lifecycle Progression",
-      outcome: "Continue VCF networking and NSX platform operations, edge and overlay lifecycle planning, and network-service handover through the second year.",
+      outcome: "Continue VCF networking and NSX platform operations, edge and overlay lifecycle planning, and network-service handover through entitlement end.",
     },
   ];
 
@@ -1206,31 +1231,63 @@ function baselineYearTwoLanes(): TimelineLane[] {
   }));
 }
 
-function hasYearTwoActivity(timeline: Timeline): boolean {
-  return timeline.lanes.some(lane => lane.bars.some(activity => activity.endCol > 13));
+function hasEntitlementAlignedNotional(timeline: Timeline, fields: MinimalFields): boolean {
+  const expectedColumns = buildTwoYearNotionalColumns(timelineStartDate(fields), entitlementNotionalEndDate(fields));
+  const columnsMatch = timeline.cadence === "month"
+    && timeline.startDate === timelineStartDate(fields)
+    && timeline.columns.length === expectedColumns.length
+    && timeline.columns.every((column, index) => column === expectedColumns[index]);
+  if (!columnsMatch) return false;
+
+  const mirroredActivities = timeline.lanes
+    .filter(lane => lane.id.startsWith("lane-two-year-year-one-"))
+    .flatMap(lane => lane.bars);
+  if (!mirroredActivities.length) return false;
+
+  const implementationEnd = Math.max(...mirroredActivities.map(activity => activity.endCol));
+  const baselineRequired = implementationEnd <= expectedColumns.length;
+  const hasBaseline = timeline.lanes.some(lane => lane.id === "lane-two-year-baseline-governance" && lane.bars.length > 0);
+  return !baselineRequired || hasBaseline;
 }
 
 function buildTwoYearPlan(fields: MinimalFields, inventory: InventorySummary, adoptionTimeline: Timeline): Timeline {
   const startDate = timelineStartDate(fields);
-  const columns = buildTwoYearNotionalColumns(startDate);
-  const lanes: TimelineLane[] = [...mirrorYearOneLanes(adoptionTimeline)];
+  const entitlementEnd = entitlementNotionalEndDate(fields);
+  const columns = buildTwoYearNotionalColumns(startDate, entitlementEnd);
+  const lanes: TimelineLane[] = [...mirrorEntitlementLanes(adoptionTimeline, columns.length)];
+  const implementationEnd = Math.max(1, ...lanes.flatMap(lane => lane.bars.map(activity => activity.endCol)));
+  const continuationStart = Math.min(columns.length + 1, implementationEnd);
 
-  fields.priorities.forEach((priority, priorityIndex) => {
-    const activities = followOnActivities(fields, inventory, priority);
-    if (!activities.length) return;
-    const slot = Math.max(1, Math.floor(10 / activities.length));
-    const duration = Math.max(1, Math.min(3, slot));
-    const bars = activities.map((activity, index) => {
-      const start = Math.min(columns.length, 13 + (priorityIndex % 2) + index * slot);
-      const [safeStart, end] = boundedRange(start, duration, columns.length);
-      return bar(`bar-follow-on-${priority}-${index + 1}`, safeStart, end, colorForWorkstreamType(capabilityLaneMetadata(priority).workstreamType), activity.label, false, false, activity.dependsOn, activity.outcome);
-    });
+  if (continuationStart <= columns.length) {
+    fields.priorities.forEach((priority, priorityIndex) => {
+      const activities = followOnActivities(fields, inventory, priority);
+      if (!activities.length) return;
+      const availableColumns = Math.max(1, columns.length - continuationStart + 1);
+      const slot = Math.max(1, Math.floor(availableColumns / activities.length));
+      const duration = Math.max(1, Math.min(3, slot));
       const metadata = capabilityLaneMetadata(priority);
-      lanes.push({ id: `lane-follow-on-${priority}`, name: metadata.workstreamType, ...metadata, bars });
-  });
+      const createBar = (activity: (typeof activities)[number], index: number) => {
+        const start = Math.min(columns.length, continuationStart + (priorityIndex % 2) + index * slot);
+        const [safeStart, end] = boundedRange(start, duration, columns.length);
+        return bar(`bar-follow-on-${priority}-${index + 1}`, safeStart, end, colorForWorkstreamType(metadata.workstreamType), activity.label, false, false, activity.dependsOn, activity.outcome);
+      };
+      if (activities.length > availableColumns) {
+        activities.forEach((activity, index) => {
+          const activityBar = createBar(activity, index);
+          lanes.push({
+            id: index === 0 ? `lane-follow-on-${priority}` : `lane-follow-on-${priority}-${index + 1}`,
+            name: metadata.workstreamType,
+            ...metadata,
+            bars: [activityBar],
+          });
+        });
+      } else {
+        lanes.push({ id: `lane-follow-on-${priority}`, name: metadata.workstreamType, ...metadata, bars: activities.map(createBar) });
+      }
+    });
 
-  // Every notional remains continuous through Month 24; selected services are added alongside this standard sequence.
-  lanes.push(...baselineYearTwoLanes());
+    lanes.push(...baselineEntitlementLanes(continuationStart, columns.length));
+  }
 
   return applyWorkstreamPresentation({ cadence: "month", startDate, columns, lanes });
 }
@@ -1240,15 +1297,17 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const twoYearPlan = buildTwoYearPlan(fields, inventory, adoptionTimeline);
   const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
   const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
-  const term = fields.entitlementStart && fields.entitlementEnd ? `${fields.entitlementStart} through ${fields.entitlementEnd}` : "the confirmed entitlement term";
+  const serviceStart = timelineStartDate(fields);
+  const entitlementEnd = entitlementNotionalEndDate(fields);
+  const term = fields.entitlementStart && entitlementEnd ? `${fields.entitlementStart} through ${entitlementEnd}` : "the confirmed entitlement term";
   const priorities = fields.priorities.length ? fields.priorities.map(capabilityTitle).join(", ") : "the selected customer outcomes";
   const cadence = fields.adoptionCadence === "week" ? "weekly execution windows" : "calendar-month execution windows";
   const detailCount = [fields.adoptionDetails.operations, fields.adoptionDetails.automation, fields.adoptionDetails.networking, fields.adoptionDetails.security, fields.adoptionDetails.resilience, fields.adoptionDetails.kubernetes, fields.adoptionDetails.privateAi].flat().length;
   const details = detailCount ? `${detailCount} selected detailed capability focus area${detailCount === 1 ? "" : "s"}` : "the initial customer outcome selections";
   const followOnCount = twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-follow-on-")).flatMap(lane => lane.bars).length;
   const followOnSummary = followOnCount
-    ? `${followOnCount} selected follow-on service${followOnCount === 1 ? " is" : "s are"} included in the second-year delivery sequence`
-    : "the standard second-year governance, platform operating model, and handover sequence is included";
+    ? `${followOnCount} selected follow-on service${followOnCount === 1 ? " is" : "s are"} placed only within the remaining entitlement period`
+    : "continuing governance, operating-model, and handover work is bounded by the remaining entitlement period";
   const platformInventorySummary = buildPlatformInventoryActivity(inventory, fields.adoptionCadence, fields).outcome;
   const planningContext = planningInputContext(fields);
   const openingWindow = fields.adoptionCadence === "week" ? "the first two weeks" : "the first calendar month";
@@ -1259,7 +1318,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
     ? `Confirmed timeline notes are applied as execution conditions: “${planningContext.timelineNotes}”.`
     : "No additional timeline exceptions or sequencing conditions were recorded.";
   const industryContext = `The ${planningContext.template.label} industry discovery lens focuses mobilisation discussions on ${planningContext.industryThemes}; it informs the planning narrative only and does not add scope, priorities, or delivery activities.`;
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Mobilisation and delivery-baseline work are deliberately limited to ${openingWindow}, then the plan moves into management-domain deployment, VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the implementation sequence, while months 13–24 continue governance, lifecycle operations, and selected expansion services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Mobilisation and delivery-baseline work are deliberately limited to ${openingWindow}, then the plan moves into management-domain deployment, VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The entitlement-aligned Notional runs from the actual service start (${serviceStart}) through entitlement end (${entitlementEnd || "TBD"}); it mirrors the implementation sequence, then retains only governance, lifecycle, handover, and selected expansion work that fits within that entitlement period. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -1642,16 +1701,23 @@ function needsImplementationTimelineRebaseline(timeline: Timeline): boolean {
   return requiredInfrastructureLanes.some(laneId => !timeline.lanes.some(lane => lane.id === laneId));
 }
 
+function normalizeEntitlementTerm(fields: MinimalFields): MinimalFields {
+  const entitlementEnd = calculateEntitlementEndDate(fields.entitlementStart);
+  return entitlementEnd ? { ...fields, entitlementEnd } : fields;
+}
+
 export function migrateDocument(value: unknown): EngagementDocument {
   const normalizedValue = normalizeRawTimelineTaxonomy(value);
   const current = engagementDocumentV10Schema.safeParse(normalizedValue);
   if (current.success) {
-    const generated = buildAdoptionPlans(current.data.fields, current.data.inventory);
+    const fields = normalizeEntitlementTerm(current.data.fields);
+    const generated = buildAdoptionPlans(fields, current.data.inventory);
     if (needsImplementationTimelineRebaseline(current.data.adoptionTimeline)) {
       return {
         ...current.data,
+        fields,
         readiness: assessReadiness(
-          current.data.fields,
+          fields,
           current.data.inventory,
           current.data.inventorySources.flatMap(source => source.warnings),
         ),
@@ -1666,14 +1732,18 @@ export function migrateDocument(value: unknown): EngagementDocument {
       ? normalizedAdoptionTimeline
       : { ...normalizedAdoptionTimeline, lanes: [...normalizedAdoptionTimeline.lanes, ...generated.adoptionTimeline.lanes.filter(lane => lane.id === "lane-vcf-networking-nsx")] };
     const candidateTwoYearPlan = normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan));
-    const continuousTwoYearPlan = hasYearTwoActivity(candidateTwoYearPlan) ? candidateTwoYearPlan : generated.twoYearPlan;
-    const twoYearPlan = continuousTwoYearPlan.lanes.some(lane => lane.id === "lane-two-year-baseline-networking-nsx")
-      ? continuousTwoYearPlan
-      : { ...continuousTwoYearPlan, lanes: [...continuousTwoYearPlan.lanes, ...generated.twoYearPlan.lanes.filter(lane => lane.id === "lane-two-year-baseline-networking-nsx")] };
+    const entitlementAlignedTwoYearPlan = hasEntitlementAlignedNotional(candidateTwoYearPlan, fields)
+      ? candidateTwoYearPlan
+      : generated.twoYearPlan;
+    const generatedNetworkingLane = generated.twoYearPlan.lanes.filter(lane => lane.id === "lane-two-year-baseline-networking-nsx");
+    const twoYearPlan = !generatedNetworkingLane.length || entitlementAlignedTwoYearPlan.lanes.some(lane => lane.id === "lane-two-year-baseline-networking-nsx")
+      ? entitlementAlignedTwoYearPlan
+      : { ...entitlementAlignedTwoYearPlan, lanes: [...entitlementAlignedTwoYearPlan.lanes, ...generatedNetworkingLane] };
     return {
       ...current.data,
+      fields,
       readiness: assessReadiness(
-        current.data.fields,
+        fields,
         current.data.inventory,
         current.data.inventorySources.flatMap(source => source.warnings),
       ),
@@ -1685,13 +1755,14 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v9 = engagementDocumentV9Schema.safeParse(normalizedValue);
   if (v9.success) {
-    const plans = buildAdoptionPlans(v9.data.fields, v9.data.inventory);
+    const fields = normalizeEntitlementTerm(v9.data.fields);
+    const plans = buildAdoptionPlans(fields, v9.data.inventory);
     return {
       version: 10,
-      fields: v9.data.fields,
+      fields,
       inventorySources: v9.data.inventorySources,
       inventory: v9.data.inventory,
-      readiness: assessReadiness(v9.data.fields, v9.data.inventory, v9.data.inventorySources.flatMap(source => source.warnings)),
+      readiness: assessReadiness(fields, v9.data.inventory, v9.data.inventorySources.flatMap(source => source.warnings)),
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
@@ -1700,13 +1771,14 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v8 = engagementDocumentV8Schema.safeParse(normalizedValue);
   if (v8.success) {
-    const plans = buildAdoptionPlans(v8.data.fields, v8.data.inventory);
+    const fields = normalizeEntitlementTerm(v8.data.fields);
+    const plans = buildAdoptionPlans(fields, v8.data.inventory);
     return {
       version: 10,
-      fields: v8.data.fields,
+      fields,
       inventorySources: v8.data.inventorySources,
       inventory: v8.data.inventory,
-      readiness: assessReadiness(v8.data.fields, v8.data.inventory, v8.data.inventorySources.flatMap(source => source.warnings)),
+      readiness: assessReadiness(fields, v8.data.inventory, v8.data.inventorySources.flatMap(source => source.warnings)),
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
@@ -1715,13 +1787,14 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v7 = engagementDocumentV7Schema.safeParse(normalizedValue);
   if (v7.success) {
-    const plans = buildAdoptionPlans(v7.data.fields, v7.data.inventory);
+    const fields = normalizeEntitlementTerm(v7.data.fields);
+    const plans = buildAdoptionPlans(fields, v7.data.inventory);
     return {
       version: 10,
-      fields: v7.data.fields,
+      fields,
       inventorySources: v7.data.inventorySources,
       inventory: v7.data.inventory,
-      readiness: assessReadiness(v7.data.fields, v7.data.inventory, v7.data.inventorySources.flatMap(source => source.warnings)),
+      readiness: assessReadiness(fields, v7.data.inventory, v7.data.inventorySources.flatMap(source => source.warnings)),
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
@@ -1730,7 +1803,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v6 = engagementDocumentV6Schema.safeParse(normalizedValue);
   if (v6.success) {
-    const fields = migrateFieldsToV7(v6.data.fields);
+    const fields = normalizeEntitlementTerm(migrateFieldsToV7(v6.data.fields));
     const plans = buildAdoptionPlans(fields, v6.data.inventory);
     return {
       version: 10,
@@ -1746,7 +1819,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v5 = engagementDocumentV5Schema.safeParse(normalizedValue);
   if (v5.success) {
-    const fields = migrateFieldsToV7(migrateFieldsToV6(v5.data.fields));
+    const fields = normalizeEntitlementTerm(migrateFieldsToV7(migrateFieldsToV6(v5.data.fields)));
     const plans = buildAdoptionPlans(fields, v5.data.inventory);
     return {
       version: 10,
@@ -1763,7 +1836,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const v4 = engagementDocumentV4Schema.safeParse(normalizedValue);
   if (v4.success) {
     const inventory = migrateInventoryToV5(v4.data.inventory);
-    const fields = migrateFieldsToV7(migrateFieldsToV6(v4.data.fields));
+    const fields = normalizeEntitlementTerm(migrateFieldsToV7(migrateFieldsToV6(v4.data.fields)));
     const warnings = v4.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
@@ -1781,7 +1854,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const v3 = engagementDocumentV3Schema.safeParse(normalizedValue);
   if (v3.success) {
     const inventory = migrateInventoryToV5(v3.data.inventory);
-    const fields = migrateFieldsToV7(migrateFieldsToV6(v3.data.fields));
+    const fields = normalizeEntitlementTerm(migrateFieldsToV7(migrateFieldsToV6(v3.data.fields)));
     const warnings = v3.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
@@ -1798,7 +1871,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const legacy = (normalizedValue && typeof normalizedValue === "object" ? normalizedValue : {}) as Record<string, unknown>;
   const oldFields = (legacy.fields && typeof legacy.fields === "object" ? legacy.fields : {}) as Record<string, unknown>;
-  const fields: MinimalFields = {
+  let fields: MinimalFields = {
     ...createDefaultFields(),
     customerName: stringValue(oldFields.customerName),
     accountId: stringValue(oldFields.accountId || oldFields.cust),
@@ -1815,6 +1888,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     priorities: Array.isArray(oldFields.priorities) ? capabilitySchema.array().catch([]).parse(oldFields.priorities) : ["operations", "automation", ...(oldFields.vdefendInScope ? ["security" as const] : []), ...(oldFields.drInScope ? ["resilience" as const] : []), ...(oldFields.k8sInScope ? ["kubernetes" as const] : [])],
     timelineNotes: stringValue(oldFields.timelineNotes || oldFields.notes),
   };
+  fields = normalizeEntitlementTerm(fields);
   const parsedInventory = inventorySummaryV4Schema.safeParse(legacy.inventory);
   const inventory = parsedInventory.success ? migrateInventoryToV5(parsedInventory.data) : emptyInventory();
   if (!parsedInventory.success) {
