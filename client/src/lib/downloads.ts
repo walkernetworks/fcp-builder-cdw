@@ -1,3 +1,5 @@
+export type DownloadFormat = "html" | "pdf";
+
 export type DownloadEnvironment = {
   document: Pick<Document, "body" | "createElement">;
   createObjectURL: typeof URL.createObjectURL;
@@ -5,6 +7,8 @@ export type DownloadEnvironment = {
   setTimeout: typeof window.setTimeout;
   atob: typeof window.atob;
 };
+
+type DownloadResponse = Pick<Response, "blob" | "headers" | "ok" | "status" | "text">;
 
 function browserEnvironment(): DownloadEnvironment {
   return {
@@ -14,6 +18,42 @@ function browserEnvironment(): DownloadEnvironment {
     setTimeout: window.setTimeout.bind(window),
     atob: window.atob.bind(window),
   };
+}
+
+function extensionFor(format: DownloadFormat) {
+  return format;
+}
+
+function safeFilenameStem(value: string) {
+  return value
+    .replace(/[\\/\u0000-\u001F\u007F]+/g, "-")
+    .replace(/[<>:"|?*]+/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\.[^/.]+$/, "")
+    .slice(0, 120);
+}
+
+/**
+ * Uses a server-supplied attachment name when possible, while always preserving
+ * the expected extension for the requested export type.
+ */
+export function filenameFromContentDisposition(header: string | null, fallbackFilename: string, format: DownloadFormat) {
+  const extendedMatch = header?.match(/(?:^|;)\s*filename\*\s*=\s*UTF-8''([^;]+)/i);
+  const standardMatch = header?.match(/(?:^|;)\s*filename\s*=\s*(?:"([^"]+)"|([^;\s]+))/i);
+  const encoded = extendedMatch?.[1];
+  let candidate = encoded
+    ? (() => {
+      try {
+        return decodeURIComponent(encoded);
+      } catch {
+        return encoded;
+      }
+    })()
+    : (standardMatch?.[1] ?? standardMatch?.[2] ?? fallbackFilename);
+
+  const stem = safeFilenameStem(candidate) || safeFilenameStem(fallbackFilename) || "FCP";
+  return `${stem}.${extensionFor(format)}`;
 }
 
 export function triggerBlobDownload(filename: string, blob: Blob, environment: DownloadEnvironment = browserEnvironment()) {
@@ -53,4 +93,37 @@ export function decodeBase64(base64: string, atobImplementation: typeof window.a
 export function downloadBase64(filename: string, mime: string, base64: string, environment?: DownloadEnvironment) {
   const activeEnvironment = environment ?? browserEnvironment();
   triggerBlobDownload(filename, new Blob(decodeBase64(base64, activeEnvironment.atob), { type: mime }), activeEnvironment);
+}
+
+/**
+ * Converts a signed same-origin export response into a verified browser download.
+ * Error responses are deliberately surfaced to the workspace instead of being
+ * downloaded as misleading text files.
+ */
+export async function downloadServerAttachment(
+  response: DownloadResponse,
+  format: DownloadFormat,
+  fallbackFilename: string,
+  environment?: DownloadEnvironment,
+) {
+  const expectedMime = format === "pdf" ? "application/pdf" : "text/html";
+  if (!response.ok) {
+    const message = (await response.text().catch(() => "")).trim();
+    throw new Error(message || `The ${format.toUpperCase()} export could not be generated (HTTP ${response.status}).`);
+  }
+
+  const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
+  if (!contentType.includes(expectedMime)) {
+    const message = (await response.text().catch(() => "")).trim();
+    throw new Error(message || `The export service returned ${contentType || "an unknown file type"} instead of ${expectedMime}.`);
+  }
+
+  const blob = await response.blob();
+  if (format === "pdf") {
+    const signature = new TextDecoder().decode(await blob.slice(0, 5).arrayBuffer());
+    if (signature !== "%PDF-") throw new Error("The export service did not return a valid PDF document.");
+  }
+
+  const filename = filenameFromContentDisposition(response.headers.get("content-disposition"), fallbackFilename, format);
+  triggerBlobDownload(filename, new Blob([blob], { type: expectedMime }), environment);
 }

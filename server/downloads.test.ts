@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { downloadBase64, downloadText, type DownloadEnvironment } from "../client/src/lib/downloads";
+import {
+  downloadBase64,
+  downloadServerAttachment,
+  downloadText,
+  filenameFromContentDisposition,
+  type DownloadEnvironment,
+} from "../client/src/lib/downloads";
 
 function createEnvironment() {
   const clicked: Array<{ href: string; download: string }> = [];
@@ -55,6 +61,42 @@ describe("browser export download lifecycle", () => {
     expect(state.clicked[0]).toEqual({ href: "blob:test-1", download: "Meridian-FCP.pdf" });
     expect(state.blobs[0].type).toBe("application/pdf");
     expect(Buffer.from(await state.blobs[0].arrayBuffer()).subarray(0, 5).toString()).toBe("%PDF-");
+  });
+
+  it("normalizes the server filename to the requested PDF extension", () => {
+    expect(filenameFromContentDisposition('attachment; filename="Meridian FCP.txt"', "Fallback.pdf", "pdf")).toBe("Meridian FCP.pdf");
+    expect(filenameFromContentDisposition("attachment; filename*=UTF-8''Meridian%20FCP.pdf", "Fallback.pdf", "pdf")).toBe("Meridian FCP.pdf");
+    expect(filenameFromContentDisposition(null, "Fallback.txt", "pdf")).toBe("Fallback.pdf");
+  });
+
+  it("downloads only a verified PDF response with a .pdf filename", async () => {
+    const state = createEnvironment();
+    const response = new Response("%PDF-1.7\nverified export", {
+      status: 200,
+      headers: {
+        "content-disposition": 'attachment; filename="Meridian-FCP.txt"',
+        "content-type": "application/pdf",
+      },
+    });
+
+    await downloadServerAttachment(response, "pdf", "Fallback.pdf", state.environment);
+
+    expect(state.clicked).toEqual([{ href: "blob:test-1", download: "Meridian-FCP.pdf" }]);
+    expect(state.blobs[0].type).toBe("application/pdf");
+    expect(Buffer.from(await state.blobs[0].arrayBuffer()).subarray(0, 5).toString()).toBe("%PDF-");
+  });
+
+  it("surfaces a text error response instead of downloading it as a misleading PDF or text file", async () => {
+    const state = createEnvironment();
+    const response = new Response("The export could not be generated.", {
+      status: 500,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+
+    await expect(downloadServerAttachment(response, "pdf", "Fallback.pdf", state.environment))
+      .rejects.toThrow("The export could not be generated.");
+    expect(state.clicked).toEqual([]);
+    expect(state.blobs).toEqual([]);
   });
 
   it("surfaces malformed PDF decoding errors before a broken download is started", () => {

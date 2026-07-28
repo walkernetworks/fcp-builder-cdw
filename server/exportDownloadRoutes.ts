@@ -14,6 +14,7 @@ export function safeExportFilename(title: string, extension: "html" | "pdf") {
 }
 
 function deny(res: Response, status: number, message: string) {
+  res.removeHeader("Content-Disposition");
   res.status(status).type("text/plain").send(message);
 }
 
@@ -33,13 +34,14 @@ export function registerExportDownloadRoutes(app: Express) {
       res.setHeader("Cache-Control", "private, no-store, max-age=0");
       res.setHeader("Pragma", "no-cache");
       res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
       if (ticket.format === "html") {
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
         return res.status(200).type("text/html; charset=utf-8").send(html);
       }
 
       const pdf = await renderPdf(html);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       return res.status(200).type("application/pdf").send(Buffer.from(pdf));
     } catch (error) {
       console.error("[Export Download] Failed", error);

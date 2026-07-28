@@ -296,3 +296,9 @@
 - [x] Render networking/NSX work clearly in the timeline editor, customer workspace, HTML, and PDF exports.
 - [x] Add regression coverage, validate the revised networking experience, and checkpoint the release.
 - [x] Verify the VCF networking and NSX timeline/export presentation through generated rendered outputs without interactive workspace sign-in.
+
+## PDF Filename Extension Repair
+
+- [x] Trace why an authenticated PDF export is presented with a `.txt` extension.
+- [x] Correct the client and server filename/content-disposition behavior so PDF downloads use a safe `.pdf` filename.
+- [x] Add regression coverage, validate the download response, and checkpoint the fix.

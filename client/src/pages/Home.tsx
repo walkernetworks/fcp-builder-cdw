@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { downloadServerAttachment } from "@/lib/downloads";
 import { engagementExists, reconcileSelectedEngagementId, shouldQuerySelectedEngagement } from "@/lib/engagementSelection";
 import { trpc } from "@/lib/trpc";
 import { createDefaultDocument, getFollowOnReadinessGuidance, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "@shared/fcp";
@@ -128,31 +129,16 @@ export default function Home() {
   const saveNow = () => { if (!selectedId) return; setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument }); };
   const startExport = async (format: "html" | "pdf") => {
     if (!selectedId || exportingFormat) return;
-    const popup = window.open("", "_blank");
-    if (popup) {
-      popup.opener = null;
-      popup.document.title = `Preparing ${format.toUpperCase()} export`;
-      popup.document.body.innerHTML = `<p style="font:16px system-ui;padding:32px;color:#0f172a">Preparing ${format.toUpperCase()} export…</p>`;
-    }
 
     setExportingFormat(format);
     try {
       setSaveState("saving");
       await update.mutateAsync({ id: selectedId, title, data: fcpDocument });
       const result = await downloadTicket.mutateAsync({ id: selectedId, format });
-      if (popup) popup.location.href = result.url;
-      else {
-        const anchor = document.createElement("a");
-        anchor.href = result.url;
-        anchor.target = "_blank";
-        anchor.rel = "noopener noreferrer";
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-      }
+      const response = await fetch(result.url, { credentials: "same-origin" });
+      await downloadServerAttachment(response, format, `${title || "FCP"}.${format}`);
       toast.success(`${format.toUpperCase()} download started`);
     } catch (error) {
-      popup?.close();
       console.error(`[Export] ${format.toUpperCase()} download failed`, error);
       toast.error(error instanceof Error ? error.message : `The ${format.toUpperCase()} download could not be started.`);
     } finally {

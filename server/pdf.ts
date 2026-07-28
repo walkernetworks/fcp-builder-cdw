@@ -1,6 +1,7 @@
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 
 let browserPromise: Promise<Browser> | null = null;
+let renderQueue: Promise<void> = Promise.resolve();
 
 function isConnectionClosed(error: unknown) {
   return error instanceof Error && /connection closed|target closed|session closed|browser has disconnected/i.test(error.message);
@@ -15,7 +16,15 @@ function getBrowser() {
     const pending = puppeteer.launch({
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROMIUM_PATH || "/usr/bin/chromium",
       headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-extensions",
+        "--disable-background-networking",
+        "--renderer-process-limit=1",
+      ],
     });
     browserPromise = pending;
     void pending.then(browser => {
@@ -23,6 +32,20 @@ function getBrowser() {
     }).catch(() => clearBrowser(pending));
   }
   return browserPromise;
+}
+
+async function withRenderSlot<T>(task: () => Promise<T>) {
+  const previous = renderQueue;
+  let release: (() => void) | undefined;
+  renderQueue = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await task();
+  } finally {
+    release?.();
+  }
 }
 
 async function closePageSafely(page: Page, browser: Browser) {
@@ -37,7 +60,7 @@ async function closePageSafely(page: Page, browser: Browser) {
   }
 }
 
-export async function renderPdf(html: string) {
+async function renderPdfOnce(html: string) {
   const browser = await getBrowser();
   let page: Page | null = null;
   try {
@@ -57,6 +80,23 @@ export async function renderPdf(html: string) {
   } finally {
     if (page) await closePageSafely(page, browser);
   }
+}
+
+/**
+ * Render one document at a time. A single Chromium process is intentionally
+ * reused and a disconnected target gets one clean retry, which keeps the
+ * 512 MiB production runtime from launching competing renderer processes.
+ */
+export function renderPdf(html: string) {
+  return withRenderSlot(async () => {
+    try {
+      return await renderPdfOnce(html);
+    } catch (error) {
+      if (!isConnectionClosed(error)) throw error;
+      await closePdfBrowser();
+      return renderPdfOnce(html);
+    }
+  });
 }
 
 export async function closePdfBrowser() {
