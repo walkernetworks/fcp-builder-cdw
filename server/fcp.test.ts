@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
 import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, colorForWorkstreamType, createDefaultDocument, getFollowOnReadinessGuidance, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
+import { assessHclPlatform } from "../shared/hcl";
 import type { TrpcContext } from "./_core/context";
 import { renderFcpHtml } from "./fcpRenderer";
 import { appRouter } from "./routers";
@@ -441,6 +442,48 @@ describe("planning considerations, exports, and access boundary", () => {
     });
   });
 
+  it("evaluates supplied offline HCL server-and-CPU evidence conservatively", () => {
+    const exact = assessHclPlatform("Dell Inc.", "PowerEdge R760", "Intel(R) Xeon(R) Gold 6430");
+    const cpuMismatch = assessHclPlatform("Dell Inc.", "PowerEdge R760", "Intel(R) Xeon(R) Gold 6230");
+    const digitGuard = assessHclPlatform("Dell Inc.", "PowerEdge R7600", "Intel(R) Xeon(R) Gold 6430");
+
+    expect(exact).toMatchObject({
+      status: "supported",
+      modelMatchMethod: "exact",
+      matchedPartnerName: "Dell",
+      matchedModel: "PowerEdge R760",
+      matchedCpuSeries: "Intel Xeon Gold 6400/5400 (Sapphire-Rapids-SP) Series",
+    });
+    expect(exact.detailUrl).toContain("productId=55720");
+    expect(cpuMismatch).toMatchObject({ status: "cpu-not-certified", matchedModel: "PowerEdge R760" });
+    expect(digitGuard).toMatchObject({ status: "unknown", modelMatchMethod: "none" });
+    expect(digitGuard.detail).toContain("different model-number identity");
+  });
+
+  it("adds HCL snapshot evidence to readiness and the consolidated delivery baseline without treating it as certification", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      hosts: 6,
+      physicalCores: 384,
+      hostModels: [
+        { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6430", hosts: 4, physicalCores: 256, esxiVersions: [{ version: "8.0.3", hosts: 4 }], esxiCorrelation: "per-platform" },
+        { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6230", hosts: 2, physicalCores: 128, esxiVersions: [{ version: "8.0.3", hosts: 2 }], esxiCorrelation: "per-platform" },
+      ],
+    });
+
+    const readiness = assessReadiness(document.fields, document.inventory);
+    const hclReadiness = readiness.items.find(item => item.id === "server-cpu-hcl-snapshot");
+    const plans = buildAdoptionPlans(document.fields, document.inventory);
+    const baseline = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-platform-plan")?.bars[0];
+
+    expect(readiness.hardwarePlatforms.map(platform => [platform.hosts, platform.hcl.status])).toEqual([[4, "supported"], [2, "cpu-not-certified"]]);
+    expect(hclReadiness).toMatchObject({ status: "attention", title: "Offline ESXi 9.1 Server HCL Snapshot" });
+    expect(hclReadiness?.detail).toContain("2 host(s) have a reported server-and-CPU pairing that is not listed for ESXi 9.1");
+    expect(baseline?.dependsOn).toContain("2 host(s) with a CPU or release pairing that is not listed for ESXi 9.1");
+    expect(baseline?.outcome).toContain("offline HCL evidence");
+    expect(readiness.disclaimer).toContain("offline HCL snapshot result is not a VCF 9.1 certification");
+  });
+
   it("classifies RVTools host platforms into VCF 9.1 candidate and upgrade-required precheck outcomes", () => {
     const document = createDefaultDocument();
     Object.assign(document.inventory, {
@@ -737,7 +780,7 @@ describe("planning considerations, exports, and access boundary", () => {
   it("renders entitlement details and both synchronized adoption views with VCF 9.1 platform evidence", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, { customerName: "Meridian Health", entitledCores: 128, entitlementAmount: 3_000_000, entitlementStart: "2027-01-01", entitlementEnd: "2028-12-31", priorities: ["operations"], adoptionDetails: { ...document.fields.adoptionDetails, operations: ["observability", "custom-dashboards"] } });
-    Object.assign(document.inventory, { sourceCount: 2, hosts: 4, physicalCores: 128, vmCount: 220, poweredOnVms: 200 });
+    Object.assign(document.inventory, { sourceCount: 2, hosts: 4, physicalCores: 128, vmCount: 220, poweredOnVms: 200, hostModels: [{ vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6430", hosts: 4, physicalCores: 128, esxiVersions: [{ version: "8.0.3", hosts: 4 }], esxiCorrelation: "per-platform" }] });
     const plans = buildAdoptionPlans(document.fields, document.inventory);
     Object.assign(document, { readiness: assessReadiness(document.fields, document.inventory), ...plans });
     const html = renderFcpHtml("Meridian FCP", document);
@@ -756,6 +799,9 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Observed host inventory");
     expect(html).toContain("VCF 9.1 Delivery Inventory");
     expect(html).toContain("Reported ESXi");
+    expect(html).toContain("HCL Server + CPU Evidence");
+    expect(html).toContain("Snapshot-supported pairing");
+    expect(html).toContain("Offline HCL limitation");
     expect(html).toContain("Migration Waves");
     expect(html).toContain('<div class="timeline-corner">Category</div>');
     expect(html).toContain("timeline-category-lane");

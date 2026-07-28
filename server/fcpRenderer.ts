@@ -1,5 +1,6 @@
-import type { EngagementDocument, Timeline, TimelineBar, TimelineLane } from "../shared/fcp";
+import type { EngagementDocument, HardwarePlatformAssessment, Timeline, TimelineBar, TimelineLane } from "../shared/fcp";
 import { colorForWorkstreamType, completionPercent, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
+import { HCL_OFFLINE_LIMITATION, hclStatusLabel } from "../shared/hcl";
 
 const palette: Record<string, { bg: string; fg: string; border: string }> = {
   slate: { bg: "#334155", fg: "#ffffff", border: "#1e293b" },
@@ -136,6 +137,7 @@ function renderObservedInventory(document: EngagementDocument) {
     minimumMemoryGiB: number | null;
     maximumMemoryGiB: number | null;
     statuses: Set<string>;
+    hclChecks: Map<string, { status: HardwarePlatformAssessment["hcl"]["status"]; hosts: number; cpuSeries: string; detailUrl: string; matchedPartnerName: string; matchedModel: string; detail: string }>;
   }>();
 
   for (const platform of document.readiness.hardwarePlatforms) {
@@ -153,6 +155,7 @@ function renderObservedInventory(document: EngagementDocument) {
       minimumMemoryGiB: null,
       maximumMemoryGiB: null,
       statuses: new Set<string>(),
+      hclChecks: new Map(),
     };
     group.hosts += platform.hosts;
     group.physicalCores += platform.physicalCores;
@@ -164,6 +167,10 @@ function renderObservedInventory(document: EngagementDocument) {
       group.maximumMemoryGiB = Math.max(group.maximumMemoryGiB || 0, platform.maximumMemoryGiB || platform.minimumMemoryGiB);
     }
     group.statuses.add(platform.status);
+    const hclKey = [platform.hcl.status, platform.hcl.matchedCpuSeries, platform.hcl.matchedPartnerName, platform.hcl.matchedModel, platform.hcl.detailUrl].join("|");
+    const hclCheck = group.hclChecks.get(hclKey) || { status: platform.hcl.status, hosts: 0, cpuSeries: platform.hcl.matchedCpuSeries, detailUrl: platform.hcl.detailUrl, matchedPartnerName: platform.hcl.matchedPartnerName, matchedModel: platform.hcl.matchedModel, detail: platform.hcl.detail };
+    hclCheck.hosts += platform.hosts;
+    group.hclChecks.set(hclKey, hclCheck);
     groups.set(key, group);
   }
 
@@ -179,12 +186,18 @@ function renderObservedInventory(document: EngagementDocument) {
         : group.statuses.has("unavailable")
           ? "Capture missing server and CPU details from the source estate."
           : "Use the observed model and configuration details in delivery design.";
-      return `<tr><td><strong>${esc(`${group.vendor} ${group.model}`)}</strong><br><small>${esc(cpuEvidence)}</small></td><td>${group.hosts}<br><small>${group.physicalCores.toLocaleString()} cores</small></td><td>${esc(esxiEvidence)}</td><td>${esc(clusterEvidence)}<br><small>${esc(memoryEvidence)}</small></td><td>${esc(deliveryContext)}</td></tr>`;
-    }).join("") || '<tr><td colspan="5">No usable host vendor and model data were found in the RVTools export.</td></tr>';
+      const hclEvidence = Array.from(group.hclChecks.values()).map(check => {
+        const matched = check.matchedPartnerName && check.matchedModel ? `${check.matchedPartnerName} ${check.matchedModel}` : "No deterministic HCL model match";
+        const series = check.cpuSeries ? ` · ${check.cpuSeries}` : "";
+        const link = check.detailUrl ? `<br><a href="${esc(check.detailUrl)}">Open matched HCL record</a>` : "";
+        return `<strong>${esc(hclStatusLabel(check.status))}</strong><br><small>${check.hosts} host${check.hosts === 1 ? "" : "s"} · ${esc(matched + series)}</small>${link}`;
+      }).join("<hr style=\"border:0;border-top:1px solid #e2e8f0;margin:7px 0\">") || "No HCL evidence";
+      return `<tr><td><strong>${esc(`${group.vendor} ${group.model}`)}</strong><br><small>${esc(cpuEvidence)}</small></td><td>${group.hosts}<br><small>${group.physicalCores.toLocaleString()} cores</small></td><td>${esc(esxiEvidence)}</td><td>${esc(clusterEvidence)}<br><small>${esc(memoryEvidence)}</small></td><td>${hclEvidence}</td><td>${esc(deliveryContext)}</td></tr>`;
+    }).join("") || '<tr><td colspan="6">No usable host vendor and model data were found in the RVTools export.</td></tr>';
   const esxiRows = inventory.esxiVersions.length
     ? inventory.esxiVersions.map(row => `<tr><td>${esc(row.version)}</td><td>${row.hosts}</td></tr>`).join("")
     : '<tr><td colspan="2">Not reported</td></tr>';
-  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Current estate</span><h3>Observed host inventory</h3></div><p>Consolidated host, software, cluster, and memory fields imported from RVTools.</p></div><div class="hardware-snapshot"><div><span>Observed hosts</span><strong>${number(inventory.hosts)}</strong></div><div><span>Physical cores</span><strong>${number(inventory.physicalCores)}</strong></div><div><span>Host groups</span><strong>${number(groups.size)}</strong></div><div><span>Reported ESXi versions</span><strong>${number(inventory.esxiVersions.length)}</strong></div></div><div class="hardware-tables"><div class="hardware-table-panel"><div class="table-heading"><h4>Reported ESXi Versions</h4><p>Imported from RVTools</p></div><table class="compact-table esxi-table"><thead><tr><th>Reported Version</th><th>Hosts</th></tr></thead><tbody>${esxiRows}</tbody></table></div><div class="hardware-table-panel"><div class="table-heading"><h4>VCF 9.1 Delivery Inventory</h4><p>Consolidated host groups</p></div><table class="compact-table hardware-table"><thead><tr><th>Observed Host Group</th><th>Estate</th><th>Reported ESXi</th><th>Cluster / Memory</th><th>Delivery Context</th></tr></thead><tbody>${platformRows}</tbody></table></div></div></section>`;
+  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Current estate and offline HCL evidence</span><h3>Observed host inventory</h3></div><p>Consolidated RVTools host, software, cluster, and memory fields, with a local ESXi 9.1 server-and-CPU snapshot precheck.</p></div><div class="hardware-snapshot"><div><span>Observed hosts</span><strong>${number(inventory.hosts)}</strong></div><div><span>Physical cores</span><strong>${number(inventory.physicalCores)}</strong></div><div><span>Host groups</span><strong>${number(groups.size)}</strong></div><div><span>Reported ESXi versions</span><strong>${number(inventory.esxiVersions.length)}</strong></div></div><div class="hardware-tables"><div class="hardware-table-panel"><div class="table-heading"><h4>Reported ESXi Versions</h4><p>Imported from RVTools</p></div><table class="compact-table esxi-table"><thead><tr><th>Reported Version</th><th>Hosts</th></tr></thead><tbody>${esxiRows}</tbody></table></div><div class="hardware-table-panel"><div class="table-heading"><h4>VCF 9.1 Delivery Inventory</h4><p>Consolidated host groups with offline HCL server-and-CPU evidence</p></div><table class="compact-table hardware-table"><thead><tr><th>Observed Host Group</th><th>Estate</th><th>Reported ESXi</th><th>Cluster / Memory</th><th>HCL Server + CPU Evidence</th><th>Delivery Context</th></tr></thead><tbody>${platformRows}</tbody></table><p style="margin:12px 0 0;font-size:10px;line-height:1.5;color:#475569">Offline HCL limitation: ${esc(HCL_OFFLINE_LIMITATION)}</p></div></div></section>`;
 }
 
 function renderPlanSummary(document: EngagementDocument) {

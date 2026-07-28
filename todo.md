@@ -333,3 +333,11 @@
 - [x] Make confirmed planning inputs visibly and deterministically change the relevant generated delivery workstreams or narrative.
 - [x] Correct the two-week mobilisation and delivery-baseline activity with cadence-aligned labelling: Weeks 1–2 for weekly execution and Month 1 for calendar-month execution.
 - [x] Add regression coverage, validate the input-sensitive outputs and weekly timing, and checkpoint the update.
+
+## VCF HCL vHost Compatibility Integration
+
+- [x] Inspect the supplied VCF HCL package and identify the authoritative server, vendor, model, CPU, firmware, and version fields available for deterministic matching.
+- [x] Normalize and package the supplied HCL data for safe server-side use without relying on client-side execution of uploaded files.
+- [x] Implement deterministic matching from parsed vHost inventory to HCL records, with exact-match, partial-evidence, unsupported, and unknown states.
+- [x] Surface matched HCL evidence and confidence in the vHost readiness workspace and customer-safe plan/export language without representing the result as an official certification.
+- [x] Add automated tests using representative HCL records and vHost rows, visually validate the experience, and checkpoint the published integration.

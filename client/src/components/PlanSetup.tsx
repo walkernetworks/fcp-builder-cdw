@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { parseRvToolsFiles } from "@/lib/rvtools";
 import { applyScheduleFieldPatch, assessReadiness, refreshDerivedDocument, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
+import { HCL_OFFLINE_LIMITATION, hclStatusLabel } from "@shared/hcl";
 import { ExternalLink, FileSpreadsheet, HardDrive, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -152,6 +153,18 @@ function InventoryCards({ document }: { document: EngagementDocument }) {
 
 function HostInventory({ platforms }: { platforms: HardwarePlatformAssessment[] }) {
   const normalizeHostGroupText = (input: string) => input.trim().replace(/\s+/g, " ");
+  type HclCheck = {
+    status: HardwarePlatformAssessment["hcl"]["status"];
+    hosts: number;
+    cpuSeries: string;
+    matchedPartnerName: string;
+    matchedModel: string;
+    detailUrl: string;
+    detail: string;
+    nextAction: string;
+    modelMatchMethod: HardwarePlatformAssessment["hcl"]["modelMatchMethod"];
+    candidateModels: HardwarePlatformAssessment["hcl"]["candidateModels"];
+  };
   const groups = new Map<string, {
     vendor: string;
     model: string;
@@ -163,6 +176,7 @@ function HostInventory({ platforms }: { platforms: HardwarePlatformAssessment[] 
     minimumMemoryGiB: number | null;
     maximumMemoryGiB: number | null;
     statuses: Set<HardwarePlatformAssessment["status"]>;
+    hclChecks: Map<string, HclCheck>;
   }>();
 
   for (const platform of platforms) {
@@ -180,6 +194,7 @@ function HostInventory({ platforms }: { platforms: HardwarePlatformAssessment[] 
       minimumMemoryGiB: null,
       maximumMemoryGiB: null,
       statuses: new Set<HardwarePlatformAssessment["status"]>(),
+      hclChecks: new Map<string, HclCheck>(),
     };
     group.hosts += platform.hosts;
     group.physicalCores += platform.physicalCores;
@@ -191,15 +206,43 @@ function HostInventory({ platforms }: { platforms: HardwarePlatformAssessment[] 
       group.maximumMemoryGiB = Math.max(group.maximumMemoryGiB || 0, platform.maximumMemoryGiB || platform.minimumMemoryGiB);
     }
     group.statuses.add(platform.status);
+    const hclKey = [platform.hcl.status, platform.hcl.matchedCpuSeries, platform.hcl.matchedPartnerName, platform.hcl.matchedModel, platform.hcl.detailUrl].join("|");
+    const hclCheck = group.hclChecks.get(hclKey) || {
+      status: platform.hcl.status,
+      hosts: 0,
+      cpuSeries: platform.hcl.matchedCpuSeries,
+      matchedPartnerName: platform.hcl.matchedPartnerName,
+      matchedModel: platform.hcl.matchedModel,
+      detailUrl: platform.hcl.detailUrl,
+      detail: platform.hcl.detail,
+      nextAction: platform.hcl.nextAction,
+      modelMatchMethod: platform.hcl.modelMatchMethod,
+      candidateModels: platform.hcl.candidateModels,
+    };
+    hclCheck.hosts += platform.hosts;
+    group.hclChecks.set(hclKey, hclCheck);
     groups.set(key, group);
   }
 
   const rows = Array.from(groups.values()).sort((left, right) => right.hosts - left.hosts || left.model.localeCompare(right.model));
+  const hclCounts = platforms.reduce<Record<HardwarePlatformAssessment["hcl"]["status"], number>>((counts, platform) => {
+    counts[platform.hcl.status] += platform.hosts;
+    return counts;
+  }, { supported: 0, "supported-cpu-unverified": 0, review: 0, "cpu-not-certified": 0, "not-supported": 0, unknown: 0 });
+  const snapshotCapturedAt = platforms[0]?.hcl.snapshotCapturedAt || "not reported";
+  const badgeClass = (status: HardwarePlatformAssessment["hcl"]["status"]) => ({
+    supported: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    "supported-cpu-unverified": "border-amber-200 bg-amber-50 text-amber-800",
+    review: "border-amber-200 bg-amber-50 text-amber-800",
+    "cpu-not-certified": "border-red-200 bg-red-50 text-red-800",
+    "not-supported": "border-red-200 bg-red-50 text-red-800",
+    unknown: "border-slate-200 bg-slate-100 text-slate-700",
+  })[status];
   const deliveryContext = (statuses: Set<HardwarePlatformAssessment["status"]>) => {
     if (statuses.has("upgrade-required")) return "Plan refresh or exception work before platform services.";
     if (statuses.has("unavailable")) return "Capture the missing server and CPU details from the source estate.";
     return "Use the observed model and configuration details in delivery design.";
   };
 
-  return <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.14em] text-[#c8102e]">Host inventory</p><h3 className="mt-1 text-base font-semibold text-slate-950">VCF 9.1 delivery inventory</h3><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Host models are consolidated so the delivery team sees a concise estate view rather than repeated status entries.</p></div><a href="https://compatibilityguide.broadcom.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100">Open configuration reference <ExternalLink className="size-3.5" /></a></div>{rows.length ? <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="min-w-[1040px] w-full text-left text-xs"><thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2.5">Observed host group</th><th className="px-3 py-2.5">Estate</th><th className="px-3 py-2.5">Reported ESXi</th><th className="px-3 py-2.5">Cluster / memory</th><th className="px-3 py-2.5">Delivery context</th></tr></thead><tbody>{rows.map(group => { const esxiEvidence = Array.from(group.esxiVersions.entries()).map(([version, hosts]) => `${version}: ${hosts}`).join("; ") || "Not reported"; const clusterEvidence = Array.from(group.clusters.entries()).map(([name, hosts]) => `${name}: ${hosts}`).join("; ") || "Not reported"; const memoryEvidence = group.minimumMemoryGiB !== null ? `${group.minimumMemoryGiB.toLocaleString()}–${(group.maximumMemoryGiB || group.minimumMemoryGiB).toLocaleString()} GiB per host` : "Not reported"; const cpuEvidence = Array.from(group.cpuModels).join("; ") || "CPU model not reported"; return <tr key={`${group.vendor}-${group.model}`} className="border-t border-slate-100 align-top"><td className="px-3 py-3"><p className="font-semibold text-slate-900">{group.vendor} {group.model}</p><p className="mt-1 text-slate-500">{cpuEvidence}</p></td><td className="px-3 py-3 text-slate-700">{group.hosts} host{group.hosts === 1 ? "" : "s"}<br /><span className="text-slate-500">{group.physicalCores.toLocaleString()} cores</span></td><td className="px-3 py-3 leading-5 text-slate-700">{esxiEvidence}</td><td className="px-3 py-3 leading-5 text-slate-700">{clusterEvidence}<br /><span className="text-slate-500">{memoryEvidence}</span></td><td className="px-3 py-3 leading-5 text-slate-700">{deliveryContext(group.statuses)}</td></tr>; })}</tbody></table></div> : <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-4 text-xs leading-5 text-slate-500">No usable host vendor and model data were found in the imported RVTools data.</p>}</section>;
+  return <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.14em] text-[#c8102e]">Host inventory and compatibility evidence</p><h3 className="mt-1 text-base font-semibold text-slate-950">VCF 9.1 server HCL precheck</h3><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Each consolidated vHost cohort is checked locally against the supplied offline ESXi 9.1 server snapshot using vendor, model, and CPU-series evidence. Results are planning evidence, not a configuration certification.</p></div><a href="https://compatibilityguide.broadcom.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100">Open configuration reference <ExternalLink className="size-3.5" /></a></div>{rows.length ? <><div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"><div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-emerald-800">Snapshot-supported pairing</p><p className="mt-1 text-lg font-semibold text-emerald-950">{hclCounts.supported} host{hclCounts.supported === 1 ? "" : "s"}</p></div><div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-amber-800">Need confirmation</p><p className="mt-1 text-lg font-semibold text-amber-950">{hclCounts["supported-cpu-unverified"] + hclCounts.review + hclCounts.unknown} host{hclCounts["supported-cpu-unverified"] + hclCounts.review + hclCounts.unknown === 1 ? "" : "s"}</p></div><div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-red-800">CPU or release not listed</p><p className="mt-1 text-lg font-semibold text-red-950">{hclCounts["cpu-not-certified"] + hclCounts["not-supported"]} host{hclCounts["cpu-not-certified"] + hclCounts["not-supported"] === 1 ? "" : "s"}</p></div></div><p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] leading-5 text-slate-500">Offline snapshot captured {snapshotCapturedAt}. {HCL_OFFLINE_LIMITATION}</p><div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="min-w-[1280px] w-full text-left text-xs"><thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2.5">Observed host group</th><th className="px-3 py-2.5">Estate</th><th className="px-3 py-2.5">Reported ESXi</th><th className="px-3 py-2.5">Cluster / memory</th><th className="px-3 py-2.5">HCL server + CPU evidence</th><th className="px-3 py-2.5">Delivery context</th></tr></thead><tbody>{rows.map(group => { const esxiEvidence = Array.from(group.esxiVersions.entries()).map(([version, hosts]) => `${version}: ${hosts}`).join("; ") || "Not reported"; const clusterEvidence = Array.from(group.clusters.entries()).map(([name, hosts]) => `${name}: ${hosts}`).join("; ") || "Not reported"; const memoryEvidence = group.minimumMemoryGiB !== null ? `${group.minimumMemoryGiB.toLocaleString()}–${(group.maximumMemoryGiB || group.minimumMemoryGiB).toLocaleString()} GiB per host` : "Not reported"; const cpuEvidence = Array.from(group.cpuModels).join("; ") || "CPU model not reported"; const checks = Array.from(group.hclChecks.values()); return <tr key={`${group.vendor}-${group.model}`} className="border-t border-slate-100 align-top"><td className="px-3 py-3"><p className="font-semibold text-slate-900">{group.vendor} {group.model}</p><p className="mt-1 text-slate-500">{cpuEvidence}</p></td><td className="px-3 py-3 text-slate-700">{group.hosts} host{group.hosts === 1 ? "" : "s"}<br /><span className="text-slate-500">{group.physicalCores.toLocaleString()} cores</span></td><td className="px-3 py-3 leading-5 text-slate-700">{esxiEvidence}</td><td className="px-3 py-3 leading-5 text-slate-700">{clusterEvidence}<br /><span className="text-slate-500">{memoryEvidence}</span></td><td className="min-w-80 px-3 py-3"><div className="space-y-2">{checks.map(check => <div key={`${check.status}-${check.cpuSeries}-${check.detailUrl}`} className="rounded-md border border-slate-200 bg-slate-50 p-2"><div className="flex flex-wrap items-center gap-1.5"><Badge variant="outline" className={badgeClass(check.status)}>{hclStatusLabel(check.status)}</Badge><span className="text-[11px] text-slate-500">{check.hosts} host{check.hosts === 1 ? "" : "s"} · {check.modelMatchMethod} model match</span></div><p className="mt-1 text-[11px] leading-4 text-slate-700">{check.matchedPartnerName && check.matchedModel ? `${check.matchedPartnerName} ${check.matchedModel}` : "No deterministic HCL model match"}{check.cpuSeries ? ` · ${check.cpuSeries}` : ""}</p>{check.detailUrl && <a href={check.detailUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[#a20f25] hover:underline">Open matched HCL record <ExternalLink className="size-3" /></a>}<details className="mt-1"><summary className="cursor-pointer text-[11px] font-semibold text-slate-600 hover:text-slate-950">Evidence and next action</summary><p className="mt-1 leading-4 text-slate-600">{check.detail}</p>{check.candidateModels.length > 0 && <p className="mt-1 leading-4 text-slate-600">Candidate models: {check.candidateModels.map(candidate => `${candidate.partnerName} ${candidate.model}`).join("; ")}.</p>}<p className="mt-1 leading-4 font-medium text-slate-700">{check.nextAction}</p></details></div>)}</div></td><td className="px-3 py-3 leading-5 text-slate-700">{deliveryContext(group.statuses)}</td></tr>; })}</tbody></table></div></> : <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-4 text-xs leading-5 text-slate-500">No usable host vendor and model data were found in the imported RVTools data.</p>}</section>;
 }

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getIndustryDiscoveryTemplate, industryDiscoveryPromptBlock } from "./industryDiscovery";
+import { assessHclPlatform, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT } from "./hcl";
 
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
 export type TimelineColor = (typeof TIMELINE_COLORS)[number];
@@ -242,6 +243,54 @@ export type ReadinessItem = z.infer<typeof readinessItemSchema>;
 export const hardwarePlatformStatusSchema = z.enum(["candidate", "upgrade-required", "review-required", "unavailable"]);
 export type HardwarePlatformStatus = z.infer<typeof hardwarePlatformStatusSchema>;
 
+const hclCandidateSchema = z.object({
+  partnerName: z.string(),
+  model: z.string(),
+  score: z.number().min(0).max(1),
+  productId: z.number().int().positive(),
+});
+
+const defaultHclPlatformAssessment = {
+  targetRelease: "ESXi 9.1" as const,
+  snapshotCapturedAt: HCL_SNAPSHOT.capturedAt,
+  snapshotSource: HCL_SNAPSHOT.source,
+  status: "unknown" as const,
+  modelMatchMethod: "none" as const,
+  modelMatchConfidence: 0,
+  vendorResolved: false,
+  matchedPartnerName: "",
+  matchedModel: "",
+  matchedCpuSeries: "",
+  productIds: [],
+  detailUrl: "",
+  vcfVendorConfirmation: "unknown" as const,
+  supportedCpuSeries: [],
+  candidateModels: [],
+  detail: "HCL evidence has not yet been generated for this saved assessment.",
+  nextAction: "Refresh the inventory assessment to evaluate this cohort against the supplied offline HCL snapshot.",
+};
+
+export const hclPlatformAssessmentSchema = z.object({
+  targetRelease: z.literal("ESXi 9.1"),
+  snapshotCapturedAt: z.string(),
+  snapshotSource: z.string(),
+  status: z.enum(["supported", "supported-cpu-unverified", "review", "cpu-not-certified", "not-supported", "unknown"]),
+  modelMatchMethod: z.enum(["exact", "core", "compact", "token", "fuzzy", "none"]),
+  modelMatchConfidence: z.number().min(0).max(1),
+  vendorResolved: z.boolean(),
+  matchedPartnerName: z.string(),
+  matchedModel: z.string(),
+  matchedCpuSeries: z.string(),
+  productIds: z.array(z.number().int().positive()),
+  detailUrl: z.string(),
+  vcfVendorConfirmation: z.enum(["reported", "not-reported", "unknown"]),
+  supportedCpuSeries: z.array(z.string()),
+  candidateModels: z.array(hclCandidateSchema),
+  detail: z.string(),
+  nextAction: z.string(),
+});
+export type HclPlatformAssessment = z.infer<typeof hclPlatformAssessmentSchema>;
+
 export const platformEsxiCorrelationSchema = z.enum(["per-platform", "estate-wide", "unavailable"]);
 export type PlatformEsxiCorrelation = z.infer<typeof platformEsxiCorrelationSchema>;
 
@@ -263,6 +312,7 @@ export const hardwarePlatformAssessmentSchema = hardwarePlatformAssessmentV4Sche
   clusterMembership: z.array(inventoryClusterProfileSchema).default([]),
   minimumMemoryGiB: z.number().nonnegative().default(0),
   maximumMemoryGiB: z.number().nonnegative().default(0),
+  hcl: hclPlatformAssessmentSchema.default(defaultHclPlatformAssessment),
 });
 export type HardwarePlatformAssessment = z.infer<typeof hardwarePlatformAssessmentSchema>;
 
@@ -770,6 +820,16 @@ function buildPlatformInventoryActivity(inventory: InventorySummary, cadence: Ti
   const platforms = assessHardwarePlatforms(inventory);
   const observedHosts = platforms.reduce((total, platform) => total + platform.hosts, 0);
   const observedModels = new Set(platforms.map(platform => `${platform.vendor} ${platform.model}`.trim().replace(/\s+/g, " ").toLowerCase()).filter(model => model && model !== "unknown vendor unknown model")).size;
+  const hclSupportedHosts = platforms.filter(platform => platform.hcl.status === "supported").reduce((total, platform) => total + platform.hosts, 0);
+  const hclBlockingHosts = platforms.filter(platform => platform.hcl.status === "cpu-not-certified" || platform.hcl.status === "not-supported").reduce((total, platform) => total + platform.hosts, 0);
+  const hclReviewHosts = platforms.filter(platform => ["supported-cpu-unverified", "review", "unknown"].includes(platform.hcl.status)).reduce((total, platform) => total + platform.hosts, 0);
+  const hclDeliveryContext = hclBlockingHosts
+    ? `The supplied offline HCL snapshot identifies ${hclBlockingHosts} host(s) with a CPU or release pairing that is not listed for ESXi 9.1; resolve replacement, repurpose, or approved exception decisions before platform deployment.`
+    : hclReviewHosts
+      ? `The supplied offline HCL snapshot identifies ${hclReviewHosts} host(s) that need CPU, vendor, or model confirmation before their pairing can be relied upon.`
+      : hclSupportedHosts
+        ? `The supplied offline HCL snapshot lists the reported model and resolved CPU series for ${hclSupportedHosts} host(s); retain that evidence while completing the full configuration review.`
+        : "No server-and-CPU HCL pairing evidence is yet available from the imported host inventory.";
   const openingWindow = cadence === "week" ? "Weeks 1–2" : "Month 1";
   const deliveryContext = fields ? confirmedDeliveryContext(fields) : "";
   const appendDeliveryContext = (value: string) => deliveryContext ? `${value} ${deliveryContext}` : value;
@@ -786,8 +846,8 @@ function buildPlatformInventoryActivity(inventory: InventorySummary, cadence: Ti
   return {
     label: `${openingWindow}: Mobilize and Freeze VCF Delivery Baseline`,
     color: "teal",
-    dependsOn: appendDeliveryContext(`RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${observedModels || platforms.length} host model${(observedModels || platforms.length) === 1 ? "" : "s"}. Confirm server configuration, CPU, NIC, storage controller, firmware, driver, vSAN/ReadyNode details, bill of materials, and implementation prerequisites before platform deployment begins.`),
-    outcome: "Time-box the delivery baseline, then release the management-domain, networking, workload-domain, migration, and handover workstreams for execution.",
+      dependsOn: appendDeliveryContext(`RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${observedModels || platforms.length} host model${(observedModels || platforms.length) === 1 ? "" : "s"}. ${hclDeliveryContext} Confirm server configuration, CPU, NIC, storage controller, firmware, driver, vSAN/ReadyNode details, bill of materials, and implementation prerequisites before platform deployment begins.`),
+      outcome: `Time-box the delivery baseline, capture the offline HCL evidence and remaining configuration decisions, then release the management-domain, networking, workload-domain, migration, and handover workstreams for execution.`,
   };
 }
 
@@ -1229,6 +1289,7 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
   const missingIdentity = !vendor || !model || /^unknown(?: vendor| model)?$/i.test(vendor) || /^unknown(?: vendor| model)?$/i.test(model);
   const currentDellPowerEdge = /\b(?:r760|r760xa|r760xs|r660|r860|r750|r650)\b/i.test(identifier);
   const legacyDellPowerEdge = /\b(?:r730|r530|r630|r430|r330|r720|r520|m630|m530|t630)\b/i.test(identifier);
+  const hcl = assessHclPlatform(vendor, model, cpuModel);
 
   if (missingIdentity) {
     return {
@@ -1243,6 +1304,7 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       clusterMembership,
       minimumMemoryGiB,
       maximumMemoryGiB,
+      hcl,
       status: "unavailable",
       detail: `RVTools observed this host group but did not provide a usable vendor and model, so the plan begins with platform evidence collection before a VCF 9.1 path can be selected.${esxiDetail}`,
       nextAction: "Run the Platform Evidence Collection plan: collect the server make, model, CPU, BIOS, firmware, adapter, and storage-controller details before compatibility review.",
@@ -1262,6 +1324,7 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       clusterMembership,
       minimumMemoryGiB,
       maximumMemoryGiB,
+      hcl,
       status: "upgrade-required",
       detail: `This legacy Dell PowerEdge generation has a replacement or exception decision plan for VCF 9.1; it is not assumed to be an in-place upgrade target.${esxiDetail}`,
       nextAction: "Run the Replacement or Exception Decision plan: validate the exact configuration in the Broadcom Compatibility Guide and determine the replacement, repurpose, or exception path before Upgrade Services begins.",
@@ -1281,6 +1344,7 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       clusterMembership,
       minimumMemoryGiB,
       maximumMemoryGiB,
+      hcl,
       status: "candidate",
       detail: `This current-generation Dell PowerEdge model has a configuration compatibility confirmation plan; RVTools alone cannot establish a supported server configuration.${esxiDetail}`,
       nextAction: "Run the Compatibility Confirmation plan: validate the exact server, CPU, NIC, storage controller, firmware, driver, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
@@ -1299,6 +1363,7 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
     clusterMembership: platform.clusterMembership,
     minimumMemoryGiB: platform.minimumMemoryGiB,
     maximumMemoryGiB: platform.maximumMemoryGiB,
+    hcl,
     status: "review-required",
     detail: `RVTools provides a usable platform identity, so the plan starts with configuration compatibility confirmation; the server model alone cannot establish an official VCF 9.1 outcome.${esxiDetail}`,
     nextAction: "Run the Compatibility Confirmation plan: validate the exact server, CPU, adapters, storage controllers, firmware, drivers, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
@@ -1356,6 +1421,9 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
   const upgradeRequiredPlatforms = hardwarePlatforms.filter(platform => platform.status === "upgrade-required");
   const candidatePlatforms = hardwarePlatforms.filter(platform => platform.status === "candidate");
   const unavailablePlatforms = hardwarePlatforms.filter(platform => platform.status === "unavailable");
+  const hclSupportedPlatforms = hardwarePlatforms.filter(platform => platform.hcl.status === "supported");
+  const hclBlockingPlatforms = hardwarePlatforms.filter(platform => platform.hcl.status === "cpu-not-certified" || platform.hcl.status === "not-supported");
+  const hclReviewPlatforms = hardwarePlatforms.filter(platform => ["supported-cpu-unverified", "review", "unknown"].includes(platform.hcl.status));
   items.push({
     id: "hardware-compatibility",
     category: "hardware",
@@ -1369,6 +1437,24 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
           ? `${candidatePlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) are on candidate platform generation(s); exact configuration validation is still required.`
           : "Every observed platform has a configuration compatibility confirmation plan; RVTools cannot determine final certification from server identity alone.",
     evidence: hardwarePlatforms.map(platform => `${platform.vendor} ${platform.model} (${platform.hosts}): ${platform.status}`).join("; ") || "No host model data",
+  });
+
+  const hclSupportedHosts = hclSupportedPlatforms.reduce((sum, platform) => sum + platform.hosts, 0);
+  const hclBlockingHosts = hclBlockingPlatforms.reduce((sum, platform) => sum + platform.hosts, 0);
+  const hclReviewHosts = hclReviewPlatforms.reduce((sum, platform) => sum + platform.hosts, 0);
+  items.push({
+    id: "server-cpu-hcl-snapshot",
+    category: "hardware",
+    status: !hardwarePlatforms.length ? "unknown" : hclBlockingPlatforms.length ? "attention" : hclReviewPlatforms.length ? "unknown" : "good",
+    title: "Offline ESXi 9.1 Server HCL Snapshot",
+    detail: !hardwarePlatforms.length
+      ? "No usable vHost server cohorts are available for the offline HCL snapshot check."
+      : hclBlockingPlatforms.length
+        ? `${hclBlockingHosts} host(s) have a reported server-and-CPU pairing that is not listed for ESXi 9.1 in the supplied offline snapshot. Resolve the replacement, repurpose, or approved exception path before committing the VCF deployment baseline.`
+        : hclReviewPlatforms.length
+          ? `${hclReviewHosts} host(s) require CPU, vendor, or model confirmation before their server-and-CPU pairing can be relied upon. ${hclSupportedHosts ? `${hclSupportedHosts} host(s) have an exact model and CPU-series pairing in the same snapshot.` : ""}`
+          : `${hclSupportedHosts} host(s) have an exact server-model and resolved CPU-series pairing in the supplied offline ESXi 9.1 snapshot. Complete the remaining configuration checks before deployment.`,
+    evidence: hardwarePlatforms.map(platform => `${platform.vendor} ${platform.model} / ${platform.cpuModel || "CPU not reported"} (${platform.hosts}): ${platform.hcl.status}${platform.hcl.matchedCpuSeries ? ` — ${platform.hcl.matchedCpuSeries}` : ""}`).join("; ") || "No host model data",
   });
 
   const cohortByCluster = new Map<string, Set<string>>();
@@ -1450,7 +1536,7 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     label: "Inventory-Informed VCF 9.1 Planning Considerations",
     items,
     hardwarePlatforms,
-    disclaimer: "These considerations summarize RVTools-observable inventory for planning. VCF 9.1 host preparation requires a release-note-supported ESX version, a uniform hardware profile, and one hardware vendor for the selected management domain. A candidate, upgrade-required, review-required, or unavailable platform result is not a VCF 9.1 certification. Confirm the exact server, CPU, NIC, HBA/controller, firmware, driver, storage, vSAN/ReadyNode, stateless-installation status, licensing, sizing, architecture, networking, identity, and implementation requirements through the Broadcom Compatibility Guide, the VCF 9.1 Planning and Preparation Workbook, and the appropriate CDW and vendor processes.",
+    disclaimer: `These considerations summarize RVTools-observable inventory for planning. VCF 9.1 host preparation requires a release-note-supported ESX version, a uniform hardware profile, and one hardware vendor for the selected management domain. A candidate, upgrade-required, review-required, unavailable, or offline HCL snapshot result is not a VCF 9.1 certification. ${HCL_OFFLINE_LIMITATION} Confirm the exact server, CPU, NIC, HBA/controller, firmware, driver, storage, vSAN/ReadyNode, stateless-installation status, licensing, sizing, architecture, networking, identity, and implementation requirements through the Broadcom Compatibility Guide, the VCF 9.1 Planning and Preparation Workbook, and the appropriate CDW and vendor processes.`,
   };
 }
 
