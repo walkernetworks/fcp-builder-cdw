@@ -57,11 +57,22 @@ function renderWorkstreamLegend() {
   return `<div class="timeline-legend"><span>Workstream color key</span>${WORKSTREAM_TYPES.map(type => { const color = palette[WORKSTREAM_TYPE_COLORS[type]] || palette.slate; return `<span class="timeline-legend-item" style="border-color:${color.border};background:${color.bg};color:${color.fg}"><i></i>${esc(type)}</span>`; }).join("")}</div>`;
 }
 
+function groupTimelineLanes(lanes: TimelineLane[]) {
+  const groups = new Map<TimelineLane["category"], TimelineLane[]>();
+  lanes.forEach(lane => {
+    const existing = groups.get(lane.category);
+    if (existing) existing.push(lane);
+    else groups.set(lane.category, [lane]);
+  });
+  return Array.from(groups, ([category, groupedLanes]) => ({ category, lanes: groupedLanes }));
+}
+
 function renderTimeline(timeline: Timeline, emptyMessage = "No activities have been scheduled for this portion of the plan.") {
   if (!timeline.lanes.length) return `<div class="timeline-empty">${esc(emptyMessage)}</div>`;
   const columnWidth = timeline.cadence === "week" ? 112 : 92;
   const minimumWidth = 180 + timeline.columns.length * columnWidth;
-  return `${renderWorkstreamLegend()}<div class="timeline-wrap"><div class="timeline-grid" style="min-width:${minimumWidth}px;grid-template-columns:180px repeat(${timeline.columns.length},minmax(${columnWidth}px,1fr))"><div class="timeline-corner">Category / Workstream Type</div>${timeline.columns.map(window => `<div class="timeline-head">${esc(window)}</div>`).join("")}${timeline.lanes.map(lane => `<div class="timeline-lane"><strong>${esc(lane.category)}</strong><small class="timeline-lane-meta">${esc(lane.workstreamType)}</small></div><div class="timeline-row" style="grid-column:2/${timeline.columns.length + 2};grid-template-columns:repeat(${timeline.columns.length},1fr)">${lane.bars.map(activity => renderBar(activity, timeline.columns.length, lane.workstreamType)).join("")}</div>`).join("")}</div></div>`;
+  const categoryGroups = groupTimelineLanes(timeline.lanes);
+  return `${renderWorkstreamLegend()}<div class="timeline-wrap"><div class="timeline-grid" style="min-width:${minimumWidth}px;grid-template-columns:180px repeat(${timeline.columns.length},minmax(${columnWidth}px,1fr))"><div class="timeline-corner">Category Group / Workstream Type</div>${timeline.columns.map(window => `<div class="timeline-head">${esc(window)}</div>`).join("")}${categoryGroups.map(group => `<div class="timeline-category" style="grid-column:1/${timeline.columns.length + 2};display:flex;align-items:center;justify-content:space-between;background:#eef2f7;color:#10233f;border-top:1px solid #dbe2ea;border-bottom:1px solid #dbe2ea;padding:7px 10px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase"><span>${esc(group.category)}</span><small style="font-size:8px;color:#64748b">${group.lanes.length} ${group.lanes.length === 1 ? "workstream" : "workstreams"}</small></div>${group.lanes.map(lane => `<div class="timeline-lane"><strong>${esc(lane.workstreamType)}</strong></div><div class="timeline-row" style="grid-column:2/${timeline.columns.length + 2};grid-template-columns:repeat(${timeline.columns.length},1fr)">${lane.bars.map(activity => renderBar(activity, timeline.columns.length, lane.workstreamType)).join("")}</div>`).join("")}`).join("")}</div></div>`;
 }
 
 function sliceTimeline(timeline: Timeline, startColumn: number, endColumn: number): Timeline {
@@ -89,8 +100,8 @@ function renderTwoYearNotional(document: EngagementDocument) {
 
 function renderSequence(timeline: Timeline) {
   const unit = timeline.cadence === "week" ? "Week" : "Month";
-  const rows = timeline.lanes.flatMap(lane => lane.bars.map(activity => ({ lane, activity })));
-  return `<table><thead><tr><th>Category</th><th>Workstream type</th><th>Activity</th><th>Start ${unit}</th><th>End ${unit}</th><th>Intended Outcome</th><th>Sequence Notes</th></tr></thead><tbody>${rows.map(({ lane, activity }) => `<tr><td>${esc(lane.category)}</td><td>${esc(lane.workstreamType)}</td><td><span class="dot" style="background:${(palette[colorForWorkstreamType(lane.workstreamType)] || palette.slate).bg}"></span>${esc(activity.label)}</td><td>${esc(timelineWindow(timeline, activity.startCol))}</td><td>${esc(timelineWindow(timeline, activity.endCol, true))}</td><td>${esc(activity.outcome || "—")}</td><td>${esc(activity.dependsOn || "—")}</td></tr>`).join("")}</tbody></table>`;
+  const categoryGroups = groupTimelineLanes(timeline.lanes);
+  return `<table><thead><tr><th>Workstream type</th><th>Activity</th><th>Start ${unit}</th><th>End ${unit}</th><th>Intended Outcome</th><th>Sequence Notes</th></tr></thead><tbody>${categoryGroups.map(group => `<tr class="sequence-category"><th colspan="6" style="background:#10233f;color:#fff;text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:8px 10px">${esc(group.category)}</th></tr>${group.lanes.flatMap(lane => lane.bars.map(activity => `<tr><td>${esc(lane.workstreamType)}</td><td><span class="dot" style="background:${(palette[colorForWorkstreamType(lane.workstreamType)] || palette.slate).bg}"></span>${esc(activity.label)}</td><td>${esc(timelineWindow(timeline, activity.startCol))}</td><td>${esc(timelineWindow(timeline, activity.endCol, true))}</td><td>${esc(activity.outcome || "—")}</td><td>${esc(activity.dependsOn || "—")}</td></tr>`)).join("")}`).join("")}</tbody></table>`;
 }
 
 function renderObservedInventory(document: EngagementDocument) {

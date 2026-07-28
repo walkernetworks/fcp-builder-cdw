@@ -310,3 +310,10 @@
 - [x] Replace design-heavy adoption-plan activities with time-boxed design, platform implementation, migration, operationalization, and handover workstreams.
 - [x] Repair the opening-page PDF hierarchy, spacing, and pagination while preserving the customer-facing content.
 - [x] Add regression coverage, validate rendered HTML/PDF outputs, and checkpoint the implementation-led update.
+
+## Category-Grouped Timeline Presentation
+
+- [x] Trace each workspace and export view that repeats the timeline category on every activity row.
+- [x] Group consecutive workstreams under one category label in the Adoption Timeline editor, table, HTML export, and PDF export.
+- [x] Preserve visible individual workstream type and activity labels within each category group.
+- [x] Add regression coverage, validate the grouped timeline output, and checkpoint the presentation update.
