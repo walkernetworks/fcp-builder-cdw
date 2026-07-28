@@ -1,6 +1,6 @@
 import type { EngagementDocument, HardwarePlatformAssessment, Timeline, TimelineBar, TimelineLane } from "../shared/fcp";
 import { calculateEntitlementEndDate, colorForWorkstreamType, completionPercent, FIXED_GANTT_CATEGORIES, getHclSchedulePath, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
-import { HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclStatusLabel } from "../shared/hcl";
+import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel } from "../shared/hcl";
 
 const palette: Record<string, { bg: string; fg: string; border: string }> = {
   slate: { bg: "#334155", fg: "#ffffff", border: "#1e293b" },
@@ -124,6 +124,32 @@ function renderSequence(timeline: Timeline) {
   return `<table><thead><tr><th>Activity</th><th>Start ${unit}</th><th>End ${unit}</th><th>Intended Outcome</th><th>Sequence Notes</th></tr></thead><tbody>${categoryGroups.map(group => `<tr class="sequence-category"><th colspan="5" style="background:#10233f;color:#fff;text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:8px 10px">${esc(group.category)}</th></tr>${group.lanes.flatMap(lane => lane.bars.map(activity => `<tr><td><span class="dot" style="background:${(palette[colorForWorkstreamType(lane.workstreamType)] || palette.slate).bg}" title="${esc(lane.workstreamType)}" aria-label="${esc(lane.workstreamType)}"></span>${esc(activity.label)}</td><td>${esc(timelineWindow(timeline, activity.startCol))}</td><td>${esc(timelineWindow(timeline, activity.endCol, true))}</td><td>${esc(activity.outcome || "—")}</td><td>${esc(activity.dependsOn || "—")}</td></tr>`)).join("")}`).join("")}</tbody></table>`;
 }
 
+function renderHclEstateEvidence(document: EngagementDocument) {
+  const assessment = document.readiness.hcl;
+  const path = document.readiness.hclSchedulePath || getHclSchedulePath(document.inventory);
+  const pathDetail = {
+    green: "No blocker or warning was identified in imported RVTools-observable evidence; explicit coverage gaps still require follow-up.",
+    yellow: "Remediation or verification work must be sequenced before the platform gate.",
+    red: "A blocker requires a procurement, migration, or design decision before the platform gate.",
+    unresolved: "Collect RVTools evidence to establish the estate-level HCL delivery path.",
+  }[path];
+  const severityStyle = (severity: string) => ({
+    BLOCKER: "background:#fef2f2;color:#991b1b;border-color:#fecaca",
+    WARNING: "background:#fffbeb;color:#92400e;border-color:#fde68a",
+    ADVISORY: "background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe",
+    INFO: "background:#f8fafc;color:#475569;border-color:#cbd5e1",
+  })[severity] || "background:#f8fafc;color:#475569;border-color:#cbd5e1";
+  const findingRows = assessment.findings.length
+    ? assessment.findings.map(finding => `<tr><td><span class="readiness-status" style="${severityStyle(finding.severity)}">${esc(hclFindingSeverityLabel(finding.severity))}</span><br><small>${esc(finding.checkId)} · ${esc(finding.scope)}</small></td><td><strong>${esc(finding.title)}</strong><br><small>${esc(finding.subject)}${finding.cluster ? ` · ${esc(finding.cluster)}` : ""}</small></td><td>${esc(finding.evidence)}${finding.source ? `<br><small>Source: ${esc(finding.source)}</small>` : ""}</td><td>${esc(finding.remediation)}</td></tr>`).join("")
+    : '<tr><td colspan="4">No detailed estate evidence is available. Upload the applicable RVTools worksheets to evaluate the supported HCL 2.0 check families.</td></tr>';
+  const coverageRows = assessment.coverageGaps.length
+    ? assessment.coverageGaps.map(gap => `<tr><td><strong>${esc(gap.kind.replace(/-/g, " "))}</strong></td><td>${esc(gap.subject)}</td><td>${esc(gap.impact)}</td></tr>`).join("")
+    : '<tr><td colspan="3">No coverage gaps were recorded from the supplied estate evidence.</td></tr>';
+  const blockers = assessment.findings.filter(finding => finding.severity === "BLOCKER").length;
+  const warnings = assessment.findings.filter(finding => finding.severity === "WARNING").length;
+  return `<div class="hardware-table-panel hcl-estate-evidence"><div class="table-heading"><h4>HCL 2.0 Estate Evidence and Findings</h4><p>Every RVTools-observable check family is shown with its evidence, action, and explicit coverage status.</p></div><div class="hardware-snapshot" style="margin-top:12px"><div><span>Estate delivery path</span><strong>${esc(path.toUpperCase())}</strong><small>${esc(pathDetail)}</small></div><div><span>Blockers</span><strong>${number(blockers, "0")}</strong></div><div><span>Warnings</span><strong>${number(warnings, "0")}</strong></div><div><span>Coverage gaps</span><strong>${number(assessment.coverageGaps.length, "0")}</strong></div></div><table class="compact-table hardware-table" style="margin-top:12px"><thead><tr><th>Severity / check</th><th>Finding</th><th>Observed evidence</th><th>Required action</th></tr></thead><tbody>${findingRows}</tbody></table><div class="table-heading" style="margin-top:18px"><h4>Coverage Gaps and Evidence Required</h4><p>A gap is not a passing result; it identifies a check unavailable from the import or supplied offline archive.</p></div><table class="compact-table hardware-table"><thead><tr><th>Gap category</th><th>Subject</th><th>Impact / next evidence</th></tr></thead><tbody>${coverageRows}</tbody></table><p style="margin:12px 0 0;font-size:10px;line-height:1.5;color:#475569">Estate HCL limitation: ${esc(HCL_ESTATE_LIMITATION)}</p></div>`;
+}
+
 function renderObservedInventory(document: EngagementDocument) {
   const inventory = document.inventory;
   const path = getHclSchedulePath(inventory);
@@ -199,7 +225,7 @@ function renderObservedInventory(document: EngagementDocument) {
   const esxiRows = inventory.esxiVersions.length
     ? inventory.esxiVersions.map(row => `<tr><td>${esc(row.version)}</td><td>${row.hosts}</td></tr>`).join("")
     : '<tr><td colspan="2">Not reported</td></tr>';
-  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Current estate and offline HCL evidence</span><h3>Observed host inventory</h3></div><p>Consolidated RVTools host, software, cluster, and memory fields, with a local ESXi 9.1 server-and-CPU snapshot precheck.</p></div><div class="hardware-snapshot"><div><span>${esc(HCL_EVALUATION_VERSION)} delivery path</span><strong>${esc(path.toUpperCase())}</strong><small>${esc(pathDetail)}</small></div><div><span>Observed hosts</span><strong>${number(inventory.hosts)}</strong></div><div><span>Physical cores</span><strong>${number(inventory.physicalCores)}</strong></div><div><span>Host groups</span><strong>${number(groups.size)}</strong></div><div><span>Reported ESXi versions</span><strong>${number(inventory.esxiVersions.length)}</strong></div></div><div class="hardware-tables"><div class="hardware-table-panel"><div class="table-heading"><h4>Reported ESXi Versions</h4><p>Imported from RVTools</p></div><table class="compact-table esxi-table"><thead><tr><th>Reported Version</th><th>Hosts</th></tr></thead><tbody>${esxiRows}</tbody></table></div><div class="hardware-table-panel"><div class="table-heading"><h4>VCF 9.1 Delivery Inventory</h4><p>Consolidated host groups with offline HCL server-and-CPU evidence</p></div><table class="compact-table hardware-table"><thead><tr><th>Observed Host Group</th><th>Estate</th><th>Reported ESXi</th><th>Cluster / Memory</th><th>HCL Server + CPU Evidence</th><th>Delivery Context</th></tr></thead><tbody>${platformRows}</tbody></table><p style="margin:12px 0 0;font-size:10px;line-height:1.5;color:#475569">Offline HCL limitation: ${esc(HCL_OFFLINE_LIMITATION)}</p></div></div></section>`;
+  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Current estate and offline HCL evidence</span><h3>Observed host inventory</h3></div><p>Consolidated RVTools host, software, cluster, and memory fields, with a local ESXi 9.1 server-and-CPU snapshot precheck.</p></div><div class="hardware-snapshot"><div><span>${esc(HCL_EVALUATION_VERSION)} delivery path</span><strong>${esc(path.toUpperCase())}</strong><small>${esc(pathDetail)}</small></div><div><span>Observed hosts</span><strong>${number(inventory.hosts)}</strong></div><div><span>Physical cores</span><strong>${number(inventory.physicalCores)}</strong></div><div><span>Host groups</span><strong>${number(groups.size)}</strong></div><div><span>Reported ESXi versions</span><strong>${number(inventory.esxiVersions.length)}</strong></div></div><div class="hardware-tables"><div class="hardware-table-panel"><div class="table-heading"><h4>Reported ESXi Versions</h4><p>Imported from RVTools</p></div><table class="compact-table esxi-table"><thead><tr><th>Reported Version</th><th>Hosts</th></tr></thead><tbody>${esxiRows}</tbody></table></div><div class="hardware-table-panel"><div class="table-heading"><h4>VCF 9.1 Delivery Inventory</h4><p>Consolidated host groups with offline HCL server-and-CPU evidence</p></div><table class="compact-table hardware-table"><thead><tr><th>Observed Host Group</th><th>Estate</th><th>Reported ESXi</th><th>Cluster / Memory</th><th>HCL Server + CPU Evidence</th><th>Delivery Context</th></tr></thead><tbody>${platformRows}</tbody></table><p style="margin:12px 0 0;font-size:10px;line-height:1.5;color:#475569">Offline HCL limitation: ${esc(HCL_OFFLINE_LIMITATION)}</p></div></div>${renderHclEstateEvidence(document)}</section>`;
 }
 
 function renderPlanSummary(document: EngagementDocument) {

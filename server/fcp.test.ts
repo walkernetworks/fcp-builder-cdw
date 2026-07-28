@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
 import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, FIXED_GANTT_CATEGORIES, getFollowOnReadinessGuidance, getHclSchedulePath, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
-import { assessHclPlatform } from "../shared/hcl";
+import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence } from "../shared/hcl";
 import type { TrpcContext } from "./_core/context";
 import { renderFcpHtml } from "./fcpRenderer";
 import { appRouter } from "./routers";
@@ -921,5 +921,66 @@ describe("planning considerations, exports, and access boundary", () => {
     const caller = appRouter.createCaller(ctx);
     await expect(caller.engagement.list()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(caller.document.html({ title: "No Access", data: createDefaultDocument() })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
+
+describe("HCL 2.0 estate evidence", () => {
+  function detailedHclEvidence() {
+    const evidence = emptyHclInventoryEvidence();
+    evidence.tabs = Object.fromEntries(["vHost", "vNIC", "vHBA", "vCluster", "dvSwitch", "vSCVMK", "vDatastore", "vInfo", "vNetwork", "vSnapshot", "vTools", "vCD", "vUSB"].map(tab => [tab, true]));
+    evidence.hosts = [{ name: "esx01", cluster: "Cluster-A", vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6230", esxiVersion: "8.0.3", socketCount: 2, coresPerSocket: 8, biosVersion: "1.0.0", biosDate: "2020-01-01" }];
+    evidence.nics = [{ host: "esx01", cluster: "Cluster-A", device: "vmnic0", driver: "ixgben", speedMb: 1000, switchName: "vSwitch0" }];
+    evidence.hbas = [{ host: "esx01", cluster: "Cluster-A", device: "vmhba0", model: "Example HBA", driver: "lpfc" }];
+    evidence.clusters = [{ name: "Cluster-A", ha: "disabled", drs: "disabled", evcMode: "intel-haswell", vsan: "enabled" }];
+    evidence.distributedSwitches = [{ name: "vDS-01", version: "6.6", maxMtu: 1500 }];
+    evidence.vmkernels = [{ host: "esx01", cluster: "Cluster-A", device: "vmk1", mtu: 1500, portGroup: "vSAN", vsan: "enabled" }];
+    evidence.datastores = [
+      { name: "vvol-prod", type: "vVol", version: "", capacityMiB: 100_000, freeMiB: 10_000, freePct: 10 },
+      { name: "vmfs-legacy", type: "VMFS", version: "5", capacityMiB: 100_000, freeMiB: 10_000, freePct: 10 },
+      { name: "nfs-legacy", type: "NFS", version: "3", capacityMiB: 100_000, freeMiB: 30_000, freePct: 30 },
+    ];
+    evidence.vmInfo = [{ vm: "app01", guestOs: "Windows Server", hardwareVersion: "vmx-13" }];
+    evidence.vmNetworks = [{ vm: "app01", adapter: "VMXNET2" }];
+    evidence.snapshots = [{ vm: "app01", date: "2025-01-01" }];
+    evidence.tools = [{ vm: "app01", status: "Tools not installed" }];
+    evidence.cdDevices = [{ vm: "app01", connected: "enabled" }];
+    evidence.usbDevices = [{ vm: "app01", connected: "enabled" }];
+    return evidence;
+  }
+
+  it("evaluates every RVTools-observable HCL 2.0 family and discloses unavailable checks", () => {
+    const assessment = assessHclEstate(detailedHclEvidence(), new Date("2026-07-28T00:00:00.000Z"));
+    const checkIds = assessment.findings.map(finding => finding.checkId);
+
+    expect(checkIds).toEqual(expect.arrayContaining([
+      "HW.SERVER_CPU_CPU_NOT_CERTIFIED", "LIC.SOCKET_BELOW_CORE_FLOOR", "NET.NIC_COUNT_LOW", "NET.NIC_SPEED_LOW",
+      "CLU.HA_DISABLED", "CLU.DRS_DISABLED", "CLU.EVC_BASELINE_BELOW_ESXI9", "CLU.SIZE_BELOW_MINIMUM",
+      "NET.VDS_VERSION_TOO_OLD", "NET.VDS_MTU_TOO_LOW", "NET.NO_DISTRIBUTED_SWITCH", "NET.VSAN_VMK_MTU_LOW",
+      "STO.VVOL_DATASTORE", "STO.VMFS_VERSION_OLD", "STO.FREE_SPACE_LOW", "STO.NFS_V3",
+      "VM.DEPRECATED_VNIC", "VM.STALE_SNAPSHOTS", "VM.CDROM_CONNECTED", "VM.USB_PASSTHROUGH", "VM.TOOLS_MISSING", "VM.HW_VERSION_SPREAD", "LIC.CORE_COUNT",
+    ]));
+    expect(assessment.coverageGaps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "missing-dataset", subject: "I/O driver compatibility dataset" }),
+      expect.objectContaining({ kind: "missing-dataset", subject: "Guest OS compatibility dataset" }),
+      expect.objectContaining({ kind: "not-in-rvtools", subject: "TPM 2.0, boot device, and firmware levels" }),
+      expect.objectContaining({ kind: "not-in-rvtools", subject: "PCI vendor/device identifiers" }),
+    ]));
+    expect(assessment.coverageGaps.some(gap => gap.kind === "missing-tab" || gap.kind === "empty-tab")).toBe(false);
+  });
+
+  it("propagates estate-level blockers into readiness and the customer-facing export", () => {
+    const document = createDefaultDocument();
+    document.inventory = { ...document.inventory, hosts: 1, physicalCores: 16, hclEvidence: detailedHclEvidence() };
+    document.readiness = assessReadiness(document.fields, document.inventory);
+    const estateReadiness = document.readiness.items.find(item => item.id === "hcl-2-estate-evidence");
+    const html = renderFcpHtml("HCL Estate Test", document);
+
+    expect(document.readiness.hclSchedulePath).toBe("red");
+    expect(estateReadiness).toMatchObject({ status: "attention", title: "HCL 2.0 Estate Evidence" });
+    expect(estateReadiness?.detail).toContain("blocker");
+    expect(html).toContain("HCL 2.0 Estate Evidence and Findings");
+    expect(html).toContain("vVols datastore present");
+    expect(html).toContain("Coverage Gaps and Evidence Required");
   });
 });

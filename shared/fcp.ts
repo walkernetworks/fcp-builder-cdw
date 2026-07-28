@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getIndustryDiscoveryTemplate, industryDiscoveryPromptBlock } from "./industryDiscovery";
-import { assessHclPlatform, hclSchedulePath, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, type HclSchedulePath } from "./hcl";
+import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, hclAssessmentSchema, hclFindingSchedulePath, hclInventoryEvidenceSchema, hclSchedulePath, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, type HclSchedulePath } from "./hcl";
 
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
 export type TimelineColor = (typeof TIMELINE_COLORS)[number];
@@ -248,6 +248,7 @@ const inventorySummaryV4Schema = inventorySummaryBaseSchema.extend({
 
 export const inventorySummarySchema = inventorySummaryBaseSchema.extend({
   hostModels: z.array(inventoryHostModelSchema),
+  hclEvidence: hclInventoryEvidenceSchema.default(emptyHclInventoryEvidence()),
 });
 export type InventorySummary = z.infer<typeof inventorySummarySchema>;
 
@@ -347,6 +348,8 @@ const readinessV4Schema = z.object({
 
 export const readinessSchema = readinessV4Schema.extend({
   hardwarePlatforms: z.array(hardwarePlatformAssessmentSchema),
+  hcl: hclAssessmentSchema.default({ findings: [], coverageGaps: [] }),
+  hclSchedulePath: z.enum(["green", "yellow", "red", "unresolved"]).default("unresolved"),
 });
 export type ReadinessAssessment = z.infer<typeof readinessSchema>;
 
@@ -483,6 +486,7 @@ export function emptyInventory(): InventorySummary {
     hostModels: [],
     esxiVersions: [],
     guestOperatingSystems: [],
+    hclEvidence: emptyHclInventoryEvidence(),
   };
 }
 
@@ -931,13 +935,20 @@ function withoutLegacyHostPlatformTwoYearLanes(timeline: Timeline): Timeline {
 }
 
 /** Return the most conservative delivery path across observed vHost cohorts. */
-export function getHclSchedulePath(inventory: InventorySummary): HclSchedulePath {
+function getHostPlatformSchedulePath(inventory: InventorySummary): HclSchedulePath {
   const platforms = assessHardwarePlatforms(inventory);
   if (!platforms.length) return "unresolved";
   const paths = platforms.map(platform => hclSchedulePath(platform.hcl.status));
   if (paths.includes("red")) return "red";
   if (paths.includes("yellow")) return "yellow";
   return "green";
+}
+
+/** Return the most conservative delivery path across every RVTools-observable HCL 2.0 finding. */
+export function getHclSchedulePath(inventory: InventorySummary): HclSchedulePath {
+  const platformPath = getHostPlatformSchedulePath(inventory);
+  const hcl = assessHclEstate(inventory.hclEvidence);
+  return hcl.findings.length ? hclFindingSchedulePath(hcl.findings, platformPath) : platformPath;
 }
 
 function scheduleUnits(cadence: TimelineCadence, weeks: number, months: number): number {
@@ -1580,6 +1591,10 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
   });
 
   const hardwarePlatforms = assessHardwarePlatforms(inventory);
+  const hcl = assessHclEstate(inventory.hclEvidence);
+  const hclSchedulePath = getHclSchedulePath(inventory);
+  const hclBlockers = hcl.findings.filter(finding => finding.severity === "BLOCKER");
+  const hclWarnings = hcl.findings.filter(finding => finding.severity === "WARNING");
   const upgradeRequiredPlatforms = hardwarePlatforms.filter(platform => platform.status === "upgrade-required");
   const candidatePlatforms = hardwarePlatforms.filter(platform => platform.status === "candidate");
   const unavailablePlatforms = hardwarePlatforms.filter(platform => platform.status === "unavailable");
@@ -1673,6 +1688,19 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     evidence: `${inventory.clusterProfiles.map(cluster => `${cluster.name}: ${cluster.hosts} hosts`).join("; ") || "No cluster evidence"}${observedMemory.length ? ` | ${observedMemory.join("; ")}` : ""}`,
   });
 
+  items.push({
+    id: "hcl-2-estate-evidence",
+    category: "planning",
+    status: hclBlockers.length || hclWarnings.length ? "attention" : hcl.coverageGaps.length ? "unknown" : hcl.findings.length ? "good" : "unknown",
+    title: "HCL 2.0 Estate Evidence",
+    detail: !hcl.findings.length
+      ? "No detailed RVTools evidence has been captured for the expanded HCL 2.0 checks. Import the available RVTools tabs to evaluate supported check families."
+      : `${hcl.findings.length} RVTools-observable HCL 2.0 finding${hcl.findings.length === 1 ? "" : "s"} were recorded: ${hclBlockers.length} blocker${hclBlockers.length === 1 ? "" : "s"}, ${hclWarnings.length} warning${hclWarnings.length === 1 ? "" : "s"}, and ${hcl.coverageGaps.length} explicit coverage gap${hcl.coverageGaps.length === 1 ? "" : "s"}. The delivery path is ${hclPathLabel(hclSchedulePath)}.`,
+    evidence: hcl.findings.length
+      ? hcl.findings.slice(0, 8).map(finding => `${finding.severity}: ${finding.checkId} — ${finding.subject}`).join("; ")
+      : "No detailed HCL evidence rows were available.",
+  });
+
   const capacityAttention = inventory.highCpuHosts + inventory.highMemoryHosts + inventory.overcommittedDatastores;
   items.push({
     id: "capacity-signals",
@@ -1698,7 +1726,9 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     label: "Inventory-Informed VCF 9.1 Planning Considerations",
     items,
     hardwarePlatforms,
-    disclaimer: `These considerations summarize RVTools-observable inventory for planning. VCF 9.1 host preparation requires a release-note-supported ESX version, a uniform hardware profile, and one hardware vendor for the selected management domain. A candidate, upgrade-required, review-required, unavailable, or offline HCL snapshot result is not a VCF 9.1 certification. ${HCL_OFFLINE_LIMITATION} Confirm the exact server, CPU, NIC, HBA/controller, firmware, driver, storage, vSAN/ReadyNode, stateless-installation status, licensing, sizing, architecture, networking, identity, and implementation requirements through the Broadcom Compatibility Guide, the VCF 9.1 Planning and Preparation Workbook, and the appropriate CDW and vendor processes.`,
+    hcl,
+    hclSchedulePath,
+    disclaimer: `These considerations summarize RVTools-observable inventory for planning. VCF 9.1 host preparation requires a release-note-supported ESX version, a uniform hardware profile, and one hardware vendor for the selected management domain. A candidate, upgrade-required, review-required, unavailable, or offline HCL snapshot result is not a VCF 9.1 certification. ${HCL_OFFLINE_LIMITATION} ${HCL_ESTATE_LIMITATION} Confirm the exact server, CPU, NIC, HBA/controller, firmware, driver, storage, vSAN/ReadyNode, stateless-installation status, licensing, sizing, architecture, networking, identity, and implementation requirements through the Broadcom Compatibility Guide, the VCF 9.1 Planning and Preparation Workbook, and the appropriate CDW and vendor processes.`,
   };
 }
 
@@ -1713,6 +1743,7 @@ function migrateInventoryToV5(inventory: z.infer<typeof inventorySummaryV4Schema
       minimumMemoryGiB: 0,
       maximumMemoryGiB: 0,
     })),
+    hclEvidence: emptyHclInventoryEvidence(),
   };
 }
 

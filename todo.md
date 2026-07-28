@@ -357,3 +357,11 @@
 - [x] Enforce deterministic procurement/remediation buffers, cross-category gates, parallel soft-prerequisite work, and final migration ordering after enabled Cloud and Security work.
 - [x] Synchronize fixed-category behavior, dependency context, workspace controls, and HTML/PDF exports without presenting HCL results as official certification.
 - [x] Add regression coverage across Green, Yellow, and Red HCL paths and relevant module combinations; visually validate, checkpoint, and publish the update.
+
+## Complete HCL 2.0 Assessment Coverage
+
+- [x] Compare every HCL 2.0 assessment check, evidence input, verdict, and recommendation in the supplied package against the current FCP implementation.
+- [x] Identify and classify all omitted non-host compatibility or readiness checks that can be supported from imported RVTools evidence, while marking genuinely unavailable inputs as unknown.
+- [x] Extend the shared evaluation model and fixed-category scheduling logic to include the full supported HCL 2.0 assessment scope without claiming official certification.
+- [x] Surface complete HCL assessment findings, evidence gaps, and scheduling implications in the workspace and HTML/PDF exports.
+- [x] Add regression coverage for the newly surfaced check families, validate the rendered assessment, and checkpoint the published correction.

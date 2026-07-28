@@ -8,8 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { parseRvToolsFiles } from "@/lib/rvtools";
-import { applyScheduleFieldPatch, assessReadiness, calculateEntitlementEndDate, getHclSchedulePath, refreshDerivedDocument, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
-import { HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclStatusLabel } from "@shared/hcl";
+import { applyScheduleFieldPatch, assessReadiness, calculateEntitlementEndDate, emptyInventory, getHclSchedulePath, refreshDerivedDocument, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
+import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, type HclFinding } from "@shared/hcl";
 import { ExternalLink, FileSpreadsheet, HardDrive, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -70,7 +70,7 @@ export function PlanSetup({ document, onChange }: Props) {
   };
 
   const resetInventory = () => {
-    const empty = { ...document.inventory, sourceCount: 0, datacenters: 0, clusters: 0, clusterProfiles: [], hosts: 0, physicalCores: 0, vmCount: 0, poweredOnVms: 0, poweredOffVms: 0, vCpu: 0, vmMemoryGiB: 0, datastoreCount: 0, datastoreCapacityTiB: 0, datastoreUsedTiB: 0, snapshotCount: 0, maintenanceHosts: 0, disconnectedHosts: 0, highCpuHosts: 0, highMemoryHosts: 0, overcommittedDatastores: 0, hostModels: [], esxiVersions: [], guestOperatingSystems: [] };
+    const empty = emptyInventory();
     onChange(refreshDerivedDocument({ ...document, inventorySources: [], inventory: empty, readiness: assessReadiness(fields, empty) }));
   };
 
@@ -130,6 +130,7 @@ export function PlanSetup({ document, onChange }: Props) {
         <TabsContent value="review" className="space-y-5">
           <InventoryCards document={document} />
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Current estate</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Observed host inventory</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Grouped host, software, cluster, and memory fields imported from RVTools.</p></div><Badge variant="outline" className="border-slate-300">RVTools source</Badge></div><HostInventory platforms={document.readiness.hardwarePlatforms} /></section>
+          <HclEstateFindings document={document} />
         </TabsContent>
       </Tabs>
     </div>
@@ -248,4 +249,71 @@ function HostInventory({ platforms }: { platforms: HardwarePlatformAssessment[] 
   };
 
   return <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.14em] text-[#c8102e]">Host inventory and compatibility evidence</p><h3 className="mt-1 text-base font-semibold text-slate-950">VCF 9.1 server HCL precheck</h3><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Each consolidated vHost cohort is checked locally against the supplied offline ESXi 9.1 server snapshot using vendor, model, and CPU-series evidence. Results are planning evidence, not a configuration certification.</p></div><a href="https://compatibilityguide.broadcom.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100">Open configuration reference <ExternalLink className="size-3.5" /></a></div><div className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 ${schedulePath.className}`}><div><p className="text-[10px] font-black uppercase tracking-wider">{HCL_EVALUATION_VERSION} delivery path</p><p className="mt-0.5 text-sm font-semibold">{schedulePath.label} path</p></div><p className="max-w-2xl text-xs leading-5">{schedulePath.detail}</p></div>{rows.length ? <><div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"><div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-emerald-800">Snapshot-supported pairing</p><p className="mt-1 text-lg font-semibold text-emerald-950">{hclCounts.supported} host{hclCounts.supported === 1 ? "" : "s"}</p></div><div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-amber-800">Need confirmation</p><p className="mt-1 text-lg font-semibold text-amber-950">{hclCounts["supported-cpu-unverified"] + hclCounts.review + hclCounts.unknown} host{hclCounts["supported-cpu-unverified"] + hclCounts.review + hclCounts.unknown === 1 ? "" : "s"}</p></div><div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-red-800">CPU or release not listed</p><p className="mt-1 text-lg font-semibold text-red-950">{hclCounts["cpu-not-certified"] + hclCounts["not-supported"]} host{hclCounts["cpu-not-certified"] + hclCounts["not-supported"] === 1 ? "" : "s"}</p></div></div><p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] leading-5 text-slate-500">Offline snapshot captured {snapshotCapturedAt}. {HCL_OFFLINE_LIMITATION}</p><div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="min-w-[1280px] w-full text-left text-xs"><thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2.5">Observed host group</th><th className="px-3 py-2.5">Estate</th><th className="px-3 py-2.5">Reported ESXi</th><th className="px-3 py-2.5">Cluster / memory</th><th className="px-3 py-2.5">HCL server + CPU evidence</th><th className="px-3 py-2.5">Delivery context</th></tr></thead><tbody>{rows.map(group => { const esxiEvidence = Array.from(group.esxiVersions.entries()).map(([version, hosts]) => `${version}: ${hosts}`).join("; ") || "Not reported"; const clusterEvidence = Array.from(group.clusters.entries()).map(([name, hosts]) => `${name}: ${hosts}`).join("; ") || "Not reported"; const memoryEvidence = group.minimumMemoryGiB !== null ? `${group.minimumMemoryGiB.toLocaleString()}–${(group.maximumMemoryGiB || group.minimumMemoryGiB).toLocaleString()} GiB per host` : "Not reported"; const cpuEvidence = Array.from(group.cpuModels).join("; ") || "CPU model not reported"; const checks = Array.from(group.hclChecks.values()); return <tr key={`${group.vendor}-${group.model}`} className="border-t border-slate-100 align-top"><td className="px-3 py-3"><p className="font-semibold text-slate-900">{group.vendor} {group.model}</p><p className="mt-1 text-slate-500">{cpuEvidence}</p></td><td className="px-3 py-3 text-slate-700">{group.hosts} host{group.hosts === 1 ? "" : "s"}<br /><span className="text-slate-500">{group.physicalCores.toLocaleString()} cores</span></td><td className="px-3 py-3 leading-5 text-slate-700">{esxiEvidence}</td><td className="px-3 py-3 leading-5 text-slate-700">{clusterEvidence}<br /><span className="text-slate-500">{memoryEvidence}</span></td><td className="min-w-80 px-3 py-3"><div className="space-y-2">{checks.map(check => <div key={`${check.status}-${check.cpuSeries}-${check.detailUrl}`} className="rounded-md border border-slate-200 bg-slate-50 p-2"><div className="flex flex-wrap items-center gap-1.5"><Badge variant="outline" className={badgeClass(check.status)}>{hclStatusLabel(check.status)}</Badge><span className="text-[11px] text-slate-500">{check.hosts} host{check.hosts === 1 ? "" : "s"} · {check.modelMatchMethod} model match</span></div><p className="mt-1 text-[11px] leading-4 text-slate-700">{check.matchedPartnerName && check.matchedModel ? `${check.matchedPartnerName} ${check.matchedModel}` : "No deterministic HCL model match"}{check.cpuSeries ? ` · ${check.cpuSeries}` : ""}</p>{check.detailUrl && <a href={check.detailUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[#a20f25] hover:underline">Open matched HCL record <ExternalLink className="size-3" /></a>}<details className="mt-1"><summary className="cursor-pointer text-[11px] font-semibold text-slate-600 hover:text-slate-950">Evidence and next action</summary><p className="mt-1 leading-4 text-slate-600">{check.detail}</p>{check.candidateModels.length > 0 && <p className="mt-1 leading-4 text-slate-600">Candidate models: {check.candidateModels.map(candidate => `${candidate.partnerName} ${candidate.model}`).join("; ")}.</p>}<p className="mt-1 leading-4 font-medium text-slate-700">{check.nextAction}</p></details></div>)}</div></td><td className="px-3 py-3 leading-5 text-slate-700">{deliveryContext(group.statuses)}</td></tr>; })}</tbody></table></div></> : <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-4 text-xs leading-5 text-slate-500">No usable host vendor and model data were found in the imported RVTools data.</p>}</section>;
+}
+
+
+function HclEstateFindings({ document }: { document: EngagementDocument }) {
+  const assessment = document.readiness.hcl;
+  const findings = assessment.findings;
+  const blockers = findings.filter(finding => finding.severity === "BLOCKER");
+  const warnings = findings.filter(finding => finding.severity === "WARNING");
+  const advisories = findings.filter(finding => finding.severity === "ADVISORY");
+  const information = findings.filter(finding => finding.severity === "INFO");
+  const path = document.readiness.hclSchedulePath || getHclSchedulePath(document.inventory);
+  const pathStyle = {
+    red: { label: "Red path", detail: "A release-blocking HCL finding needs a procurement, migration, or design decision before the platform gate.", className: "border-red-200 bg-red-50 text-red-900" },
+    yellow: { label: "Yellow path", detail: "HCL remediation or verification work needs to be sequenced before the platform gate.", className: "border-amber-200 bg-amber-50 text-amber-900" },
+    green: { label: "Green path", detail: "No blocker or warning was identified in the imported RVTools-observable evidence; explicit coverage gaps still remain.", className: "border-emerald-200 bg-emerald-50 text-emerald-900" },
+    unresolved: { label: "Unresolved", detail: "Import RVTools evidence to establish an estate-level HCL path.", className: "border-slate-200 bg-slate-100 text-slate-800" },
+  }[path];
+  const findingStyle = (severity: HclFinding["severity"]) => ({
+    BLOCKER: "border-red-200 bg-red-50 text-red-800",
+    WARNING: "border-amber-200 bg-amber-50 text-amber-800",
+    ADVISORY: "border-blue-200 bg-blue-50 text-blue-800",
+    INFO: "border-slate-200 bg-slate-100 text-slate-700",
+  })[severity];
+
+  return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Estate scope</p>
+        <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">HCL 2.0 evidence and findings</h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">The HCL 2.0 precheck evaluates every available RVTools-observable evidence family and records the specific fields that could not be established from the import or supplied offline archive.</p>
+      </div>
+      <div className={`rounded-xl border px-4 py-3 ${pathStyle.className}`}>
+        <p className="text-[10px] font-black uppercase tracking-wider">Estate delivery path</p>
+        <p className="mt-1 text-base font-semibold">{pathStyle.label}</p>
+      </div>
+    </div>
+
+    <p className={`mt-4 rounded-xl border px-4 py-3 text-sm leading-6 ${pathStyle.className}`}>{pathStyle.detail}</p>
+
+    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {[
+        { label: "Blockers", value: blockers.length, className: "border-red-200 bg-red-50 text-red-900" },
+        { label: "Warnings", value: warnings.length, className: "border-amber-200 bg-amber-50 text-amber-900" },
+        { label: "Advisories", value: advisories.length, className: "border-blue-200 bg-blue-50 text-blue-900" },
+        { label: "Coverage gaps", value: assessment.coverageGaps.length, className: "border-slate-200 bg-slate-50 text-slate-900" },
+      ].map(metric => <article key={metric.label} className={`rounded-xl border px-4 py-3 ${metric.className}`}><p className="text-[10px] font-black uppercase tracking-wider">{metric.label}</p><p className="mt-1 text-2xl font-semibold tracking-tight">{metric.value}</p></article>)}
+    </div>
+
+    {findings.length ? <div className="mt-5 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold text-slate-950">Observed findings</h3><p className="text-xs text-slate-500">{findings.length} item{findings.length === 1 ? "" : "s"} derived from imported evidence</p></div>
+      {findings.map(finding => <article key={`${finding.checkId}-${finding.subject}-${finding.evidence}`} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${findingStyle(finding.severity)}`}>{hclFindingSeverityLabel(finding.severity)}</span><span className="font-mono text-[11px] font-semibold text-slate-500">{finding.checkId}</span></div><h4 className="mt-2 text-sm font-semibold text-slate-950">{finding.title}</h4><p className="mt-1 text-xs font-medium text-slate-600">{finding.subject}{finding.cluster ? ` · ${finding.cluster}` : ""}</p></div>
+          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{finding.scope}</span>
+        </div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2"><div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Observed evidence</p><p className="mt-1 text-xs leading-5 text-slate-700">{finding.evidence}</p>{finding.source && <p className="mt-2 text-[11px] leading-4 text-slate-500">Source: {finding.source}</p>}</div><div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Required action</p><p className="mt-1 text-xs leading-5 font-medium text-slate-800">{finding.remediation}</p></div></div>
+      </article>)}
+    </div> : <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm leading-6 text-slate-600">No detailed estate rows are available yet. Upload the applicable RVTools tabs to evaluate the supported HCL 2.0 check families.</div>}
+
+    <details className="mt-5 rounded-xl border border-slate-200 bg-white p-4" open={assessment.coverageGaps.length > 0}>
+      <summary className="cursor-pointer text-sm font-semibold text-slate-950">Coverage gaps and evidence still required ({assessment.coverageGaps.length})</summary>
+      <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-600">A coverage gap is not a passing result. It identifies a check family that was unavailable, empty, absent from the supplied offline archive, or cannot be established with RVTools data.</p>
+      {assessment.coverageGaps.length ? <div className="mt-3 grid gap-2 lg:grid-cols-2">{assessment.coverageGaps.map(gap => <article key={`${gap.kind}-${gap.subject}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{gap.kind.replace(/-/g, " ")}</p><p className="mt-1 text-xs font-semibold text-slate-800">{gap.subject}</p><p className="mt-1 text-xs leading-5 text-slate-600">{gap.impact}</p></article>)}</div> : <p className="mt-3 text-xs text-emerald-700">No coverage gaps were recorded from the supplied estate evidence.</p>}
+    </details>
+
+    <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-[11px] leading-5 text-slate-600">{HCL_ESTATE_LIMITATION}</p>
+  </section>;
 }
