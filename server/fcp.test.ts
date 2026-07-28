@@ -717,11 +717,14 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("VCF 9.1 Delivery Inventory");
     expect(html).toContain("Reported ESXi");
     expect(html).toContain("Migration Waves");
-    expect(html).toContain("Category Group / Workstream Type");
-    expect(html).toContain('class="timeline-category"');
+    expect(html).toContain('<div class="timeline-corner">Category</div>');
+    expect(html).toContain("timeline-category-lane");
+    expect(html).toContain("timeline-category-row");
+    expect(html).toContain('grid-template-rows:repeat(');
     expect(html).toContain('class="sequence-category"');
-    expect(html).toContain('<th colspan="6" style="background:#10233f;color:#fff;text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:8px 10px">Modernize Infrastructure</th>');
-    expect(html).not.toContain("<th>Category</th><th>Workstream type</th>");
+    expect(html).toContain('<th colspan="5" style="background:#10233f;color:#fff;text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:8px 10px">Modernize Infrastructure</th>');
+    expect(html).not.toContain("Category Group / Workstream Type");
+    expect(html).not.toContain("<th>Workstream type</th>");
     expect(html).toContain("Workstream color key");
     expect(html).toContain("Infrastructure Build");
     expect(html).toContain("Implement VCF Networking, NSX Transport, Edge, and Routing");

@@ -46,11 +46,11 @@ function timelineWindow(timeline: Timeline, column: number, boundary = false) {
   return timeline.columns[index] || "Plan End";
 }
 
-function renderBar(activity: TimelineBar, totalColumns: number, workstreamType: TimelineLane["workstreamType"]) {
+function renderBar(activity: TimelineBar, totalColumns: number, workstreamType: TimelineLane["workstreamType"], track = 0) {
   const color = palette[colorForWorkstreamType(workstreamType)] || palette.slate;
   const start = Math.max(1, Math.min(totalColumns, activity.startCol));
   const end = Math.max(start + 1, Math.min(totalColumns + 1, activity.endCol));
-  return `<div class="timeline-bar ${activity.deferred ? "deferred" : ""}" style="grid-column:${start}/${end};background:${color.bg};color:${color.fg};border-color:${color.border}" title="${esc(activity.label)}${activity.outcome ? `&#10;Intended outcome: ${esc(activity.outcome)}` : ""}${activity.dependsOn ? `&#10;${esc(activity.dependsOn)}` : ""}">${activity.milestone ? "◆ " : ""}${esc(activity.label)}</div>`;
+  return `<div class="timeline-bar ${activity.deferred ? "deferred" : ""}" style="grid-column:${start}/${end};grid-row:${track + 1};align-self:center;background:${color.bg};color:${color.fg};border-color:${color.border}" title="${esc(workstreamType)}: ${esc(activity.label)}${activity.outcome ? `&#10;Intended outcome: ${esc(activity.outcome)}` : ""}${activity.dependsOn ? `&#10;${esc(activity.dependsOn)}` : ""}">${activity.milestone ? "◆ " : ""}${esc(activity.label)}</div>`;
 }
 
 function renderWorkstreamLegend() {
@@ -67,12 +67,31 @@ function groupTimelineLanes(lanes: TimelineLane[]) {
   return Array.from(groups, ([category, groupedLanes]) => ({ category, lanes: groupedLanes }));
 }
 
+type CategoryActivity = { lane: TimelineLane; activity: TimelineBar; track: number };
+
+function layoutCategoryActivities(lanes: TimelineLane[]): CategoryActivity[] {
+  const trackEnds: number[] = [];
+  return lanes
+    .flatMap(lane => lane.bars.map(activity => ({ lane, activity })))
+    .sort((left, right) => left.activity.startCol - right.activity.startCol || left.activity.endCol - right.activity.endCol || left.activity.label.localeCompare(right.activity.label))
+    .map(item => {
+      const availableTrack = trackEnds.findIndex(endCol => endCol <= item.activity.startCol);
+      const track = availableTrack === -1 ? trackEnds.length : availableTrack;
+      trackEnds[track] = item.activity.endCol;
+      return { ...item, track };
+    });
+}
+
 function renderTimeline(timeline: Timeline, emptyMessage = "No activities have been scheduled for this portion of the plan.") {
   if (!timeline.lanes.length) return `<div class="timeline-empty">${esc(emptyMessage)}</div>`;
   const columnWidth = timeline.cadence === "week" ? 112 : 92;
   const minimumWidth = 180 + timeline.columns.length * columnWidth;
   const categoryGroups = groupTimelineLanes(timeline.lanes);
-  return `${renderWorkstreamLegend()}<div class="timeline-wrap"><div class="timeline-grid" style="min-width:${minimumWidth}px;grid-template-columns:180px repeat(${timeline.columns.length},minmax(${columnWidth}px,1fr))"><div class="timeline-corner">Category Group / Workstream Type</div>${timeline.columns.map(window => `<div class="timeline-head">${esc(window)}</div>`).join("")}${categoryGroups.map(group => `<div class="timeline-category" style="grid-column:1/${timeline.columns.length + 2};display:flex;align-items:center;justify-content:space-between;background:#eef2f7;color:#10233f;border-top:1px solid #dbe2ea;border-bottom:1px solid #dbe2ea;padding:7px 10px;font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase"><span>${esc(group.category)}</span><small style="font-size:8px;color:#64748b">${group.lanes.length} ${group.lanes.length === 1 ? "workstream" : "workstreams"}</small></div>${group.lanes.map(lane => `<div class="timeline-lane"><strong>${esc(lane.workstreamType)}</strong></div><div class="timeline-row" style="grid-column:2/${timeline.columns.length + 2};grid-template-columns:repeat(${timeline.columns.length},1fr)">${lane.bars.map(activity => renderBar(activity, timeline.columns.length, lane.workstreamType)).join("")}</div>`).join("")}`).join("")}</div></div>`;
+  return `${renderWorkstreamLegend()}<div class="timeline-wrap"><div class="timeline-grid" style="min-width:${minimumWidth}px;grid-template-columns:180px repeat(${timeline.columns.length},minmax(${columnWidth}px,1fr))"><div class="timeline-corner">Category</div>${timeline.columns.map(window => `<div class="timeline-head">${esc(window)}</div>`).join("")}${categoryGroups.map(group => {
+    const activities = layoutCategoryActivities(group.lanes);
+    const trackCount = Math.max(1, ...activities.map(item => item.track + 1));
+    return `<div class="timeline-lane timeline-category-lane"><strong>${esc(group.category)}</strong></div><div class="timeline-row timeline-category-row" style="grid-column:2/${timeline.columns.length + 2};grid-template-columns:repeat(${timeline.columns.length},1fr);grid-template-rows:repeat(${trackCount},minmax(42px,1fr));min-height:${Math.max(64, trackCount * 50 + 10)}px">${activities.map(({ lane, activity, track }) => renderBar(activity, timeline.columns.length, lane.workstreamType, track)).join("")}</div>`;
+  }).join("")}</div></div>`;
 }
 
 function sliceTimeline(timeline: Timeline, startColumn: number, endColumn: number): Timeline {
@@ -101,7 +120,7 @@ function renderTwoYearNotional(document: EngagementDocument) {
 function renderSequence(timeline: Timeline) {
   const unit = timeline.cadence === "week" ? "Week" : "Month";
   const categoryGroups = groupTimelineLanes(timeline.lanes);
-  return `<table><thead><tr><th>Workstream type</th><th>Activity</th><th>Start ${unit}</th><th>End ${unit}</th><th>Intended Outcome</th><th>Sequence Notes</th></tr></thead><tbody>${categoryGroups.map(group => `<tr class="sequence-category"><th colspan="6" style="background:#10233f;color:#fff;text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:8px 10px">${esc(group.category)}</th></tr>${group.lanes.flatMap(lane => lane.bars.map(activity => `<tr><td>${esc(lane.workstreamType)}</td><td><span class="dot" style="background:${(palette[colorForWorkstreamType(lane.workstreamType)] || palette.slate).bg}"></span>${esc(activity.label)}</td><td>${esc(timelineWindow(timeline, activity.startCol))}</td><td>${esc(timelineWindow(timeline, activity.endCol, true))}</td><td>${esc(activity.outcome || "—")}</td><td>${esc(activity.dependsOn || "—")}</td></tr>`)).join("")}`).join("")}</tbody></table>`;
+  return `<table><thead><tr><th>Activity</th><th>Start ${unit}</th><th>End ${unit}</th><th>Intended Outcome</th><th>Sequence Notes</th></tr></thead><tbody>${categoryGroups.map(group => `<tr class="sequence-category"><th colspan="5" style="background:#10233f;color:#fff;text-align:left;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:8px 10px">${esc(group.category)}</th></tr>${group.lanes.flatMap(lane => lane.bars.map(activity => `<tr><td><span class="dot" style="background:${(palette[colorForWorkstreamType(lane.workstreamType)] || palette.slate).bg}" title="${esc(lane.workstreamType)}" aria-label="${esc(lane.workstreamType)}"></span>${esc(activity.label)}</td><td>${esc(timelineWindow(timeline, activity.startCol))}</td><td>${esc(timelineWindow(timeline, activity.endCol, true))}</td><td>${esc(activity.outcome || "—")}</td><td>${esc(activity.dependsOn || "—")}</td></tr>`)).join("")}`).join("")}</tbody></table>`;
 }
 
 function renderObservedInventory(document: EngagementDocument) {

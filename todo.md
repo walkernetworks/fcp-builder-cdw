@@ -317,3 +317,12 @@
 - [x] Group consecutive workstreams under one category label in the Adoption Timeline editor, table, HTML export, and PDF export.
 - [x] Preserve visible individual workstream type and activity labels within each category group.
 - [x] Add regression coverage, validate the grouped timeline output, and checkpoint the presentation update.
+
+## Single Category Row with Color-Coded Workstream Bars
+
+- [x] Trace the grouped timeline rendering and editing code that currently emits one row for each workstream type.
+- [x] Render exactly one left-hand row per category, with multiple independently color-coded workstream bars in that shared row.
+- [x] Remove the left-hand workstream-type column while retaining the workstream color legend and accessible activity labels.
+- [x] Update workspace, HTML, and PDF activity-sequence presentation to show workstream types through bar colors rather than repeated timeline rows.
+- [x] Add regression coverage, visually validate the corrected category-row output, and checkpoint the update.
+- [x] Match the supplied structural reference: one category swimlane, a shared time grid, and multiple independently positioned colored bars without using the reference image’s sample data.
