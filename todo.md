@@ -302,3 +302,11 @@
 - [x] Trace why an authenticated PDF export is presented with a `.txt` extension.
 - [x] Correct the client and server filename/content-disposition behavior so PDF downloads use a safe `.pdf` filename.
 - [x] Add regression coverage, validate the download response, and checkpoint the fix.
+
+## Implementation-Led VCF Delivery Plan and Opening-Page PDF Refinement
+
+- [x] Research credible VCF implementation service workstreams and sequence design only within the opening weeks.
+- [x] Inspect the supplied Clifton Larsen Allen PDF and isolate the first-page and early-page formatting defects.
+- [x] Replace design-heavy adoption-plan activities with time-boxed design, platform implementation, migration, operationalization, and handover workstreams.
+- [x] Repair the opening-page PDF hierarchy, spacing, and pagination while preserving the customer-facing content.
+- [x] Add regression coverage, validate rendered HTML/PDF outputs, and checkpoint the implementation-led update.

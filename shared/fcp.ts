@@ -610,9 +610,10 @@ function inferredLaneMetadata(laneId: string): TimelineLaneMetadata | null {
   const id = laneId.replace(/^lane-two-year-year-one-/, "");
   if (id === "lane-platform-plan") return DEFAULT_TIMELINE_LANE_METADATA;
   if (id === "lane-hardware-refresh") return { category: "Hardware Refresh", workstreamType: "Infrastructure Build" };
+  if (id === "lane-management-domain" || id === "lane-workload-domain") return { category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" };
   if (id === "lane-upgrade-services") return { category: "Modernize Infrastructure", workstreamType: "Migration Waves" };
   if (id === "lane-vcf-networking-nsx") return { category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" };
-  if (id === "lane-platform-design") return { category: "Modernize Cloud", workstreamType: "Operating Model / Platform" };
+  if (id === "lane-platform-design") return { category: "Operations", workstreamType: "Operating Model / Platform" };
   const capabilityMatch = id.match(/^lane-(?:follow-on-)?(operations|automation|networking|security|resilience|kubernetes|private-ai)(?:-\d+)?$/);
   return capabilityMatch ? capabilityLaneMetadata(capabilityMatch[1] as Capability) : null;
 }
@@ -646,56 +647,56 @@ export function normalizeTimelineTaxonomy(timeline: Timeline): Timeline {
 
 function upgradeServiceLabel(path: UpgradePath): string {
   const labels: Record<UpgradePath, string> = {
-    undecided: "VCF 9.1 Upgrade Services Scope and Runbook",
-    "in-place": "VCF 9.1 In-Place Upgrade Services",
-    "new-build": "VCF 9.1 New-Build and Converge Services",
-    "migration-waves": "VCF 9.1 Migration Wave Services",
-    "design-only": "VCF 9.1 Upgrade Architecture and Runbook",
+    undecided: "Execute Confirmed VCF Delivery Path and Runbook",
+    "in-place": "Execute VCF 9.1 In-Place Upgrade Waves",
+    "new-build": "Deploy VCF 9.1 New Build and Converge Workloads",
+    "migration-waves": "Execute VCF 9.1 Migration Waves",
+    "design-only": "Close Architecture Decisions and Implementation Runbook",
   };
   return labels[path];
 }
 
 const focusLabels: Record<Capability, Record<string, string>> = {
   operations: {
-    lifecycle: "Lifecycle and Certificate Ownership",
-    observability: "Health, Logs, and Diagnostics Observability",
-    "capacity-cost": "Capacity and Cost Visibility",
-    "custom-dashboards": "Custom Operations Dashboards",
-    "identity-certificates": "Identity, Certificates, and Password Operations",
-    "event-integration": "Event and Incident Integration",
+    lifecycle: "Configure VCF Lifecycle, Certificates, and Change Controls",
+    observability: "Deploy VCF Operations Health, Logs, and Diagnostics",
+    "capacity-cost": "Baseline Capacity and Cost Visibility",
+    "custom-dashboards": "Publish Operational Dashboards and Service Measures",
+    "identity-certificates": "Implement Identity, Credential, and Certificate Operations",
+    "event-integration": "Integrate Events with Incident and Escalation Workflows",
   },
   automation: {
-    "vm-self-service": "VM Self-Service Catalog",
-    "infrastructure-as-code": "Infrastructure-as-Code Patterns",
-    "day-2-automation": "Day-2 Automation",
-    governance: "Organization and Policy Governance",
-    "application-provisioning": "Application Platform Provisioning",
+    "vm-self-service": "Launch a Governed VM Self-Service Catalog",
+    "infrastructure-as-code": "Build Infrastructure-as-Code Blueprints and Release Controls",
+    "day-2-automation": "Implement Day-2 Remediation and Maintenance Automation",
+    governance: "Configure Tenant, Quota, and Policy Governance",
+    "application-provisioning": "Onboard the First Application Team to the Platform",
   },
   networking: {
-    "physical-fabric": "Physical Fabric, VLAN, and MTU Design",
-    "edge-cluster-routing": "NSX Edge Cluster and Routing Design",
-    "overlay-transport": "NSX Overlay Transport and Host Connectivity",
-    "network-operations": "VCF Networking and NSX Operating Model",
+    "physical-fabric": "Implement Physical Fabric, VLAN, and MTU Prerequisites",
+    "edge-cluster-routing": "Deploy NSX Edge Cluster and North-South Routing",
+    "overlay-transport": "Roll Out NSX Overlay Transport and Host Connectivity",
+    "network-operations": "Handover VCF Networking and NSX Operations",
   },
   security: {
-    segmentation: "Segmentation and Security Policy",
-    "identity-rbac": "Identity and RBAC Design",
-    "hardening-compliance": "Hardening and Compliance Controls",
+    segmentation: "Implement Segmentation and Security Policy",
+    "identity-rbac": "Implement Identity and RBAC Controls",
+    "hardening-compliance": "Apply Hardening and Compliance Controls",
   },
   resilience: {
-    "recovery-architecture": "Recovery Architecture",
-    "recovery-exercises": "Recovery Exercise and Runbook",
-    "cyber-recovery": "Cyber-Recovery Design",
+    "recovery-architecture": "Implement Recovery Architecture",
+    "recovery-exercises": "Execute Recovery Exercise and Runbook Validation",
+    "cyber-recovery": "Implement Cyber-Recovery Capabilities",
   },
   kubernetes: {
-    "workload-domains": "Workload Domain and Supervisor Design",
-    "platform-operations": "Kubernetes Platform Operations",
-    "developer-experience": "Developer Experience and Guardrails",
+    "workload-domains": "Create Workload Domain and Enable Supervisor",
+    "platform-operations": "Operationalize Kubernetes Platform Services",
+    "developer-experience": "Onboard Developer Experience Guardrails",
   },
   "private-ai": {
-    "gpu-capacity": "AI Capacity and GPU Planning",
-    "ai-guardrails": "Private AI Guardrails",
-    "pilot-onboarding": "Private AI Pilot Onboarding",
+    "gpu-capacity": "Implement AI Capacity and GPU Enablement",
+    "ai-guardrails": "Apply Private AI Guardrails",
+    "pilot-onboarding": "Onboard the First Private AI Pilot",
   },
 };
 
@@ -714,8 +715,8 @@ function selectedFocuses(fields: MinimalFields, capability: Capability): string[
 
 function activityLabelsForCapability(fields: MinimalFields, capability: Capability): string[] {
   const focuses = selectedFocuses(fields, capability);
-  if (!focuses.length) return [`${capabilityTitle(capability)} Design`];
-  return focuses.map(focus => `${focusLabels[capability][focus] || capabilityTitle(capability)} Plan`);
+  if (!focuses.length) return [`${capabilityTitle(capability)} Implementation`];
+  return focuses.map(focus => focusLabels[capability][focus] || `${capabilityTitle(capability)} Implementation`);
 }
 
 const legacyHostPlatformLanePrefix = "lane-host-platform-";
@@ -729,18 +730,18 @@ function buildPlatformInventoryActivity(inventory: InventorySummary): PlatformIn
 
   if (!platforms.length) {
     return {
-      label: "VCF 9.1 Platform Inventory",
+      label: "Weeks 1–2: Mobilize and Validate VCF Delivery Inputs",
       color: "amber",
-      dependsOn: "Upload RVTools vHost data with server make, model, CPU, adapters, storage-controller, and ESXi fields before platform design begins.",
-      outcome: "Consolidate the host inventory and configuration details used in delivery design.",
+      dependsOn: "Upload RVTools vHost data with server make, model, CPU, adapters, storage-controller, and ESXi fields; confirm the bill of materials and delivery prerequisites before platform deployment begins.",
+      outcome: "Time-box the delivery baseline, then release the management-domain, networking, workload-domain, migration, and handover workstreams for execution.",
     };
   }
 
   return {
-    label: "VCF 9.1 Platform Inventory and Delivery Plan",
+    label: "Weeks 1–2: Mobilize and Freeze VCF Delivery Baseline",
     color: "teal",
-    dependsOn: `RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${observedModels || platforms.length} host model${(observedModels || platforms.length) === 1 ? "" : "s"}. Consolidate the server configuration, CPU, NIC, storage controller, firmware, driver, and vSAN/ReadyNode details in the delivery plan before Upgrade Services begins.`,
-    outcome: "Create one delivery-owned host inventory that groups identical platforms and records the delivery path for each model before service execution.",
+    dependsOn: `RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${observedModels || platforms.length} host model${(observedModels || platforms.length) === 1 ? "" : "s"}. Confirm server configuration, CPU, NIC, storage controller, firmware, driver, vSAN/ReadyNode details, bill of materials, and implementation prerequisites before platform deployment begins.`,
+    outcome: "Time-box the delivery baseline, then release the management-domain, networking, workload-domain, migration, and handover workstreams for execution.",
   };
 }
 
@@ -770,23 +771,66 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const columns = primaryColumns(fields);
   const count = columns.length;
   const cadence = fields.adoptionCadence;
-  const upgradeDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.36)));
-  const inventoryDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.22)));
-  const designDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.3)));
-  const networkingDuration = Math.max(2, Math.min(count, Math.ceil(count * 0.42)));
-  const [inventoryStart, inventoryEnd] = boundedRange(1, inventoryDuration, count);
-  const [upgradeStart, upgradeEnd] = boundedRange(Math.min(count, inventoryEnd), upgradeDuration, count);
-  const [networkingStart, networkingEnd] = boundedRange(Math.min(count, inventoryEnd), networkingDuration, count);
-  const [platformStart, platformEnd] = boundedRange(Math.min(count, Math.max(inventoryEnd, upgradeStart)), designDuration, count);
+  const mobilizationDuration = cadence === "week" ? Math.min(2, count) : 1;
+  const managementDomainDuration = cadence === "week" ? Math.max(3, Math.min(6, Math.ceil(count * 0.2))) : Math.max(2, Math.min(3, Math.ceil(count * 0.25)));
+  const networkingDuration = cadence === "week" ? Math.max(4, Math.min(8, Math.ceil(count * 0.28))) : Math.max(2, Math.min(3, Math.ceil(count * 0.32)));
+  const workloadDomainDuration = cadence === "week" ? Math.max(4, Math.min(8, Math.ceil(count * 0.3))) : Math.max(2, Math.min(3, Math.ceil(count * 0.3)));
+  const migrationDuration = cadence === "week" ? Math.max(2, Math.min(10, Math.ceil(count * 0.34))) : Math.max(1, Math.min(6, Math.ceil(count * 0.4)));
+  const handoverDuration = cadence === "week" ? Math.max(2, Math.min(8, Math.ceil(count * 0.28))) : Math.max(1, Math.min(4, Math.ceil(count * 0.28)));
+
+  const [mobilizationStart, mobilizationEnd] = boundedRange(1, mobilizationDuration, count);
+  const [managementStart, managementEnd] = boundedRange(Math.min(count, mobilizationEnd), managementDomainDuration, count);
+  const [networkingStart, networkingEnd] = boundedRange(Math.min(count, mobilizationEnd), networkingDuration, count);
+  const workloadStart = Math.min(count, Math.max(managementStart + Math.floor(managementDomainDuration * 0.65), networkingStart + Math.floor(networkingDuration * 0.65)));
+  const [workloadDomainStart, workloadDomainEnd] = boundedRange(workloadStart, workloadDomainDuration, count);
+  const [migrationStart, migrationEnd] = boundedRange(Math.min(count, workloadDomainEnd), migrationDuration, count);
+  const [handoverStart, handoverEnd] = boundedRange(Math.min(count, Math.max(workloadDomainEnd - 1, migrationStart)), handoverDuration, count);
   const platformInventory = buildPlatformInventoryActivity(inventory);
   const lanes: TimelineLane[] = [
-    { id: "lane-platform-plan", name: "Governance", ...DEFAULT_TIMELINE_LANE_METADATA, bars: [bar("bar-platform-plan", inventoryStart, inventoryEnd, colorForWorkstreamType("Governance"), platformInventory.label, false, false, platformInventory.dependsOn, platformInventory.outcome)] },
-    { id: "lane-upgrade-services", name: "Migration Waves", category: "Modernize Infrastructure", workstreamType: "Migration Waves", bars: [bar("bar-vcf-upgrade-services", upgradeStart, upgradeEnd, colorForWorkstreamType("Migration Waves"), upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, "Start after the platform inventory and delivery plan records the path for every observed host group.")] },
-    { id: "lane-vcf-networking-nsx", name: "Infrastructure Build", category: "Modernize Infrastructure", workstreamType: "Infrastructure Build", bars: [bar("bar-vcf-networking-nsx", networkingStart, networkingEnd, colorForWorkstreamType("Infrastructure Build"), "VCF Networking and NSX Foundation", false, false, "Begin after the platform inventory establishes the delivery path; coordinate physical-fabric, NSX edge, overlay, and routing dependencies with the network team.", "Establish the VCF networking and NSX foundation independently from security services, including physical-fabric alignment, Edge Cluster planning, overlay transport, and the networking operating model.")] },
-    { id: "lane-platform-design", name: "Operating Model / Platform", category: "Modernize Cloud", workstreamType: "Operating Model / Platform", bars: [bar("bar-platform-design", platformStart, platformEnd, colorForWorkstreamType("Operating Model / Platform"), "VCF Platform Design") ] },
+    {
+      id: "lane-platform-plan",
+      name: "Governance",
+      ...DEFAULT_TIMELINE_LANE_METADATA,
+      bars: [bar("bar-platform-plan", mobilizationStart, mobilizationEnd, colorForWorkstreamType("Governance"), platformInventory.label, false, false, platformInventory.dependsOn, platformInventory.outcome)],
+    },
+    {
+      id: "lane-management-domain",
+      name: "Infrastructure Build",
+      category: "Modernize Infrastructure",
+      workstreamType: "Infrastructure Build",
+      bars: [bar("bar-management-domain", managementStart, managementEnd, colorForWorkstreamType("Infrastructure Build"), "Deploy VCF Management Domain and Core Control Plane", false, false, "Begin after the two-week mobilization confirms the delivery baseline, bill of materials, and platform prerequisites.", "Deploy the VCF management domain and core control plane, then validate platform health and delivery readiness.")],
+    },
+    {
+      id: "lane-vcf-networking-nsx",
+      name: "Infrastructure Build",
+      category: "Modernize Infrastructure",
+      workstreamType: "Infrastructure Build",
+      bars: [bar("bar-vcf-networking-nsx", networkingStart, networkingEnd, colorForWorkstreamType("Infrastructure Build"), "Implement VCF Networking, NSX Transport, Edge, and Routing", false, false, "Coordinate physical-fabric VLANs, MTU, routing handoffs, Edge placement, and workload-domain host preparation with the network team.", "Implement the VCF networking and NSX foundation independently from security services, including physical-fabric prerequisites, transport, Edge, overlay, and north-south routing.")],
+    },
+    {
+      id: "lane-workload-domain",
+      name: "Infrastructure Build",
+      category: "Modernize Infrastructure",
+      workstreamType: "Infrastructure Build",
+      bars: [bar("bar-workload-domain", workloadDomainStart, workloadDomainEnd, colorForWorkstreamType("Infrastructure Build"), "Create or Import Workload Domain and Prepare Clusters", false, false, "Start after management-domain health and the required network path are validated; use the confirmed new-build, convergence, or import pathway.", "Create or import the workload domain, prepare clusters, and validate the platform path used by subsequent migration or onboarding work.")],
+    },
+    {
+      id: "lane-upgrade-services",
+      name: "Migration Waves",
+      category: "Modernize Infrastructure",
+      workstreamType: "Migration Waves",
+      bars: [bar("bar-vcf-upgrade-services", migrationStart, migrationEnd, colorForWorkstreamType("Migration Waves"), upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, "Begin after the workload domain is accepted and wave scope, application dependencies, rollback, and change windows are confirmed.", "Execute the confirmed VCF upgrade, convergence, or migration pathway in controlled waves with validation and rollback readiness.")],
+    },
+    {
+      id: "lane-platform-design",
+      name: "Operating Model / Platform",
+      category: "Operations",
+      workstreamType: "Operating Model / Platform",
+      bars: [bar("bar-platform-design", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Operationalize Lifecycle, Monitoring, Backup, and Handover", false, false, "Run alongside final migration waves after the VCF platform services are available for operations validation.", "Establish the initial operating cadence, lifecycle procedures, monitoring, backup, support ownership, and handover evidence for the delivered platform.")],
+    },
   ];
 
-  const capabilityStart = Math.max(2, Math.min(count, Math.ceil(count * 0.45)));
+  const capabilityStart = Math.max(2, Math.min(count, Math.max(workloadDomainStart, managementEnd)));
   const priorityStagger = Math.max(0, Math.floor(count * 0.05));
   fields.priorities.forEach((priority, priorityIndex) => {
     const labels = activityLabelsForCapability(fields, priority);
@@ -1091,7 +1135,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
     ? `${followOnCount} selected follow-on service${followOnCount === 1 ? " is" : "s are"} included in the second-year delivery sequence`
     : "the standard second-year governance, platform operating model, and handover sequence is included";
   const platformInventorySummary = buildPlatformInventoryActivity(inventory).outcome;
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Platform inventory and delivery planning begins at the start of the target window and maintains one consolidated host inventory and delivery path before Upgrade Services begins. ${platformInventorySummary} The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the operational sequence, while months 13–24 continue with the standard governance, platform, and handover sequence plus any selected services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Design and discovery are deliberately time-boxed to the first two weeks, then the plan moves into management-domain deployment, VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover. ${platformInventorySummary} The Two-Year Notional is a continuous 24-month view: months 1–12 mirror the implementation sequence, while months 13–24 continue governance, lifecycle operations, and selected expansion services. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -1443,12 +1487,31 @@ function normalizeRawTimelineTaxonomy(value: unknown): unknown {
   };
 }
 
+function needsImplementationTimelineRebaseline(timeline: Timeline): boolean {
+  const requiredInfrastructureLanes = ["lane-management-domain", "lane-workload-domain"];
+  return requiredInfrastructureLanes.some(laneId => !timeline.lanes.some(lane => lane.id === laneId));
+}
+
 export function migrateDocument(value: unknown): EngagementDocument {
   const normalizedValue = normalizeRawTimelineTaxonomy(value);
   const current = engagementDocumentV10Schema.safeParse(normalizedValue);
   if (current.success) {
-    const normalizedAdoptionTimeline = normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory));
     const generated = buildAdoptionPlans(current.data.fields, current.data.inventory);
+    if (needsImplementationTimelineRebaseline(current.data.adoptionTimeline)) {
+      return {
+        ...current.data,
+        readiness: assessReadiness(
+          current.data.fields,
+          current.data.inventory,
+          current.data.inventorySources.flatMap(source => source.warnings),
+        ),
+        adoptionTimeline: generated.adoptionTimeline,
+        twoYearPlan: generated.twoYearPlan,
+        rationale: generated.rationale,
+      };
+    }
+
+    const normalizedAdoptionTimeline = normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory));
     const adoptionTimeline = normalizedAdoptionTimeline.lanes.some(lane => lane.id === "lane-vcf-networking-nsx")
       ? normalizedAdoptionTimeline
       : { ...normalizedAdoptionTimeline, lanes: [...normalizedAdoptionTimeline.lanes, ...generated.adoptionTimeline.lanes.filter(lane => lane.id === "lane-vcf-networking-nsx")] };
