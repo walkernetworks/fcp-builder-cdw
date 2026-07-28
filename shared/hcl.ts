@@ -1,6 +1,7 @@
 import { HCL_SERVER_CATALOG, HCL_SNAPSHOT, type HclCatalogRecord } from "./hclCatalog";
 export { HCL_SNAPSHOT };
 
+export const HCL_EVALUATION_VERSION = "2.0.0" as const;
 export const HCL_TARGET_RELEASE = "ESXi 9.1" as const;
 const TARGET_RELEASE_MASK = 2;
 const DETAIL_URL = "https://compatibilityguide.broadcom.com/detail?programId=server&productId=";
@@ -14,6 +15,19 @@ export const HCL_EVALUATION_STATUSES = [
   "unknown",
 ] as const;
 export type HclEvaluationStatus = (typeof HCL_EVALUATION_STATUSES)[number];
+
+/**
+ * HCL 2.0 scheduling paths are deliberately conservative. They sequence delivery
+ * work from the offline evidence only; they do not certify a complete VCF build.
+ */
+export const HCL_SCHEDULE_PATHS = ["green", "yellow", "red", "unresolved"] as const;
+export type HclSchedulePath = (typeof HCL_SCHEDULE_PATHS)[number];
+
+export function hclSchedulePath(status: HclEvaluationStatus): HclSchedulePath {
+  if (status === "supported") return "green";
+  if (status === "supported-cpu-unverified" || status === "review" || status === "unknown") return "yellow";
+  return "red";
+}
 
 export const HCL_MODEL_MATCH_METHODS = ["exact", "core", "compact", "token", "fuzzy", "none"] as const;
 export type HclModelMatchMethod = (typeof HCL_MODEL_MATCH_METHODS)[number];
@@ -461,4 +475,4 @@ export function hclStatusSummary(status: HclEvaluationStatus): string {
   }[status];
 }
 
-export const HCL_OFFLINE_LIMITATION = `This is an offline server-and-CPU reference using a snapshot captured ${HCL_SNAPSHOT.capturedAt}. It does not validate NICs, HBAs/controllers, firmware, drivers, BIOS, OEM images, storage, vSAN/ReadyNode, ESXi builds, licensing, topology, or other configuration requirements; confirm the complete configuration in the Broadcom Compatibility Guide and vendor processes.`;
+export const HCL_OFFLINE_LIMITATION = `This HCL ${HCL_EVALUATION_VERSION} offline server-and-CPU reference uses a snapshot captured ${HCL_SNAPSHOT.capturedAt}. It does not validate NICs, HBAs/controllers, firmware, drivers, BIOS, OEM images, storage, vSAN/ReadyNode, ESXi builds, licensing, topology, or other configuration requirements; confirm the complete configuration in the Broadcom Compatibility Guide and vendor processes.`;

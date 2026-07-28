@@ -348,3 +348,12 @@
 - [x] Generate the Notional timeline from the actual service start date through the entitlement end date, preserving a 12-month entitlement term when that is the confirmed customer term.
 - [x] Synchronize workspace, plan rationale, HTML/PDF exports, and migration behavior with the entitlement-aligned horizon.
 - [x] Add regression coverage for service starts that differ from entitlement starts, validate the visible timeline, and checkpoint the published correction.
+
+## Fixed Five-Category HCL-Driven Gantt
+
+- [x] Inspect the supplied VCF HCL 2.0 package and reconcile its evaluation statuses, evidence fields, and safeguards with the current offline HCL integration.
+- [x] Preserve exactly five immutable Gantt category rows: Program Management & Governance, Modernize Infrastructure, Operations, Modernize Cloud, and Modernize Security & Resilience.
+- [x] Populate category tasks dynamically from HCL path and confirmed module selections, including Green baseline alignment, Yellow remediation, and Red procurement/greenfield provisioning paths.
+- [x] Enforce deterministic procurement/remediation buffers, cross-category gates, parallel soft-prerequisite work, and final migration ordering after enabled Cloud and Security work.
+- [x] Synchronize fixed-category behavior, dependency context, workspace controls, and HTML/PDF exports without presenting HCL results as official certification.
+- [x] Add regression coverage across Green, Yellow, and Red HCL paths and relevant module combinations; visually validate, checkpoint, and publish the update.

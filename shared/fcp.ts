@@ -1,20 +1,38 @@
 import { z } from "zod";
 import { getIndustryDiscoveryTemplate, industryDiscoveryPromptBlock } from "./industryDiscovery";
-import { assessHclPlatform, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT } from "./hcl";
+import { assessHclPlatform, hclSchedulePath, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, type HclSchedulePath } from "./hcl";
 
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
 export type TimelineColor = (typeof TIMELINE_COLORS)[number];
 
-export const TIMELINE_CATEGORIES = [
+export const FIXED_GANTT_CATEGORIES = [
   "Program Management & Governance",
-  "Hardware Refresh",
-  "Modernize Cloud",
-  "Operations",
   "Modernize Infrastructure",
-  "Modernize Security & Reliance",
-  "Modernize App Platform & AI",
+  "Operations",
+  "Modernize Cloud",
+  "Modernize Security & Resilience",
 ] as const;
+/** The Gantt always renders these five categories, in this exact order. */
+export const TIMELINE_CATEGORIES = FIXED_GANTT_CATEGORIES;
 export type TimelineCategory = (typeof TIMELINE_CATEGORIES)[number];
+
+const legacyTimelineCategoryAliases: Record<string, TimelineCategory> = {
+  "program management & governance": "Program Management & Governance",
+  "hardware refresh": "Modernize Infrastructure",
+  "modernize infrastructure": "Modernize Infrastructure",
+  "operations": "Operations",
+  "modernize cloud": "Modernize Cloud",
+  "modernize app platform & ai": "Modernize Cloud",
+  "modernize security & reliance": "Modernize Security & Resilience",
+  "modernize security & resilience": "Modernize Security & Resilience",
+};
+
+function normalizePersistedTimelineCategory(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  return legacyTimelineCategoryAliases[value.trim().replace(/\s+/g, " ").toLowerCase()] || value;
+}
+
+const timelineCategorySchema = z.preprocess(normalizePersistedTimelineCategory, z.enum(TIMELINE_CATEGORIES));
 
 export const WORKSTREAM_TYPES = [
   "Governance",
@@ -78,7 +96,7 @@ export const timelineBarSchema = z.object({
 export const timelineLaneSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
-  category: z.enum(TIMELINE_CATEGORIES).default("Program Management & Governance"),
+  category: timelineCategorySchema.default("Program Management & Governance"),
   workstreamType: workstreamTypeSchema.default("Governance"),
   bars: z.array(timelineBarSchema),
 });
@@ -122,6 +140,7 @@ const securityFocusSchema = z.enum(["segmentation", "identity-rbac", "hardening-
 const resilienceFocusSchema = z.enum(["recovery-architecture", "recovery-exercises", "cyber-recovery"]);
 const kubernetesFocusSchema = z.enum(["workload-domains", "platform-operations", "developer-experience"]);
 const privateAiFocusSchema = z.enum(["gpu-capacity", "ai-guardrails", "pilot-onboarding"]);
+const softPrerequisiteSchema = z.enum(["dns-ntp", "ip-pools", "tor-switch-design"]);
 
 const adoptionDetailsV6Schema = z.object({
   upgradePath: upgradePathSchema,
@@ -132,6 +151,8 @@ const adoptionDetailsV6Schema = z.object({
   resilience: z.array(resilienceFocusSchema).max(3),
   kubernetes: z.array(kubernetesFocusSchema).max(3),
   privateAi: z.array(privateAiFocusSchema).max(3),
+  /** Optional Red-path work that can run in parallel with procurement. */
+  softPrerequisites: z.array(softPrerequisiteSchema).max(3).default([]),
   notes: z.string().max(5000),
 });
 
@@ -423,7 +444,19 @@ export const engagementDocumentV10Schema = z.object({
   twoYearPlan: timelineSchema,
   rationale: z.string(),
 });
-export type EngagementDocument = z.infer<typeof engagementDocumentV10Schema>;
+
+/** V11 fixes the primary Gantt taxonomy to five HCL-driven category rows. */
+export const engagementDocumentV11Schema = z.object({
+  version: z.literal(11),
+  fields: minimalFieldsSchema,
+  inventorySources: z.array(inventorySourceSchema),
+  inventory: inventorySummarySchema,
+  readiness: readinessSchema,
+  adoptionTimeline: timelineSchema,
+  twoYearPlan: timelineSchema,
+  rationale: z.string(),
+});
+export type EngagementDocument = z.infer<typeof engagementDocumentV11Schema>;
 
 export function emptyInventory(): InventorySummary {
   return {
@@ -463,6 +496,7 @@ export function createDefaultAdoptionDetails(): AdoptionDetails {
     resilience: [],
     kubernetes: [],
     privateAi: [],
+    softPrerequisites: [],
     notes: "",
     industryTemplate: "general-enterprise",
   };
@@ -669,10 +703,10 @@ function capabilityLaneMetadata(capability: Capability): TimelineLaneMetadata {
     operations: { category: "Operations", workstreamType: "Operating Model / Platform" },
     automation: { category: "Modernize Cloud", workstreamType: "Consume / Handover" },
     networking: { category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" },
-    security: { category: "Modernize Security & Reliance", workstreamType: "Security & Resiliency" },
-    resilience: { category: "Modernize Security & Reliance", workstreamType: "Security & Resiliency" },
-    kubernetes: { category: "Modernize App Platform & AI", workstreamType: "Consume / Handover" },
-    "private-ai": { category: "Modernize App Platform & AI", workstreamType: "Consume / Handover" },
+    security: { category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" },
+    resilience: { category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" },
+    kubernetes: { category: "Modernize Cloud", workstreamType: "Consume / Handover" },
+    "private-ai": { category: "Modernize Cloud", workstreamType: "Consume / Handover" },
   };
   return metadata[capability];
 }
@@ -680,7 +714,7 @@ function capabilityLaneMetadata(capability: Capability): TimelineLaneMetadata {
 function inferredLaneMetadata(laneId: string): TimelineLaneMetadata | null {
   const id = laneId.replace(/^lane-two-year-year-one-/, "");
   if (id === "lane-platform-plan") return DEFAULT_TIMELINE_LANE_METADATA;
-  if (id === "lane-hardware-refresh") return { category: "Hardware Refresh", workstreamType: "Infrastructure Build" };
+  if (id === "lane-hardware-refresh") return { category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" };
   if (id === "lane-management-domain" || id === "lane-workload-domain") return { category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" };
   if (id === "lane-upgrade-services") return { category: "Modernize Infrastructure", workstreamType: "Migration Waves" };
   if (id === "lane-vcf-networking-nsx") return { category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" };
@@ -694,8 +728,8 @@ export function applyWorkstreamPresentation(timeline: Timeline): Timeline {
     ...timeline,
     lanes: timeline.lanes.map(lane => ({
       ...lane,
-      // The visible timeline lane is the workstream type; activities remain the detailed delivery content.
-      name: lane.workstreamType,
+      // The visible timeline lane is the immutable Gantt category; activities retain their detailed workstream content.
+      name: lane.category,
       bars: lane.bars.map(activity => ({
         ...activity,
         color: colorForWorkstreamType(lane.workstreamType),
@@ -843,6 +877,9 @@ function buildPlatformInventoryActivity(inventory: InventorySummary, cadence: Ti
   const hclSupportedHosts = platforms.filter(platform => platform.hcl.status === "supported").reduce((total, platform) => total + platform.hosts, 0);
   const hclBlockingHosts = platforms.filter(platform => platform.hcl.status === "cpu-not-certified" || platform.hcl.status === "not-supported").reduce((total, platform) => total + platform.hosts, 0);
   const hclReviewHosts = platforms.filter(platform => ["supported-cpu-unverified", "review", "unknown"].includes(platform.hcl.status)).reduce((total, platform) => total + platform.hosts, 0);
+  const hclPath = getHclSchedulePath(inventory);
+  const hclPathName = `${hclPath.slice(0, 1).toUpperCase()}${hclPath.slice(1)}`;
+  const hclPathContext = `HCL schedule path ${hclPathName}: ${hclPathLabel(hclPath)}.`;
   const hclDeliveryContext = hclBlockingHosts
     ? `The supplied offline HCL snapshot identifies ${hclBlockingHosts} host(s) with a CPU or release pairing that is not listed for ESXi 9.1; resolve replacement, repurpose, or approved exception decisions before platform deployment.`
     : hclReviewHosts
@@ -856,7 +893,7 @@ function buildPlatformInventoryActivity(inventory: InventorySummary, cadence: Ti
 
   if (!platforms.length) {
     return {
-      label: `${openingWindow}: Mobilize and Validate VCF Delivery Inputs`,
+      label: `${openingWindow}: Mobilize and Freeze VCF Delivery Baseline`,
       color: "amber",
       dependsOn: appendDeliveryContext("Upload RVTools vHost data with server make, model, CPU, adapters, storage-controller, and ESXi fields; confirm the bill of materials and delivery prerequisites before platform deployment begins."),
       outcome: "Time-box the delivery baseline, then release the management-domain, networking, workload-domain, migration, and handover workstreams for execution.",
@@ -866,7 +903,7 @@ function buildPlatformInventoryActivity(inventory: InventorySummary, cadence: Ti
   return {
     label: `${openingWindow}: Mobilize and Freeze VCF Delivery Baseline`,
     color: "teal",
-      dependsOn: appendDeliveryContext(`RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${observedModels || platforms.length} host model${(observedModels || platforms.length) === 1 ? "" : "s"}. ${hclDeliveryContext} Confirm server configuration, CPU, NIC, storage controller, firmware, driver, vSAN/ReadyNode details, bill of materials, and implementation prerequisites before platform deployment begins.`),
+      dependsOn: appendDeliveryContext(`RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${observedModels || platforms.length} host model${(observedModels || platforms.length) === 1 ? "" : "s"}. ${hclPathContext} ${hclDeliveryContext} Confirm server configuration, CPU, NIC, storage controller, firmware, driver, vSAN/ReadyNode details, bill of materials, and implementation prerequisites before platform deployment begins.`),
       outcome: `Time-box the delivery baseline, capture the offline HCL evidence and remaining configuration decisions, then release the management-domain, networking, workload-domain, migration, and handover workstreams for execution.`,
   };
 }
@@ -893,102 +930,196 @@ function withoutLegacyHostPlatformTwoYearLanes(timeline: Timeline): Timeline {
   return { ...timeline, lanes: timeline.lanes.filter(lane => !lane.id.startsWith(legacyPrefix)) };
 }
 
-function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary): Timeline {
-  const columns = primaryColumns(fields);
-  const count = columns.length;
-  const cadence = fields.adoptionCadence;
-  const mobilizationDuration = cadence === "week" ? Math.min(2, count) : 1;
-  const managementDomainDuration = cadence === "week" ? Math.max(3, Math.min(6, Math.ceil(count * 0.2))) : Math.max(2, Math.min(3, Math.ceil(count * 0.25)));
-  const networkingDuration = cadence === "week" ? Math.max(4, Math.min(8, Math.ceil(count * 0.28))) : Math.max(2, Math.min(3, Math.ceil(count * 0.32)));
-  const workloadDomainDuration = cadence === "week" ? Math.max(4, Math.min(8, Math.ceil(count * 0.3))) : Math.max(2, Math.min(3, Math.ceil(count * 0.3)));
-  const baseMigrationDuration = cadence === "week" ? Math.max(2, Math.min(10, Math.ceil(count * 0.34))) : Math.max(1, Math.min(6, Math.ceil(count * 0.4)));
-  const migrationDuration = upgradePathMigrationDuration(fields.adoptionDetails.upgradePath, cadence, baseMigrationDuration);
-  const handoverDuration = cadence === "week" ? Math.max(2, Math.min(8, Math.ceil(count * 0.28))) : Math.max(1, Math.min(4, Math.ceil(count * 0.28)));
+/** Return the most conservative delivery path across observed vHost cohorts. */
+export function getHclSchedulePath(inventory: InventorySummary): HclSchedulePath {
+  const platforms = assessHardwarePlatforms(inventory);
+  if (!platforms.length) return "unresolved";
+  const paths = platforms.map(platform => hclSchedulePath(platform.hcl.status));
+  if (paths.includes("red")) return "red";
+  if (paths.includes("yellow")) return "yellow";
+  return "green";
+}
 
-  const [mobilizationStart, mobilizationEnd] = boundedRange(1, mobilizationDuration, count);
-  const [managementStart, managementEnd] = boundedRange(Math.min(count, mobilizationEnd), managementDomainDuration, count);
-  const [networkingStart, networkingEnd] = boundedRange(Math.min(count, mobilizationEnd), networkingDuration, count);
-  const workloadStart = Math.min(count, Math.max(managementStart + Math.floor(managementDomainDuration * 0.65), networkingStart + Math.floor(networkingDuration * 0.65)));
-  const [workloadDomainStart, workloadDomainEnd] = boundedRange(workloadStart, workloadDomainDuration, count);
-  const migrationAnchor = Math.min(count, workloadDomainEnd);
-  const migrationRange = migrationDuration ? boundedRange(migrationAnchor, migrationDuration, count) : null;
-  const migrationStart = migrationRange?.[0] ?? migrationAnchor;
-  const migrationEnd = migrationRange?.[1] ?? migrationAnchor;
-  const [handoverStart, handoverEnd] = boundedRange(Math.min(count, Math.max(workloadDomainEnd - 1, migrationDuration ? migrationStart : workloadDomainEnd)), handoverDuration, count);
-  const platformInventory = buildPlatformInventoryActivity(inventory, cadence, fields);
+function scheduleUnits(cadence: TimelineCadence, weeks: number, months: number): number {
+  return cadence === "week" ? weeks : months;
+}
+
+function ensureScheduleColumns(columns: string[], startDate: string, cadence: TimelineCadence, minimum: number): string[] {
+  if (columns.length >= minimum) return columns;
+  return cadence === "week"
+    ? buildWeekColumns(startDate, "", minimum, minimum)
+    : buildMonthColumns(startDate, "", minimum, minimum);
+}
+
+function fixedGanttLane(id: string, category: TimelineCategory, workstreamType: WorkstreamType, bars: TimelineBar[]): TimelineLane {
+  return { id, name: category, category, workstreamType, bars };
+}
+
+function hclPathLabel(path: HclSchedulePath): string {
+  return { green: "Green — baseline alignment", yellow: "Yellow — remediation and verification", red: "Red — procurement or greenfield provisioning", unresolved: "Unresolved — evidence collection and decision" }[path];
+}
+
+function softPrerequisiteLabel(key: AdoptionDetails["softPrerequisites"][number]): string {
+  return {
+    "dns-ntp": "Confirm DNS, NTP, and core services",
+    "ip-pools": "Allocate management and workload IP pools",
+    "tor-switch-design": "Finalize ToR switch design and port readiness",
+  }[key];
+}
+
+function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary): Timeline {
+  const cadence = fields.adoptionCadence;
+  const path = getHclSchedulePath(inventory);
+  const mobilizationDuration = scheduleUnits(cadence, 2, 1);
+  const remediationDuration = scheduleUnits(cadence, 3, 1);
+  const procurementDuration = scheduleUnits(cadence, 8, 2);
+  const greenfieldDuration = scheduleUnits(cadence, 4, 1);
+  const managementDuration = scheduleUnits(cadence, 4, 2);
+  const networkingDuration = scheduleUnits(cadence, 5, 2);
+  const workloadDuration = scheduleUnits(cadence, 5, 2);
+  const moduleDuration = scheduleUnits(cadence, 3, 1);
+  const securityDuration = scheduleUnits(cadence, 3, 1);
+  const handoverDuration = scheduleUnits(cadence, 3, 1);
+  const migrationDuration = upgradePathMigrationDuration(fields.adoptionDetails.upgradePath, cadence, scheduleUnits(cadence, 4, 2));
+  const selectedTaskCount = (capability: "automation" | "kubernetes" | "private-ai" | "security" | "resilience") => {
+    const selections = selectedFocuses(fields, capability);
+    return selections.length || fields.priorities.includes(capability) ? Math.max(1, selections.length) : 0;
+  };
+  const hclBufferDuration = path === "red" ? procurementDuration + greenfieldDuration : path === "yellow" || path === "unresolved" ? remediationDuration : 0;
+  const cloudDuration = (selectedTaskCount("automation") + selectedTaskCount("kubernetes") + selectedTaskCount("private-ai")) * moduleDuration;
+  const securityPathDuration = (selectedTaskCount("security") + selectedTaskCount("resilience")) * securityDuration;
+  const estimatedHandoverStart = 1 + mobilizationDuration + hclBufferDuration + 1 + Math.max(managementDuration + networkingDuration + workloadDuration + cloudDuration, securityPathDuration) + migrationDuration;
+  const baseMinimumColumns = scheduleUnits(cadence, path === "red" ? 30 : path === "yellow" || path === "unresolved" ? 22 : 18, path === "red" ? 12 : path === "yellow" || path === "unresolved" ? 10 : 8);
+  const minimumColumns = Math.max(baseMinimumColumns, estimatedHandoverStart);
+  const startDate = timelineStartDate(fields);
+  const columns = ensureScheduleColumns(primaryColumns(fields), startDate, cadence, minimumColumns);
+  const count = columns.length;
   const deliveryContext = confirmedDeliveryContext(fields);
   const appendDeliveryContext = (value: string) => deliveryContext ? `${value} ${deliveryContext}` : value;
-  const lanes: TimelineLane[] = [
-    {
-      id: "lane-platform-plan",
-      name: "Governance",
-      ...DEFAULT_TIMELINE_LANE_METADATA,
-      bars: [bar("bar-platform-plan", mobilizationStart, mobilizationEnd, colorForWorkstreamType("Governance"), platformInventory.label, false, false, platformInventory.dependsOn, platformInventory.outcome)],
-    },
-    {
-      id: "lane-management-domain",
-      name: "Infrastructure Build",
-      category: "Modernize Infrastructure",
-      workstreamType: "Infrastructure Build",
-      bars: [bar("bar-management-domain", managementStart, managementEnd, colorForWorkstreamType("Infrastructure Build"), "Deploy VCF Management Domain and Core Control Plane", false, false, appendDeliveryContext("Begin after mobilisation confirms the delivery baseline, bill of materials, and platform prerequisites."), "Deploy the VCF management domain and core control plane, then validate platform health and delivery readiness.")],
-    },
-    {
-      id: "lane-vcf-networking-nsx",
-      name: "Infrastructure Build",
-      category: "Modernize Infrastructure",
-      workstreamType: "Infrastructure Build",
-      bars: [bar("bar-vcf-networking-nsx", networkingStart, networkingEnd, colorForWorkstreamType("Infrastructure Build"), "Implement VCF Networking, NSX Transport, Edge, and Routing", false, false, appendDeliveryContext("Coordinate physical-fabric VLANs, MTU, routing handoffs, Edge placement, and workload-domain host preparation with the network team."), "Implement the VCF networking and NSX foundation independently from security services, including physical-fabric prerequisites, transport, Edge, overlay, and north-south routing.")],
-    },
-    {
-      id: "lane-workload-domain",
-      name: "Infrastructure Build",
-      category: "Modernize Infrastructure",
-      workstreamType: "Infrastructure Build",
-      bars: [bar("bar-workload-domain", workloadDomainStart, workloadDomainEnd, colorForWorkstreamType("Infrastructure Build"), "Create or Import Workload Domain and Prepare Clusters", false, false, appendDeliveryContext("Start after management-domain health and the required network path are validated; use the confirmed new-build, convergence, or import pathway."), "Create or import the workload domain, prepare clusters, and validate the platform path used by subsequent migration or onboarding work.")],
-    },
-    {
-      id: "lane-platform-design",
-      name: "Operating Model / Platform",
-      category: "Operations",
-      workstreamType: "Operating Model / Platform",
-      bars: [bar("bar-platform-design", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Operationalize Lifecycle, Monitoring, Backup, and Handover", false, false, appendDeliveryContext("Run alongside final implementation work after the VCF platform services are available for operations validation."), "Establish the initial operating cadence, lifecycle procedures, monitoring, backup, support ownership, and handover evidence for the delivered platform.")],
-    },
-  ];
+  const range = (start: number, duration: number) => boundedRange(Math.min(count, Math.max(1, start)), duration, count);
+  const platformInventory = buildPlatformInventoryActivity(inventory, cadence, fields);
 
-  if (migrationDuration) {
-    lanes.splice(4, 0, {
-      id: "lane-upgrade-services",
-      name: "Migration Waves",
-      category: "Modernize Infrastructure",
-      workstreamType: "Migration Waves",
-      bars: [bar("bar-vcf-upgrade-services", migrationStart, migrationEnd, colorForWorkstreamType("Migration Waves"), upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, appendDeliveryContext("Begin after the workload domain is accepted and wave scope, application dependencies, rollback, and change windows are confirmed."), upgradePathNarrative(fields.adoptionDetails.upgradePath))],
+  const [mobilizationStart, mobilizationEnd] = range(1, mobilizationDuration);
+  const programBars: TimelineBar[] = [
+    bar("bar-platform-plan", mobilizationStart, mobilizationEnd, colorForWorkstreamType("Governance"), platformInventory.label, false, false, platformInventory.dependsOn, platformInventory.outcome),
+  ];
+  const infrastructureBars: TimelineBar[] = [];
+  let hclBufferEnd = mobilizationEnd;
+  let hclDependency = `${HCL_EVALUATION_VERSION} HCL path classified as ${hclPathLabel(path)} after the mobilisation baseline.`;
+
+  if (path === "yellow" || path === "unresolved") {
+    const [remediationStart, remediationEnd] = range(mobilizationEnd, remediationDuration);
+    infrastructureBars.push(bar("bar-hcl-remediation", remediationStart, remediationEnd, "amber", path === "yellow" ? "Remediate and Verify HCL Exceptions" : "Collect Missing HCL Evidence and Confirm Path", false, false, appendDeliveryContext("Resolve server, CPU, firmware, or identity evidence before releasing the platform build."), path === "yellow" ? "Close the reported HCL exception path and retain verification evidence." : "Collect missing vHost identity and configuration evidence before committing the platform path."));
+    hclBufferEnd = remediationEnd;
+    hclDependency = `${HCL_EVALUATION_VERSION} ${hclPathLabel(path)} gate closes only after remediation or evidence review is accepted.`;
+  }
+
+  if (path === "red") {
+    const [procurementStart, procurementEnd] = range(mobilizationEnd, procurementDuration);
+    const [greenfieldStart, greenfieldEnd] = range(procurementEnd, greenfieldDuration);
+    infrastructureBars.push(
+      bar("bar-hcl-procurement", procurementStart, procurementEnd, "red", "Procure Replacement Hardware or Approve Greenfield Path", false, false, appendDeliveryContext("Proceed only after the Red HCL result has a replacement, repurpose, or approved exception decision."), "Secure the supported hardware path before downstream domain build activities begin."),
+      bar("bar-hcl-greenfield", greenfieldStart, greenfieldEnd, "red", "Provision and Validate Greenfield Hardware Baseline", false, false, "Start after procurement, hardware delivery, and rack-and-stack acceptance.", "Validate the newly provisioned hardware baseline before releasing VCF deployment work."),
+    );
+    hclBufferEnd = greenfieldEnd;
+    hclDependency = `${HCL_EVALUATION_VERSION} Red gate closes after procurement or greenfield provisioning is accepted.`;
+    fields.adoptionDetails.softPrerequisites.forEach((prerequisite) => {
+      const [softStart, softEnd] = range(mobilizationEnd, scheduleUnits(cadence, 3, 1));
+      infrastructureBars.push(
+        bar(`bar-soft-prerequisite-${prerequisite}`, softStart, softEnd, "teal", softPrerequisiteLabel(prerequisite), false, false, "This soft prerequisite may run in parallel with Red-path procurement and greenfield provisioning.", "Remove an infrastructure dependency without delaying the hardware procurement buffer."),
+      );
     });
   }
 
-  const capabilityStart = Math.max(2, Math.min(count, Math.max(workloadDomainStart, managementEnd)));
-  const priorityStagger = Math.max(0, Math.floor(count * 0.05));
-  fields.priorities.forEach((priority, priorityIndex) => {
-    const labels = activityLabelsForCapability(fields, priority);
-    const baseStart = Math.min(count, capabilityStart + (priorityIndex % 3) * priorityStagger);
-    const availableWindows = Math.max(1, count - baseStart + 1);
-    const laneCount = Math.max(1, Math.ceil(labels.length / availableWindows));
-    const labelsPerLane = Math.ceil(labels.length / laneCount);
+  const [hclGateStart, hclGateEnd] = range(hclBufferEnd, 1);
+  programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", `HCL Gate: ${hclPathLabel(path)}`, true, false, hclDependency, "Authorize management-domain and NSX foundation work only after the required HCL path evidence is recorded."));
 
-    for (let laneIndex = 0; laneIndex < laneCount; laneIndex += 1) {
-      const laneLabels = labels.slice(laneIndex * labelsPerLane, (laneIndex + 1) * labelsPerLane);
-      const slot = Math.max(1, Math.floor(availableWindows / laneLabels.length));
-      const bars = laneLabels.map((label, index) => {
-        const start = baseStart + index * slot;
-        const end = index === laneLabels.length - 1 ? count + 1 : Math.min(count + 1, start + slot);
-        return bar(`bar-${priority}-${laneIndex * labelsPerLane + index + 1}`, start, end, colorForWorkstreamType(capabilityLaneMetadata(priority).workstreamType), label);
-      });
-      const laneId = laneIndex === 0 ? `lane-${priority}` : `lane-${priority}-${laneIndex + 1}`;
-      const metadata = capabilityLaneMetadata(priority);
-      lanes.push({ id: laneId, name: metadata.workstreamType, ...metadata, bars });
+  const [managementStart, managementEnd] = range(hclGateEnd, managementDuration);
+  const [networkingStart, networkingEnd] = range(managementEnd, networkingDuration);
+  const foundationEnd = networkingEnd;
+  const [workloadStart, workloadEnd] = range(foundationEnd, workloadDuration);
+  infrastructureBars.push(
+    bar("bar-management-domain", managementStart, managementEnd, colorForWorkstreamType("Infrastructure Build"), "Deploy VCF Management Domain and Core Control Plane", false, false, "Begin after the HCL gate, mobilisation baseline, bill of materials, and platform prerequisites are accepted.", "Deploy the VCF management domain and validate core platform health."),
+    bar("bar-workload-domain", workloadStart, workloadEnd, colorForWorkstreamType("Infrastructure Build"), "Create or Import Workload Domain and Prepare Clusters", false, false, "Begin after management-domain health and the required network path are validated.", "Create or import the workload domain and prepare the foundation used by migration and selected module work."),
+  );
+  infrastructureBars.push(
+    bar("bar-vcf-networking-nsx", networkingStart, networkingEnd, colorForWorkstreamType("Infrastructure Build"), "Implement VCF Networking, NSX Transport, Edge, and Routing", false, false, "Begin after the HCL gate; coordinate physical-fabric VLANs, MTU, routing handoffs, and Edge placement.", "Deliver the VCF networking and NSX foundation independently from security services."),
+  );
+
+  const operationsBars: TimelineBar[] = [];
+  const [operationsDesignStart, operationsDesignEnd] = range(hclGateEnd, Math.max(1, Math.min(workloadDuration, scheduleUnits(cadence, 4, 2))));
+  operationsBars.push(bar("bar-platform-design", operationsDesignStart, operationsDesignEnd, colorForWorkstreamType("Operating Model / Platform"), "Define Operating Model, Lifecycle, Monitoring, and Backup Controls", false, false, "Begin after the HCL gate and run in parallel with the VCF foundation build.", "Set operating ownership, lifecycle controls, monitoring, backup, and service-management expectations."));
+  let operationsCursor = Math.max(operationsDesignEnd, workloadEnd);
+  const addOperationsTask = (id: string, label: string) => {
+    const [taskStart, taskEnd] = range(operationsCursor, moduleDuration);
+    operationsBars.push(bar(id, taskStart, taskEnd, colorForWorkstreamType("Operating Model / Platform"), label, false, false, "Begin after workload-domain readiness and the HCL gate.", "Implement the selected operating capability with accountable ownership and measurable service outcomes."));
+    operationsCursor = taskEnd;
+  };
+  const operationSelections = selectedFocuses(fields, "operations");
+  if (operationSelections.length) {
+    operationSelections.forEach((selection, index) => addOperationsTask(`bar-operations-${selection}`, focusLabels.operations[selection] ?? `Operational capability ${index + 1}`));
+  } else if (fields.priorities.includes("operations")) {
+    addOperationsTask("bar-operations-core", "Operationalize Platform Lifecycle and Service Health");
+  }
+
+  const cloudBars: TimelineBar[] = [];
+  let cloudCursor = workloadEnd;
+  const addCloudTask = (id: string, label: string, dependency: string) => {
+    const [taskStart, taskEnd] = range(cloudCursor, moduleDuration);
+    cloudBars.push(bar(id, taskStart, taskEnd, colorForWorkstreamType("Consume / Handover"), label, false, false, dependency, "Enable the confirmed cloud capability on the accepted VCF foundation."));
+    cloudCursor = taskEnd;
+  };
+  const addCloudSelections = (capability: "automation" | "kubernetes" | "private-ai", genericLabel: string, dependency: string) => {
+    const selections = selectedFocuses(fields, capability);
+    if (selections.length) {
+      selections.forEach((selection, index) => addCloudTask(`bar-cloud-${capability}-${selection}`, focusLabels[capability][selection] ?? `${capabilityTitle(capability)} capability ${index + 1}`, dependency));
+    } else if (fields.priorities.includes(capability)) {
+      addCloudTask(`bar-cloud-${capability}`, genericLabel, dependency);
     }
-  });
+  };
+  addCloudSelections("automation", "Enable Automation and Self-Service", "Begin after workload-domain readiness and the HCL gate.");
+  addCloudSelections("kubernetes", "Enable Kubernetes / Supervisor Services", "Begin after workload-domain readiness; coordinate network and security controls.");
+  addCloudSelections("private-ai", "Prepare Private AI / GPU Platform Enablement", "Begin after workload-domain readiness and confirmed GPU, data-governance, and security controls.");
+  const cloudEnd = cloudBars.length ? cloudCursor : workloadEnd;
 
-  return { cadence, startDate: timelineStartDate(fields), columns, lanes };
+  const securityBars: TimelineBar[] = [];
+  let securityCursor = hclGateEnd;
+  const addSecurityTask = (id: string, label: string) => {
+    const [taskStart, taskEnd] = range(securityCursor, securityDuration);
+    securityBars.push(bar(id, taskStart, taskEnd, colorForWorkstreamType("Security & Resiliency"), label, false, false, "Begin after the HCL gate; this work does not wait for cloud module enablement.", "Implement the selected resilience and security capability with controlled evidence and ownership."));
+    securityCursor = taskEnd;
+  };
+  const addSecuritySelections = (capability: "security" | "resilience", genericLabel: string) => {
+    const selections = selectedFocuses(fields, capability);
+    if (selections.length) {
+      selections.forEach((selection, index) => addSecurityTask(`bar-${capability}-${selection}`, focusLabels[capability][selection] ?? `${capabilityTitle(capability)} capability ${index + 1}`));
+    } else if (fields.priorities.includes(capability)) {
+      addSecurityTask(`bar-${capability}-core`, genericLabel);
+    }
+  };
+  addSecuritySelections("security", "Implement Security and Segmentation Controls");
+  addSecuritySelections("resilience", "Implement Resilience, DR, and Cyber-Recovery Controls");
+  const securityEnd = securityBars.length ? securityCursor : workloadEnd;
+
+  const finalMigrationStart = Math.max(workloadEnd, cloudEnd, securityEnd);
+  const migrationRange = migrationDuration ? range(finalMigrationStart, migrationDuration) : null;
+  const migrationEnd = migrationRange?.[1] ?? finalMigrationStart;
+  if (migrationRange) {
+    infrastructureBars.push(bar("bar-vcf-upgrade-services", migrationRange[0], migrationRange[1], colorForWorkstreamType("Migration Waves"), upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, appendDeliveryContext("Begin only after selected Cloud and Security & Resilience activities complete, as well as workload-domain readiness, application dependency review, rollback planning, and change-window approval."), upgradePathNarrative(fields.adoptionDetails.upgradePath)));
+  }
+
+  const [handoverStart, handoverEnd] = range(Math.max(migrationEnd, operationsCursor), handoverDuration);
+  operationsBars.push(bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Validate Handover, Service Acceptance, and Ongoing Lifecycle", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm operational readiness, evidence, ownership, and the continuing lifecycle cadence."));
+
+  const lanes: TimelineLane[] = [
+    fixedGanttLane("lane-program-governance", "Program Management & Governance", "Governance", programBars),
+    fixedGanttLane("lane-modernize-infrastructure", "Modernize Infrastructure", "Infrastructure Build", infrastructureBars),
+    fixedGanttLane("lane-operations", "Operations", "Operating Model / Platform", operationsBars),
+    fixedGanttLane("lane-cloud", "Modernize Cloud", "Consume / Handover", cloudBars),
+    fixedGanttLane("lane-security-resilience", "Modernize Security & Resilience", "Security & Resiliency", securityBars),
+  ];
+
+  return applyWorkstreamPresentation({ cadence, startDate, columns, lanes });
 }
 
 type FollowOnEligibility = {
@@ -1164,15 +1295,15 @@ function mirrorEntitlementLanes(adoptionTimeline: Timeline, columnCount: number)
     : value;
 
   return adoptionTimeline.lanes.map(lane => ({
-    id: `lane-two-year-year-one-${lane.id}`,
-    name: lane.name,
+    id: lane.id,
+    name: lane.category,
     category: lane.category,
     workstreamType: lane.workstreamType,
     bars: lane.bars.flatMap(item => {
       const startCol = Math.max(1, normalizeStart(item.startCol));
       const endCol = Math.min(columnCount + 1, Math.max(startCol + 1, normalizeEnd(item.endCol)));
       if (startCol > columnCount || endCol <= startCol) return [];
-      return [{ ...item, id: `bar-two-year-year-one-${item.id}`, startCol, endCol }];
+      return [{ ...item, startCol, endCol }];
     }),
   }));
 }
@@ -1238,55 +1369,24 @@ function hasEntitlementAlignedNotional(timeline: Timeline, fields: MinimalFields
     && timeline.columns.length === expectedColumns.length
     && timeline.columns.every((column, index) => column === expectedColumns[index]);
   if (!columnsMatch) return false;
-
-  const mirroredActivities = timeline.lanes
-    .filter(lane => lane.id.startsWith("lane-two-year-year-one-"))
-    .flatMap(lane => lane.bars);
-  if (!mirroredActivities.length) return false;
-
-  const implementationEnd = Math.max(...mirroredActivities.map(activity => activity.endCol));
-  const baselineRequired = implementationEnd <= expectedColumns.length;
-  const hasBaseline = timeline.lanes.some(lane => lane.id === "lane-two-year-baseline-governance" && lane.bars.length > 0);
-  return !baselineRequired || hasBaseline;
+  if (timeline.lanes.length !== FIXED_GANTT_CATEGORIES.length) return false;
+  if (!timeline.lanes.every((lane, index) => lane.category === FIXED_GANTT_CATEGORIES[index] && lane.name === lane.category)) return false;
+  return timeline.lanes.flatMap(lane => lane.bars).some(activity => activity.id === "bar-platform-plan");
 }
 
-function buildTwoYearPlan(fields: MinimalFields, inventory: InventorySummary, adoptionTimeline: Timeline): Timeline {
+function buildTwoYearPlan(fields: MinimalFields, _inventory: InventorySummary, adoptionTimeline: Timeline): Timeline {
   const startDate = timelineStartDate(fields);
   const entitlementEnd = entitlementNotionalEndDate(fields);
   const columns = buildTwoYearNotionalColumns(startDate, entitlementEnd);
-  const lanes: TimelineLane[] = [...mirrorEntitlementLanes(adoptionTimeline, columns.length)];
+  const lanes: TimelineLane[] = mirrorEntitlementLanes(adoptionTimeline, columns.length);
   const implementationEnd = Math.max(1, ...lanes.flatMap(lane => lane.bars.map(activity => activity.endCol)));
   const continuationStart = Math.min(columns.length + 1, implementationEnd);
 
   if (continuationStart <= columns.length) {
-    fields.priorities.forEach((priority, priorityIndex) => {
-      const activities = followOnActivities(fields, inventory, priority);
-      if (!activities.length) return;
-      const availableColumns = Math.max(1, columns.length - continuationStart + 1);
-      const slot = Math.max(1, Math.floor(availableColumns / activities.length));
-      const duration = Math.max(1, Math.min(3, slot));
-      const metadata = capabilityLaneMetadata(priority);
-      const createBar = (activity: (typeof activities)[number], index: number) => {
-        const start = Math.min(columns.length, continuationStart + (priorityIndex % 2) + index * slot);
-        const [safeStart, end] = boundedRange(start, duration, columns.length);
-        return bar(`bar-follow-on-${priority}-${index + 1}`, safeStart, end, colorForWorkstreamType(metadata.workstreamType), activity.label, false, false, activity.dependsOn, activity.outcome);
-      };
-      if (activities.length > availableColumns) {
-        activities.forEach((activity, index) => {
-          const activityBar = createBar(activity, index);
-          lanes.push({
-            id: index === 0 ? `lane-follow-on-${priority}` : `lane-follow-on-${priority}-${index + 1}`,
-            name: metadata.workstreamType,
-            ...metadata,
-            bars: [activityBar],
-          });
-        });
-      } else {
-        lanes.push({ id: `lane-follow-on-${priority}`, name: metadata.workstreamType, ...metadata, bars: activities.map(createBar) });
-      }
+    baselineEntitlementLanes(continuationStart, columns.length).forEach(baselineLane => {
+      const categoryLane = lanes.find(lane => lane.category === baselineLane.category);
+      if (categoryLane) categoryLane.bars.push(...baselineLane.bars);
     });
-
-    lanes.push(...baselineEntitlementLanes(continuationStart, columns.length));
   }
 
   return applyWorkstreamPresentation({ cadence: "month", startDate, columns, lanes });
@@ -1318,7 +1418,10 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
     ? `Confirmed timeline notes are applied as execution conditions: “${planningContext.timelineNotes}”.`
     : "No additional timeline exceptions or sequencing conditions were recorded.";
   const industryContext = `The ${planningContext.template.label} industry discovery lens focuses mobilisation discussions on ${planningContext.industryThemes}; it informs the planning narrative only and does not add scope, priorities, or delivery activities.`;
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Mobilisation and delivery-baseline work are deliberately limited to ${openingWindow}, then the plan moves into management-domain deployment, VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The entitlement-aligned Notional runs from the actual service start (${serviceStart}) through entitlement end (${entitlementEnd || "TBD"}); it mirrors the implementation sequence, then retains only governance, lifecycle, handover, and selected expansion work that fits within that entitlement period. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const hclPath = getHclSchedulePath(inventory);
+  const hclContext = `The HCL 2.0 evaluation path is ${hclPathLabel(hclPath)} and is used as planning evidence for the required buffer and gate; it remains an offline precheck, not official certification.`;
+  const migrationGateContext = "The final migration or implementation phase is gated until selected Cloud and Security & Resilience work is complete, alongside workload-domain readiness, application dependency review, rollback planning, and change-window approval.";
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Mobilisation and delivery-baseline work are deliberately limited to ${openingWindow}, then the plan moves into management-domain deployment, VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The entitlement-aligned Notional runs from the actual service start (${serviceStart}) through entitlement end (${entitlementEnd || "TBD"}); it mirrors the implementation sequence, then retains only governance, lifecycle, handover, and selected expansion work that fits within that entitlement period. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -1618,7 +1721,7 @@ export function createDefaultDocument(): EngagementDocument {
   const inventory = emptyInventory();
   const readiness = assessReadiness(fields, inventory);
   const plans = buildAdoptionPlans(fields, inventory);
-  return { version: 10, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+  return { version: 11, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
 function stringValue(value: unknown): string {
@@ -1650,23 +1753,24 @@ function canonicalTimelineCategory(value: unknown): TimelineCategory | null {
   const aliases: Record<string, TimelineCategory> = {
     "program management & governance": "Program Management & Governance",
     "program management and governance": "Program Management & Governance",
-    "hardware refresh": "Hardware Refresh",
+    "hardware refresh": "Modernize Infrastructure",
     "modernize cloud": "Modernize Cloud",
     "operations": "Operations",
     "modernize infrastructure": "Modernize Infrastructure",
-    "modernize security & reliance": "Modernize Security & Reliance",
-    "modernize security and reliance": "Modernize Security & Reliance",
-    "modernize app platform & ai": "Modernize App Platform & AI",
-    "modernize app platform and ai": "Modernize App Platform & AI",
+    "modernize security & reliance": "Modernize Security & Resilience",
+    "modernize security and reliance": "Modernize Security & Resilience",
+    "modernize security & resilience": "Modernize Security & Resilience",
+    "modernize app platform & ai": "Modernize Cloud",
+    "modernize app platform and ai": "Modernize Cloud",
   };
   if (aliases[raw]) return aliases[raw];
   if (/(program|govern)/.test(raw)) return "Program Management & Governance";
-  if (/hardware/.test(raw)) return "Hardware Refresh";
+  if (/hardware/.test(raw)) return "Modernize Infrastructure";
   if (/modernize.*cloud|cloud/.test(raw)) return "Modernize Cloud";
   if (/operations?/.test(raw)) return "Operations";
   if (/infrastructure/.test(raw)) return "Modernize Infrastructure";
-  if (/(security|reliance)/.test(raw)) return "Modernize Security & Reliance";
-  if (/(app|platform|ai)/.test(raw)) return "Modernize App Platform & AI";
+  if (/(security|reliance|resilience)/.test(raw)) return "Modernize Security & Resilience";
+  if (/(app|platform|ai)/.test(raw)) return "Modernize Cloud";
   return null;
 }
 
@@ -1697,8 +1801,14 @@ function normalizeRawTimelineTaxonomy(value: unknown): unknown {
 }
 
 function needsImplementationTimelineRebaseline(timeline: Timeline): boolean {
-  const requiredInfrastructureLanes = ["lane-management-domain", "lane-workload-domain"];
-  return requiredInfrastructureLanes.some(laneId => !timeline.lanes.some(lane => lane.id === laneId));
+  const requiredFixedLaneIds = [
+    "lane-program-governance",
+    "lane-infrastructure-core",
+    "lane-operations",
+    "lane-cloud",
+    "lane-security-resilience",
+  ];
+  return requiredFixedLaneIds.some(laneId => !timeline.lanes.some(lane => lane.id === laneId));
 }
 
 function normalizeEntitlementTerm(fields: MinimalFields): MinimalFields {
@@ -1708,7 +1818,7 @@ function normalizeEntitlementTerm(fields: MinimalFields): MinimalFields {
 
 export function migrateDocument(value: unknown): EngagementDocument {
   const normalizedValue = normalizeRawTimelineTaxonomy(value);
-  const current = engagementDocumentV10Schema.safeParse(normalizedValue);
+  const current = engagementDocumentV11Schema.safeParse(normalizedValue);
   if (current.success) {
     const fields = normalizeEntitlementTerm(current.data.fields);
     const generated = buildAdoptionPlans(fields, current.data.inventory);
@@ -1753,12 +1863,28 @@ export function migrateDocument(value: unknown): EngagementDocument {
     };
   }
 
+  const v10 = engagementDocumentV10Schema.safeParse(normalizedValue);
+  if (v10.success) {
+    const fields = normalizeEntitlementTerm(v10.data.fields);
+    const plans = buildAdoptionPlans(fields, v10.data.inventory);
+    return {
+      version: 11,
+      fields,
+      inventorySources: v10.data.inventorySources,
+      inventory: v10.data.inventory,
+      readiness: assessReadiness(fields, v10.data.inventory, v10.data.inventorySources.flatMap(source => source.warnings)),
+      adoptionTimeline: plans.adoptionTimeline,
+      twoYearPlan: plans.twoYearPlan,
+      rationale: plans.rationale,
+    };
+  }
+
   const v9 = engagementDocumentV9Schema.safeParse(normalizedValue);
   if (v9.success) {
     const fields = normalizeEntitlementTerm(v9.data.fields);
     const plans = buildAdoptionPlans(fields, v9.data.inventory);
     return {
-      version: 10,
+      version: 11,
       fields,
       inventorySources: v9.data.inventorySources,
       inventory: v9.data.inventory,
@@ -1774,7 +1900,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const fields = normalizeEntitlementTerm(v8.data.fields);
     const plans = buildAdoptionPlans(fields, v8.data.inventory);
     return {
-      version: 10,
+      version: 11,
       fields,
       inventorySources: v8.data.inventorySources,
       inventory: v8.data.inventory,
@@ -1790,7 +1916,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const fields = normalizeEntitlementTerm(v7.data.fields);
     const plans = buildAdoptionPlans(fields, v7.data.inventory);
     return {
-      version: 10,
+      version: 11,
       fields,
       inventorySources: v7.data.inventorySources,
       inventory: v7.data.inventory,
@@ -1806,7 +1932,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const fields = normalizeEntitlementTerm(migrateFieldsToV7(v6.data.fields));
     const plans = buildAdoptionPlans(fields, v6.data.inventory);
     return {
-      version: 10,
+      version: 11,
       fields,
       inventorySources: v6.data.inventorySources,
       inventory: v6.data.inventory,
@@ -1822,7 +1948,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const fields = normalizeEntitlementTerm(migrateFieldsToV7(migrateFieldsToV6(v5.data.fields)));
     const plans = buildAdoptionPlans(fields, v5.data.inventory);
     return {
-      version: 10,
+      version: 11,
       fields,
       inventorySources: v5.data.inventorySources,
       inventory: v5.data.inventory,
@@ -1840,7 +1966,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const warnings = v4.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
-      version: 10,
+      version: 11,
       fields,
       inventorySources: v4.data.inventorySources,
       inventory,
@@ -1858,7 +1984,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const warnings = v3.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
-      version: 10,
+      version: 11,
       fields,
       inventorySources: v3.data.inventorySources,
       inventory,
@@ -1901,7 +2027,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const parsedSources = z.array(inventorySourceSchema).safeParse(legacy.inventorySources);
   const plans = buildAdoptionPlans(fields, inventory);
   return {
-    version: 10,
+    version: 11,
     fields,
     inventorySources: parsedSources.success ? parsedSources.data : [],
     inventory,
@@ -1912,7 +2038,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   };
 }
 
-export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV10Schema);
+export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV11Schema);
 
 export function refreshDerivedDocument(document: EngagementDocument): EngagementDocument {
   const warnings = document.inventorySources.flatMap(source => source.warnings);

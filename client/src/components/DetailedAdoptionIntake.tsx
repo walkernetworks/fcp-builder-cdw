@@ -110,6 +110,12 @@ const upgradeOptions: Array<{ value: UpgradePath; label: string; description: st
   { value: "design-only", label: "Architecture and runbook only", description: "Create the target architecture and a future execution plan without committing delivery waves." },
 ];
 
+const softPrerequisiteOptions = [
+  { value: "dns-ntp", label: "DNS, NTP, and core services", description: "Validate required shared services while a Red-path procurement buffer is open." },
+  { value: "ip-pools", label: "Management and workload IP pools", description: "Reserve and validate addressing independently of hardware delivery." },
+  { value: "tor-switch-design", label: "ToR switch design and ports", description: "Finalize physical-fabric port design and readiness in parallel with provisioning." },
+] as const;
+
 type Props = {
   fields: MinimalFields;
   onPatch: (patch: Partial<MinimalFields>) => void;
@@ -158,6 +164,8 @@ export function DetailedAdoptionIntake({ fields, onPatch }: Props) {
         </Select>
         <p className="mt-2 text-xs leading-5 text-slate-500">{upgradeOptions.find(option => option.value === details.upgradePath)?.description}</p>
       </div>
+
+      <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4"><div><Label className="text-sm font-semibold">Optional infrastructure prerequisites</Label><p className="mt-1 text-xs leading-5 text-slate-500">Select only confirmed prerequisites. When the HCL path is Red, these activities may run in parallel with procurement or greenfield provisioning rather than compressing that buffer.</p></div><div className="mt-3 grid gap-2 lg:grid-cols-3">{softPrerequisiteOptions.map(option => { const checked = details.softPrerequisites.includes(option.value); return <label key={option.value} className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${checked ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 hover:bg-slate-50"}`}><Checkbox checked={checked} className="mt-0.5" onCheckedChange={next => updateDetails({ softPrerequisites: next === true ? [...details.softPrerequisites, option.value] : details.softPrerequisites.filter(item => item !== option.value) })} /><span><span className="block text-xs font-semibold">{option.label}</span><span className={`mt-0.5 block text-xs leading-5 ${checked ? "text-slate-300" : "text-slate-500"}`}>{option.description}</span></span></label>; })}</div></section>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {discoveryGroups.map(group => <section key={group.key} className="rounded-xl border border-slate-200 bg-white p-4"><h4 className="text-sm font-semibold text-slate-950">{group.title}</h4><p className="mt-1 text-xs leading-5 text-slate-500">{group.prompt}</p><div className="mt-3 space-y-2.5">{group.options.map(option => { const checked = (details[group.key] as string[]).includes(option.value); return <label key={option.value} className={`flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors ${checked ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 hover:bg-slate-50"}`}><Checkbox checked={checked} className="mt-0.5" onCheckedChange={next => toggleFocus(group, option.value, next === true)} /><span><span className="block text-xs font-semibold">{option.label}</span><span className={`mt-0.5 block text-xs leading-5 ${checked ? "text-slate-300" : "text-slate-500"}`}>{option.description}</span></span></label>; })}</div></section>)}

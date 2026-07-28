@@ -1,6 +1,6 @@
 import type { EngagementDocument, HardwarePlatformAssessment, Timeline, TimelineBar, TimelineLane } from "../shared/fcp";
-import { calculateEntitlementEndDate, colorForWorkstreamType, completionPercent, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
-import { HCL_OFFLINE_LIMITATION, hclStatusLabel } from "../shared/hcl";
+import { calculateEntitlementEndDate, colorForWorkstreamType, completionPercent, FIXED_GANTT_CATEGORIES, getHclSchedulePath, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
+import { HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclStatusLabel } from "../shared/hcl";
 
 const palette: Record<string, { bg: string; fg: string; border: string }> = {
   slate: { bg: "#334155", fg: "#ffffff", border: "#1e293b" },
@@ -65,7 +65,7 @@ function groupTimelineLanes(lanes: TimelineLane[]) {
     if (existing) existing.push(lane);
     else groups.set(lane.category, [lane]);
   });
-  return Array.from(groups, ([category, groupedLanes]) => ({ category, lanes: groupedLanes }));
+  return FIXED_GANTT_CATEGORIES.map(category => ({ category, lanes: groups.get(category) || [] }));
 }
 
 type CategoryActivity = { lane: TimelineLane; activity: TimelineBar; track: number };
@@ -126,6 +126,8 @@ function renderSequence(timeline: Timeline) {
 
 function renderObservedInventory(document: EngagementDocument) {
   const inventory = document.inventory;
+  const path = getHclSchedulePath(inventory);
+  const pathDetail = { green: "Green baseline alignment", yellow: "Yellow remediation and verification", red: "Red procurement or greenfield provisioning", unresolved: "Unresolved evidence collection" }[path];
   const groups = new Map<string, {
     vendor: string;
     model: string;
@@ -197,7 +199,7 @@ function renderObservedInventory(document: EngagementDocument) {
   const esxiRows = inventory.esxiVersions.length
     ? inventory.esxiVersions.map(row => `<tr><td>${esc(row.version)}</td><td>${row.hosts}</td></tr>`).join("")
     : '<tr><td colspan="2">Not reported</td></tr>';
-  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Current estate and offline HCL evidence</span><h3>Observed host inventory</h3></div><p>Consolidated RVTools host, software, cluster, and memory fields, with a local ESXi 9.1 server-and-CPU snapshot precheck.</p></div><div class="hardware-snapshot"><div><span>Observed hosts</span><strong>${number(inventory.hosts)}</strong></div><div><span>Physical cores</span><strong>${number(inventory.physicalCores)}</strong></div><div><span>Host groups</span><strong>${number(groups.size)}</strong></div><div><span>Reported ESXi versions</span><strong>${number(inventory.esxiVersions.length)}</strong></div></div><div class="hardware-tables"><div class="hardware-table-panel"><div class="table-heading"><h4>Reported ESXi Versions</h4><p>Imported from RVTools</p></div><table class="compact-table esxi-table"><thead><tr><th>Reported Version</th><th>Hosts</th></tr></thead><tbody>${esxiRows}</tbody></table></div><div class="hardware-table-panel"><div class="table-heading"><h4>VCF 9.1 Delivery Inventory</h4><p>Consolidated host groups with offline HCL server-and-CPU evidence</p></div><table class="compact-table hardware-table"><thead><tr><th>Observed Host Group</th><th>Estate</th><th>Reported ESXi</th><th>Cluster / Memory</th><th>HCL Server + CPU Evidence</th><th>Delivery Context</th></tr></thead><tbody>${platformRows}</tbody></table><p style="margin:12px 0 0;font-size:10px;line-height:1.5;color:#475569">Offline HCL limitation: ${esc(HCL_OFFLINE_LIMITATION)}</p></div></div></section>`;
+  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Current estate and offline HCL evidence</span><h3>Observed host inventory</h3></div><p>Consolidated RVTools host, software, cluster, and memory fields, with a local ESXi 9.1 server-and-CPU snapshot precheck.</p></div><div class="hardware-snapshot"><div><span>${esc(HCL_EVALUATION_VERSION)} delivery path</span><strong>${esc(path.toUpperCase())}</strong><small>${esc(pathDetail)}</small></div><div><span>Observed hosts</span><strong>${number(inventory.hosts)}</strong></div><div><span>Physical cores</span><strong>${number(inventory.physicalCores)}</strong></div><div><span>Host groups</span><strong>${number(groups.size)}</strong></div><div><span>Reported ESXi versions</span><strong>${number(inventory.esxiVersions.length)}</strong></div></div><div class="hardware-tables"><div class="hardware-table-panel"><div class="table-heading"><h4>Reported ESXi Versions</h4><p>Imported from RVTools</p></div><table class="compact-table esxi-table"><thead><tr><th>Reported Version</th><th>Hosts</th></tr></thead><tbody>${esxiRows}</tbody></table></div><div class="hardware-table-panel"><div class="table-heading"><h4>VCF 9.1 Delivery Inventory</h4><p>Consolidated host groups with offline HCL server-and-CPU evidence</p></div><table class="compact-table hardware-table"><thead><tr><th>Observed Host Group</th><th>Estate</th><th>Reported ESXi</th><th>Cluster / Memory</th><th>HCL Server + CPU Evidence</th><th>Delivery Context</th></tr></thead><tbody>${platformRows}</tbody></table><p style="margin:12px 0 0;font-size:10px;line-height:1.5;color:#475569">Offline HCL limitation: ${esc(HCL_OFFLINE_LIMITATION)}</p></div></div></section>`;
 }
 
 function renderPlanSummary(document: EngagementDocument) {
