@@ -372,3 +372,10 @@
 - [x] Add a separately persisted planned project start date with safe defaults and backward-compatible migration.
 - [x] Decouple planned project timing from entitlement timing in generated timelines, narrative, workspace inputs, and HTML/PDF exports.
 - [x] Add regression coverage for date changes, migration, and bounded timeline regeneration; validate the repaired interaction and checkpoint the release.
+
+## Supplied RVTools Workbook Upload Failure
+
+- [x] Inspect Franklin_Park.xlsx and Ashburn.xlsx safely to identify the upload or parser failure mode.
+- [x] Update workbook discovery and RVTools parsing to support the observed export format without weakening browser-only processing.
+- [x] Add regression coverage for the observed workbook structure and concurrent multi-workbook import.
+- [x] Validate the repaired upload workflow with the supplied workbooks, run the release gate, and checkpoint the fix.

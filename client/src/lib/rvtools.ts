@@ -60,16 +60,51 @@ function speedMb(row: Row): number {
   return /\b(?:gb|gbit|gbps)\b/i.test(raw) ? parsed * 1000 : parsed;
 }
 
-function xml(data: Uint8Array): Document {
-  const document = new DOMParser().parseFromString(textDecoder.decode(data), "application/xml");
-  if (document.querySelector("parsererror")) throw new Error("The XLSX package contains invalid XML.");
-  return document;
+function decodeXml(value: string): string {
+  return value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (match, entity: string) => {
+    const normalized = entity.toLowerCase();
+    if (normalized === "amp") return "&";
+    if (normalized === "lt") return "<";
+    if (normalized === "gt") return ">";
+    if (normalized === "quot") return '"';
+    if (normalized === "apos") return "'";
+    const codePoint = normalized.startsWith("#x") ? Number.parseInt(normalized.slice(2), 16) : Number.parseInt(normalized.slice(1), 10);
+    try { return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : match; } catch { return match; }
+  });
 }
 
-function cellText(cell: Element, sharedStrings: string[]): Cell {
-  const type = cell.getAttribute("t") || "";
-  if (type === "inlineStr") return Array.from(cell.querySelectorAll("is t")).map(node => node.textContent || "").join("");
-  const raw = cell.querySelector("v")?.textContent || "";
+function attribute(markup: string, name: string): string {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const found = markup.match(new RegExp(`(?:^|\\s)${escaped}=(?:"([^"]*)"|'([^']*)')`));
+  return decodeXml(found?.[1] ?? found?.[2] ?? "");
+}
+
+function tagText(markup: string, tag: string): string {
+  const found = markup.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
+  return decodeXml(found?.[1] ?? "");
+}
+
+function inlineText(markup: string): string {
+  const parts: string[] = [];
+  const matcher = /<t\b[^>]*>([\s\S]*?)<\/t>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = matcher.exec(markup))) parts.push(decodeXml(match[1]));
+  return parts.length ? parts.join("") : decodeXml(markup.replace(/<[^>]*>/g, ""));
+}
+
+function parseSharedStrings(data: Uint8Array): string[] {
+  const text = textDecoder.decode(data);
+  const values: string[] = [];
+  const matcher = /<si\b[^>]*>([\s\S]*?)<\/si>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = matcher.exec(text))) values.push(inlineText(match[1]));
+  return values;
+}
+
+function cellText(attributes: string, body: string, sharedStrings: string[]): Cell {
+  const type = attribute(attributes, "t");
+  if (type === "inlineStr") return inlineText(body);
+  const raw = tagText(body, "v");
   if (type === "s") return sharedStrings[Number(raw)] ?? "";
   if (type === "b") return raw === "1";
   if (type === "str") return raw;
@@ -82,42 +117,92 @@ function columnIndex(reference: string): number {
   return Array.from(letters).reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
 }
 
-function parseSheet(data: Uint8Array, sharedStrings: string[]): Row[] {
-  const document = xml(data);
-  const rawRows = Array.from(document.querySelectorAll("sheetData row")).map(row => {
+const pauseForPaint = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+
+async function parseSheet(data: Uint8Array, sharedStrings: string[]): Promise<Row[]> {
+  const records: Row[] = [];
+  let headers: string[] | null = null;
+  const rows = textDecoder.decode(data);
+  const rowMatcher = /<row\b[^>]*>([\s\S]*?)<\/row>/gi;
+  let rowMatch: RegExpExecArray | null;
+  let rowIndex = 0;
+
+  while ((rowMatch = rowMatcher.exec(rows))) {
     const cells: Cell[] = [];
-    for (const cell of Array.from(row.querySelectorAll(":scope > c"))) cells[columnIndex(cell.getAttribute("r") || "A1")] = cellText(cell, sharedStrings);
-    return cells;
-  });
-  const headerIndex = rawRows.findIndex(row => row.filter(value => norm(value)).length >= 2);
-  if (headerIndex < 0) return [];
-  const headers = rawRows[headerIndex].map(value => key(value));
-  return rawRows.slice(headerIndex + 1).filter(row => row.some(value => norm(value))).map(values => {
-    const record: Row = {};
-    headers.forEach((header, index) => { if (header) record[header] = values[index] ?? ""; });
-    return record;
-  });
+    const cellMatcher = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/gi;
+    let cellMatch: RegExpExecArray | null;
+    while ((cellMatch = cellMatcher.exec(rowMatch[1]))) {
+      cells[columnIndex(attribute(cellMatch[1], "r") || "A1")] = cellText(cellMatch[1], cellMatch[2] ?? "", sharedStrings);
+    }
+
+    if (!headers) {
+      if (cells.filter(value => norm(value)).length >= 2) headers = cells.map(value => key(value));
+    } else if (cells.some(value => norm(value))) {
+      const record: Row = {};
+      headers.forEach((header, index) => { if (header) record[header] = cells[index] ?? ""; });
+      records.push(record);
+    }
+
+    rowIndex += 1;
+    // Keep the browser responsive while converting large RVTools VM worksheets.
+    if (rowIndex % 750 === 0) await pauseForPaint();
+  }
+
+  return records;
 }
 
-function parseXlsx(buffer: ArrayBuffer): SheetMap {
-  const entries = unzipSync(new Uint8Array(buffer));
-  const workbook = entries["xl/workbook.xml"];
-  const relationships = entries["xl/_rels/workbook.xml.rels"];
+function shouldReadWorkbookSheet(name: string): boolean {
+  const normalized = key(name);
+  return normalized === "vsnapshot" || normalized in hclTabAliases;
+}
+
+async function parseXlsx(buffer: ArrayBuffer): Promise<SheetMap> {
+  const bytes = new Uint8Array(buffer);
+  const manifest = unzipSync(bytes, {
+    filter: file => file.name === "xl/workbook.xml" || file.name === "xl/_rels/workbook.xml.rels",
+  });
+  const workbook = manifest["xl/workbook.xml"];
+  const relationships = manifest["xl/_rels/workbook.xml.rels"];
   if (!workbook || !relationships) throw new Error("This file is not a valid RVTools XLSX workbook.");
 
-  const sharedDocument = entries["xl/sharedStrings.xml"] ? xml(entries["xl/sharedStrings.xml"]) : null;
-  const sharedStrings = sharedDocument ? Array.from(sharedDocument.querySelectorAll("si")).map(item => Array.from(item.querySelectorAll("t")).map(node => node.textContent || "").join("")) : [];
-  const relMap = new Map(Array.from(xml(relationships).querySelectorAll("Relationship")).map(rel => [rel.getAttribute("Id") || "", rel.getAttribute("Target") || ""]));
-  const result: SheetMap = new Map();
-  for (const sheet of Array.from(xml(workbook).querySelectorAll("sheet"))) {
-    const name = sheet.getAttribute("name") || "Sheet";
-    const relationId = sheet.getAttribute("r:id") || sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") || "";
+  const relMap = new Map<string, string>();
+  const relationMatcher = /<Relationship\b([^>]*)\/?>(?:<\/Relationship>)?/gi;
+  let relationMatch: RegExpExecArray | null;
+  const relationshipsText = textDecoder.decode(relationships);
+  while ((relationMatch = relationMatcher.exec(relationshipsText))) {
+    const id = attribute(relationMatch[1], "Id");
+    const target = attribute(relationMatch[1], "Target");
+    if (id && target) relMap.set(id, target);
+  }
+
+  const selectedSheets: Array<{ name: string; path: string }> = [];
+  const sheetMatcher = /<sheet\b([^>]*)\/?>(?:<\/sheet>)?/gi;
+  let sheetMatch: RegExpExecArray | null;
+  const workbookText = textDecoder.decode(workbook);
+  while ((sheetMatch = sheetMatcher.exec(workbookText))) {
+    const name = attribute(sheetMatch[1], "name") || "Sheet";
+    if (!shouldReadWorkbookSheet(name)) continue;
+    const relationId = attribute(sheetMatch[1], "r:id");
     const target = relMap.get(relationId);
     if (!target) continue;
-    const normalizedTarget = target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\//, "")}`;
-    const data = entries[normalizedTarget];
-    if (data) result.set(name, parseSheet(data, sharedStrings));
+    selectedSheets.push({ name, path: target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\//, "")}` });
   }
+
+  const selectedPaths = new Set(selectedSheets.map(sheet => sheet.path));
+  const entries = unzipSync(bytes, {
+    filter: file => file.name === "xl/sharedStrings.xml" || selectedPaths.has(file.name),
+  });
+  const sharedStrings = entries["xl/sharedStrings.xml"] ? parseSharedStrings(entries["xl/sharedStrings.xml"]) : [];
+  const result: SheetMap = new Map();
+
+  for (const selected of selectedSheets) {
+    const data = entries[selected.path];
+    if (!data) continue;
+    result.set(selected.name, await parseSheet(data, sharedStrings));
+    delete entries[selected.path];
+    await pauseForPaint();
+  }
+
   return result;
 }
 
@@ -206,7 +291,7 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
   for (const file of files) {
     const lower = file.name.toLowerCase();
     if (!lower.endsWith(".xlsx") && !lower.endsWith(".csv")) throw new Error(`${file.name}: only .xlsx and .csv files are accepted.`);
-    const sheets = lower.endsWith(".xlsx") ? parseXlsx(await file.arrayBuffer()) : parseCsv(await file.text(), file.name);
+    const sheets = lower.endsWith(".xlsx") ? await parseXlsx(await file.arrayBuffer()) : parseCsv(await file.text(), file.name);
     const sheetNames = Array.from(sheets.keys());
     Object.keys(hclTabAliases).forEach(tab => { if (hasSheet(sheets, tab)) hclTabs[hclTabKey(tab)] = true; });
     const warnings: string[] = [];
