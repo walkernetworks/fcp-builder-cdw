@@ -101,9 +101,8 @@ describe("calendar-month adoption plans", () => {
     const securityEnds = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-security-resilience")!.bars.map(candidate => candidate.endCol);
 
     expect(plans.adoptionTimeline.columns.length).toBeGreaterThanOrEqual(10);
-    expect(plans.adoptionTimeline.lanes.map(lane => lane.category)).toEqual([
-      "Program Management & Governance", "Modernize Infrastructure", "Operations", "Modernize Cloud", "Modernize Security & Resilience",
-    ]);
+    expect(new Set(plans.adoptionTimeline.lanes.map(lane => lane.category))).toEqual(new Set(FIXED_GANTT_CATEGORIES));
+    expect(plans.adoptionTimeline.lanes.filter(lane => lane.category === "Modernize Infrastructure").map(lane => lane.workstreamType)).toEqual(expect.arrayContaining(["Infrastructure Build", "Migration Waves"]));
     expect(plans.twoYearPlan).toMatchObject({ cadence: "month", startDate: "2027-01-01" });
     expect(plans.twoYearPlan.columns).toHaveLength(13);
     expect(plans.twoYearPlan.columns[0]).toBe("Jan 27");
@@ -112,8 +111,8 @@ describe("calendar-month adoption plans", () => {
     expect(plans.twoYearPlan.lanes.flatMap(lane => lane.bars).every(candidate => candidate.endCol <= plans.twoYearPlan.columns.length + 1)).toBe(true);
     expect(plans.twoYearPlan.lanes.map(lane => lane.name).join(" ")).not.toMatch(/Year [12] ·/);
     expect(plans.rationale).toContain("$2,500,000");
-    expect(plans.rationale).toContain("Mobilisation and delivery-baseline work are deliberately limited to the first calendar month");
-    expect(plans.rationale).toContain("The entitlement-aligned Notional runs from the planned project start (2027-01-01) through entitlement end (2028-01-01)");
+    expect(plans.rationale).toContain("implementation begins with mobilisation and delivery-baseline work in the first calendar month");
+    expect(plans.rationale).toContain("The Entitlement Notional begins at the planned project start (2027-01-01) and ends at entitlement end (2028-01-01)");
     expect(labels).toEqual(expect.arrayContaining([
       "Month 1: Mobilize and Freeze VCF Delivery Baseline",
       "Deploy VCF Management Domain and Core Control Plane",
@@ -281,7 +280,8 @@ describe("calendar-month adoption plans", () => {
     expect(labels).not.toContain("Resilience Implementation");
     expect(labels).not.toContain("Private AI Implementation");
     expect(JSON.stringify(plans.twoYearPlan)).not.toMatch(/Service Prioritization Decision|Year [12] ·/);
-    expect(plans.twoYearPlan.lanes).toHaveLength(5);
+    expect(plans.twoYearPlan.lanes.length).toBeGreaterThanOrEqual(FIXED_GANTT_CATEGORIES.length);
+    expect(new Set(plans.twoYearPlan.lanes.map(lane => lane.category))).toEqual(new Set(FIXED_GANTT_CATEGORIES));
     expect(plans.rationale).toContain("HCL 2.0 evaluation path");
   });
 
@@ -389,7 +389,7 @@ describe("calendar-month adoption plans", () => {
     expect(migrated.twoYearPlan.columns).toHaveLength(13);
     expect(migrated.twoYearPlan.columns[0]).toBe("Jan 27");
     expect(migrated.twoYearPlan.columns[12]).toBe("Jan 28");
-    expect(migrated.twoYearPlan.lanes.map(lane => lane.category)).toEqual(FIXED_GANTT_CATEGORIES);
+    expect(new Set(migrated.twoYearPlan.lanes.map(lane => lane.category))).toEqual(new Set(FIXED_GANTT_CATEGORIES));
     expect(operations?.bars).toEqual(expect.arrayContaining([
       expect.objectContaining({ label: "Deploy VCF Operations Health, Logs, and Diagnostics", startCol: expect.any(Number) }),
       expect.objectContaining({ label: "Publish Operational Dashboards and Service Measures", startCol: expect.any(Number) }),
@@ -404,7 +404,7 @@ describe("planning considerations, exports, and access boundary", () => {
     Object.assign(document.inventory, { hosts: 2, vmCount: 120, poweredOnVms: 100, physicalCores: 64, esxiVersions: [{ version: "7.0.3", hosts: 2 }], hostModels: [{ vendor: "Dell", model: "R740", cpuModel: "Intel", hosts: 2, physicalCores: 64, esxiVersions: [{ version: "7.0.3", hosts: 2 }], esxiCorrelation: "per-platform" }] });
     const considerations = assessReadiness(document.fields, document.inventory);
     expect(considerations.items.find(item => item.id === "software-baseline")?.status).toBe("attention");
-    expect(considerations.items.find(item => item.id === "core-entitlement")?.status).toBe("attention");
+    expect(considerations.items.find(item => item.id === "core-entitlement")).toBeUndefined();
     expect(considerations.label).toBe("Inventory-Informed VCF 9.1 Planning Considerations");
   });
 
@@ -616,7 +616,7 @@ describe("planning considerations, exports, and access boundary", () => {
 
     expect(assessment).toMatchObject({
       label: "Month 1: Mobilize and Freeze VCF Delivery Baseline",
-      dependsOn: expect.stringContaining("offline HCL snapshot"),
+      dependsOn: expect.stringContaining("bill of materials"),
     });
     expect(mirroredAssessment?.label).toBe("Month 1: Mobilize and Freeze VCF Delivery Baseline");
     expect(plans.adoptionTimeline.lanes.some(lane => lane.id.startsWith("lane-host-platform-"))).toBe(false);
@@ -636,7 +636,7 @@ describe("planning considerations, exports, and access boundary", () => {
     const reopened = migrateDocument(JSON.parse(JSON.stringify(document)));
     expect(reopened.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(activity => activity.id === "bar-platform-plan")).toMatchObject({
       label: "Month 1: Mobilize and Freeze VCF Delivery Baseline",
-      dependsOn: expect.stringContaining("offline HCL snapshot"),
+      dependsOn: expect.stringContaining("bill of materials"),
     });
     expect(reopened.adoptionTimeline.lanes.some(lane => lane.id.startsWith("lane-host-platform-"))).toBe(false);
     expect(reopened.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"))).toBe(false);
@@ -779,7 +779,7 @@ describe("planning considerations, exports, and access boundary", () => {
     const lanes = [...plans.adoptionTimeline.lanes, ...plans.twoYearPlan.lanes];
     expect(lanes.length).toBeGreaterThan(0);
     expect(lanes.every(lane => canonicalCategories.has(lane.category) && canonicalWorkstreamTypes.has(lane.workstreamType))).toBe(true);
-    expect(lanes.every(lane => lane.name === lane.category)).toBe(true);
+    expect(lanes.filter(lane => lane.category === "Modernize Infrastructure").map(lane => lane.workstreamType)).toEqual(expect.arrayContaining(["Infrastructure Build", "Migration Waves"]));
     expect(lanes.every(lane => lane.bars.every(activity => activity.color === colorForWorkstreamType(lane.workstreamType)))).toBe(true);
   });
 
@@ -789,14 +789,14 @@ describe("planning considerations, exports, and access boundary", () => {
     const plans = buildAdoptionPlans(document.fields, document.inventory);
     Object.assign(document, plans);
     expect(document.twoYearPlan.columns).toHaveLength(13);
-    expect(document.twoYearPlan.lanes.map(lane => lane.category)).toEqual(FIXED_GANTT_CATEGORIES);
+    expect(new Set(document.twoYearPlan.lanes.map(lane => lane.category))).toEqual(new Set(FIXED_GANTT_CATEGORIES));
     expect(document.twoYearPlan.lanes.flatMap(lane => lane.bars).every(activity => activity.endCol <= document.twoYearPlan.columns.length + 1)).toBe(true);
 
     const staleDocument = JSON.parse(JSON.stringify(document));
     staleDocument.twoYearPlan.lanes = staleDocument.twoYearPlan.lanes.map((lane: { bars: unknown[] }) => ({ ...lane, bars: [] }));
     const migrated = migrateDocument(staleDocument);
     expect(migrated.twoYearPlan.columns).toHaveLength(13);
-    expect(migrated.twoYearPlan.lanes.map(lane => lane.category)).toEqual(FIXED_GANTT_CATEGORIES);
+    expect(new Set(migrated.twoYearPlan.lanes.map(lane => lane.category))).toEqual(new Set(FIXED_GANTT_CATEGORIES));
     expect(migrated.twoYearPlan.lanes.flatMap(lane => lane.bars)).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "bar-platform-plan" }),
     ]));
@@ -817,7 +817,7 @@ describe("planning considerations, exports, and access boundary", () => {
 
     const explicitlyScopedFields = { ...document.fields, priorities: [...document.fields.priorities, "networking" as const] };
     const explicitlyScopedPlans = buildAdoptionPlans(explicitlyScopedFields, document.inventory);
-    const primaryNetworking = explicitlyScopedPlans.adoptionTimeline.lanes.find(lane => lane.id === "lane-modernize-infrastructure");
+    const primaryNetworking = explicitlyScopedPlans.adoptionTimeline.lanes.find(lane => lane.id === "lane-modernize-infrastructure-build");
     expect(primaryNetworking).toMatchObject({
       category: "Modernize Infrastructure",
       workstreamType: "Infrastructure Build",
@@ -846,7 +846,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("$3,000,000");
     expect(html).toContain("Operational Adoption Timeline");
     expect(html).toContain("Entitlement Notional");
-    expect(html).toContain("Execution view:");
+    expect(html).toContain("Two-year operational view:");
     expect(html).toContain("Entitlement-period planning view:");
     expect(html).toContain("Planned Project Start Through Entitlement End");
     expect(html).toContain("planned project start (2027-01-01)");
@@ -859,7 +859,10 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Observed host inventory");
     expect(html).toContain("VCF 9.1 Delivery Inventory");
     expect(html).toContain("Reported ESXi");
+    expect(html).toContain("220 VM records");
+    expect(html).toContain("Customer-aligned delivery plan");
     expect(html).toContain("HCL Server + CPU Evidence");
+    expect(html).not.toContain("Physical cores");
     expect(html).toContain("Snapshot-supported pairing");
     expect(html).toContain("Offline HCL limitation");
     expect(html).toContain("Migration Waves");
@@ -881,12 +884,11 @@ describe("planning considerations, exports, and access boundary", () => {
     const planSummary = html.slice(planSummaryStart, observedInventoryStart);
     expect(planSummaryStart).toBeGreaterThan(-1);
     expect(observedInventoryStart).toBeGreaterThan(planSummaryStart);
-    expect(planSummary).toContain("<h3>Inventory baseline</h3>");
-    expect(planSummary).toContain("<h3>Planned delivery window</h3>");
-    expect(planSummary).toContain("<h3>Month 1</h3>");
-    expect(planSummary).toContain("<h3>Platform build</h3>");
-    expect(planSummary).toContain("<h3>Workload delivery</h3>");
-    expect(planSummary).toContain("<h3>Operate and hand over</h3>");
+    expect(planSummary).toContain("<h3>Customer background</h3>");
+    expect(planSummary).toContain("<h3>Observed footprint</h3>");
+    expect(planSummary).toContain("<h3>Selected scope</h3>");
+    expect(planSummary).toContain("<h3>Entitlement Notional</h3>");
+    expect(planSummary).toContain("<h3>Operational Adoption Timeline</h3>");
     expect(planSummary).toContain('<span class="summary-index">01</span>');
     expect(planSummary).not.toContain("data-step=");
     expect(html).toContain('<section class="executive-sheet">');

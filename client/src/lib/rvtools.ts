@@ -37,13 +37,14 @@ const hclBoolean = (value: unknown): "enabled" | "disabled" | "unknown" => {
 };
 
 const rvToolsHeaderAliases: Record<string, string[]> = {
-  host: ["vhostname"],
-  hostname: ["vhostname"],
-  name: ["vhostname"],
-  uuid: ["vhostuuid"],
-  objectid: ["vhostobjectid"],
-  datacenter: ["vhostdatacenter"],
-  cluster: ["vhostcluster"],
+  // Native RVTools vHost fields.
+  host: ["vhostname", "vinfohost"],
+  hostname: ["vhostname", "vinfohost"],
+  name: ["vhostname", "vinfovmname"],
+  uuid: ["vhostuuid", "vinfouuid", "vinfosmbiosuuid"],
+  objectid: ["vhostobjectid", "vinfoobjectid"],
+  datacenter: ["vhostdatacenter", "vinfodatacenter"],
+  cluster: ["vhostcluster", "vinfocluster"],
   cores: ["vhostnumcpucores"],
   numcpucores: ["vhostnumcpucores"],
   cpupackages: ["vhostnumcpupackages"],
@@ -51,21 +52,35 @@ const rvToolsHeaderAliases: Record<string, string[]> = {
   numcpupackages: ["vhostnumcpupackages"],
   corespercpu: ["vhostcorespercpu"],
   corespersocket: ["vhostcorespercpu"],
-  esxversion: ["vhostesxversion"],
-  esxiversion: ["vhostesxversion"],
-  version: ["vhostesxversion"],
+  // Current RVTools vHost reports ESXi build text in vHostFullName.
+  esxversion: ["vhostesxversion", "vhostfullname"],
+  esxiversion: ["vhostesxversion", "vhostfullname"],
+  version: ["vhostesxversion", "vhostfullname"],
   vendor: ["vhostvendor"],
   model: ["vhostmodel"],
   cpumodel: ["vhostcpumodel"],
-  memory: ["vhostmemorysize"],
-  memorysize: ["vhostmemorysize"],
+  memory: ["vhostmemorysize", "vinfomemory"],
+  memorysize: ["vhostmemorysize", "vinfomemory"],
   memorytotal: ["vhostmemorysize"],
-  memorymib: ["vhostmemorysize"],
-  memorysizemib: ["vhostmemorysize"],
+  memorymib: ["vhostmemorysize", "vinfomemory"],
+  memorysizemib: ["vhostmemorysize", "vinfomemory"],
   cpuusage: ["vhostoverallcpuusage"],
   memoryusage: ["vhostoverallmemoryusage"],
   biosversion: ["vhostbiosversion"],
   biosdate: ["vhostbiosdate"],
+  // Native RVTools vInfo fields.
+  vm: ["vinfovmname"],
+  vmname: ["vinfovmname"],
+  powerstate: ["vinfopowerstate"],
+  cpus: ["vinfocpus"],
+  vcpu: ["vinfocpus"],
+  numcpu: ["vinfocpus"],
+  os: ["vinfoos"],
+  guestos: ["vinfoos"],
+  osaccordingtotheconfigurationfile: ["vinfoos"],
+  hwversion: ["vinfoversion"],
+  hardwareversion: ["vinfoversion"],
+  vmversion: ["vinfoversion"],
 };
 
 function first(row: Row, names: string[]): Cell {
@@ -345,7 +360,7 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
       if (identity) hostRows.set(identity.toLowerCase(), row);
     }
     for (const row of sheet(sheets, "vInfo")) {
-      const identity = norm(first(row, ["VM UUID", "UUID", "Object ID"])) || [first(row, ["Datacenter"]), first(row, ["Cluster"]), first(row, ["VM"])].map(norm).join("|");
+      const identity = norm(first(row, ["VM UUID", "UUID", "Object ID"])) || compositeIdentity([first(row, ["Datacenter"]), first(row, ["Cluster"]), first(row, ["VM", "VM Name"])]);
       if (identity) vmRows.set(identity.toLowerCase(), row);
     }
     for (const row of sheet(sheets, "vDatastore")) {
@@ -533,7 +548,7 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
     vmInfo: Array.from(vmRows.values()).map(row => ({
       vm: norm(first(row, ["VM", "VM Name", "Name"])),
       guestOs: norm(first(row, ["OS according to the configuration file", "OS", "Guest OS"])),
-      hardwareVersion: norm(first(row, ["HW Version", "Hardware Version", "Version"])),
+      hardwareVersion: norm(first(row, ["HW Version", "Hardware Version", "VM Version"])),
     })),
     vmNetworks: Array.from(networkRows.values()).map(row => ({
       vm: norm(first(row, ["VM", "VM Name", "Name"])),

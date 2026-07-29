@@ -400,3 +400,35 @@
 - [x] Permit intentional overlapping infrastructure and migration activities within a shared category while retaining valid bounds and activity data.
 - [x] Preserve explicit VCF networking scope so networking appears only after a customer selection and never from a default or migration rule.
 - [x] Add regression coverage for unselected networking and same-category overlapping activities; validate the editor and checkpoint the repair.
+
+## Multiple Workstream Types per Category
+
+- [x] Trace the category-to-single-workstream constraint across timeline schemas, normalization, editor controls, rendering, and exports.
+- [x] Refactor the model so a fixed category can contain multiple independently typed workstreams and overlapping activities.
+- [x] Add editable workstream-type controls for new and existing activities while preserving valid grouped timeline presentation.
+- [x] Add regression coverage for concurrent Infrastructure Build and Migration Wave work within one category, validate the editor and exports, and checkpoint the repair.
+
+## Entitlement-First and Two-Year Operational Timeline
+
+- [x] Trace current Entitlement Notional and Operational Adoption Timeline construction, ordering, start-date sources, and export labels.
+- [x] Make Entitlement Notional the first planning view without changing entitlement-date semantics.
+- [x] Make the Operational Adoption Timeline a two-year timeline beginning at the planned project start date, with safe migration of existing plans.
+- [x] Combine the timeline-view revision with multiple editable workstreams per category, add regression coverage, validate editor/export behavior, and checkpoint the release.
+
+## Accurate Footprint and Customer-Centered Report Cleanup
+
+- [x] Audit why the imported Franklin Park and Ashburn RVTools evidence reports only one VM and an unknown ESXi version despite available source rows.
+- [x] Correct VM and ESXi-version extraction, aggregation, readiness wording, and report labels using verified supplied-workbook evidence.
+- [x] Remove entitled cores from intake, plan summaries, workspace, and exports; replace the misleading completion percentage and generic delivery-posture copy.
+- [x] Add a customer-background, selected-scope, observed-footprint, and plan-synopsis report structure that distinguishes entitlement and operational timelines clearly.
+- [x] Complete multi-workstream workstream-type editing and the two-year planned-start operational timeline, then add regression coverage, validate reports, and checkpoint the release.
+
+## Customer Narrative, Inventory Evidence, and Timeline Refinement
+
+- [x] Start the Entitlement Notional at the independently selected planned project start while bounding it by the entitlement end date.
+- [x] Preserve separately typed concurrent workstreams within shared report categories and make the two planning views unambiguous.
+- [x] Remove entitlement-core language from readiness and report presentation because cores are not a meaningful decision metric at this stage.
+- [x] Diagnose and correct VM-footprint aggregation so report totals reflect all imported RVTools VM evidence rather than a misleading partial count.
+- [x] Replace ambiguous inventory fallbacks such as "Hosts Unknown" with RVTools-backed values or explicit evidence-gap language.
+- [x] Improve the executive synopsis and delivery posture so they describe the customer context and confirmed plan selections in clear, customer-ready language.
+- [x] Update regression coverage, run the full validation suite, and visually verify the revised workspace and exported report.

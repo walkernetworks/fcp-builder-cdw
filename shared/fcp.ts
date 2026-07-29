@@ -166,7 +166,6 @@ const minimalFieldsV5Schema = z.object({
   accountId: z.string().max(120),
   location: z.string().max(240),
   primaryContact: z.string().max(240),
-  entitledCores: z.number().int().min(0).max(10_000_000),
   entitlementAmount: z.number().min(0).max(1_000_000_000_000),
   entitlementStart: z.string(),
   entitlementEnd: z.string(),
@@ -514,7 +513,6 @@ export function createDefaultFields(): MinimalFields {
     accountId: "",
     location: "",
     primaryContact: "",
-    entitledCores: 0,
     entitlementAmount: 0,
     entitlementStart: "",
     entitlementEnd: "",
@@ -647,8 +645,11 @@ function entitlementNotionalEndDate(fields: MinimalFields): string {
 
 function primaryColumns(fields: MinimalFields): string[] {
   const start = timelineStartDate(fields);
-  const end = timelineEndDate(fields);
-  return fields.adoptionCadence === "week" ? buildWeekColumns(start, end, 12, 104) : buildMonthColumns(start, end, 12, 36);
+  const parsedStart = parseIsoDate(start) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  // The operational timeline is always a two-year planning horizon from the independently chosen planned project start.
+  return fields.adoptionCadence === "week"
+    ? buildWeekColumns(start, isoDate(addUtcDays(parsedStart, (104 * 7) - 1)), 104, 104)
+    : buildMonthColumns(start, isoDate(addUtcMonths(parsedStart, 23)), 24, 24);
 }
 
 function boundedRange(start: number, duration: number, columnCount: number): [number, number] {
@@ -732,8 +733,8 @@ export function applyWorkstreamPresentation(timeline: Timeline): Timeline {
     ...timeline,
     lanes: timeline.lanes.map(lane => ({
       ...lane,
-      // The visible timeline lane is the immutable Gantt category; activities retain their detailed workstream content.
-      name: lane.category,
+      // Categories remain the fixed Gantt rows; lanes retain their own editable workstream identity.
+      name: lane.workstreamType,
       bars: lane.bars.map(activity => ({
         ...activity,
         color: colorForWorkstreamType(lane.workstreamType),
@@ -748,7 +749,9 @@ export function normalizeTimelineTaxonomy(timeline: Timeline): Timeline {
     ...timeline,
     lanes: timeline.lanes.map(lane => {
       const inferred = inferredLaneMetadata(lane.id);
-      return { ...lane, ...(inferred || {}) };
+      const category = canonicalTimelineCategory(lane.category) || inferred?.category || DEFAULT_TIMELINE_LANE_METADATA.category;
+      const workstreamType = canonicalWorkstreamType(lane.workstreamType) || inferred?.workstreamType || DEFAULT_TIMELINE_LANE_METADATA.workstreamType;
+      return { ...lane, category, workstreamType };
     }),
   };
   return applyWorkstreamPresentation(normalized);
@@ -979,7 +982,7 @@ function ensureScheduleColumns(columns: string[], startDate: string, cadence: Ti
 }
 
 function fixedGanttLane(id: string, category: TimelineCategory, workstreamType: WorkstreamType, bars: TimelineBar[]): TimelineLane {
-  return { id, name: category, category, workstreamType, bars };
+  return { id, name: workstreamType, category, workstreamType, bars };
 }
 
 function hclPathLabel(path: HclSchedulePath): string {
@@ -1133,8 +1136,9 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const finalMigrationStart = Math.max(workloadEnd, cloudEnd, securityEnd);
   const migrationRange = migrationDuration ? range(finalMigrationStart, migrationDuration) : null;
   const migrationEnd = migrationRange?.[1] ?? finalMigrationStart;
+  const migrationBars: TimelineBar[] = [];
   if (migrationRange) {
-    infrastructureBars.push(bar("bar-vcf-upgrade-services", migrationRange[0], migrationRange[1], colorForWorkstreamType("Migration Waves"), upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, appendDeliveryContext("Begin only after selected Cloud and Security & Resilience activities complete, as well as workload-domain readiness, application dependency review, rollback planning, and change-window approval."), upgradePathNarrative(fields.adoptionDetails.upgradePath)));
+    migrationBars.push(bar("bar-vcf-upgrade-services", migrationRange[0], migrationRange[1], colorForWorkstreamType("Migration Waves"), upgradeServiceLabel(fields.adoptionDetails.upgradePath), false, false, appendDeliveryContext("Begin only after selected Cloud and Security & Resilience activities complete, as well as workload-domain readiness, application dependency review, rollback planning, and change-window approval."), upgradePathNarrative(fields.adoptionDetails.upgradePath)));
   }
 
   const [handoverStart, handoverEnd] = range(Math.max(migrationEnd, operationsCursor), handoverDuration);
@@ -1142,7 +1146,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   const lanes: TimelineLane[] = [
     fixedGanttLane("lane-program-governance", "Program Management & Governance", "Governance", programBars),
-    fixedGanttLane("lane-modernize-infrastructure", "Modernize Infrastructure", "Infrastructure Build", infrastructureBars),
+    fixedGanttLane("lane-modernize-infrastructure-build", "Modernize Infrastructure", "Infrastructure Build", infrastructureBars),
+    fixedGanttLane("lane-modernize-infrastructure-migration", "Modernize Infrastructure", "Migration Waves", migrationBars),
     fixedGanttLane("lane-operations", "Operations", "Operating Model / Platform", operationsBars),
     fixedGanttLane("lane-cloud", "Modernize Cloud", "Consume / Handover", cloudBars),
     fixedGanttLane("lane-security-resilience", "Modernize Security & Resilience", "Security & Resiliency", securityBars),
@@ -1394,20 +1399,25 @@ function baselineEntitlementLanes(fields: MinimalFields, startColumn: number, co
   }));
 }
 
+function entitlementNotionalStartDate(fields: MinimalFields): string {
+  // The entitlement view starts when delivery is planned to begin, then remains bounded by entitlement end.
+  return timelineStartDate(fields);
+}
+
 function hasEntitlementAlignedNotional(timeline: Timeline, fields: MinimalFields): boolean {
-  const expectedColumns = buildTwoYearNotionalColumns(timelineStartDate(fields), entitlementNotionalEndDate(fields));
+  const notionalStart = entitlementNotionalStartDate(fields);
+  const expectedColumns = buildTwoYearNotionalColumns(notionalStart, entitlementNotionalEndDate(fields));
   const columnsMatch = timeline.cadence === "month"
-    && timeline.startDate === timelineStartDate(fields)
+    && timeline.startDate === notionalStart
     && timeline.columns.length === expectedColumns.length
     && timeline.columns.every((column, index) => column === expectedColumns[index]);
   if (!columnsMatch) return false;
-  if (timeline.lanes.length !== FIXED_GANTT_CATEGORIES.length) return false;
-  if (!timeline.lanes.every((lane, index) => lane.category === FIXED_GANTT_CATEGORIES[index] && lane.name === lane.category)) return false;
+  if (!FIXED_GANTT_CATEGORIES.every(category => timeline.lanes.some(lane => lane.category === category))) return false;
   return timeline.lanes.flatMap(lane => lane.bars).some(activity => activity.id === "bar-platform-plan");
 }
 
 function buildTwoYearPlan(fields: MinimalFields, _inventory: InventorySummary, adoptionTimeline: Timeline): Timeline {
-  const startDate = timelineStartDate(fields);
+  const startDate = entitlementNotionalStartDate(fields);
   const entitlementEnd = entitlementNotionalEndDate(fields);
   const columns = buildTwoYearNotionalColumns(startDate, entitlementEnd);
   const lanes: TimelineLane[] = mirrorEntitlementLanes(adoptionTimeline, columns.length);
@@ -1416,8 +1426,9 @@ function buildTwoYearPlan(fields: MinimalFields, _inventory: InventorySummary, a
 
   if (continuationStart <= columns.length) {
     baselineEntitlementLanes(fields, continuationStart, columns.length).forEach(baselineLane => {
-      const categoryLane = lanes.find(lane => lane.category === baselineLane.category);
-      if (categoryLane) categoryLane.bars.push(...baselineLane.bars);
+      const matchingLane = lanes.find(lane => lane.category === baselineLane.category && lane.workstreamType === baselineLane.workstreamType);
+      if (matchingLane) matchingLane.bars.push(...baselineLane.bars);
+      else lanes.push(baselineLane);
     });
   }
 
@@ -1432,7 +1443,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
   const plannedProjectStart = timelineStartDate(fields);
   const entitlementEnd = entitlementNotionalEndDate(fields);
-  const term = fields.entitlementStart && entitlementEnd ? `${fields.entitlementStart} through ${entitlementEnd}` : "the confirmed entitlement term";
+  const entitlementNotionalStart = entitlementNotionalStartDate(fields);
   const priorities = fields.priorities.length ? fields.priorities.map(capabilityTitle).join(", ") : "the selected customer outcomes";
   const cadence = fields.adoptionCadence === "week" ? "weekly execution windows" : "calendar-month execution windows";
   const detailCount = [fields.adoptionDetails.operations, fields.adoptionDetails.automation, fields.adoptionDetails.networking, fields.adoptionDetails.security, fields.adoptionDetails.resilience, fields.adoptionDetails.kubernetes, fields.adoptionDetails.privateAi].flat().length;
@@ -1456,7 +1467,8 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const platformDeliverySequence = hasConfirmedCapability(fields, "networking")
     ? "management-domain deployment, the confirmed VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover"
     : "management-domain deployment, workload-domain creation or import, controlled upgrade or migration waves, and operational handover";
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Mobilisation and delivery-baseline work are deliberately limited to ${openingWindow}, then the plan moves into ${platformDeliverySequence}. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The entitlement-aligned Notional runs from the planned project start (${plannedProjectStart}) through entitlement end (${entitlementEnd || "TBD"}); it mirrors the implementation sequence, then retains only governance, lifecycle, handover, and selected expansion work that fits within that entitlement period. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const customer = fields.customerName || "The customer";
+  const rationale = `${customer} is planning a VCF adoption around ${estate}, ${cadence}, and ${details}. Delivery posture: implementation begins with mobilisation and delivery-baseline work in ${openingWindow}; it then advances through ${platformDeliverySequence}. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The Entitlement Notional begins at the planned project start (${entitlementNotionalStart}) and ends at entitlement end (${entitlementEnd || "TBD"}); it is bounded by ${amount} and retains only delivery, governance, lifecycle, handover, and selected expansion work scheduled within that entitlement period. ${followOnSummary}. Multiple independently typed workstreams can coexist within the same fixed category, and every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -1735,16 +1747,6 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     evidence: "RVTools provides a point-in-time inventory view.",
   });
 
-  const delta = fields.entitledCores - inventory.physicalCores;
-  items.push({
-    id: "core-entitlement",
-    category: "licensing",
-    status: !fields.entitledCores || !inventory.physicalCores ? "unknown" : delta >= 0 ? "good" : "attention",
-    title: "Core Entitlement Comparison",
-    detail: !fields.entitledCores ? "Enter the entitled core quantity to compare it with observed physical cores." : !inventory.physicalCores ? "Physical-core inventory is unavailable." : delta >= 0 ? `${fields.entitledCores.toLocaleString()} entitled cores cover ${inventory.physicalCores.toLocaleString()} observed physical cores, with ${delta.toLocaleString()} unallocated.` : `${inventory.physicalCores.toLocaleString()} observed physical cores exceed entitlement by ${Math.abs(delta).toLocaleString()}.`,
-    evidence: "Simple inventory comparison",
-  });
-
   return {
     generatedAt: new Date().toISOString(),
     label: "Inventory-Informed VCF 9.1 Planning Considerations",
@@ -1843,7 +1845,7 @@ function normalizeRawTimelineTaxonomy(value: unknown): unknown {
         const rawLane = lane as Record<string, unknown>;
         const inferred = typeof rawLane.id === "string" ? inferredLaneMetadata(rawLane.id) : null;
         const category = inferred?.category || canonicalTimelineCategory(rawLane.category) || DEFAULT_TIMELINE_LANE_METADATA.category;
-        const workstreamType = inferred?.workstreamType || canonicalWorkstreamType(rawLane.workstreamType) || DEFAULT_TIMELINE_LANE_METADATA.workstreamType;
+        const workstreamType = canonicalWorkstreamType(rawLane.workstreamType) || inferred?.workstreamType || DEFAULT_TIMELINE_LANE_METADATA.workstreamType;
         return { ...rawLane, category, workstreamType, name: workstreamType, bars: Array.isArray(rawLane.bars) ? rawLane.bars.map(bar => ({ ...(bar as Record<string, unknown>), color: colorForWorkstreamType(workstreamType), deferred: false })) : rawLane.bars };
       }),
     };
@@ -1858,7 +1860,8 @@ function normalizeRawTimelineTaxonomy(value: unknown): unknown {
 function needsImplementationTimelineRebaseline(timeline: Timeline): boolean {
   const requiredFixedLaneIds = [
     "lane-program-governance",
-    "lane-infrastructure-core",
+    "lane-modernize-infrastructure-build",
+    "lane-modernize-infrastructure-migration",
     "lane-operations",
     "lane-cloud",
     "lane-security-resilience",
@@ -2062,7 +2065,6 @@ export function migrateDocument(value: unknown): EngagementDocument {
     accountId: stringValue(oldFields.accountId || oldFields.cust),
     location: stringValue(oldFields.location || oldFields.cityState || oldFields.city),
     primaryContact: stringValue(oldFields.primaryContact),
-    entitledCores: numberValue(oldFields.entitledCores || oldFields.entitlement),
     entitlementAmount: numberValue(oldFields.entitlementAmount || oldFields.entitlementValue || oldFields.funds),
     entitlementStart: stringValue(oldFields.entitlementStart || oldFields.termStart),
     entitlementEnd: stringValue(oldFields.entitlementEnd || oldFields.entitlementEndDate || oldFields.termEnd),
@@ -2152,15 +2154,3 @@ export function applyTimelineGesture(timeline: Timeline, laneId: string, barId: 
   };
 }
 
-export function completionPercent(fields: MinimalFields, inventory: InventorySummary): number {
-  const checks = [
-    fields.customerName.trim().length > 0,
-    fields.entitledCores > 0,
-    fields.entitlementAmount > 0,
-    fields.entitlementStart.trim().length > 0,
-    fields.entitlementEnd.trim().length > 0,
-    inventory.hosts > 0,
-    inventory.vmCount > 0,
-  ];
-  return Math.round((checks.filter(Boolean).length / checks.length) * 100);
-}

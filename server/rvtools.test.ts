@@ -29,12 +29,12 @@ function rvToolsWorkbook(host: string, vm: string): Uint8Array {
   const workbook = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="vInfo" sheetId="1" r:id="rId1"/><sheet name="vHost" sheetId="2" r:id="rId2"/><sheet name="vDisk" sheetId="3" r:id="rId3"/></sheets></workbook>`;
   const relationships = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/></Relationships>`;
   const vInfo = worksheet([
-    ["VM", "OS according to the configuration file", "HW Version"],
-    [vm, "Microsoft Windows Server 2022", "vmx-20"],
+    ["vInfoVMName", "vInfoPowerstate", "vInfoCPUs", "vInfoMemory", "vInfoOS", "VInfoVersion", "vInfoObjectID", "vInfoUUID", "vInfoDataCenter", "vInfoCluster"],
+    [vm, "poweredOn", "4", "8192", "Microsoft Windows Server 2022", "vmx-20", `vm-${host}`, `uuid-${host}`, "Primary", "Compute"],
   ]);
   const vHost = worksheet([
-    ["vHostName", "vHostDatacenter", "vHostCluster", "vHostNumCpuCores", "vHostVendor", "vHostModel", "vHostCpuModel", "vHostESXVersion", "vHostNumCpu", "vHostCoresPerCPU"],
-    [host, "Primary", "Compute", "32", "Dell Inc.", "PowerEdge R760", "Intel Xeon", "8.0.2", "2", "16"],
+    ["vHostName", "vHostDatacenter", "vHostCluster", "vHostNumCpuCores", "vHostVendor", "vHostModel", "vHostCpuModel", "vHostFullName", "vHostNumCpu", "vHostCoresPerCPU"],
+    [host, "Primary", "Compute", "32", "Dell Inc.", "PowerEdge R760", "Intel Xeon", "VMware ESXi 8.0.2 build-22380479", "2", "16"],
   ]);
 
   return zipSync({
@@ -66,7 +66,12 @@ describe("RVTools workbook import", () => {
     expect(result.summary.hosts).toBe(2);
     expect(result.summary.vmCount).toBe(2);
     expect(result.summary.physicalCores).toBe(64);
+    expect(result.summary.poweredOnVms).toBe(2);
+    expect(result.summary.vCpu).toBe(8);
+    expect(result.summary.vmMemoryGiB).toBe(16);
+    expect(result.summary.esxiVersions).toEqual([{ version: "VMware ESXi 8.0.2 build-22380479", hosts: 2 }]);
     expect(result.summary.hclEvidence.hosts.map(host => host.name)).toEqual(["franklin-esx-01", "ashburn-esx-01"]);
+    expect(result.summary.hclEvidence.hosts.map(host => host.esxiVersion)).toEqual(["VMware ESXi 8.0.2 build-22380479", "VMware ESXi 8.0.2 build-22380479"]);
     expect(result.summary.hclEvidence.vmInfo.map(vmInfo => vmInfo.vm)).toEqual(["franklin-app-01", "ashburn-app-01"]);
   });
 });
