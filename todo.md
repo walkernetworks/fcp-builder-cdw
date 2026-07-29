@@ -379,3 +379,10 @@
 - [x] Update workbook discovery and RVTools parsing to support the observed export format without weakening browser-only processing.
 - [x] Add regression coverage for the observed workbook structure and concurrent multi-workbook import.
 - [x] Validate the repaired upload workflow with the supplied workbooks, run the release gate, and checkpoint the fix.
+
+## RVTools Host Under-Count
+
+- [x] Compare all supplied RVTools vHost rows against the current host parser and duplicate-reconciliation keys to identify why the displayed total is one.
+- [x] Repair host-row recognition and aggregation so valid unique hosts across supplied workbooks are retained without double counting.
+- [x] Add regression coverage for the observed vHost worksheet structure and per-source/combined host totals.
+- [x] Re-import the supplied workbooks, verify the actual host total in the workspace, run the release gate, and checkpoint the correction.

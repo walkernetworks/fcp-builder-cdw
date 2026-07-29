@@ -33,8 +33,8 @@ function rvToolsWorkbook(host: string, vm: string): Uint8Array {
     [vm, "Microsoft Windows Server 2022", "vmx-20"],
   ]);
   const vHost = worksheet([
-    ["Host", "# Cores", "Datacenter", "Cluster", "Vendor", "Model", "CPU Model", "ESX Version", "# CPU", "Cores per CPU"],
-    [host, "32", "Primary", "Compute", "Dell Inc.", "PowerEdge R760", "Intel Xeon", "8.0.2", "2", "16"],
+    ["vHostName", "vHostDatacenter", "vHostCluster", "vHostNumCpuCores", "vHostVendor", "vHostModel", "vHostCpuModel", "vHostESXVersion", "vHostNumCpu", "vHostCoresPerCPU"],
+    [host, "Primary", "Compute", "32", "Dell Inc.", "PowerEdge R760", "Intel Xeon", "8.0.2", "2", "16"],
   ]);
 
   return zipSync({

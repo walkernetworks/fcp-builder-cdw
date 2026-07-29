@@ -36,12 +36,52 @@ const hclBoolean = (value: unknown): "enabled" | "disabled" | "unknown" => {
   return "unknown";
 };
 
+const rvToolsHeaderAliases: Record<string, string[]> = {
+  host: ["vhostname"],
+  hostname: ["vhostname"],
+  name: ["vhostname"],
+  uuid: ["vhostuuid"],
+  objectid: ["vhostobjectid"],
+  datacenter: ["vhostdatacenter"],
+  cluster: ["vhostcluster"],
+  cores: ["vhostnumcpucores"],
+  numcpucores: ["vhostnumcpucores"],
+  cpupackages: ["vhostnumcpupackages"],
+  sockets: ["vhostnumcpupackages"],
+  numcpupackages: ["vhostnumcpupackages"],
+  corespercpu: ["vhostcorespercpu"],
+  corespersocket: ["vhostcorespercpu"],
+  esxversion: ["vhostesxversion"],
+  esxiversion: ["vhostesxversion"],
+  version: ["vhostesxversion"],
+  vendor: ["vhostvendor"],
+  model: ["vhostmodel"],
+  cpumodel: ["vhostcpumodel"],
+  memory: ["vhostmemorysize"],
+  memorysize: ["vhostmemorysize"],
+  memorytotal: ["vhostmemorysize"],
+  memorymib: ["vhostmemorysize"],
+  memorysizemib: ["vhostmemorysize"],
+  cpuusage: ["vhostoverallcpuusage"],
+  memoryusage: ["vhostoverallmemoryusage"],
+  biosversion: ["vhostbiosversion"],
+  biosdate: ["vhostbiosdate"],
+};
+
 function first(row: Row, names: string[]): Cell {
   for (const name of names) {
-    const value = row[key(name)];
-    if (value !== undefined && norm(value)) return value;
+    const normalizedName = key(name);
+    for (const candidate of [normalizedName, ...(rvToolsHeaderAliases[normalizedName] ?? [])]) {
+      const value = row[candidate];
+      if (value !== undefined && norm(value)) return value;
+    }
   }
   return "";
+}
+
+function compositeIdentity(values: Cell[]): string {
+  const normalized = values.map(norm);
+  return normalized.some(Boolean) ? normalized.join("|") : "";
 }
 
 function hostMemoryGiB(row: Row): number {
@@ -301,7 +341,7 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
     sources.push({ id: crypto.randomUUID(), filename: file.name, byteSize: file.size, sheets: sheetNames, importedAt: new Date().toISOString(), warnings });
 
     for (const row of sheet(sheets, "vHost")) {
-      const identity = norm(first(row, ["UUID", "Object ID"])) || [first(row, ["Datacenter"]), first(row, ["Cluster"]), first(row, ["Host"])].map(norm).join("|");
+      const identity = norm(first(row, ["UUID", "Object ID"])) || compositeIdentity([first(row, ["Datacenter"]), first(row, ["Cluster"]), first(row, ["Host"])]);
       if (identity) hostRows.set(identity.toLowerCase(), row);
     }
     for (const row of sheet(sheets, "vInfo")) {
