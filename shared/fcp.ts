@@ -184,9 +184,16 @@ const minimalFieldsV6Schema = minimalFieldsV5Schema.extend({
   adoptionDetails: adoptionDetailsV6Schema,
 });
 
+export const exportPreferencesSchema = z.object({
+  /** Keeps detailed VCF 9.1 inventory and readiness evidence in generated HTML and PDF exports. */
+  includeVcfReadiness: z.boolean().default(true),
+});
+export type ExportPreferences = z.infer<typeof exportPreferencesSchema>;
+
 export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   adoptionCadence: timelineCadenceSchema,
   adoptionDetails: adoptionDetailsSchema,
+  exportPreferences: exportPreferencesSchema.default({ includeVcfReadiness: true }),
 });
 export type MinimalFields = z.infer<typeof minimalFieldsSchema>;
 
@@ -525,6 +532,7 @@ export function createDefaultFields(): MinimalFields {
     timelineNotes: "",
     adoptionCadence: "month",
     adoptionDetails: createDefaultAdoptionDetails(),
+    exportPreferences: { includeVcfReadiness: true },
   };
 }
 
@@ -1797,7 +1805,11 @@ function migrateFieldsToV6(fields: z.infer<typeof minimalFieldsV5Schema>): z.inf
 }
 
 function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): MinimalFields {
-  return { ...fields, adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise" } };
+  return {
+    ...fields,
+    adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise" },
+    exportPreferences: { includeVcfReadiness: true },
+  };
 }
 
 function canonicalWorkstreamType(value: unknown): WorkstreamType | null {

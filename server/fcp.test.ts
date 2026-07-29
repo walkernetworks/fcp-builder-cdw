@@ -920,6 +920,32 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).not.toMatch(/\[\[[^\]]+\]\]/);
   });
 
+  it("can omit the VCF 9.1 readiness section while retaining the customer plan and timeline export", () => {
+    const document = createDefaultDocument();
+    document.fields.customerName = "Meridian Health";
+    document.fields.exportPreferences.includeVcfReadiness = false;
+    Object.assign(document.inventory, { sourceCount: 1, hosts: 4, vmCount: 220, esxiVersions: [{ version: "8.0.3", hosts: 4 }] });
+
+    const html = renderFcpHtml("Meridian FCP", document);
+    expect(html).not.toContain('data-tab="considerations"');
+    expect(html).not.toContain('<section id="considerations"');
+    expect(html).not.toContain("VCF 9.1 Host Inventory");
+    expect(html).not.toContain("VCF 9.1 Delivery Inventory");
+    expect(html).not.toContain("HCL Server + CPU Evidence");
+    expect(html).toContain("Customer background");
+    expect(html).toContain("Observed footprint");
+    expect(html).toContain("Entitlement Notional");
+    expect(html).toContain("Operational Adoption Timeline");
+  });
+
+  it("defaults the VCF 9.1 readiness export preference to included when migrating saved documents", () => {
+    const persisted = JSON.parse(JSON.stringify(createDefaultDocument())) as Record<string, unknown>;
+    const fields = persisted.fields as Record<string, unknown>;
+    delete fields.exportPreferences;
+
+    expect(migrateDocument(persisted).fields.exportPreferences.includeVcfReadiness).toBe(true);
+  });
+
   it("returns an authenticated standalone HTML download with a safe filename", async () => {
     const document = createDefaultDocument();
     document.fields.customerName = "Meridian Health";

@@ -432,3 +432,9 @@
 - [x] Replace ambiguous inventory fallbacks such as "Hosts Unknown" with RVTools-backed values or explicit evidence-gap language.
 - [x] Improve the executive synopsis and delivery posture so they describe the customer context and confirmed plan selections in clear, customer-ready language.
 - [x] Update regression coverage, run the full validation suite, and visually verify the revised workspace and exported report.
+
+## Optional VCF 9.1 Readiness Export
+
+- [x] Add a persisted, accessible export preference that lets users include or exclude the VCF 9.1 readiness section.
+- [x] Conditionally omit the readiness navigation, content, and print output from HTML and PDF exports when disabled while retaining planning data.
+- [x] Add migration-safe defaults, regression coverage, and full export validation for both readiness-on and readiness-off modes.
