@@ -114,7 +114,7 @@ describe("calendar-month adoption plans", () => {
     expect(plans.twoYearPlan.lanes.map(lane => lane.name).join(" ")).not.toMatch(/Year [12] ·/);
     expect(plans.rationale).toContain("$2,500,000");
     expect(plans.rationale).toContain("Mobilisation and delivery-baseline work are deliberately limited to the first calendar month");
-    expect(plans.rationale).toContain("The entitlement-aligned Notional runs from the actual service start (2027-01-01) through entitlement end (2028-01-01)");
+    expect(plans.rationale).toContain("The entitlement-aligned Notional runs from the planned project start (2027-01-01) through entitlement end (2028-01-01)");
     expect(labels).toEqual(expect.arrayContaining([
       "Month 1: Mobilize and Freeze VCF Delivery Baseline",
       "Deploy VCF Management Domain and Core Control Plane",
@@ -209,11 +209,12 @@ describe("calendar-month adoption plans", () => {
     expect(designOnly.rationale).toContain("design-only path intentionally stops before migration execution");
   });
 
-  it("reflows calculated entitlement dates and splits dense weekly services into non-overlapping workstreams", () => {
+  it("keeps planned delivery timing independent while recalculating the entitlement term", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementStart: "2027-01-01",
       entitlementEnd: "2027-06-30",
+      plannedProjectStart: "2027-01-17",
       targetStart: "2027-01-01",
       targetComplete: "2027-06-30",
       adoptionCadence: "month",
@@ -222,22 +223,20 @@ describe("calendar-month adoption plans", () => {
     });
 
     const original = buildAdoptionPlans(document.fields, document.inventory).adoptionTimeline;
-    const extendedFields = applyScheduleFieldPatch(document.fields, { entitlementStart: "2027-02-01" });
-    const extended = buildAdoptionPlans(extendedFields, document.inventory).adoptionTimeline;
-    const originalAutomation = original.lanes.find(lane => lane.id === "lane-cloud")!;
-    const extendedAutomation = extended.lanes.find(lane => lane.id === "lane-cloud")!;
-    expect(extendedFields.entitlementEnd).toBe("2028-02-01");
-    expect(extendedFields.targetComplete).toBe("2028-02-01");
-    expect(original.columns.length).toBeGreaterThanOrEqual(10);
-    expect(extended.columns.length).toBeGreaterThanOrEqual(13);
-    expect(extended.columns.length).toBeGreaterThanOrEqual(original.columns.length);
-    expect(extendedAutomation.bars[0].startCol).toBeGreaterThanOrEqual(originalAutomation.bars[0].startCol);
-    expect(extendedAutomation.bars.at(-1)?.endCol).toBeLessThanOrEqual(extended.columns.length + 1);
-    expect(validateTimeline(extended)).toEqual([]);
+    const entitlementPatched = applyScheduleFieldPatch(document.fields, { entitlementStart: "2027-02-01" });
+    const refreshed = buildAdoptionPlans(entitlementPatched, document.inventory).adoptionTimeline;
+    expect(entitlementPatched.entitlementEnd).toBe("2028-02-01");
+    expect(entitlementPatched.plannedProjectStart).toBe("2027-01-17");
+    expect(entitlementPatched.targetStart).toBe("2027-01-01");
+    expect(entitlementPatched.targetComplete).toBe("2027-06-30");
+    expect(refreshed.startDate).toBe("2027-01-17");
+    expect(refreshed.columns).toEqual(original.columns);
+    expect(validateTimeline(refreshed)).toEqual([]);
 
     const weeklyFields = {
       ...document.fields,
-      targetStart: "2027-01-17",
+      plannedProjectStart: "2027-01-17",
+      targetStart: "2027-01-01",
       targetComplete: "2027-01-24",
       adoptionCadence: "week" as const,
       adoptionDetails: { ...document.fields.adoptionDetails, automation: ["vm-self-service", "infrastructure-as-code", "day-2-automation", "governance", "application-provisioning"] },
@@ -246,6 +245,18 @@ describe("calendar-month adoption plans", () => {
     expect(weekly.columns.slice(0, 2)).toEqual(["Jan 17–Jan 23, 27", "Jan 24–Jan 30, 27"]);
     expect(weekly.lanes.filter(lane => lane.id === "lane-cloud")).toHaveLength(1);
     expect(validateTimeline(weekly)).toEqual([]);
+  });
+
+  it("migrates legacy target starts into the separately persisted planned project start", () => {
+    const legacy = createDefaultDocument();
+    Object.assign(legacy.fields, { entitlementStart: "2027-03-01", targetStart: "2027-04-15", targetComplete: "2027-09-30" });
+    const rawLegacy = structuredClone(legacy) as Record<string, unknown>;
+    const rawFields = rawLegacy.fields as Record<string, unknown>;
+    delete rawFields.plannedProjectStart;
+
+    const migrated = migrateDocument(rawLegacy);
+    expect(migrated.fields.plannedProjectStart).toBe("2027-04-15");
+    expect(buildAdoptionPlans(migrated.fields, migrated.inventory).adoptionTimeline.startDate).toBe("2027-04-15");
   });
 
   it("uses selected module tasks directly without generic follow-on placeholders", () => {
@@ -839,8 +850,9 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Entitlement Notional");
     expect(html).toContain("Execution view:");
     expect(html).toContain("Entitlement-period planning view:");
-    expect(html).toContain("Service Start Through Entitlement End");
-    expect(html).toContain("2027-01-01 through 2028-01-01");
+    expect(html).toContain("Planned Project Start Through Entitlement End");
+    expect(html).toContain("planned project start (2027-01-01)");
+    expect(html).toContain("through 2028-01-01");
     expect(html).toContain("Intended Outcome");
     expect(html).toContain("Sequence Notes");
     expect(html).toContain("Publish Operational Dashboards and Service Measures");
@@ -872,7 +884,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(planSummaryStart).toBeGreaterThan(-1);
     expect(observedInventoryStart).toBeGreaterThan(planSummaryStart);
     expect(planSummary).toContain("<h3>Inventory baseline</h3>");
-    expect(planSummary).toContain("<h3>Execution window</h3>");
+    expect(planSummary).toContain("<h3>Planned delivery window</h3>");
     expect(planSummary).toContain("<h3>Month 1</h3>");
     expect(planSummary).toContain("<h3>Platform build</h3>");
     expect(planSummary).toContain("<h3>Workload delivery</h3>");
@@ -892,7 +904,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("VCF 9.1 Delivery Inventory");
     expect(html).toContain('class="notional-year-sheet notional-year-one"');
     expect(html).not.toContain('class="notional-year-sheet notional-year-two"');
-    expect(html).toContain("Service Start Through Entitlement End");
+    expect(html).toContain("Planned Project Start Through Entitlement End");
     expect(html).toContain("Entitlement-Aligned Delivery Outlook");
     expect(html).not.toContain("Months 13–24");
     expect(html).not.toContain("Continuous Year 2 Delivery");

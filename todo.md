@@ -365,3 +365,10 @@
 - [x] Extend the shared evaluation model and fixed-category scheduling logic to include the full supported HCL 2.0 assessment scope without claiming official certification.
 - [x] Surface complete HCL assessment findings, evidence gaps, and scheduling implications in the workspace and HTML/PDF exports.
 - [x] Add regression coverage for the newly surfaced check families, validate the rendered assessment, and checkpoint the published correction.
+
+## Planned Project Start Date and Entitlement-Date Hang
+
+- [x] Reproduce and diagnose the workspace hang triggered by changing the entitlement start date.
+- [x] Add a separately persisted planned project start date with safe defaults and backward-compatible migration.
+- [x] Decouple planned project timing from entitlement timing in generated timelines, narrative, workspace inputs, and HTML/PDF exports.
+- [x] Add regression coverage for date changes, migration, and bounded timeline regeneration; validate the repaired interaction and checkpoint the release.

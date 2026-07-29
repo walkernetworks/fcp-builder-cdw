@@ -170,6 +170,8 @@ const minimalFieldsV5Schema = z.object({
   entitlementAmount: z.number().min(0).max(1_000_000_000_000),
   entitlementStart: z.string(),
   entitlementEnd: z.string(),
+  /** Independently persisted delivery date; legacy targetStart remains a compatibility fallback. */
+  plannedProjectStart: z.string().default(""),
   targetStart: z.string(),
   targetComplete: z.string(),
   hardwareAvailability: z.enum(["existing", "new", "unknown"]),
@@ -516,6 +518,7 @@ export function createDefaultFields(): MinimalFields {
     entitlementAmount: 0,
     entitlementStart: "",
     entitlementEnd: "",
+    plannedProjectStart: "",
     targetStart: "",
     targetComplete: "",
     hardwareAvailability: "unknown",
@@ -617,7 +620,7 @@ export function buildTwoYearNotionalColumns(serviceStartValue: string, entitleme
 }
 
 function timelineStartDate(fields: MinimalFields): string {
-  const candidate = fields.targetStart || fields.entitlementStart;
+  const candidate = fields.plannedProjectStart || fields.targetStart || fields.entitlementStart;
   return parseIsoDate(candidate) ? candidate : isoDate(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)));
 }
 
@@ -627,17 +630,14 @@ function timelineEndDate(fields: MinimalFields): string {
 }
 
 export function applyScheduleFieldPatch(fields: MinimalFields, patch: Partial<MinimalFields>): MinimalFields {
-  const targetStartTracksEntitlement = !fields.targetStart || fields.targetStart === fields.entitlementStart;
-  const targetCompleteTracksEntitlement = !fields.targetComplete || fields.targetComplete === fields.entitlementEnd;
   const nextEntitlementStart = patch.entitlementStart ?? fields.entitlementStart;
   const calculatedEntitlementEnd = calculateEntitlementEndDate(nextEntitlementStart);
   const nextEntitlementEnd = calculatedEntitlementEnd || patch.entitlementEnd || fields.entitlementEnd;
   return {
     ...fields,
     ...patch,
+    // Entitlement changes affect only the calculated entitlement end. Planned delivery dates remain independent.
     entitlementEnd: nextEntitlementEnd,
-    ...(patch.entitlementStart !== undefined && patch.targetStart === undefined && targetStartTracksEntitlement ? { targetStart: patch.entitlementStart } : {}),
-    ...(patch.entitlementStart !== undefined && patch.targetComplete === undefined && targetCompleteTracksEntitlement ? { targetComplete: nextEntitlementEnd } : {}),
   };
 }
 
@@ -945,10 +945,13 @@ function getHostPlatformSchedulePath(inventory: InventorySummary): HclSchedulePa
 }
 
 /** Return the most conservative delivery path across every RVTools-observable HCL 2.0 finding. */
-export function getHclSchedulePath(inventory: InventorySummary): HclSchedulePath {
+function hclSchedulePathForAssessment(inventory: InventorySummary, hcl: ReadinessAssessment["hcl"]): HclSchedulePath {
   const platformPath = getHostPlatformSchedulePath(inventory);
-  const hcl = assessHclEstate(inventory.hclEvidence);
   return hcl.findings.length ? hclFindingSchedulePath(hcl.findings, platformPath) : platformPath;
+}
+
+export function getHclSchedulePath(inventory: InventorySummary): HclSchedulePath {
+  return hclSchedulePathForAssessment(inventory, assessHclEstate(inventory.hclEvidence));
 }
 
 function scheduleUnits(cadence: TimelineCadence, weeks: number, months: number): number {
@@ -978,9 +981,8 @@ function softPrerequisiteLabel(key: AdoptionDetails["softPrerequisites"][number]
   }[key];
 }
 
-function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary): Timeline {
+function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary, path = getHclSchedulePath(inventory)): Timeline {
   const cadence = fields.adoptionCadence;
-  const path = getHclSchedulePath(inventory);
   const mobilizationDuration = scheduleUnits(cadence, 2, 1);
   const remediationDuration = scheduleUnits(cadence, 3, 1);
   const procurementDuration = scheduleUnits(cadence, 8, 2);
@@ -1403,12 +1405,13 @@ function buildTwoYearPlan(fields: MinimalFields, _inventory: InventorySummary, a
   return applyWorkstreamPresentation({ cadence: "month", startDate, columns, lanes });
 }
 
-export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
-  const adoptionTimeline = buildPrimaryTimeline(fields, inventory);
+export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary, providedHclPath?: HclSchedulePath): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
+  const hclPath = providedHclPath ?? getHclSchedulePath(inventory);
+  const adoptionTimeline = buildPrimaryTimeline(fields, inventory, hclPath);
   const twoYearPlan = buildTwoYearPlan(fields, inventory, adoptionTimeline);
   const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
   const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
-  const serviceStart = timelineStartDate(fields);
+  const plannedProjectStart = timelineStartDate(fields);
   const entitlementEnd = entitlementNotionalEndDate(fields);
   const term = fields.entitlementStart && entitlementEnd ? `${fields.entitlementStart} through ${entitlementEnd}` : "the confirmed entitlement term";
   const priorities = fields.priorities.length ? fields.priorities.map(capabilityTitle).join(", ") : "the selected customer outcomes";
@@ -1429,10 +1432,9 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
     ? `Confirmed timeline notes are applied as execution conditions: “${planningContext.timelineNotes}”.`
     : "No additional timeline exceptions or sequencing conditions were recorded.";
   const industryContext = `The ${planningContext.template.label} industry discovery lens focuses mobilisation discussions on ${planningContext.industryThemes}; it informs the planning narrative only and does not add scope, priorities, or delivery activities.`;
-  const hclPath = getHclSchedulePath(inventory);
   const hclContext = `The HCL 2.0 evaluation path is ${hclPathLabel(hclPath)} and is used as planning evidence for the required buffer and gate; it remains an offline precheck, not official certification.`;
   const migrationGateContext = "The final migration or implementation phase is gated until selected Cloud and Security & Resilience work is complete, alongside workload-domain readiness, application dependency review, rollback planning, and change-window approval.";
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Mobilisation and delivery-baseline work are deliberately limited to ${openingWindow}, then the plan moves into management-domain deployment, VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The entitlement-aligned Notional runs from the actual service start (${serviceStart}) through entitlement end (${entitlementEnd || "TBD"}); it mirrors the implementation sequence, then retains only governance, lifecycle, handover, and selected expansion work that fits within that entitlement period. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Mobilisation and delivery-baseline work are deliberately limited to ${openingWindow}, then the plan moves into management-domain deployment, VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The entitlement-aligned Notional runs from the planned project start (${plannedProjectStart}) through entitlement end (${entitlementEnd || "TBD"}); it mirrors the implementation sequence, then retains only governance, lifecycle, handover, and selected expansion work that fits within that entitlement period. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -1592,7 +1594,7 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
 
   const hardwarePlatforms = assessHardwarePlatforms(inventory);
   const hcl = assessHclEstate(inventory.hclEvidence);
-  const hclSchedulePath = getHclSchedulePath(inventory);
+  const hclSchedulePath = hclSchedulePathForAssessment(inventory, hcl);
   const hclBlockers = hcl.findings.filter(finding => finding.severity === "BLOCKER");
   const hclWarnings = hcl.findings.filter(finding => finding.severity === "WARNING");
   const upgradeRequiredPlatforms = hardwarePlatforms.filter(platform => platform.status === "upgrade-required");
@@ -1842,16 +1844,21 @@ function needsImplementationTimelineRebaseline(timeline: Timeline): boolean {
   return requiredFixedLaneIds.some(laneId => !timeline.lanes.some(lane => lane.id === laneId));
 }
 
-function normalizeEntitlementTerm(fields: MinimalFields): MinimalFields {
+function normalizePlanningDates(fields: MinimalFields): MinimalFields {
   const entitlementEnd = calculateEntitlementEndDate(fields.entitlementStart);
-  return entitlementEnd ? { ...fields, entitlementEnd } : fields;
+  const plannedProjectStart = fields.plannedProjectStart || fields.targetStart || fields.entitlementStart;
+  return {
+    ...fields,
+    ...(entitlementEnd ? { entitlementEnd } : {}),
+    ...(plannedProjectStart ? { plannedProjectStart } : {}),
+  };
 }
 
 export function migrateDocument(value: unknown): EngagementDocument {
   const normalizedValue = normalizeRawTimelineTaxonomy(value);
   const current = engagementDocumentV11Schema.safeParse(normalizedValue);
   if (current.success) {
-    const fields = normalizeEntitlementTerm(current.data.fields);
+    const fields = normalizePlanningDates(current.data.fields);
     const generated = buildAdoptionPlans(fields, current.data.inventory);
     if (needsImplementationTimelineRebaseline(current.data.adoptionTimeline)) {
       return {
@@ -1896,7 +1903,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v10 = engagementDocumentV10Schema.safeParse(normalizedValue);
   if (v10.success) {
-    const fields = normalizeEntitlementTerm(v10.data.fields);
+    const fields = normalizePlanningDates(v10.data.fields);
     const plans = buildAdoptionPlans(fields, v10.data.inventory);
     return {
       version: 11,
@@ -1912,7 +1919,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v9 = engagementDocumentV9Schema.safeParse(normalizedValue);
   if (v9.success) {
-    const fields = normalizeEntitlementTerm(v9.data.fields);
+    const fields = normalizePlanningDates(v9.data.fields);
     const plans = buildAdoptionPlans(fields, v9.data.inventory);
     return {
       version: 11,
@@ -1928,7 +1935,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v8 = engagementDocumentV8Schema.safeParse(normalizedValue);
   if (v8.success) {
-    const fields = normalizeEntitlementTerm(v8.data.fields);
+    const fields = normalizePlanningDates(v8.data.fields);
     const plans = buildAdoptionPlans(fields, v8.data.inventory);
     return {
       version: 11,
@@ -1944,7 +1951,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v7 = engagementDocumentV7Schema.safeParse(normalizedValue);
   if (v7.success) {
-    const fields = normalizeEntitlementTerm(v7.data.fields);
+    const fields = normalizePlanningDates(v7.data.fields);
     const plans = buildAdoptionPlans(fields, v7.data.inventory);
     return {
       version: 11,
@@ -1960,7 +1967,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v6 = engagementDocumentV6Schema.safeParse(normalizedValue);
   if (v6.success) {
-    const fields = normalizeEntitlementTerm(migrateFieldsToV7(v6.data.fields));
+    const fields = normalizePlanningDates(migrateFieldsToV7(v6.data.fields));
     const plans = buildAdoptionPlans(fields, v6.data.inventory);
     return {
       version: 11,
@@ -1976,7 +1983,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
   const v5 = engagementDocumentV5Schema.safeParse(normalizedValue);
   if (v5.success) {
-    const fields = normalizeEntitlementTerm(migrateFieldsToV7(migrateFieldsToV6(v5.data.fields)));
+    const fields = normalizePlanningDates(migrateFieldsToV7(migrateFieldsToV6(v5.data.fields)));
     const plans = buildAdoptionPlans(fields, v5.data.inventory);
     return {
       version: 11,
@@ -1993,7 +2000,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const v4 = engagementDocumentV4Schema.safeParse(normalizedValue);
   if (v4.success) {
     const inventory = migrateInventoryToV5(v4.data.inventory);
-    const fields = normalizeEntitlementTerm(migrateFieldsToV7(migrateFieldsToV6(v4.data.fields)));
+    const fields = normalizePlanningDates(migrateFieldsToV7(migrateFieldsToV6(v4.data.fields)));
     const warnings = v4.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
@@ -2011,7 +2018,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const v3 = engagementDocumentV3Schema.safeParse(normalizedValue);
   if (v3.success) {
     const inventory = migrateInventoryToV5(v3.data.inventory);
-    const fields = normalizeEntitlementTerm(migrateFieldsToV7(migrateFieldsToV6(v3.data.fields)));
+    const fields = normalizePlanningDates(migrateFieldsToV7(migrateFieldsToV6(v3.data.fields)));
     const warnings = v3.data.inventorySources.flatMap(source => source.warnings);
     const plans = buildAdoptionPlans(fields, inventory);
     return {
@@ -2038,6 +2045,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     entitlementAmount: numberValue(oldFields.entitlementAmount || oldFields.entitlementValue || oldFields.funds),
     entitlementStart: stringValue(oldFields.entitlementStart || oldFields.termStart),
     entitlementEnd: stringValue(oldFields.entitlementEnd || oldFields.entitlementEndDate || oldFields.termEnd),
+    plannedProjectStart: stringValue(oldFields.plannedProjectStart || oldFields.projectPlannedStart || oldFields.targetStart || oldFields.kickoffDate),
     targetStart: stringValue(oldFields.targetStart || oldFields.kickoffDate),
     targetComplete: stringValue(oldFields.targetComplete || oldFields.termEnd),
     hardwareAvailability: oldFields.hardwareAvailability === "existing" || oldFields.hardwareAvailability === "new" || oldFields.hardwareAvailability === "unknown" ? oldFields.hardwareAvailability : oldFields.hardwareIsNetNew === true ? "new" : oldFields.hardwareIsNetNew === false ? "existing" : "unknown",
@@ -2045,7 +2053,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     priorities: Array.isArray(oldFields.priorities) ? capabilitySchema.array().catch([]).parse(oldFields.priorities) : ["operations", "automation", ...(oldFields.vdefendInScope ? ["security" as const] : []), ...(oldFields.drInScope ? ["resilience" as const] : []), ...(oldFields.k8sInScope ? ["kubernetes" as const] : [])],
     timelineNotes: stringValue(oldFields.timelineNotes || oldFields.notes),
   };
-  fields = normalizeEntitlementTerm(fields);
+  fields = normalizePlanningDates(fields);
   const parsedInventory = inventorySummaryV4Schema.safeParse(legacy.inventory);
   const inventory = parsedInventory.success ? migrateInventoryToV5(parsedInventory.data) : emptyInventory();
   if (!parsedInventory.success) {
@@ -2073,8 +2081,10 @@ export const engagementDocumentSchema = z.preprocess(migrateDocument, engagement
 
 export function refreshDerivedDocument(document: EngagementDocument): EngagementDocument {
   const warnings = document.inventorySources.flatMap(source => source.warnings);
-  const plans = buildAdoptionPlans(document.fields, document.inventory);
-  return { ...document, readiness: assessReadiness(document.fields, document.inventory, warnings), adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+  // Assessment can be expensive for large RVTools estates. Calculate it once and share its path with timeline generation.
+  const readiness = assessReadiness(document.fields, document.inventory, warnings);
+  const plans = buildAdoptionPlans(document.fields, document.inventory, readiness.hclSchedulePath);
+  return { ...document, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
 export function validateTimeline(timeline: Timeline): string[] {

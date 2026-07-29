@@ -29,6 +29,7 @@ const derivedPlanInputFields = new Set<keyof EngagementDocument["fields"]>([
   "entitlementAmount",
   "entitlementStart",
   "entitlementEnd",
+  "plannedProjectStart",
   "targetStart",
   "targetComplete",
   "adoptionCadence",
@@ -48,9 +49,13 @@ export function PlanSetup({ document, onChange }: Props) {
 
   const updateFields = (patch: Partial<typeof fields>) => {
     const nextFields = applyScheduleFieldPatch(fields, patch);
-    const nextDocument = { ...document, fields: nextFields, readiness: assessReadiness(nextFields, document.inventory, document.inventorySources.flatMap(source => source.warnings)) };
     const changesDerivedPlan = Object.keys(patch).some(field => derivedPlanInputFields.has(field as keyof EngagementDocument["fields"]));
-    onChange(changesDerivedPlan ? refreshDerivedDocument(nextDocument) : nextDocument);
+    if (changesDerivedPlan) {
+      // Rebuild once: refreshDerivedDocument calculates readiness and the full plan together.
+      onChange(refreshDerivedDocument({ ...document, fields: nextFields }));
+      return;
+    }
+    onChange({ ...document, fields: nextFields, readiness: assessReadiness(nextFields, document.inventory, document.inventorySources.flatMap(source => source.warnings)) });
   };
 
   const importFiles = async (files: File[]) => {
@@ -113,11 +118,11 @@ export function PlanSetup({ document, onChange }: Props) {
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
             <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Adoption window</p>
             <h2 className="mt-1 text-2xl font-semibold tracking-tight">Adoption Timeline and Outcomes</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Use weekly execution windows when a phase needs to begin in the middle of a month. Changing schedule inputs, confirmed outcomes, implementation path, customer constraints, timeline notes, or industry lens immediately refreshes the deterministic operational plan. The separate Notional remains monthly and runs from the actual service start through the calculated entitlement end.</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Use weekly execution windows when a phase needs to begin in the middle of a month. Changing schedule inputs, confirmed outcomes, implementation path, customer constraints, timeline notes, or industry lens immediately refreshes the deterministic operational plan. The separate Notional remains monthly and runs from the planned project start through the calculated entitlement end.</p>
             <div className="mt-6 grid gap-5 md:grid-cols-2">
-              <Field label="Target start" required><Input type="date" value={fields.targetStart} onChange={event => updateFields({ targetStart: event.target.value })} /></Field>
-              <Field label="Target completion" required><Input type="date" value={fields.targetComplete} onChange={event => updateFields({ targetComplete: event.target.value })} /></Field>
-              <Field label="Execution schedule cadence" hint="Weekly windows begin on the target-start date; monthly is best for a high-level execution plan."><Select value={fields.adoptionCadence} onValueChange={value => updateFields({ adoptionCadence: value as typeof fields.adoptionCadence })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="month">Calendar months</SelectItem><SelectItem value="week">Weekly windows</SelectItem></SelectContent></Select></Field>
+              <Field label="Planned project start" required hint="This controls the operational delivery timeline and is independent of the entitlement period."><Input type="date" value={fields.plannedProjectStart || fields.targetStart} onChange={event => updateFields({ plannedProjectStart: event.target.value })} /></Field>
+              <Field label="Planned project completion" required><Input type="date" value={fields.targetComplete} onChange={event => updateFields({ targetComplete: event.target.value })} /></Field>
+              <Field label="Execution schedule cadence" hint="Weekly windows begin on the planned project start date; monthly is best for a high-level execution plan."><Select value={fields.adoptionCadence} onValueChange={value => updateFields({ adoptionCadence: value as typeof fields.adoptionCadence })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="month">Calendar months</SelectItem><SelectItem value="week">Weekly windows</SelectItem></SelectContent></Select></Field>
               <Field label="Hardware availability"><Select value={fields.hardwareAvailability} onValueChange={value => updateFields({ hardwareAvailability: value as typeof fields.hardwareAvailability })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="existing">Existing / available</SelectItem><SelectItem value="new">New procurement required</SelectItem><SelectItem value="unknown">Not yet known</SelectItem></SelectContent></Select></Field>
               {fields.hardwareAvailability === "new" && <Field label="Estimated lead time (weeks)"><Input type="number" min={0} max={104} value={fields.hardwareLeadWeeks || ""} onChange={event => updateFields({ hardwareLeadWeeks: Math.min(104, Math.max(0, Number(event.target.value) || 0)) })} /></Field>}
             </div>
