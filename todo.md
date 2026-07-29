@@ -386,3 +386,17 @@
 - [x] Repair host-row recognition and aggregation so valid unique hosts across supplied workbooks are retained without double counting.
 - [x] Add regression coverage for the observed vHost worksheet structure and per-source/combined host totals.
 - [x] Re-import the supplied workbooks, verify the actual host total in the workspace, run the release gate, and checkpoint the correction.
+
+## Unselected VCF Networking Scope
+
+- [x] Trace why VCF networking was included in a generated plan without an explicit guided-intake selection.
+- [x] Restrict VCF networking activities to deliberately confirmed scope and remove any implicit inventory or default trigger.
+- [x] Add regression coverage proving unselected networking scope does not generate plan activities or exported statements.
+- [x] Validate the corrected generated plan, complete the release gate, and checkpoint the repair.
+
+## Same-Category Workstream Overlap
+
+- [x] Trace the timeline validation and editor paths that currently reject overlap between infrastructure-build and migration-wave activities in the same fixed category.
+- [x] Permit intentional overlapping infrastructure and migration activities within a shared category while retaining valid bounds and activity data.
+- [x] Preserve explicit VCF networking scope so networking appears only after a customer selection and never from a default or migration rule.
+- [x] Add regression coverage for unselected networking and same-category overlapping activities; validate the editor and checkpoint the repair.

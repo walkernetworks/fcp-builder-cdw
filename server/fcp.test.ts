@@ -72,7 +72,7 @@ describe("calendar-month adoption plans", () => {
     expect(notional[12]).toBe("Jan 28");
   });
 
-  it("time-boxes discovery and then sequences the concrete VCF implementation workstreams", () => {
+  it("time-boxes discovery and then sequences the selected implementation workstreams without adding unselected networking scope", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementAmount: 2_500_000,
@@ -94,7 +94,6 @@ describe("calendar-month adoption plans", () => {
     const activity = (id: string) => activities.find(candidate => candidate.id === id)!;
     const mobilization = activity("bar-platform-plan");
     const managementDomain = activity("bar-management-domain");
-    const networking = activity("bar-vcf-networking-nsx");
     const workloadDomain = activity("bar-workload-domain");
     const upgrade = activity("bar-vcf-upgrade-services");
     const handover = activity("bar-platform-handover");
@@ -118,13 +117,12 @@ describe("calendar-month adoption plans", () => {
     expect(labels).toEqual(expect.arrayContaining([
       "Month 1: Mobilize and Freeze VCF Delivery Baseline",
       "Deploy VCF Management Domain and Core Control Plane",
-      "Implement VCF Networking, NSX Transport, Edge, and Routing",
       "Create or Import Workload Domain and Prepare Clusters",
       expect.stringContaining("HCL Gate:"),
       "Validate Handover, Service Acceptance, and Ongoing Lifecycle",
     ]));
     expect(mobilization.endCol).toBeLessThanOrEqual(managementDomain.startCol);
-    expect(networking.startCol).toBeGreaterThanOrEqual(managementDomain.startCol);
+    expect(activities.some(candidate => candidate.id === "bar-vcf-networking-nsx")).toBe(false);
     expect(workloadDomain.startCol).toBeGreaterThanOrEqual(managementDomain.startCol);
     expect(upgrade.startCol).toBeGreaterThanOrEqual(Math.max(...cloudEnds, ...securityEnds));
     expect(handover.startCol).toBeGreaterThanOrEqual(upgrade.endCol);
@@ -332,7 +330,7 @@ describe("calendar-month adoption plans", () => {
     expect(normalizeWorkstreamLabel("platform readiness")).toBe("Platform Plan");
   });
 
-  it("applies month drag and edge resize gestures while rejecting bounds and overlap conflicts", () => {
+  it("applies month drag and edge resize gestures while allowing bounded overlapping work within one category", () => {
     const timeline: Timeline = {
       columns: ["Jan 27", "Feb 27", "Mar 27", "Apr 27", "May 27", "Jun 27"],
       lanes: [{ id: "lane", name: "Platform Design", bars: [
@@ -346,8 +344,11 @@ describe("calendar-month adoption plans", () => {
     expect(resizedStart.lanes[0].bars[0]).toMatchObject({ startCol: 2, endCol: 3 });
     const resizedEnd = applyTimelineGesture(timeline, "lane", "a", "end", 1);
     expect(resizedEnd.lanes[0].bars[0]).toMatchObject({ startCol: 1, endCol: 4 });
+    const overlapped = applyTimelineGesture(timeline, "lane", "a", "end", 3);
+    expect(overlapped.lanes[0].bars[0]).toMatchObject({ startCol: 1, endCol: 6 });
+    expect(validateTimeline(overlapped)).toEqual([]);
     expect(applyTimelineGesture(timeline, "lane", "a", "move", -1)).toBe(timeline);
-    expect(applyTimelineGesture(timeline, "lane", "a", "end", 3)).toBe(timeline);
+    expect(applyTimelineGesture(timeline, "lane", "a", "end", 5)).toBe(timeline);
   });
 
   it("migrates older engagements to entitlement-aware, normalized adoption plans", () => {
@@ -801,7 +802,7 @@ describe("planning considerations, exports, and access boundary", () => {
     ]));
   });
 
-  it("keeps VCF networking and NSX distinct from security across primary delivery and migrated engagements", () => {
+  it("adds VCF networking only after explicit scope confirmation and strips unselected generated networking from saved plans", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementStart: "2027-01-01",
@@ -809,32 +810,29 @@ describe("planning considerations, exports, and access boundary", () => {
       targetStart: "2027-01-01",
       targetComplete: "2027-12-31",
     });
-    const plans = buildAdoptionPlans(document.fields, document.inventory);
-    const primaryNetworking = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-modernize-infrastructure");
-    const continuousNetworking = plans.twoYearPlan.lanes.find(lane => lane.id === "lane-modernize-infrastructure");
 
+    const unselectedPlans = buildAdoptionPlans(document.fields, document.inventory);
+    expect(unselectedPlans.adoptionTimeline.lanes.flatMap(lane => lane.bars).some(activity => activity.id === "bar-vcf-networking-nsx")).toBe(false);
+    expect(unselectedPlans.twoYearPlan.lanes.flatMap(lane => lane.bars).some(activity => activity.id === "bar-two-year-baseline-networking-nsx")).toBe(false);
+
+    const explicitlyScopedFields = { ...document.fields, priorities: [...document.fields.priorities, "networking" as const] };
+    const explicitlyScopedPlans = buildAdoptionPlans(explicitlyScopedFields, document.inventory);
+    const primaryNetworking = explicitlyScopedPlans.adoptionTimeline.lanes.find(lane => lane.id === "lane-modernize-infrastructure");
     expect(primaryNetworking).toMatchObject({
       category: "Modernize Infrastructure",
       workstreamType: "Infrastructure Build",
       bars: expect.arrayContaining([expect.objectContaining({ id: "bar-vcf-networking-nsx", label: "Implement VCF Networking, NSX Transport, Edge, and Routing" })]),
     });
-    expect(primaryNetworking?.bars.find(activity => activity.id === "bar-vcf-networking-nsx")?.outcome).toContain("independently from security services");
-    expect(continuousNetworking).toMatchObject({
-      category: "Modernize Infrastructure",
-      workstreamType: "Infrastructure Build",
-      bars: expect.arrayContaining([expect.objectContaining({ id: "bar-vcf-networking-nsx" })]),
-    });
 
-    const existing = JSON.parse(JSON.stringify(document));
-    existing.adoptionTimeline.lanes = existing.adoptionTimeline.lanes.map((lane: { id: string; bars: Array<{ id: string }> }) => lane.id === "lane-modernize-infrastructure" ? { ...lane, bars: lane.bars.filter(activity => activity.id !== "bar-vcf-networking-nsx") } : lane);
-    existing.twoYearPlan.lanes = existing.twoYearPlan.lanes.map((lane: { id: string; bars: Array<{ id: string }> }) => lane.id === "lane-modernize-infrastructure" ? { ...lane, bars: lane.bars.filter(activity => activity.id !== "bar-vcf-networking-nsx") } : lane);
-    const migrated = migrateDocument(existing);
-    expect(migrated.adoptionTimeline.lanes.find(lane => lane.id === "lane-modernize-infrastructure")?.bars).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "bar-vcf-networking-nsx" }),
-    ]));
-    expect(migrated.twoYearPlan.lanes.find(lane => lane.id === "lane-modernize-infrastructure")?.bars).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "bar-vcf-networking-nsx" }),
-    ]));
+    const savedWithLegacyGeneratedNetworking = JSON.parse(JSON.stringify({
+      ...document,
+      adoptionTimeline: explicitlyScopedPlans.adoptionTimeline,
+      twoYearPlan: explicitlyScopedPlans.twoYearPlan,
+      rationale: explicitlyScopedPlans.rationale,
+    }));
+    const migrated = migrateDocument(savedWithLegacyGeneratedNetworking);
+    expect(migrated.adoptionTimeline.lanes.flatMap(lane => lane.bars).some(activity => activity.id === "bar-vcf-networking-nsx")).toBe(false);
+    expect(migrated.twoYearPlan.lanes.flatMap(lane => lane.bars).some(activity => activity.id === "bar-two-year-baseline-networking-nsx")).toBe(false);
   });
 
   it("renders entitlement details and both synchronized adoption views with VCF 9.1 platform evidence", () => {
@@ -875,9 +873,9 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).not.toContain("<th>Workstream type</th>");
     expect(html).toContain("Workstream color key");
     expect(html).toContain("Infrastructure Build");
-    expect(html).toContain("Implement VCF Networking, NSX Transport, Edge, and Routing");
-    expect(html).toContain("VCF Networking and NSX Lifecycle Progression");
-    expect(html).toContain("independently from security services");
+    expect(html).not.toContain("Implement VCF Networking, NSX Transport, Edge, and Routing");
+    expect(html).not.toContain("VCF Networking and NSX Lifecycle Progression");
+    expect(html).not.toContain("independently from security services");
     const planSummaryStart = html.indexOf('<div class="plan-summary">');
     const observedInventoryStart = html.indexOf("Observed host inventory");
     const planSummary = html.slice(planSummaryStart, observedInventoryStart);

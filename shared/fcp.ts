@@ -864,6 +864,19 @@ function selectedFocuses(fields: MinimalFields, capability: Capability): string[
   return fields.adoptionDetails[detailKey[capability]];
 }
 
+function hasConfirmedCapability(fields: MinimalFields, capability: Capability): boolean {
+  return fields.priorities.includes(capability) || selectedFocuses(fields, capability).length > 0;
+}
+
+function withoutUnselectedGeneratedNetworking(timeline: Timeline, fields: MinimalFields): Timeline {
+  if (hasConfirmedCapability(fields, "networking")) return timeline;
+  const generatedNetworkingIds = new Set(["bar-vcf-networking-nsx", "bar-two-year-baseline-networking-nsx"]);
+  return {
+    ...timeline,
+    lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(activity => !generatedNetworkingIds.has(activity.id)) })),
+  };
+}
+
 function activityLabelsForCapability(fields: MinimalFields, capability: Capability): string[] {
   const focuses = selectedFocuses(fields, capability);
   if (!focuses.length) return [`${capabilityTitle(capability)} Implementation`];
@@ -988,7 +1001,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const procurementDuration = scheduleUnits(cadence, 8, 2);
   const greenfieldDuration = scheduleUnits(cadence, 4, 1);
   const managementDuration = scheduleUnits(cadence, 4, 2);
-  const networkingDuration = scheduleUnits(cadence, 5, 2);
+  const networkingInScope = hasConfirmedCapability(fields, "networking");
+  const networkingDuration = networkingInScope ? scheduleUnits(cadence, 5, 2) : 0;
   const workloadDuration = scheduleUnits(cadence, 5, 2);
   const moduleDuration = scheduleUnits(cadence, 3, 1);
   const securityDuration = scheduleUnits(cadence, 3, 1);
@@ -1045,19 +1059,21 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   }
 
   const [hclGateStart, hclGateEnd] = range(hclBufferEnd, 1);
-  programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", `HCL Gate: ${hclPathLabel(path)}`, true, false, hclDependency, "Authorize management-domain and NSX foundation work only after the required HCL path evidence is recorded."));
+  programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", `HCL Gate: ${hclPathLabel(path)}`, true, false, hclDependency, "Authorize foundation work only after the required HCL path evidence is recorded."));
 
   const [managementStart, managementEnd] = range(hclGateEnd, managementDuration);
-  const [networkingStart, networkingEnd] = range(managementEnd, networkingDuration);
-  const foundationEnd = networkingEnd;
+  const [networkingStart, networkingEnd] = networkingInScope ? range(managementEnd, networkingDuration) : [managementEnd, managementEnd];
+  const foundationEnd = networkingInScope ? networkingEnd : managementEnd;
   const [workloadStart, workloadEnd] = range(foundationEnd, workloadDuration);
   infrastructureBars.push(
     bar("bar-management-domain", managementStart, managementEnd, colorForWorkstreamType("Infrastructure Build"), "Deploy VCF Management Domain and Core Control Plane", false, false, "Begin after the HCL gate, mobilisation baseline, bill of materials, and platform prerequisites are accepted.", "Deploy the VCF management domain and validate core platform health."),
-    bar("bar-workload-domain", workloadStart, workloadEnd, colorForWorkstreamType("Infrastructure Build"), "Create or Import Workload Domain and Prepare Clusters", false, false, "Begin after management-domain health and the required network path are validated.", "Create or import the workload domain and prepare the foundation used by migration and selected module work."),
+    bar("bar-workload-domain", workloadStart, workloadEnd, colorForWorkstreamType("Infrastructure Build"), "Create or Import Workload Domain and Prepare Clusters", false, false, networkingInScope ? "Begin after management-domain health and the confirmed network path are validated." : "Begin after management-domain health and the applicable platform prerequisites are validated.", "Create or import the workload domain and prepare the foundation used by migration and selected module work."),
   );
-  infrastructureBars.push(
-    bar("bar-vcf-networking-nsx", networkingStart, networkingEnd, colorForWorkstreamType("Infrastructure Build"), "Implement VCF Networking, NSX Transport, Edge, and Routing", false, false, "Begin after the HCL gate; coordinate physical-fabric VLANs, MTU, routing handoffs, and Edge placement.", "Deliver the VCF networking and NSX foundation independently from security services."),
-  );
+  if (networkingInScope) {
+    infrastructureBars.push(
+      bar("bar-vcf-networking-nsx", networkingStart, networkingEnd, colorForWorkstreamType("Infrastructure Build"), "Implement VCF Networking, NSX Transport, Edge, and Routing", false, false, "Begin after the HCL gate; coordinate physical-fabric VLANs, MTU, routing handoffs, and Edge placement.", "Deliver the confirmed VCF networking and NSX foundation independently from security services."),
+    );
+  }
 
   const operationsBars: TimelineBar[] = [];
   const [operationsDesignStart, operationsDesignEnd] = range(hclGateEnd, Math.max(1, Math.min(workloadDuration, scheduleUnits(cadence, 4, 2))));
@@ -1321,7 +1337,7 @@ function mirrorEntitlementLanes(adoptionTimeline: Timeline, columnCount: number)
   }));
 }
 
-function baselineEntitlementLanes(startColumn: number, columnCount: number): TimelineLane[] {
+function baselineEntitlementLanes(fields: MinimalFields, startColumn: number, columnCount: number): TimelineLane[] {
   if (startColumn > columnCount) return [];
   const end = columnCount + 1;
   const remainingColumns = Math.max(1, end - startColumn);
@@ -1355,16 +1371,19 @@ function baselineEntitlementLanes(startColumn: number, columnCount: number): Tim
       label: "Service Consumption and Handover",
       outcome: "Complete service consumption, handover, and the next service-expansion decision within the entitlement period.",
     },
-    {
+  ];
+
+  if (hasConfirmedCapability(fields, "networking")) {
+    baseline.push({
       id: "networking-nsx",
       category: "Modernize Infrastructure",
       workstreamType: "Operating Model / Platform",
       start: startColumn,
       end,
       label: "VCF Networking and NSX Lifecycle Progression",
-      outcome: "Continue VCF networking and NSX platform operations, edge and overlay lifecycle planning, and network-service handover through entitlement end.",
-    },
-  ];
+      outcome: "Continue the confirmed VCF networking and NSX platform operations, edge and overlay lifecycle planning, and network-service handover through entitlement end.",
+    });
+  }
 
   return baseline.map(item => ({
     id: `lane-two-year-baseline-${item.id}`,
@@ -1396,7 +1415,7 @@ function buildTwoYearPlan(fields: MinimalFields, _inventory: InventorySummary, a
   const continuationStart = Math.min(columns.length + 1, implementationEnd);
 
   if (continuationStart <= columns.length) {
-    baselineEntitlementLanes(continuationStart, columns.length).forEach(baselineLane => {
+    baselineEntitlementLanes(fields, continuationStart, columns.length).forEach(baselineLane => {
       const categoryLane = lanes.find(lane => lane.category === baselineLane.category);
       if (categoryLane) categoryLane.bars.push(...baselineLane.bars);
     });
@@ -1434,7 +1453,10 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const industryContext = `The ${planningContext.template.label} industry discovery lens focuses mobilisation discussions on ${planningContext.industryThemes}; it informs the planning narrative only and does not add scope, priorities, or delivery activities.`;
   const hclContext = `The HCL 2.0 evaluation path is ${hclPathLabel(hclPath)} and is used as planning evidence for the required buffer and gate; it remains an offline precheck, not official certification.`;
   const migrationGateContext = "The final migration or implementation phase is gated until selected Cloud and Security & Resilience work is complete, alongside workload-domain readiness, application dependency review, rollback planning, and change-window approval.";
-  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Mobilisation and delivery-baseline work are deliberately limited to ${openingWindow}, then the plan moves into management-domain deployment, VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The entitlement-aligned Notional runs from the planned project start (${plannedProjectStart}) through entitlement end (${entitlementEnd || "TBD"}); it mirrors the implementation sequence, then retains only governance, lifecycle, handover, and selected expansion work that fits within that entitlement period. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const platformDeliverySequence = hasConfirmedCapability(fields, "networking")
+    ? "management-domain deployment, the confirmed VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover"
+    : "management-domain deployment, workload-domain creation or import, controlled upgrade or migration waves, and operational handover";
+  const rationale = `The operational Adoption Timeline is aligned to ${amount}, ${term}, ${estate}, ${cadence}, and ${details}. Mobilisation and delivery-baseline work are deliberately limited to ${openingWindow}, then the plan moves into ${platformDeliverySequence}. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The entitlement-aligned Notional runs from the planned project start (${plannedProjectStart}) through entitlement end (${entitlementEnd || "TBD"}); it mirrors the implementation sequence, then retains only governance, lifecycle, handover, and selected expansion work that fits within that entitlement period. ${followOnSummary}. Each recommendation states why it was selected, the intended outcome, and its required sequence; outstanding inputs are stated explicitly instead of creating a generic placeholder. Every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -1875,18 +1897,17 @@ export function migrateDocument(value: unknown): EngagementDocument {
       };
     }
 
-    const normalizedAdoptionTimeline = normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory));
-    const adoptionTimeline = normalizedAdoptionTimeline.lanes.some(lane => lane.id === "lane-vcf-networking-nsx")
-      ? normalizedAdoptionTimeline
-      : { ...normalizedAdoptionTimeline, lanes: [...normalizedAdoptionTimeline.lanes, ...generated.adoptionTimeline.lanes.filter(lane => lane.id === "lane-vcf-networking-nsx")] };
-    const candidateTwoYearPlan = normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan));
-    const entitlementAlignedTwoYearPlan = hasEntitlementAlignedNotional(candidateTwoYearPlan, fields)
+    const adoptionTimeline = withoutUnselectedGeneratedNetworking(
+      normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory)),
+      fields,
+    );
+    const candidateTwoYearPlan = withoutUnselectedGeneratedNetworking(
+      normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan)),
+      fields,
+    );
+    const twoYearPlan = hasEntitlementAlignedNotional(candidateTwoYearPlan, fields)
       ? candidateTwoYearPlan
       : generated.twoYearPlan;
-    const generatedNetworkingLane = generated.twoYearPlan.lanes.filter(lane => lane.id === "lane-two-year-baseline-networking-nsx");
-    const twoYearPlan = !generatedNetworkingLane.length || entitlementAlignedTwoYearPlan.lanes.some(lane => lane.id === "lane-two-year-baseline-networking-nsx")
-      ? entitlementAlignedTwoYearPlan
-      : { ...entitlementAlignedTwoYearPlan, lanes: [...entitlementAlignedTwoYearPlan.lanes, ...generatedNetworkingLane] };
     return {
       ...current.data,
       fields,
@@ -2095,8 +2116,6 @@ export function validateTimeline(timeline: Timeline): string[] {
     for (let index = 0; index < sorted.length; index += 1) {
       const current = sorted[index];
       if (current.endCol <= current.startCol || current.endCol > maxEnd) errors.push(`${lane.name}: “${current.label}” is outside the timeline grid.`);
-      const next = sorted[index + 1];
-      if (next && current.endCol > next.startCol) errors.push(`${lane.name}: “${current.label}” overlaps “${next.label}”. Split concurrent work into separate lanes.`);
     }
   }
   return errors;
@@ -2124,8 +2143,6 @@ export function applyTimelineGesture(timeline: Timeline, laneId: string, barId: 
 
   if (startCol < 1 || endCol > maxEnd || endCol <= startCol) return timeline;
   const candidate = { ...current, startCol, endCol };
-  const overlaps = lane.bars.some(item => item.id !== barId && candidate.startCol < item.endCol && candidate.endCol > item.startCol);
-  if (overlaps) return timeline;
 
   return {
     ...timeline,

@@ -24,10 +24,6 @@ function id(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function overlaps(candidate: TimelineBar, other: TimelineBar) {
-  return candidate.startCol < other.endCol && candidate.endCol > other.startCol;
-}
-
 type Props = {
   timeline: Timeline;
   onChange: (timeline: Timeline) => void;
@@ -55,7 +51,7 @@ export function AdoptionTimelineEditor({
   timeline,
   onChange,
   title = "Adoption Timeline",
-  description = "The five category rows are fixed. Bar color identifies workstream type; drag a task to move it and drag either edge to resize it within its category.",
+  description = "The five category rows are fixed. Bar color identifies workstream type; activities may overlap within a category when workstreams can proceed concurrently. Drag a task to move it and drag either edge to resize it.",
 }: Props) {
   const [selected, setSelected] = useState<{ laneId: string; barId: string } | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -96,10 +92,6 @@ export function AdoptionTimelineEditor({
       endCol: Math.max(2, Math.min(maxEnd, patch.endCol ?? current.endCol)),
     };
     if (next.endCol <= next.startCol) return false;
-    if (lane.bars.some(item => item.id !== barId && overlaps(next, item))) {
-      if (announce) toast.error("That change would overlap another activity in this workstream.");
-      return false;
-    }
     changeLane(laneId, item => ({ ...item, bars: item.bars.map(bar => (bar.id === barId ? next : bar)) }));
     return true;
   };
