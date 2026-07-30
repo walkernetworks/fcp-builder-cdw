@@ -445,3 +445,9 @@
 - [x] Correct the entitlement-notional dates, month columns, activities, and export presentation so it is a coherent entitlement-bounded delivery view.
 - [x] Reframe the cover, executive summary, customer background, and plan synopsis around service delivery, selected outcomes, and customer value; retain RVTools only as supporting estate evidence.
 - [x] Add regression coverage, validate the corrected HTML/PDF output, and publish the repair.
+
+## Lyondell Operational Timeline Print Cutoff
+
+- [x] Review the supplied Lyondell PDF and current operational-timeline HTML/print structure to identify the precise cutoff mechanism.
+- [x] Implement a print-safe operational timeline layout that shows every month, lane, and activity without cropping or hiding delivery work.
+- [x] Add regression coverage, visually validate the complete HTML/PDF timeline, and publish the repair.

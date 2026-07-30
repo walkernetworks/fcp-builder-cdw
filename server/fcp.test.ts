@@ -927,6 +927,13 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).not.toContain("#two-year .notional-year-two{page-break-before:always;break-before:page}");
     expect(html).toContain('class="two-year-sequence-sheet"');
     expect(html).toContain("#two-year .two-year-sequence-sheet{page-break-before:always;break-before:page}");
+    expect(html).toContain('class="operational-print-sheet cadence-');
+    expect(html).toContain("Operational delivery window 1");
+    const operationalWindowCount = Math.ceil(document.adoptionTimeline.columns.length / (document.adoptionTimeline.cadence === "week" ? 12 : 6));
+    expect((html.match(/class="operational-print-sheet/g) || []).length).toBe(operationalWindowCount);
+    expect(html).toContain("#adoption .operational-print-sheet .timeline-grid{width:100%;min-width:0!important}");
+    expect(html).toContain("#adoption .operational-print-sheet.cadence-week .timeline-grid{grid-template-columns:138px repeat(12,minmax(0,1fr))!important}");
+    expect(html).toContain("#adoption .operational-sequence-sheet{page-break-before:always;break-before:page}");
     expect(html).toContain("page-break-after:always;break-after:page");
     const visibleReport = html.replace(/<style>[\s\S]*?<\/style>/i, "");
     expect(visibleReport).not.toMatch(/\b(assessment|workshop)\b/i);
