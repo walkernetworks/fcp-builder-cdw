@@ -618,11 +618,26 @@ export function buildWeekColumns(startValue: string, endValue: string, fallbackC
 }
 
 export function buildTwoYearNotionalColumns(serviceStartValue: string, entitlementEndValue = ""): string[] {
-  const start = parseMonth(serviceStartValue) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-  const end = parseMonth(entitlementEndValue);
-  const requested = end && end >= start ? monthDifference(start, end) + 1 : 12;
+  const start = parseIsoDate(serviceStartValue) || parseMonth(serviceStartValue) || new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  const end = parseIsoDate(entitlementEndValue) || parseMonth(entitlementEndValue);
+  const startMonth = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  const requested = end && end >= start ? monthDifference(startMonth, new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1))) + 1 : 12;
   const count = Math.max(2, Math.min(36, requested));
-  return Array.from({ length: count }, (_, index) => displayMonth(addUtcMonths(start, index)));
+
+  return Array.from({ length: count }, (_, index) => {
+    const month = addUtcMonths(startMonth, index);
+    const monthLabel = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(month);
+    const year = month.getUTCFullYear();
+    const lastDay = new Date(Date.UTC(year, month.getUTCMonth() + 1, 0)).getUTCDate();
+    const isOpeningMonth = month.getUTCFullYear() === start.getUTCFullYear() && month.getUTCMonth() === start.getUTCMonth();
+    const isClosingMonth = end !== null && month.getUTCFullYear() === end.getUTCFullYear() && month.getUTCMonth() === end.getUTCMonth();
+    const openingDay = isOpeningMonth ? start.getUTCDate() : 1;
+    const closingDay = isClosingMonth && end ? end.getUTCDate() : lastDay;
+
+    if (openingDay === 1 && closingDay === lastDay) return `${monthLabel} ${year}`;
+    if (openingDay === closingDay) return `${monthLabel} ${openingDay}, ${year}`;
+    return `${monthLabel} ${openingDay}–${closingDay}, ${year}`;
+  });
 }
 
 function timelineStartDate(fields: MinimalFields): string {

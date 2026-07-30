@@ -67,9 +67,9 @@ describe("calendar-month adoption plans", () => {
     expect(calculateEntitlementEndDate("2027-01-15")).toBe("2028-01-15");
     const notional = buildTwoYearNotionalColumns("2027-01-15", "2028-01-15");
     expect(notional).toHaveLength(13);
-    expect(notional[0]).toBe("Jan 27");
-    expect(notional[11]).toBe("Dec 27");
-    expect(notional[12]).toBe("Jan 28");
+    expect(notional[0]).toBe("Jan 15–31, 2027");
+    expect(notional[11]).toBe("Dec 2027");
+    expect(notional[12]).toBe("Jan 1–15, 2028");
   });
 
   it("time-boxes discovery and then sequences the selected implementation workstreams without adding unselected networking scope", () => {
@@ -105,9 +105,9 @@ describe("calendar-month adoption plans", () => {
     expect(plans.adoptionTimeline.lanes.filter(lane => lane.category === "Modernize Infrastructure").map(lane => lane.workstreamType)).toEqual(expect.arrayContaining(["Infrastructure Build", "Migration Waves"]));
     expect(plans.twoYearPlan).toMatchObject({ cadence: "month", startDate: "2027-01-01" });
     expect(plans.twoYearPlan.columns).toHaveLength(13);
-    expect(plans.twoYearPlan.columns[0]).toBe("Jan 27");
-    expect(plans.twoYearPlan.columns[11]).toBe("Dec 27");
-    expect(plans.twoYearPlan.columns[12]).toBe("Jan 28");
+    expect(plans.twoYearPlan.columns[0]).toBe("Jan 2027");
+    expect(plans.twoYearPlan.columns[11]).toBe("Dec 2027");
+    expect(plans.twoYearPlan.columns[12]).toBe("Jan 1, 2028");
     expect(plans.twoYearPlan.lanes.flatMap(lane => lane.bars).every(candidate => candidate.endCol <= plans.twoYearPlan.columns.length + 1)).toBe(true);
     expect(plans.twoYearPlan.lanes.map(lane => lane.name).join(" ")).not.toMatch(/Year [12] ·/);
     expect(plans.rationale).toContain("$2,500,000");
@@ -387,8 +387,8 @@ describe("calendar-month adoption plans", () => {
     expect(migrated.version).toBe(11);
     expect(migrated.twoYearPlan).toMatchObject({ cadence: "month", startDate: "2027-01-17" });
     expect(migrated.twoYearPlan.columns).toHaveLength(13);
-    expect(migrated.twoYearPlan.columns[0]).toBe("Jan 27");
-    expect(migrated.twoYearPlan.columns[12]).toBe("Jan 28");
+    expect(migrated.twoYearPlan.columns[0]).toBe("Jan 17–31, 2027");
+    expect(migrated.twoYearPlan.columns[12]).toBe("Jan 1, 2028");
     expect(new Set(migrated.twoYearPlan.lanes.map(lane => lane.category))).toEqual(new Set(FIXED_GANTT_CATEGORIES));
     expect(operations?.bars).toEqual(expect.arrayContaining([
       expect.objectContaining({ label: "Deploy VCF Operations Health, Logs, and Diagnostics", startCol: expect.any(Number) }),
@@ -802,6 +802,15 @@ describe("planning considerations, exports, and access boundary", () => {
     ]));
   });
 
+  it("labels partial opening and closing months explicitly in entitlement-bounded Notional timelines", () => {
+    expect(buildTwoYearNotionalColumns("2026-08-03", "2026-11-10")).toEqual([
+      "Aug 3–31, 2026",
+      "Sep 2026",
+      "Oct 2026",
+      "Nov 1–10, 2026",
+    ]);
+  });
+
   it("adds VCF networking only after explicit scope confirmation and strips unselected generated networking from saved plans", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
@@ -847,10 +856,9 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Operational Adoption Timeline");
     expect(html).toContain("Entitlement Notional");
     expect(html).toContain("Two-year operational view:");
-    expect(html).toContain("Entitlement-period planning view:");
-    expect(html).toContain("Planned Project Start Through Entitlement End");
-    expect(html).toContain("planned project start (2027-01-01)");
-    expect(html).toContain("through 2028-01-01");
+    expect(html).toContain("Entitlement-period delivery view:");
+    expect(html).toContain("Planned Delivery Start Through Entitlement End");
+    expect(html).toContain("Delivery is scheduled from 2027-01-01 through 2028-01-01");
     expect(html).toContain("Intended Outcome");
     expect(html).toContain("Sequence Notes");
     expect(html).toContain("Publish Operational Dashboards and Service Measures");
@@ -861,6 +869,11 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Reported ESXi");
     expect(html).toContain("220 VM records");
     expect(html).toContain("Customer-aligned delivery plan");
+    expect(html).toContain("delivery-led VCF adoption");
+    expect(html).toContain("Delivery planning is informed by a current-state estate view");
+    expect(html).toContain("Service delivery &amp; handover");
+    expect(html).toContain("Implementation-led");
+    expect(html).not.toContain("RVTools Export(s)");
     expect(html).toContain("HCL Server + CPU Evidence");
     expect(html).not.toContain("Physical cores");
     expect(html).toContain("Snapshot-supported pairing");
@@ -884,7 +897,7 @@ describe("planning considerations, exports, and access boundary", () => {
     const planSummary = html.slice(planSummaryStart, observedInventoryStart);
     expect(planSummaryStart).toBeGreaterThan(-1);
     expect(observedInventoryStart).toBeGreaterThan(planSummaryStart);
-    expect(planSummary).toContain("<h3>Customer background</h3>");
+    expect(planSummary).toContain("<h3>Customer delivery context</h3>");
     expect(planSummary).toContain("<h3>Observed footprint</h3>");
     expect(planSummary).toContain("<h3>Selected scope</h3>");
     expect(planSummary).toContain("<h3>Entitlement Notional</h3>");
@@ -895,8 +908,8 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain('<section class="summary-plan">');
     expect(html).toContain("Executive snapshot");
     expect(html).toContain("Plan on a Page");
-    expect(html).toContain(".executive-sheet{height:auto;min-height:7.7in");
-    expect(html).not.toContain(".executive-sheet{height:8.5in;min-height:8.5in");
+    expect(html).toContain(".executive-sheet{height:8.5in;min-height:8.5in");
+    expect(html).not.toContain(".executive-sheet{height:auto;min-height:7.7in");
     expect(html).toContain(".summary-plan{height:8.5in;min-height:8.5in");
     expect(html).toContain("@page{size:letter landscape;margin:0}");
     expect(html).toContain('<section class="hardware-evidence">');
@@ -904,12 +917,13 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("VCF 9.1 Delivery Inventory");
     expect(html).toContain('class="notional-year-sheet notional-year-one"');
     expect(html).not.toContain('class="notional-year-sheet notional-year-two"');
-    expect(html).toContain("Planned Project Start Through Entitlement End");
+    expect(html).toContain("Planned Delivery Start Through Entitlement End");
     expect(html).toContain("Entitlement-Aligned Delivery Outlook");
     expect(html).not.toContain("Months 13–24");
     expect(html).not.toContain("Continuous Year 2 Delivery");
     expect(html).not.toContain("Year 2 Follow-On Services");
-    expect(html).toContain("#two-year .notional-year-sheet .timeline-grid{width:100%;min-width:0!important;grid-template-columns:1.45in repeat(12,minmax(0,1fr))!important}");
+    expect(html).toContain("#two-year .notional-year-sheet .timeline-grid{width:100%;min-width:0!important}");
+    expect(html).not.toContain("#two-year .notional-year-sheet .timeline-grid{width:100%;min-width:0!important;grid-template-columns:1.45in repeat(12,minmax(0,1fr))!important}");
     expect(html).not.toContain("#two-year .notional-year-two{page-break-before:always;break-before:page}");
     expect(html).toContain('class="two-year-sequence-sheet"');
     expect(html).toContain("#two-year .two-year-sequence-sheet{page-break-before:always;break-before:page}");

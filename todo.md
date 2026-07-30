@@ -438,3 +438,10 @@
 - [x] Add a persisted, accessible export preference that lets users include or exclude the VCF 9.1 readiness section.
 - [x] Conditionally omit the readiness navigation, content, and print output from HTML and PDF exports when disabled while retaining planning data.
 - [x] Add migration-safe defaults, regression coverage, and full export validation for both readiness-on and readiness-off modes.
+
+## Lyondell Entitlement Notional and Delivery-Focused Opening Report
+
+- [x] Review the supplied Lyondell PDF and current engagement timeline data to identify the precise entitlement-notional construction or rendering defects.
+- [x] Correct the entitlement-notional dates, month columns, activities, and export presentation so it is a coherent entitlement-bounded delivery view.
+- [x] Reframe the cover, executive summary, customer background, and plan synopsis around service delivery, selected outcomes, and customer value; retain RVTools only as supporting estate evidence.
+- [x] Add regression coverage, validate the corrected HTML/PDF output, and publish the repair.
