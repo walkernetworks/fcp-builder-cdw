@@ -451,3 +451,10 @@
 - [x] Review the supplied Customer B PDF and current operational-timeline HTML/print structure to identify the precise cutoff mechanism.
 - [x] Implement a print-safe operational timeline layout that shows every month, lane, and activity without cropping or hiding delivery work.
 - [x] Add regression coverage, visually validate the complete HTML/PDF timeline, and publish the repair.
+
+## Concise RVTools-Backed Executive Export
+
+- [x] Audit the Customer B export to quantify page growth and identify RVTools-derived details that do not belong in the default executive delivery report.
+- [x] Redesign the default export as a concise delivery report with a single observed-footprint summary and only decision-relevant readiness evidence.
+- [x] Keep detailed inventory, readiness, and sequence material out of the default output while preserving the user's explicit VCF 9.1 readiness inclusion choice.
+- [x] Add regression coverage, validate a concise Customer B HTML/PDF export, and publish the change.
