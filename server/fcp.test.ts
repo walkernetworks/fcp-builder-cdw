@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
-import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, FIXED_GANTT_CATEGORIES, getFollowOnReadinessGuidance, getHclSchedulePath, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, validateTimeline, type Timeline } from "../shared/fcp";
+import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, FIXED_GANTT_CATEGORIES, getFollowOnReadinessGuidance, getHclSchedulePath, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, synchronizeEntitlementNotionalFromOperational, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence } from "../shared/hcl";
 import type { TrpcContext } from "./_core/context";
@@ -844,6 +844,61 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(migrated.twoYearPlan.lanes.flatMap(lane => lane.bars).some(activity => activity.id === "bar-two-year-baseline-networking-nsx")).toBe(false);
   });
 
+  it("preserves manually edited plans across ordinary option changes and rebuilds them only explicitly", () => {
+    const document = createDefaultDocument();
+    const manualTimeline = JSON.parse(JSON.stringify(document.adoptionTimeline)) as Timeline;
+    const manualActivity = manualTimeline.lanes.flatMap(lane => lane.bars).find(activity => activity.id === "bar-platform-plan")!;
+    manualActivity.label = "Customer-scheduled mobilisation window";
+
+    const preserved = refreshDerivedDocument({
+      ...document,
+      planAuthority: "manual",
+      adoptionTimeline: manualTimeline,
+      fields: { ...document.fields, timelineNotes: "Avoid the customer financial close window." },
+    });
+
+    expect(preserved.planAuthority).toBe("manual");
+    expect(preserved.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(activity => activity.id === "bar-platform-plan")?.label).toBe("Customer-scheduled mobilisation window");
+    expect(preserved.rationale).toContain("Avoid the customer financial close window.");
+
+    const rebuilt = refreshDerivedDocument(preserved, { forceRebuild: true });
+    expect(rebuilt.planAuthority).toBe("generated");
+    expect(rebuilt.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(activity => activity.id === "bar-platform-plan")?.label).not.toBe("Customer-scheduled mobilisation window");
+  });
+
+  it("synchronizes changed operational activities into entitlement adoption while retaining independent Notional work", () => {
+    const document = createDefaultDocument();
+    const operational = JSON.parse(JSON.stringify(document.adoptionTimeline)) as Timeline;
+    const operationalActivity = operational.lanes.flatMap(lane => lane.bars).find(activity => activity.id === "bar-platform-plan")!;
+    operationalActivity.label = "Customer-approved operational mobilisation";
+    operationalActivity.startCol += 2;
+    operationalActivity.endCol += 2;
+
+    const notionalOnly = {
+      ...document.twoYearPlan.lanes[0].bars[0],
+      id: "manual-entitlement-governance",
+      label: "Customer governance sign-off",
+      startCol: 1,
+      endCol: 2,
+      dependsOn: [],
+    };
+    const source = {
+      ...document,
+      twoYearPlan: {
+        ...document.twoYearPlan,
+        lanes: document.twoYearPlan.lanes.map((lane, index) => index === 0 ? { ...lane, bars: [...lane.bars, notionalOnly] } : lane),
+      },
+    };
+
+    const synchronized = synchronizeEntitlementNotionalFromOperational(source, operational);
+    const entitlementActivities = synchronized.twoYearPlan.lanes.flatMap(lane => lane.bars);
+    expect(synchronized.planAuthority).toBe("manual");
+    expect(entitlementActivities).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "manual-entitlement-governance", label: "Customer governance sign-off" }),
+      expect.objectContaining({ id: "bar-platform-plan", label: "Customer-approved operational mobilisation" }),
+    ]));
+  });
+
   it("renders entitlement details and both synchronized adoption views with VCF 9.1 platform evidence", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, { customerName: "Meridian Health", entitledCores: 128, entitlementAmount: 3_000_000, entitlementStart: "2027-01-01", entitlementEnd: "2028-01-01", targetStart: "2027-01-01", targetComplete: "2027-09-30", priorities: ["operations"], adoptionDetails: { ...document.fields.adoptionDetails, operations: ["observability", "custom-dashboards"] } });
@@ -958,12 +1013,31 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Operational Adoption Timeline");
   });
 
-  it("defaults the VCF 9.1 readiness export preference to included when migrating saved documents", () => {
+  it("can omit the operational adoption timeline while retaining entitlement and readiness output", () => {
+    const document = createDefaultDocument();
+    document.fields.customerName = "Meridian Health";
+    document.fields.exportPreferences.includeOperationalTimeline = false;
+
+    const html = renderFcpHtml("Meridian FCP", document);
+    expect(html).not.toContain('data-tab="adoption"');
+    expect(html).not.toContain('<section id="adoption"');
+    expect(html).not.toContain("Operational Adoption Timeline");
+    expect(html).not.toContain("Executive operational view:");
+    expect(html).not.toContain('class="operational-print-sheet');
+    expect(html).toContain("Entitlement Notional");
+    expect(html).toContain("VCF 9.1 readiness");
+  });
+
+  it("defaults export preferences and preserves ambiguous legacy plans as manual when authority metadata is absent", () => {
     const persisted = JSON.parse(JSON.stringify(createDefaultDocument())) as Record<string, unknown>;
     const fields = persisted.fields as Record<string, unknown>;
     delete fields.exportPreferences;
+    delete persisted.planAuthority;
 
-    expect(migrateDocument(persisted).fields.exportPreferences.includeVcfReadiness).toBe(true);
+    const migrated = migrateDocument(persisted);
+    expect(migrated.fields.exportPreferences.includeVcfReadiness).toBe(true);
+    expect(migrated.fields.exportPreferences.includeOperationalTimeline).toBe(true);
+    expect(migrated.planAuthority).toBe("manual");
   });
 
   it("returns an authenticated standalone HTML download with a safe filename", async () => {
