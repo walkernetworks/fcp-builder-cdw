@@ -187,13 +187,15 @@ const minimalFieldsV6Schema = minimalFieldsV5Schema.extend({
 export const exportPreferencesSchema = z.object({
   /** Keeps detailed VCF 9.1 inventory and readiness evidence in generated HTML and PDF exports. */
   includeVcfReadiness: z.boolean().default(true),
+  /** Keeps the two-year operational adoption horizon in generated HTML and PDF exports. */
+  includeOperationalTimeline: z.boolean().default(true),
 });
 export type ExportPreferences = z.infer<typeof exportPreferencesSchema>;
 
 export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   adoptionCadence: timelineCadenceSchema,
   adoptionDetails: adoptionDetailsSchema,
-  exportPreferences: exportPreferencesSchema.default({ includeVcfReadiness: true }),
+  exportPreferences: exportPreferencesSchema.default({ includeVcfReadiness: true, includeOperationalTimeline: true }),
 });
 export type MinimalFields = z.infer<typeof minimalFieldsSchema>;
 
@@ -457,8 +459,12 @@ export const engagementDocumentV10Schema = z.object({
 });
 
 /** V11 fixes the primary Gantt taxonomy to five HCL-driven category rows. */
+export const planAuthoritySchema = z.enum(["generated", "manual"]).default("generated");
+export type PlanAuthority = z.infer<typeof planAuthoritySchema>;
+
 export const engagementDocumentV11Schema = z.object({
   version: z.literal(11),
+  planAuthority: planAuthoritySchema,
   fields: minimalFieldsSchema,
   inventorySources: z.array(inventorySourceSchema),
   inventory: inventorySummarySchema,
@@ -532,7 +538,7 @@ export function createDefaultFields(): MinimalFields {
     timelineNotes: "",
     adoptionCadence: "month",
     adoptionDetails: createDefaultAdoptionDetails(),
-    exportPreferences: { includeVcfReadiness: true },
+    exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
   };
 }
 
@@ -1801,7 +1807,7 @@ export function createDefaultDocument(): EngagementDocument {
   const inventory = emptyInventory();
   const readiness = assessReadiness(fields, inventory);
   const plans = buildAdoptionPlans(fields, inventory);
-  return { version: 11, fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+  return { version: 11, planAuthority: "generated", fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
 function stringValue(value: unknown): string {
@@ -1823,7 +1829,7 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
   return {
     ...fields,
     adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise" },
-    exportPreferences: { includeVcfReadiness: true },
+    exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
   };
 }
 
@@ -1906,15 +1912,30 @@ function normalizePlanningDates(fields: MinimalFields): MinimalFields {
   };
 }
 
+function timelineSignature(timeline: Timeline): string {
+  return JSON.stringify({ cadence: timeline.cadence, startDate: timeline.startDate, columns: timeline.columns, lanes: timeline.lanes });
+}
+
+function inferredPlanAuthority(value: unknown, document: EngagementDocument, generated: { adoptionTimeline: Timeline; twoYearPlan: Timeline }): PlanAuthority {
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  if (raw.planAuthority === "manual" || raw.planAuthority === "generated") return raw.planAuthority;
+  return timelineSignature(document.adoptionTimeline) === timelineSignature(generated.adoptionTimeline)
+    && timelineSignature(document.twoYearPlan) === timelineSignature(generated.twoYearPlan)
+    ? "generated"
+    : "manual";
+}
+
 export function migrateDocument(value: unknown): EngagementDocument {
   const normalizedValue = normalizeRawTimelineTaxonomy(value);
   const current = engagementDocumentV11Schema.safeParse(normalizedValue);
   if (current.success) {
     const fields = normalizePlanningDates(current.data.fields);
     const generated = buildAdoptionPlans(fields, current.data.inventory);
-    if (needsImplementationTimelineRebaseline(current.data.adoptionTimeline)) {
+    const planAuthority = inferredPlanAuthority(normalizedValue, current.data, generated);
+    if (needsImplementationTimelineRebaseline(current.data.adoptionTimeline) && planAuthority !== "manual") {
       return {
         ...current.data,
+        planAuthority: "generated",
         fields,
         readiness: assessReadiness(
           fields,
@@ -1935,11 +1956,12 @@ export function migrateDocument(value: unknown): EngagementDocument {
       normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan)),
       fields,
     );
-    const twoYearPlan = hasEntitlementAlignedNotional(candidateTwoYearPlan, fields)
+    const twoYearPlan = planAuthority === "manual" || hasEntitlementAlignedNotional(candidateTwoYearPlan, fields)
       ? candidateTwoYearPlan
       : generated.twoYearPlan;
     return {
       ...current.data,
+      planAuthority,
       fields,
       readiness: assessReadiness(
         fields,
@@ -1958,6 +1980,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const plans = buildAdoptionPlans(fields, v10.data.inventory);
     return {
       version: 11,
+      planAuthority: "generated",
       fields,
       inventorySources: v10.data.inventorySources,
       inventory: v10.data.inventory,
@@ -1974,6 +1997,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const plans = buildAdoptionPlans(fields, v9.data.inventory);
     return {
       version: 11,
+      planAuthority: "generated",
       fields,
       inventorySources: v9.data.inventorySources,
       inventory: v9.data.inventory,
@@ -1990,6 +2014,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const plans = buildAdoptionPlans(fields, v8.data.inventory);
     return {
       version: 11,
+      planAuthority: "generated",
       fields,
       inventorySources: v8.data.inventorySources,
       inventory: v8.data.inventory,
@@ -2006,6 +2031,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const plans = buildAdoptionPlans(fields, v7.data.inventory);
     return {
       version: 11,
+      planAuthority: "generated",
       fields,
       inventorySources: v7.data.inventorySources,
       inventory: v7.data.inventory,
@@ -2022,6 +2048,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const plans = buildAdoptionPlans(fields, v6.data.inventory);
     return {
       version: 11,
+      planAuthority: "generated",
       fields,
       inventorySources: v6.data.inventorySources,
       inventory: v6.data.inventory,
@@ -2038,6 +2065,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const plans = buildAdoptionPlans(fields, v5.data.inventory);
     return {
       version: 11,
+      planAuthority: "generated",
       fields,
       inventorySources: v5.data.inventorySources,
       inventory: v5.data.inventory,
@@ -2056,6 +2084,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const plans = buildAdoptionPlans(fields, inventory);
     return {
       version: 11,
+      planAuthority: "generated",
       fields,
       inventorySources: v4.data.inventorySources,
       inventory,
@@ -2074,6 +2103,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const plans = buildAdoptionPlans(fields, inventory);
     return {
       version: 11,
+      planAuthority: "generated",
       fields,
       inventorySources: v3.data.inventorySources,
       inventory,
@@ -2117,6 +2147,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const plans = buildAdoptionPlans(fields, inventory);
   return {
     version: 11,
+    planAuthority: "generated",
     fields,
     inventorySources: parsedSources.success ? parsedSources.data : [],
     inventory,
@@ -2129,12 +2160,54 @@ export function migrateDocument(value: unknown): EngagementDocument {
 
 export const engagementDocumentSchema = z.preprocess(migrateDocument, engagementDocumentV11Schema);
 
-export function refreshDerivedDocument(document: EngagementDocument): EngagementDocument {
+export function refreshDerivedDocument(document: EngagementDocument, options: { forceRebuild?: boolean } = {}): EngagementDocument {
   const warnings = document.inventorySources.flatMap(source => source.warnings);
   // Assessment can be expensive for large RVTools estates. Calculate it once and share its path with timeline generation.
   const readiness = assessReadiness(document.fields, document.inventory, warnings);
   const plans = buildAdoptionPlans(document.fields, document.inventory, readiness.hclSchedulePath);
-  return { ...document, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+  if (document.planAuthority === "manual" && !options.forceRebuild) {
+    return { ...document, readiness, rationale: plans.rationale };
+  }
+  return { ...document, planAuthority: "generated", readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+}
+
+/**
+ * Applies operational schedule changes to the corresponding entitlement-bounded work only.
+ * Independent Notional-only bars (for example governance, handover, and explicitly added bars)
+ * remain intact, so synchronizing the operational horizon cannot discard manual entitlement work.
+ */
+export function synchronizeEntitlementNotionalFromOperational(document: EngagementDocument, adoptionTimeline: Timeline): EngagementDocument {
+  const startDate = entitlementNotionalStartDate(document.fields);
+  const columns = buildTwoYearNotionalColumns(startDate, entitlementNotionalEndDate(document.fields));
+  const mirroredLanes = mirrorEntitlementLanes(adoptionTimeline, columns.length);
+  const priorOperationalIds = new Set(document.adoptionTimeline.lanes.flatMap(lane => lane.bars.map(item => item.id)));
+  const nextOperationalIds = new Set(adoptionTimeline.lanes.flatMap(lane => lane.bars.map(item => item.id)));
+  const synchronizedBarIds = new Set(Array.from(priorOperationalIds).concat(Array.from(nextOperationalIds)));
+  const lanesById = new Map(document.twoYearPlan.lanes.map(lane => [lane.id, { ...lane, bars: lane.bars.filter(item => !synchronizedBarIds.has(item.id)) }]));
+  const orderedLaneIds = document.twoYearPlan.lanes.map(lane => lane.id);
+
+  mirroredLanes.forEach(mirroredLane => {
+    const existing = lanesById.get(mirroredLane.id);
+    if (existing) {
+      existing.name = mirroredLane.name;
+      existing.category = mirroredLane.category;
+      existing.workstreamType = mirroredLane.workstreamType;
+      existing.bars.push(...mirroredLane.bars);
+    } else {
+      lanesById.set(mirroredLane.id, { ...mirroredLane, bars: [...mirroredLane.bars] });
+      orderedLaneIds.push(mirroredLane.id);
+    }
+  });
+
+  const lanes = orderedLaneIds
+    .map(id => lanesById.get(id))
+    .filter((lane): lane is TimelineLane => Boolean(lane && lane.bars.length));
+  return {
+    ...document,
+    planAuthority: "manual",
+    adoptionTimeline,
+    twoYearPlan: applyWorkstreamPresentation({ cadence: "month", startDate, columns, lanes }),
+  };
 }
 
 export function validateTimeline(timeline: Timeline): string[] {

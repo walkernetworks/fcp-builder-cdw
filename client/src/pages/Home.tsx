@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { downloadServerAttachment } from "@/lib/downloads";
 import { engagementExists, reconcileSelectedEngagementId, shouldQuerySelectedEngagement } from "@/lib/engagementSelection";
 import { trpc } from "@/lib/trpc";
-import { createDefaultDocument, getFollowOnReadinessGuidance, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "@shared/fcp";
+import { createDefaultDocument, getFollowOnReadinessGuidance, migrateDocument, refreshDerivedDocument, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
 import { ArrowRight, CalendarRange, Copy, Download, FileSpreadsheet, Loader2, MoreHorizontal, Plus, RefreshCw, Save, ShieldCheck, Trash2, Workflow } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -126,7 +126,7 @@ export default function Home() {
     [fcpDocument.fields, fcpDocument.inventory],
   );
   const mutateDocument = (next: EngagementDocument) => { setFcpDocument(next); setDirty(true); };
-  const buildPlan = () => { mutateDocument(refreshDerivedDocument(fcpDocument)); toast.success("Adoption plans rebuilt from the confirmed inputs"); };
+  const buildPlan = () => { mutateDocument(refreshDerivedDocument(fcpDocument, { forceRebuild: true })); toast.success("Adoption plans rebuilt from the confirmed inputs"); };
   const saveNow = () => { if (!selectedId) return; setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument }); };
   const startExport = async (format: "html" | "pdf") => {
     if (!selectedId || exportingFormat) return;
@@ -208,12 +208,30 @@ export default function Home() {
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#c8102e]">Plan Basis</p><p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">{fcpDocument.rationale}</p></div><Button variant="outline" size="sm" onClick={buildPlan}><RefreshCw className="size-4" /> Reset Both Plans</Button></div>{fcpDocument.fields.timelineNotes && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900"><strong>Timeline Constraints:</strong> {fcpDocument.fields.timelineNotes}</div>}</div>
                 <Tabs defaultValue="two-year" className="space-y-4">
                   <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-xl bg-white p-1 shadow-sm"><TabsTrigger value="two-year" className="gap-2 rounded-lg px-4 py-2"><Workflow className="size-4" /><span className="sm:hidden">Notional</span><span className="hidden sm:inline">Entitlement Notional</span></TabsTrigger><TabsTrigger value="adoption" className="gap-2 rounded-lg px-4 py-2"><CalendarRange className="size-4" /> Operational Adoption Timeline</TabsTrigger></TabsList>
-                  <TabsContent value="two-year" className="space-y-4">{followOnGuidance.blocked && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-amber-800">Follow-On Plan Inputs</p><h3 className="mt-1 text-base font-semibold text-slate-950">{followOnGuidance.title}</h3><p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">{followOnGuidance.detail}</p><div className="mt-3 border-t border-amber-200 pt-3"><p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Next actions</p><ul className="mt-2 space-y-1.5 text-sm leading-5 text-slate-700">{followOnGuidance.actions.map(action => <li key={action} className="flex gap-2"><span className="text-amber-700">•</span><span>{action}</span></li>)}</ul></div></section>}<AdoptionTimelineEditor timeline={fcpDocument.twoYearPlan} onChange={twoYearPlan => mutateDocument({ ...fcpDocument, twoYearPlan })} title="Entitlement Notional" description="This monthly Notional begins on the planned project start date and ends on the calculated entitlement end date. It retains only selected delivery, governance, lifecycle, handover, and expansion work that fits within the entitlement period. Every item remains editable and is a planning recommendation, not a service commitment." /></TabsContent>
-                  <TabsContent value="adoption"><AdoptionTimelineEditor timeline={fcpDocument.adoptionTimeline} onChange={adoptionTimeline => mutateDocument({ ...fcpDocument, adoptionTimeline })} title="Operational Adoption Timeline" description={fcpDocument.adoptionTimeline.cadence === "week" ? "This two-year operational view begins on the planned project start date and uses weekly execution windows. Drag activities or their edges to refine the schedule." : "This two-year operational view begins on the planned project start date and uses calendar-month execution windows. Drag activities or their edges to refine the schedule."} /></TabsContent>
+                  <TabsContent value="two-year" className="space-y-4">{followOnGuidance.blocked && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-amber-800">Follow-On Plan Inputs</p><h3 className="mt-1 text-base font-semibold text-slate-950">{followOnGuidance.title}</h3><p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">{followOnGuidance.detail}</p><div className="mt-3 border-t border-amber-200 pt-3"><p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Next actions</p><ul className="mt-2 space-y-1.5 text-sm leading-5 text-slate-700">{followOnGuidance.actions.map(action => <li key={action} className="flex gap-2"><span className="text-amber-700">•</span><span>{action}</span></li>)}</ul></div></section>}<AdoptionTimelineEditor timeline={fcpDocument.twoYearPlan} onChange={twoYearPlan => mutateDocument({ ...fcpDocument, planAuthority: "manual", twoYearPlan })} title="Entitlement Notional" description="This monthly Notional begins on the planned project start date and ends on the calculated entitlement end date. It retains only selected delivery, governance, lifecycle, handover, and expansion work that fits within the entitlement period. Every item remains editable and is a planning recommendation, not a service commitment." /></TabsContent>
+                  <TabsContent value="adoption"><AdoptionTimelineEditor timeline={fcpDocument.adoptionTimeline} onChange={adoptionTimeline => mutateDocument(synchronizeEntitlementNotionalFromOperational(fcpDocument, adoptionTimeline))} title="Operational Adoption Timeline" description={fcpDocument.adoptionTimeline.cadence === "week" ? "This two-year operational view begins on the planned project start date and uses weekly execution windows. Drag activities or their edges to refine the schedule." : "This two-year operational view begins on the planned project start date and uses calendar-month execution windows. Drag activities or their edges to refine the schedule."} /></TabsContent>
                 </Tabs>
               </TabsContent>
 
-              <TabsContent value="preview" className="space-y-4"><section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div><p className="text-xs font-bold uppercase tracking-wider text-[#c8102e]">Export contents</p><h2 className="mt-1 text-base font-semibold text-slate-950">VCF 9.1 readiness</h2><p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">Include the detailed RVTools-backed VCF 9.1 readiness and host-inventory section in HTML and PDF exports. Turning this off leaves the customer synopsis, footprint, scope, and timelines intact.</p></div><div className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2"><div className="text-right"><p className="text-sm font-semibold text-slate-900">{fcpDocument.fields.exportPreferences.includeVcfReadiness ? "Included" : "Omitted"}</p><p className="text-xs text-slate-500">HTML and PDF</p></div><Switch id="include-vcf-readiness-export" checked={fcpDocument.fields.exportPreferences.includeVcfReadiness} onCheckedChange={includeVcfReadiness => mutateDocument({ ...fcpDocument, fields: { ...fcpDocument.fields, exportPreferences: { includeVcfReadiness } } })} aria-label="Include VCF 9.1 readiness in HTML and PDF exports" /></div></section><div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg"><div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-2"><div className="flex items-center gap-2 text-xs font-semibold text-emerald-700"><ShieldCheck className="size-4" /> Internal Engagement Workspace</div><span className="text-xs text-slate-500">Live FCP Preview</span><span className="text-xs text-slate-400">Auto-Updating</span></div>{preview.isPending && !previewHtml ? <div className="grid h-[720px] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div> : <iframe title="Live FCP Preview" srcDoc={previewHtml} className="h-[calc(100vh-190px)] min-h-[720px] w-full bg-white" sandbox="allow-scripts" />}</div></TabsContent>
+              <TabsContent value="preview" className="space-y-4">
+                <section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-2">
+                  <ExportPreferenceCard
+                    title="VCF 9.1 readiness"
+                    description="Include the detailed VCF 9.1 readiness and host-inventory section in HTML and PDF exports. Turning this off leaves the customer synopsis, footprint, scope, and selected timelines intact."
+                    checked={fcpDocument.fields.exportPreferences.includeVcfReadiness}
+                    onCheckedChange={includeVcfReadiness => mutateDocument({ ...fcpDocument, fields: { ...fcpDocument.fields, exportPreferences: { ...fcpDocument.fields.exportPreferences, includeVcfReadiness } } })}
+                    switchId="include-vcf-readiness-export"
+                  />
+                  <ExportPreferenceCard
+                    title="Operational adoption timeline"
+                    description="Include the two-year operational-adoption timeline in HTML and PDF exports. Omit it when an entitlement-focused or shorter executive report is sufficient."
+                    checked={fcpDocument.fields.exportPreferences.includeOperationalTimeline}
+                    onCheckedChange={includeOperationalTimeline => mutateDocument({ ...fcpDocument, fields: { ...fcpDocument.fields, exportPreferences: { ...fcpDocument.fields.exportPreferences, includeOperationalTimeline } } })}
+                    switchId="include-operational-timeline-export"
+                  />
+                </section>
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg"><div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-2"><div className="flex items-center gap-2 text-xs font-semibold text-emerald-700"><ShieldCheck className="size-4" /> Internal Engagement Workspace</div><span className="text-xs text-slate-500">Live FCP Preview</span><span className="text-xs text-slate-400">Auto-Updating</span></div>{preview.isPending && !previewHtml ? <div className="grid h-[720px] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div> : <iframe title="Live FCP Preview" srcDoc={previewHtml} className="h-[calc(100vh-190px)] min-h-[720px] w-full bg-white" sandbox="allow-scripts" />}</div>
+              </TabsContent>
             </Tabs>
           )}
         </main>
@@ -221,6 +239,22 @@ export default function Home() {
       </div>
     </>
   );
+}
+
+function ExportPreferenceCard({
+  title,
+  description,
+  checked,
+  onCheckedChange,
+  switchId,
+}: {
+  title: string;
+  description: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  switchId: string;
+}) {
+  return <div className="flex min-w-0 items-center justify-between gap-4 rounded-xl bg-slate-50 p-3"><div className="min-w-0"><p className="text-sm font-semibold text-slate-950">{title}</p><p className="mt-1 text-xs leading-5 text-slate-600">{description}</p></div><div className="flex shrink-0 items-center gap-3"><div className="text-right"><p className="text-sm font-semibold text-slate-900">{checked ? "Included" : "Omitted"}</p><p className="text-xs text-slate-500">HTML and PDF</p></div><Switch id={switchId} checked={checked} onCheckedChange={onCheckedChange} aria-label={`Include ${title} in HTML and PDF exports`} /></div></div>;
 }
 
 function EmptyState({ onCreate }: { onCreate: () => void }) {

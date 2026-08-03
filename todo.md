@@ -458,3 +458,11 @@
 - [x] Redesign the default export as a concise delivery report with a single observed-footprint summary and only decision-relevant readiness evidence.
 - [x] Keep detailed inventory, readiness, and sequence material out of the default output while preserving the user's explicit VCF 9.1 readiness inclusion choice.
 - [x] Add regression coverage, validate a concise Lyondell HTML/PDF export, and publish the change.
+
+## Authoritative Manual Plans, Timeline Synchronization, and Optional Operational Export
+
+- [x] Audit all plan rebuild and option-change paths to identify where manually edited timelines or activities can be regenerated or overwritten.
+- [x] Preserve manually changed plan activities, dates, lanes, and sequences when other plan options are edited; require an explicit rebuild action for regeneration.
+- [x] Synchronize entitlement adoption activities and timing from operational adoption timeline changes without overwriting unrelated manual entitlement edits.
+- [x] Add a persisted, accessible option to include or omit the operational adoption timeline from HTML and PDF exports.
+- [x] Add regression coverage, validate manual editing and export behavior, and publish the improvements.
