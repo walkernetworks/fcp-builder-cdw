@@ -625,6 +625,54 @@ export const hclAssessmentSchema = z.object({
 });
 export type HclAssessment = z.infer<typeof hclAssessmentSchema>;
 
+export type HclFindingSummary = {
+  id: string;
+  checkId: string;
+  severity: HclFinding["severity"];
+  title: string;
+  scope: HclFinding["scope"];
+  remediation: string;
+  affectedCount: number;
+  subjects: string[];
+  clusters: string[];
+  findings: HclFinding[];
+};
+
+/**
+ * Consolidates repeated check results for workspace presentation while retaining
+ * the original host, cluster, switch, datastore, and fleet evidence for drill-down.
+ */
+export function summarizeHclFindings(findings: HclFinding[]): HclFindingSummary[] {
+  const groups = new Map<string, HclFindingSummary>();
+  for (const finding of findings) {
+    const key = [finding.checkId, finding.severity, finding.title, finding.scope, finding.remediation].join("|");
+    const existing = groups.get(key);
+    if (existing) {
+      existing.findings.push(finding);
+      continue;
+    }
+    groups.set(key, {
+      id: key.toLowerCase(),
+      checkId: finding.checkId,
+      severity: finding.severity,
+      title: finding.title,
+      scope: finding.scope,
+      remediation: finding.remediation,
+      affectedCount: 0,
+      subjects: [],
+      clusters: [],
+      findings: [finding],
+    });
+  }
+  const severityOrder: Record<HclFinding["severity"], number> = { BLOCKER: 0, WARNING: 1, ADVISORY: 2, INFO: 3 };
+  return Array.from(groups.values()).map(summary => {
+    summary.subjects = Array.from(new Set(summary.findings.map(finding => finding.subject).filter(Boolean))).sort();
+    summary.clusters = Array.from(new Set(summary.findings.map(finding => finding.cluster).filter((cluster): cluster is string => Boolean(cluster)))).sort();
+    summary.affectedCount = summary.subjects.length || summary.findings.length;
+    return summary;
+  }).sort((left, right) => severityOrder[left.severity] - severityOrder[right.severity] || right.affectedCount - left.affectedCount || left.title.localeCompare(right.title));
+}
+
 const HCL_MIN_NIC_SPEED_MB = 10000;
 const HCL_NSX_TEP_MIN_MTU = 1600;
 const HCL_RECOMMENDED_MTU = 9000;

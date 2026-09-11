@@ -481,3 +481,10 @@
 - [x] Build a separate plan-output document containing delivery scope, adoption sequence, and VCF 9.1 host-cohort eligibility detail without duplicating the full FCP export.
 - [x] Add accessible export actions for the plan-output document from both the Plan Output workspace step and the Export tab.
 - [x] Add regression coverage, validate HTML/PDF document behavior and condensed workspace evidence, then publish the improvement.
+
+## Concise HCL 2.0 Evidence and Findings
+
+- [x] Audit whether HCL 2.0 findings are emitted per host, per cohort, or per evidence item and identify the correct deduplication key.
+- [x] Replace the always-expanded findings list with a severity- and subject-grouped summary that includes affected-host or affected-subject counts and one shared remediation statement.
+- [x] Preserve individual evidence only in a collapsed drill-down so delivery teams can inspect it without forcing long scrolling in the default Plan Output view.
+- [x] Add regression coverage, validate the compact Plan Output behavior, and publish the improvement.

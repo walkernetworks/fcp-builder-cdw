@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
 import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, FIXED_GANTT_CATEGORIES, getFollowOnReadinessGuidance, getHclSchedulePath, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, summarizeVcfCompatibility, synchronizeEntitlementNotionalFromOperational, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
-import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence } from "../shared/hcl";
+import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, summarizeHclFindings } from "../shared/hcl";
 import type { TrpcContext } from "./_core/context";
 import { renderFcpHtml, renderPlanOutputHtml } from "./fcpRenderer";
 import { appRouter } from "./routers";
@@ -517,6 +517,17 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(cohorts.map(cohort => [cohort.decision, cohort.hosts])).toEqual([["action-required", 2], ["eligible", 4]]);
     expect(cohorts.find(cohort => cohort.decision === "eligible")?.decisionLabel).toBe("Eligible for next-stage validation");
     expect(cohorts.find(cohort => cohort.decision === "action-required")?.reason).toContain("reported CPU series is not listed");
+  });
+
+  it("consolidates repeated HCL host findings without discarding delivery evidence", () => {
+    const summaries = summarizeHclFindings([
+      { checkId: "NET.NIC_COUNT_LOW", severity: "WARNING", title: "Fewer than two physical NICs", scope: "host", subject: "esx-a", evidence: "1 physical NIC row was reported.", remediation: "Add redundant uplinks before the host joins a workload domain.", releases: [] },
+      { checkId: "NET.NIC_COUNT_LOW", severity: "WARNING", title: "Fewer than two physical NICs", scope: "host", subject: "esx-b", evidence: "1 physical NIC row was reported.", remediation: "Add redundant uplinks before the host joins a workload domain.", releases: [] },
+    ]);
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({ checkId: "NET.NIC_COUNT_LOW", affectedCount: 2, subjects: ["esx-a", "esx-b"] });
+    expect(summaries[0].findings).toHaveLength(2);
   });
 
   it("renders a separate plan-output document with cohort eligibility reasons and the editable entitlement sequence", () => {
