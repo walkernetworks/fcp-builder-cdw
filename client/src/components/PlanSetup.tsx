@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { parseRvToolsFiles } from "@/lib/rvtools";
 import { applyScheduleFieldPatch, assessReadiness, calculateEntitlementEndDate, emptyInventory, getHclSchedulePath, refreshDerivedDocument, summarizeVcfCompatibility, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
-import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, type HclFinding } from "@shared/hcl";
+import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings, type HclFinding } from "@shared/hcl";
 import { Download, ExternalLink, FileSpreadsheet, HardDrive, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -182,7 +182,9 @@ function HclEstateFindings({ document }: { document: EngagementDocument }) {
   const blockers = findings.filter(finding => finding.severity === "BLOCKER");
   const warnings = findings.filter(finding => finding.severity === "WARNING");
   const advisories = findings.filter(finding => finding.severity === "ADVISORY");
-  const information = findings.filter(finding => finding.severity === "INFO");
+  const findingSummaries = summarizeHclFindings(findings);
+  const prioritySummaries = findingSummaries.filter(summary => summary.severity !== "INFO");
+  const informationalSummaries = findingSummaries.filter(summary => summary.severity === "INFO");
   const path = document.readiness.hclSchedulePath || getHclSchedulePath(document.inventory);
   const pathStyle = {
     red: { label: "Red path", detail: "A release-blocking HCL finding needs a procurement, migration, or design decision before the platform gate.", className: "border-red-200 bg-red-50 text-red-900" },
@@ -214,25 +216,24 @@ function HclEstateFindings({ document }: { document: EngagementDocument }) {
 
     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {[
-        { label: "Blockers", value: blockers.length, className: "border-red-200 bg-red-50 text-red-900" },
-        { label: "Warnings", value: warnings.length, className: "border-amber-200 bg-amber-50 text-amber-900" },
-        { label: "Advisories", value: advisories.length, className: "border-blue-200 bg-blue-50 text-blue-900" },
+        { label: "Blocker types", value: findingSummaries.filter(summary => summary.severity === "BLOCKER").length, className: "border-red-200 bg-red-50 text-red-900" },
+        { label: "Warning types", value: findingSummaries.filter(summary => summary.severity === "WARNING").length, className: "border-amber-200 bg-amber-50 text-amber-900" },
+        { label: "Advisory types", value: findingSummaries.filter(summary => summary.severity === "ADVISORY").length, className: "border-blue-200 bg-blue-50 text-blue-900" },
         { label: "Coverage gaps", value: assessment.coverageGaps.length, className: "border-slate-200 bg-slate-50 text-slate-900" },
       ].map(metric => <article key={metric.label} className={`rounded-xl border px-4 py-3 ${metric.className}`}><p className="text-[10px] font-black uppercase tracking-wider">{metric.label}</p><p className="mt-1 text-2xl font-semibold tracking-tight">{metric.value}</p></article>)}
     </div>
 
     {findings.length ? <div className="mt-5 space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold text-slate-950">Observed findings</h3><p className="text-xs text-slate-500">{findings.length} item{findings.length === 1 ? "" : "s"} derived from imported evidence</p></div>
-      {findings.map(finding => <article key={`${finding.checkId}-${finding.subject}-${finding.evidence}`} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${findingStyle(finding.severity)}`}>{hclFindingSeverityLabel(finding.severity)}</span><span className="font-mono text-[11px] font-semibold text-slate-500">{finding.checkId}</span></div><h4 className="mt-2 text-sm font-semibold text-slate-950">{finding.title}</h4><p className="mt-1 text-xs font-medium text-slate-600">{finding.subject}{finding.cluster ? ` · ${finding.cluster}` : ""}</p></div>
-          <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{finding.scope}</span>
-        </div>
-        <div className="mt-3 grid gap-3 lg:grid-cols-2"><div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Observed evidence</p><p className="mt-1 text-xs leading-5 text-slate-700">{finding.evidence}</p>{finding.source && <p className="mt-2 text-[11px] leading-4 text-slate-500">Source: {finding.source}</p>}</div><div className="rounded-lg border border-slate-200 bg-white p-3"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Required action</p><p className="mt-1 text-xs leading-5 font-medium text-slate-800">{finding.remediation}</p></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="text-sm font-semibold text-slate-950">Consolidated findings</h3><p className="mt-1 text-xs text-slate-500">{findingSummaries.length} distinct check type{findingSummaries.length === 1 ? "" : "s"} summarized from {findings.length} raw evidence entr{findings.length === 1 ? "y" : "ies"}.</p></div><span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">No per-host list by default</span></div>
+      {prioritySummaries.map(summary => <article key={summary.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${findingStyle(summary.severity)}`}>{hclFindingSeverityLabel(summary.severity)}</span><span className="font-mono text-[11px] font-semibold text-slate-500">{summary.checkId}</span><span className="text-xs text-slate-500">{summary.affectedCount} affected {summary.scope === "host" ? "host" : summary.scope}{summary.affectedCount === 1 ? "" : "s"}</span></div><h4 className="mt-2 text-sm font-semibold text-slate-950">{summary.title}</h4><p className="mt-1 text-xs font-medium text-slate-600">{summary.subjects.slice(0, 4).join(" · ")}{summary.subjects.length > 4 ? ` · +${summary.subjects.length - 4} more` : ""}{summary.clusters.length ? ` · ${summary.clusters.length} cluster${summary.clusters.length === 1 ? "" : "s"}` : ""}</p></div><span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{summary.scope}</span></div>
+        <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">Shared required action</p><p className="mt-1 text-xs leading-5 font-medium text-slate-800">{summary.remediation}</p></div>
+        <details className="mt-3 rounded-lg border border-slate-200 bg-white p-3"><summary className="cursor-pointer text-xs font-semibold text-slate-700">View {summary.findings.length} underlying evidence entr{summary.findings.length === 1 ? "y" : "ies"}</summary><div className="mt-3 space-y-2">{summary.findings.map(finding => <div key={`${finding.subject}-${finding.evidence}`} className="rounded-md border border-slate-100 bg-slate-50 p-2"><p className="text-xs font-semibold text-slate-800">{finding.subject}{finding.cluster ? ` · ${finding.cluster}` : ""}</p><p className="mt-1 text-xs leading-5 text-slate-600">{finding.evidence}</p>{finding.source && <p className="mt-1 text-[11px] text-slate-500">Source: {finding.source}</p>}</div>)}</div></details>
       </article>)}
+      {informationalSummaries.length > 0 && <details className="rounded-xl border border-slate-200 bg-white p-4"><summary className="cursor-pointer text-sm font-semibold text-slate-900">Informational findings ({informationalSummaries.length} check type{informationalSummaries.length === 1 ? "" : "s"})</summary><div className="mt-3 space-y-2">{informationalSummaries.map(summary => <article key={summary.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${findingStyle(summary.severity)}`}>{hclFindingSeverityLabel(summary.severity)}</span><span className="font-mono text-[11px] font-semibold text-slate-500">{summary.checkId}</span><span className="text-xs text-slate-500">{summary.affectedCount} affected {summary.scope}{summary.affectedCount === 1 ? "" : "s"}</span></div><p className="mt-2 text-sm font-semibold text-slate-950">{summary.title}</p><p className="mt-1 text-xs leading-5 text-slate-700">{summary.remediation}</p></article>)}</div></details>}
     </div> : <div className="mt-5 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm leading-6 text-slate-600">No detailed estate rows are available yet. Upload the applicable RVTools tabs to evaluate the supported HCL 2.0 check families.</div>}
 
-    <details className="mt-5 rounded-xl border border-slate-200 bg-white p-4" open={assessment.coverageGaps.length > 0}>
+    <details className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
       <summary className="cursor-pointer text-sm font-semibold text-slate-950">Coverage gaps and evidence still required ({assessment.coverageGaps.length})</summary>
       <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-600">A coverage gap is not a passing result. It identifies a check family that was unavailable, empty, absent from the supplied offline archive, or cannot be established with RVTools data.</p>
       {assessment.coverageGaps.length ? <div className="mt-3 grid gap-2 lg:grid-cols-2">{assessment.coverageGaps.map(gap => <article key={`${gap.kind}-${gap.subject}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{gap.kind.replace(/-/g, " ")}</p><p className="mt-1 text-xs font-semibold text-slate-800">{gap.subject}</p><p className="mt-1 text-xs leading-5 text-slate-600">{gap.impact}</p></article>)}</div> : <p className="mt-3 text-xs text-emerald-700">No coverage gaps were recorded from the supplied estate evidence.</p>}
