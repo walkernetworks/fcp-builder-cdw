@@ -1,11 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export type ExportFormat = "html" | "pdf";
+export type ExportDocumentType = "fcp" | "plan-output";
 
 type ExportTicketPayload = {
   userId: number;
   engagementId: number;
   format: ExportFormat;
+  documentType: ExportDocumentType;
   expiresAt: number;
 };
 
@@ -21,11 +23,12 @@ function sign(payload: string) {
   return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
 
-export function createExportTicket(userId: number, engagementId: number, format: ExportFormat) {
+export function createExportTicket(userId: number, engagementId: number, format: ExportFormat, documentType: ExportDocumentType = "fcp") {
   const payload: ExportTicketPayload = {
     userId,
     engagementId,
     format,
+    documentType,
     expiresAt: Date.now() + TICKET_LIFETIME_MS,
   };
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
@@ -46,6 +49,7 @@ export function verifyExportTicket(ticket: string): ExportTicketPayload | null {
     if (!Number.isInteger(parsed.userId) || Number(parsed.userId) <= 0) return null;
     if (!Number.isInteger(parsed.engagementId) || Number(parsed.engagementId) <= 0) return null;
     if (parsed.format !== "html" && parsed.format !== "pdf") return null;
+    if (parsed.documentType !== "fcp" && parsed.documentType !== "plan-output") return null;
     if (typeof parsed.expiresAt !== "number" || parsed.expiresAt < Date.now()) return null;
     return parsed as ExportTicketPayload;
   } catch {

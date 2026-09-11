@@ -8,9 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { parseRvToolsFiles } from "@/lib/rvtools";
-import { applyScheduleFieldPatch, assessReadiness, calculateEntitlementEndDate, emptyInventory, getHclSchedulePath, refreshDerivedDocument, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
+import { applyScheduleFieldPatch, assessReadiness, calculateEntitlementEndDate, emptyInventory, getHclSchedulePath, refreshDerivedDocument, summarizeVcfCompatibility, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
 import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, type HclFinding } from "@shared/hcl";
-import { ExternalLink, FileSpreadsheet, HardDrive, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
+import { Download, ExternalLink, FileSpreadsheet, HardDrive, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -39,9 +39,14 @@ const derivedPlanInputFields = new Set<keyof EngagementDocument["fields"]>([
   "adoptionDetails",
 ]);
 
-type Props = { document: EngagementDocument; onChange: (document: EngagementDocument) => void };
+type Props = {
+  document: EngagementDocument;
+  onChange: (document: EngagementDocument) => void;
+  onExportPlanOutput: (format: "html" | "pdf") => void;
+  exportingPlanOutput: "html" | "pdf" | null;
+};
 
-export function PlanSetup({ document, onChange }: Props) {
+export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPlanOutput }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const fields = document.fields;
@@ -131,6 +136,7 @@ export function PlanSetup({ document, onChange }: Props) {
         </TabsContent>
 
         <TabsContent value="review" className="space-y-5">
+          <PlanOutputExportPanel onExport={onExportPlanOutput} exportingFormat={exportingPlanOutput} />
           <InventoryCards document={document} />
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Current estate</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Observed host inventory</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Grouped host, software, cluster, and memory fields imported from RVTools.</p></div><Badge variant="outline" className="border-slate-300">RVTools source</Badge></div><HostInventory platforms={document.readiness.hardwarePlatforms} /></section>
           <HclEstateFindings document={document} />
@@ -155,103 +161,18 @@ function InventoryCards({ document }: { document: EngagementDocument }) {
   return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map(card => <article key={card.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{card.label}</p><card.icon className="size-4 text-slate-400" /></div><strong className="mt-3 block text-3xl tracking-tight text-slate-950">{card.value || "—"}</strong><p className="mt-1 text-xs text-slate-500">{card.detail}</p></article>)}</div>;
 }
 
+function PlanOutputExportPanel({ onExport, exportingFormat }: { onExport: (format: "html" | "pdf") => void; exportingFormat: "html" | "pdf" | null }) {
+  return <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#c8102e]/20 bg-red-50/60 p-5 shadow-sm"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Separate document</p><h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">VCF 9.1 delivery plan output</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">Download a focused delivery brief with entitlement activities, compatible host cohorts, validation-required cohorts, and action-required reasons. This is separate from the full FCP report.</p></div><div className="flex gap-2"><Button variant="outline" size="sm" disabled={Boolean(exportingFormat)} onClick={() => onExport("html")}>{exportingFormat === "html" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} HTML</Button><Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" disabled={Boolean(exportingFormat)} onClick={() => onExport("pdf")}>{exportingFormat === "pdf" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} PDF</Button></div></section>;
+}
+
 function HostInventory({ platforms }: { platforms: HardwarePlatformAssessment[] }) {
-  const normalizeHostGroupText = (input: string) => input.trim().replace(/\s+/g, " ");
-  type HclCheck = {
-    status: HardwarePlatformAssessment["hcl"]["status"];
-    hosts: number;
-    cpuSeries: string;
-    matchedPartnerName: string;
-    matchedModel: string;
-    detailUrl: string;
-    detail: string;
-    nextAction: string;
-    modelMatchMethod: HardwarePlatformAssessment["hcl"]["modelMatchMethod"];
-    candidateModels: HardwarePlatformAssessment["hcl"]["candidateModels"];
-  };
-  const groups = new Map<string, {
-    vendor: string;
-    model: string;
-    hosts: number;
-    physicalCores: number;
-    cpuModels: Set<string>;
-    esxiVersions: Map<string, number>;
-    clusters: Map<string, number>;
-    minimumMemoryGiB: number | null;
-    maximumMemoryGiB: number | null;
-    statuses: Set<HardwarePlatformAssessment["status"]>;
-    hclChecks: Map<string, HclCheck>;
-  }>();
-
-  for (const platform of platforms) {
-    const vendor = normalizeHostGroupText(platform.vendor) || "Unknown vendor";
-    const model = normalizeHostGroupText(platform.model) || "Unknown model";
-    const key = `${vendor}::${model}`.toLowerCase();
-    const group = groups.get(key) || {
-      vendor,
-      model,
-      hosts: 0,
-      physicalCores: 0,
-      cpuModels: new Set<string>(),
-      esxiVersions: new Map<string, number>(),
-      clusters: new Map<string, number>(),
-      minimumMemoryGiB: null,
-      maximumMemoryGiB: null,
-      statuses: new Set<HardwarePlatformAssessment["status"]>(),
-      hclChecks: new Map<string, HclCheck>(),
-    };
-    group.hosts += platform.hosts;
-    group.physicalCores += platform.physicalCores;
-    if (platform.cpuModel && platform.cpuModel !== "Unknown CPU") group.cpuModels.add(platform.cpuModel);
-    for (const version of platform.esxiVersions) group.esxiVersions.set(version.version, (group.esxiVersions.get(version.version) || 0) + version.hosts);
-    for (const cluster of platform.clusterMembership) group.clusters.set(cluster.name, (group.clusters.get(cluster.name) || 0) + cluster.hosts);
-    if (platform.minimumMemoryGiB > 0) {
-      group.minimumMemoryGiB = group.minimumMemoryGiB === null ? platform.minimumMemoryGiB : Math.min(group.minimumMemoryGiB, platform.minimumMemoryGiB);
-      group.maximumMemoryGiB = Math.max(group.maximumMemoryGiB || 0, platform.maximumMemoryGiB || platform.minimumMemoryGiB);
-    }
-    group.statuses.add(platform.status);
-    const hclKey = [platform.hcl.status, platform.hcl.matchedCpuSeries, platform.hcl.matchedPartnerName, platform.hcl.matchedModel, platform.hcl.detailUrl].join("|");
-    const hclCheck = group.hclChecks.get(hclKey) || {
-      status: platform.hcl.status,
-      hosts: 0,
-      cpuSeries: platform.hcl.matchedCpuSeries,
-      matchedPartnerName: platform.hcl.matchedPartnerName,
-      matchedModel: platform.hcl.matchedModel,
-      detailUrl: platform.hcl.detailUrl,
-      detail: platform.hcl.detail,
-      nextAction: platform.hcl.nextAction,
-      modelMatchMethod: platform.hcl.modelMatchMethod,
-      candidateModels: platform.hcl.candidateModels,
-    };
-    hclCheck.hosts += platform.hosts;
-    group.hclChecks.set(hclKey, hclCheck);
-    groups.set(key, group);
-  }
-
-  const rows = Array.from(groups.values()).sort((left, right) => right.hosts - left.hosts || left.model.localeCompare(right.model));
-  const hclCounts = platforms.reduce<Record<HardwarePlatformAssessment["hcl"]["status"], number>>((counts, platform) => {
-    counts[platform.hcl.status] += platform.hosts;
-    return counts;
-  }, { supported: 0, "supported-cpu-unverified": 0, review: 0, "cpu-not-certified": 0, "not-supported": 0, unknown: 0 });
+  const cohorts = summarizeVcfCompatibility(platforms);
+  const countHosts = (decision: "eligible" | "validation-required" | "action-required") => cohorts.filter(cohort => cohort.decision === decision).reduce((total, cohort) => total + cohort.hosts, 0);
+  const decisionStyle = (decision: "eligible" | "validation-required" | "action-required") => ({ eligible: "border-emerald-200 bg-emerald-50 text-emerald-800", "validation-required": "border-amber-200 bg-amber-50 text-amber-800", "action-required": "border-red-200 bg-red-50 text-red-800" })[decision];
+  const schedulePath = !cohorts.length ? { label: "Unresolved", detail: "Collect vHost identity and HCL evidence before the platform path is released.", className: "border-slate-200 bg-slate-100 text-slate-800" } : countHosts("action-required") ? { label: "Red", detail: "One or more host cohorts require remediation, an alternate path, or a procurement decision before their platform gate.", className: "border-red-200 bg-red-50 text-red-800" } : countHosts("validation-required") ? { label: "Yellow", detail: "One or more host cohorts need validation before their platform gate. Delivery preparation can continue where the plan allows.", className: "border-amber-200 bg-amber-50 text-amber-800" } : { label: "Green", detail: "All observed server and CPU cohorts have a pairing in the supplied offline ESXi 9.1 snapshot. Continue with configuration validation.", className: "border-emerald-200 bg-emerald-50 text-emerald-800" };
   const snapshotCapturedAt = platforms[0]?.hcl.snapshotCapturedAt || "not reported";
-  const needsConfirmation = hclCounts["supported-cpu-unverified"] + hclCounts.review + hclCounts.unknown;
-  const blockingCount = hclCounts["cpu-not-certified"] + hclCounts["not-supported"];
-  const schedulePath = !rows.length ? { label: "Unresolved", detail: "Collect vHost identity and HCL evidence before the platform path is released.", className: "border-slate-200 bg-slate-100 text-slate-800" } : blockingCount ? { label: "Red", detail: "Procurement or greenfield provisioning buffer is required before the HCL gate.", className: "border-red-200 bg-red-50 text-red-800" } : needsConfirmation ? { label: "Yellow", detail: "Remediation and verification buffer is required before the HCL gate.", className: "border-amber-200 bg-amber-50 text-amber-800" } : { label: "Green", detail: "The delivery baseline can proceed to the HCL gate with remaining configuration validation.", className: "border-emerald-200 bg-emerald-50 text-emerald-800" };
-  const badgeClass = (status: HardwarePlatformAssessment["hcl"]["status"]) => ({
-    supported: "border-emerald-200 bg-emerald-50 text-emerald-800",
-    "supported-cpu-unverified": "border-amber-200 bg-amber-50 text-amber-800",
-    review: "border-amber-200 bg-amber-50 text-amber-800",
-    "cpu-not-certified": "border-red-200 bg-red-50 text-red-800",
-    "not-supported": "border-red-200 bg-red-50 text-red-800",
-    unknown: "border-slate-200 bg-slate-100 text-slate-700",
-  })[status];
-  const deliveryContext = (statuses: Set<HardwarePlatformAssessment["status"]>) => {
-    if (statuses.has("upgrade-required")) return "Plan refresh or exception work before platform services.";
-    if (statuses.has("unavailable")) return "Capture the missing server and CPU details from the source estate.";
-    return "Use the observed model and configuration details in delivery design.";
-  };
 
-  return <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.14em] text-[#c8102e]">Host inventory and compatibility evidence</p><h3 className="mt-1 text-base font-semibold text-slate-950">VCF 9.1 server HCL precheck</h3><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Each consolidated vHost cohort is checked locally against the supplied offline ESXi 9.1 server snapshot using vendor, model, and CPU-series evidence. Results are planning evidence, not a configuration certification.</p></div><a href="https://compatibilityguide.broadcom.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100">Open configuration reference <ExternalLink className="size-3.5" /></a></div><div className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 ${schedulePath.className}`}><div><p className="text-[10px] font-black uppercase tracking-wider">{HCL_EVALUATION_VERSION} delivery path</p><p className="mt-0.5 text-sm font-semibold">{schedulePath.label} path</p></div><p className="max-w-2xl text-xs leading-5">{schedulePath.detail}</p></div>{rows.length ? <><div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"><div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-emerald-800">Snapshot-supported pairing</p><p className="mt-1 text-lg font-semibold text-emerald-950">{hclCounts.supported} host{hclCounts.supported === 1 ? "" : "s"}</p></div><div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-amber-800">Need confirmation</p><p className="mt-1 text-lg font-semibold text-amber-950">{hclCounts["supported-cpu-unverified"] + hclCounts.review + hclCounts.unknown} host{hclCounts["supported-cpu-unverified"] + hclCounts.review + hclCounts.unknown === 1 ? "" : "s"}</p></div><div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-red-800">CPU or release not listed</p><p className="mt-1 text-lg font-semibold text-red-950">{hclCounts["cpu-not-certified"] + hclCounts["not-supported"]} host{hclCounts["cpu-not-certified"] + hclCounts["not-supported"] === 1 ? "" : "s"}</p></div></div><p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] leading-5 text-slate-500">Offline snapshot captured {snapshotCapturedAt}. {HCL_OFFLINE_LIMITATION}</p><div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white"><table className="min-w-[1280px] w-full text-left text-xs"><thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2.5">Observed host group</th><th className="px-3 py-2.5">Estate</th><th className="px-3 py-2.5">Reported ESXi</th><th className="px-3 py-2.5">Cluster / memory</th><th className="px-3 py-2.5">HCL server + CPU evidence</th><th className="px-3 py-2.5">Delivery context</th></tr></thead><tbody>{rows.map(group => { const esxiEvidence = Array.from(group.esxiVersions.entries()).map(([version, hosts]) => `${version}: ${hosts}`).join("; ") || "Not reported"; const clusterEvidence = Array.from(group.clusters.entries()).map(([name, hosts]) => `${name}: ${hosts}`).join("; ") || "Not reported"; const memoryEvidence = group.minimumMemoryGiB !== null ? `${group.minimumMemoryGiB.toLocaleString()}–${(group.maximumMemoryGiB || group.minimumMemoryGiB).toLocaleString()} GiB per host` : "Not reported"; const cpuEvidence = Array.from(group.cpuModels).join("; ") || "CPU model not reported"; const checks = Array.from(group.hclChecks.values()); return <tr key={`${group.vendor}-${group.model}`} className="border-t border-slate-100 align-top"><td className="px-3 py-3"><p className="font-semibold text-slate-900">{group.vendor} {group.model}</p><p className="mt-1 text-slate-500">{cpuEvidence}</p></td><td className="px-3 py-3 text-slate-700">{group.hosts} host{group.hosts === 1 ? "" : "s"}</td><td className="px-3 py-3 leading-5 text-slate-700">{esxiEvidence}</td><td className="px-3 py-3 leading-5 text-slate-700">{clusterEvidence}<br /><span className="text-slate-500">{memoryEvidence}</span></td><td className="min-w-80 px-3 py-3"><div className="space-y-2">{checks.map(check => <div key={`${check.status}-${check.cpuSeries}-${check.detailUrl}`} className="rounded-md border border-slate-200 bg-slate-50 p-2"><div className="flex flex-wrap items-center gap-1.5"><Badge variant="outline" className={badgeClass(check.status)}>{hclStatusLabel(check.status)}</Badge><span className="text-[11px] text-slate-500">{check.hosts} host{check.hosts === 1 ? "" : "s"} · {check.modelMatchMethod} model match</span></div><p className="mt-1 text-[11px] leading-4 text-slate-700">{check.matchedPartnerName && check.matchedModel ? `${check.matchedPartnerName} ${check.matchedModel}` : "No deterministic HCL model match"}{check.cpuSeries ? ` · ${check.cpuSeries}` : ""}</p>{check.detailUrl && <a href={check.detailUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-[#a20f25] hover:underline">Open matched HCL record <ExternalLink className="size-3" /></a>}<details className="mt-1"><summary className="cursor-pointer text-[11px] font-semibold text-slate-600 hover:text-slate-950">Evidence and next action</summary><p className="mt-1 leading-4 text-slate-600">{check.detail}</p>{check.candidateModels.length > 0 && <p className="mt-1 leading-4 text-slate-600">Candidate models: {check.candidateModels.map(candidate => `${candidate.partnerName} ${candidate.model}`).join("; ")}.</p>}<p className="mt-1 leading-4 font-medium text-slate-700">{check.nextAction}</p></details></div>)}</div></td><td className="px-3 py-3 leading-5 text-slate-700">{deliveryContext(group.statuses)}</td></tr>; })}</tbody></table></div></> : <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-4 text-xs leading-5 text-slate-500">No usable host vendor and model data were found in the imported RVTools data.</p>}</section>;
+  return <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.14em] text-[#c8102e]">Host inventory and compatibility evidence</p><h3 className="mt-1 text-base font-semibold text-slate-950">VCF 9.1 host-cohort summary</h3><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">Cohorts are summarized by observed server-and-CPU pairing so delivery decisions can be made without scanning every imported server row. Results are planning evidence, not a configuration certification.</p></div><a href="https://compatibilityguide.broadcom.com/" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100">Open configuration reference <ExternalLink className="size-3.5" /></a></div><div className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 ${schedulePath.className}`}><div><p className="text-[10px] font-black uppercase tracking-wider">{HCL_EVALUATION_VERSION} delivery path</p><p className="mt-0.5 text-sm font-semibold">{schedulePath.label} path</p></div><p className="max-w-2xl text-xs leading-5">{schedulePath.detail}</p></div>{cohorts.length ? <><div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"><div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-emerald-800">Eligible for next-stage validation</p><p className="mt-1 text-lg font-semibold text-emerald-950">{countHosts("eligible")} host{countHosts("eligible") === 1 ? "" : "s"}</p></div><div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-amber-800">Validate before platform gate</p><p className="mt-1 text-lg font-semibold text-amber-950">{countHosts("validation-required")} host{countHosts("validation-required") === 1 ? "" : "s"}</p></div><div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2"><p className="text-[10px] font-black uppercase tracking-wider text-red-800">Action required before gate</p><p className="mt-1 text-lg font-semibold text-red-950">{countHosts("action-required")} host{countHosts("action-required") === 1 ? "" : "s"}</p></div></div><div className="mt-4 space-y-2">{cohorts.slice(0, 6).map(cohort => <article key={cohort.id} className="rounded-lg border border-slate-200 bg-white px-3 py-3"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={decisionStyle(cohort.decision)}>{cohort.decisionLabel}</Badge><span className="text-xs text-slate-500">{cohort.hosts} host{cohort.hosts === 1 ? "" : "s"}</span></div><p className="mt-2 text-sm font-semibold text-slate-900">{cohort.vendor} {cohort.model}</p><p className="mt-1 text-xs text-slate-600">{cohort.cpuModel}</p><p className="mt-2 text-xs leading-5 text-slate-700">{cohort.reason}</p></div><p className="max-w-xs text-xs font-medium leading-5 text-slate-700">{cohort.nextAction}</p></div></article>)}</div>{cohorts.length > 6 && <p className="mt-3 text-xs text-slate-500">Showing the six largest or highest-action cohorts. The full evidence remains available below.</p>}<p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] leading-5 text-slate-500">Offline snapshot captured {snapshotCapturedAt}. {HCL_OFFLINE_LIMITATION}</p><details className="mt-4 rounded-lg border border-slate-200 bg-white p-3"><summary className="cursor-pointer text-sm font-semibold text-slate-900">View full host-cohort evidence ({cohorts.length} pairing{cohorts.length === 1 ? "" : "s"})</summary><div className="mt-3 overflow-x-auto"><table className="min-w-[960px] w-full text-left text-xs"><thead className="bg-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-500"><tr><th className="px-3 py-2.5">Decision</th><th className="px-3 py-2.5">Observed platform / CPU</th><th className="px-3 py-2.5">Hosts</th><th className="px-3 py-2.5">Why</th><th className="px-3 py-2.5">Next step</th></tr></thead><tbody>{cohorts.map(cohort => <tr key={cohort.id} className="border-t border-slate-100 align-top"><td className="px-3 py-3"><Badge variant="outline" className={decisionStyle(cohort.decision)}>{cohort.decisionLabel}</Badge></td><td className="px-3 py-3"><p className="font-semibold text-slate-900">{cohort.vendor} {cohort.model}</p><p className="mt-1 text-slate-500">{cohort.cpuModel}</p></td><td className="px-3 py-3 text-slate-700">{cohort.hosts}</td><td className="px-3 py-3 leading-5 text-slate-700">{cohort.reason}{cohort.matchedModel && <><br /><span className="text-slate-500">Snapshot model: {cohort.matchedModel}{cohort.matchedCpuSeries ? ` · ${cohort.matchedCpuSeries}` : ""}</span></>}</td><td className="px-3 py-3 leading-5 font-medium text-slate-700">{cohort.nextAction}</td></tr>)}</tbody></table></div></details></> : <p className="mt-4 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-4 text-xs leading-5 text-slate-500">No usable host vendor and model data were found in the imported RVTools data.</p>}</section>;
 }
 
 

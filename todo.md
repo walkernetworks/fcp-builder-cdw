@@ -473,3 +473,11 @@
 - [x] Compare parsed host evidence with the HCL snapshot identity rules and distinguish absent snapshot records from naming or identifier normalization defects.
 - [x] Repair matching behavior and add regression coverage if valid source servers are incorrectly classified as unmatched.
 - [x] Report the server-level findings and publish any verified correction.
+
+## Condensed Compatibility Evidence and Separate Plan-Output Document
+
+- [x] Audit the workspace evidence/findings panels and existing HTML/PDF export pathways to identify the source of excessive scrolling and the correct document boundaries.
+- [x] Design a cohort-level compatibility summary that surfaces compatible, action-required, and unresolved host groups with concise reasons and affected-host counts.
+- [x] Build a separate plan-output document containing delivery scope, adoption sequence, and VCF 9.1 host-cohort eligibility detail without duplicating the full FCP export.
+- [x] Add accessible export actions for the plan-output document from both the Plan Output workspace step and the Export tab.
+- [x] Add regression coverage, validate HTML/PDF document behavior and condensed workspace evidence, then publish the improvement.
