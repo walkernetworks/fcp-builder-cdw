@@ -152,7 +152,7 @@ for (const record of HCL_SERVER_CATALOG) {
 
 const MODEL_NOISE = new Set(["server", "servers", "system", "systems", "rack", "rackmount", "tower", "blade", "node", "nodes", "appliance", "certified", "ready", "readynode", "vsan", "series", "platform", "the", "and"]);
 const LINE_PREFIXES = [
-  ["cisco", "ucs"], ["cisco"], ["ucs"], ["poweredge"], ["proliant"], ["thinksystem"], ["thinkagile"], ["thinkserver"], ["system", "x"], ["primergy"], ["primequest"], ["apollo"], ["synergy"], ["superserver"], ["sr"], ["rh"], ["fusionserver"], ["nf"], ["hpe"], ["dell"], ["lenovo"], ["fujitsu"], ["huawei"], ["inspur"], ["supermicro"],
+  ["cisco", "ucs"], ["cisco"], ["ucs"], ["ucsb"], ["ucsc"], ["poweredge"], ["proliant"], ["thinksystem"], ["thinkagile"], ["thinkserver"], ["system", "x"], ["primergy"], ["primequest"], ["apollo"], ["synergy"], ["superserver"], ["sr"], ["rh"], ["fusionserver"], ["nf"], ["hpe"], ["dell"], ["lenovo"], ["fujitsu"], ["huawei"], ["inspur"], ["supermicro"],
 ];
 
 function basicNormalize(value: string): string {
