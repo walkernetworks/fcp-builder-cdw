@@ -348,6 +348,103 @@ export const hardwarePlatformAssessmentSchema = hardwarePlatformAssessmentV4Sche
 });
 export type HardwarePlatformAssessment = z.infer<typeof hardwarePlatformAssessmentSchema>;
 
+export type VcfCompatibilityDecision = "eligible" | "validation-required" | "action-required";
+
+export type VcfCompatibilityCohort = {
+  id: string;
+  decision: VcfCompatibilityDecision;
+  decisionLabel: string;
+  vendor: string;
+  model: string;
+  cpuModel: string;
+  hosts: number;
+  hclStatus: HclPlatformAssessment["status"];
+  matchedModel: string;
+  matchedCpuSeries: string;
+  reason: string;
+  nextAction: string;
+};
+
+function compatibilityDecision(status: HclPlatformAssessment["status"]): Pick<VcfCompatibilityCohort, "decision" | "decisionLabel" | "reason"> {
+  if (status === "supported") {
+    return {
+      decision: "eligible",
+      decisionLabel: "Eligible for next-stage validation",
+      reason: "The observed server and CPU pairing appears in the supplied offline ESXi 9.1 server snapshot.",
+    };
+  }
+  if (status === "cpu-not-certified") {
+    return {
+      decision: "action-required",
+      decisionLabel: "Hold for remediation or alternate path",
+      reason: "The server model matched, but the reported CPU series is not listed for this ESXi 9.1 snapshot pairing.",
+    };
+  }
+  if (status === "not-supported") {
+    return {
+      decision: "action-required",
+      decisionLabel: "Hold for remediation or alternate path",
+      reason: "The observed platform does not have an eligible pairing in the supplied offline ESXi 9.1 snapshot.",
+    };
+  }
+  if (status === "supported-cpu-unverified") {
+    return {
+      decision: "validation-required",
+      decisionLabel: "Validate before platform gate",
+      reason: "The server model matched, but the imported CPU evidence is not sufficient to confirm the recorded snapshot pairing.",
+    };
+  }
+  if (status === "review") {
+    return {
+      decision: "validation-required",
+      decisionLabel: "Validate before platform gate",
+      reason: "The imported server identity requires confirmation against the configuration reference before the platform gate.",
+    };
+  }
+  return {
+    decision: "validation-required",
+    decisionLabel: "Validate before platform gate",
+    reason: "No deterministic server-and-CPU pairing was established from the imported evidence and supplied offline snapshot.",
+  };
+}
+
+/**
+ * Produces one concise planning cohort for each observed server/CPU pairing.
+ * This supports delivery planning only and must not be interpreted as an
+ * official VMware or Broadcom compatibility certification.
+ */
+export function summarizeVcfCompatibility(platforms: HardwarePlatformAssessment[]): VcfCompatibilityCohort[] {
+  const cohorts = new Map<string, VcfCompatibilityCohort>();
+  for (const platform of platforms) {
+    const decision = compatibilityDecision(platform.hcl.status);
+    const vendor = platform.vendor.trim() || "Unknown vendor";
+    const model = platform.model.trim() || "Unknown model";
+    const cpuModel = platform.cpuModel.trim() || "CPU model not reported";
+    const key = [decision.decision, vendor, model, cpuModel, platform.hcl.status, platform.hcl.matchedModel, platform.hcl.matchedCpuSeries].join("|").toLowerCase();
+    const existing = cohorts.get(key);
+    if (existing) {
+      existing.hosts += platform.hosts;
+      continue;
+    }
+    cohorts.set(key, {
+      id: key,
+      decision: decision.decision,
+      decisionLabel: decision.decisionLabel,
+      vendor,
+      model,
+      cpuModel,
+      hosts: platform.hosts,
+      hclStatus: platform.hcl.status,
+      matchedModel: platform.hcl.matchedModel,
+      matchedCpuSeries: platform.hcl.matchedCpuSeries,
+      reason: decision.reason,
+      nextAction: platform.hcl.nextAction,
+    });
+  }
+  const order: Record<VcfCompatibilityDecision, number> = { "action-required": 0, "validation-required": 1, eligible: 2 };
+  return Array.from(cohorts.values()).sort((left, right) => order[left.decision] - order[right.decision] || right.hosts - left.hosts || left.model.localeCompare(right.model));
+}
+
 const readinessV4Schema = z.object({
   generatedAt: z.string(),
   label: z.literal("Inventory-Informed VCF 9.1 Planning Considerations"),
@@ -2253,4 +2350,3 @@ export function applyTimelineGesture(timeline: Timeline, laneId: string, barId: 
       : item),
   };
 }
-

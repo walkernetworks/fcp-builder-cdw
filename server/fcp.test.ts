@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
-import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, FIXED_GANTT_CATEGORIES, getFollowOnReadinessGuidance, getHclSchedulePath, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, synchronizeEntitlementNotionalFromOperational, validateTimeline, type Timeline } from "../shared/fcp";
+import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, FIXED_GANTT_CATEGORIES, getFollowOnReadinessGuidance, getHclSchedulePath, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, summarizeVcfCompatibility, synchronizeEntitlementNotionalFromOperational, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence } from "../shared/hcl";
 import type { TrpcContext } from "./_core/context";
-import { renderFcpHtml } from "./fcpRenderer";
+import { renderFcpHtml, renderPlanOutputHtml } from "./fcpRenderer";
 import { appRouter } from "./routers";
 
 function csvFile(name: string, rows: string[][]) {
@@ -500,6 +500,44 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(baseline?.dependsOn).toContain("HCL schedule path Red");
     expect(baseline?.outcome).toContain("offline HCL evidence");
     expect(readiness.disclaimer).toContain("offline HCL snapshot result is not a VCF 9.1 certification");
+  });
+
+  it("summarizes VCF 9.1 host cohorts into clear delivery progression decisions", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      hosts: 6,
+      physicalCores: 384,
+      hostModels: [
+        { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6430", hosts: 4, physicalCores: 256, esxiVersions: [{ version: "8.0.3", hosts: 4 }], esxiCorrelation: "per-platform" },
+        { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6230", hosts: 2, physicalCores: 128, esxiVersions: [{ version: "8.0.3", hosts: 2 }], esxiCorrelation: "per-platform" },
+      ],
+    });
+    const cohorts = summarizeVcfCompatibility(assessReadiness(document.fields, document.inventory).hardwarePlatforms);
+
+    expect(cohorts.map(cohort => [cohort.decision, cohort.hosts])).toEqual([["action-required", 2], ["eligible", 4]]);
+    expect(cohorts.find(cohort => cohort.decision === "eligible")?.decisionLabel).toBe("Eligible for next-stage validation");
+    expect(cohorts.find(cohort => cohort.decision === "action-required")?.reason).toContain("reported CPU series is not listed");
+  });
+
+  it("renders a separate plan-output document with cohort eligibility reasons and the editable entitlement sequence", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      hosts: 6,
+      physicalCores: 384,
+      hostModels: [
+        { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6430", hosts: 4, physicalCores: 256, esxiVersions: [{ version: "8.0.3", hosts: 4 }], esxiCorrelation: "per-platform" },
+        { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6230", hosts: 2, physicalCores: 128, esxiVersions: [{ version: "8.0.3", hosts: 2 }], esxiCorrelation: "per-platform" },
+      ],
+    });
+    document.readiness = assessReadiness(document.fields, document.inventory);
+    const html = renderPlanOutputHtml("Meridian FCP", document);
+
+    expect(html).toContain("VCF 9.1 Delivery Planning Output");
+    expect(html).toContain("Eligible for next-stage validation");
+    expect(html).toContain("Hold for remediation or alternate path");
+    expect(html).toContain("reported CPU series is not listed");
+    expect(html).toContain("Scheduled delivery activities");
+    expect(html).not.toContain("Functional Consumption Plan</h2>");
   });
 
   it("builds immutable five-category Gantt rows and HCL-path buffers before module-gated migration", () => {

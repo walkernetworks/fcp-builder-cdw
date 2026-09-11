@@ -87,8 +87,21 @@ describe("signed binary export downloads", () => {
     expect(getEngagement).toHaveBeenCalledWith(7, 41);
   });
 
+  it("streams the separate plan-output document with its own safe filename", async () => {
+    const ticket = createExportTicket(7, 41, "html", "plan-output");
+    const response = await fetch(`${baseUrl}/api/download/${ticket}`);
+    const content = await response.text();
+
+    expect(verifyExportTicket(ticket)).toMatchObject({ documentType: "plan-output" });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian-FCP-Plan-Plan-Output.html"');
+    expect(content).toContain("VCF 9.1 Delivery Planning Output");
+    expect(content).toContain("Observed host groups for VCF 9.1 planning");
+  });
+
   it("normalizes unsafe and empty export names", () => {
     expect(safeExportFilename("  ACME / FCP: West  ", "pdf")).toBe("ACME-FCP-West.pdf");
+    expect(safeExportFilename("  ACME / FCP: West  ", "pdf", "plan-output")).toBe("ACME-FCP-West-Plan-Output.pdf");
     expect(safeExportFilename("///", "html")).toBe("FCP.html");
   });
 });

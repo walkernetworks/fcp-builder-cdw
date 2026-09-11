@@ -2,15 +2,15 @@ import type { Express, Request, Response } from "express";
 import { engagementDocumentSchema } from "../shared/fcp";
 import * as db from "./db";
 import { verifyExportTicket } from "./exportTickets";
-import { renderFcpHtml } from "./fcpRenderer";
+import { renderFcpHtml, renderPlanOutputHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 
-export function safeExportFilename(title: string, extension: "html" | "pdf") {
+export function safeExportFilename(title: string, extension: "html" | "pdf", documentType: "fcp" | "plan-output" = "fcp") {
   const stem = title
     .replace(/[^a-z0-9-_]+/gi, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80) || "FCP";
-  return `${stem}.${extension}`;
+  return `${stem}${documentType === "plan-output" ? "-Plan-Output" : ""}.${extension}`;
 }
 
 function deny(res: Response, status: number, message: string) {
@@ -28,8 +28,8 @@ export function registerExportDownloadRoutes(app: Express) {
       if (!row) return deny(res, 404, "Engagement not found.");
 
       const document = engagementDocumentSchema.parse(row.data);
-      const html = renderFcpHtml(row.title, document);
-      const filename = safeExportFilename(row.title, ticket.format);
+      const html = ticket.documentType === "plan-output" ? renderPlanOutputHtml(row.title, document) : renderFcpHtml(row.title, document);
+      const filename = safeExportFilename(row.title, ticket.format, ticket.documentType);
 
       res.setHeader("Cache-Control", "private, no-store, max-age=0");
       res.setHeader("Pragma", "no-cache");

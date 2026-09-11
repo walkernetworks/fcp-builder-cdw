@@ -7,7 +7,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
-import { renderFcpHtml } from "./fcpRenderer";
+import { renderFcpHtml, renderPlanOutputHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 
 function requireRow<T>(row: T | undefined): T {
@@ -40,9 +40,9 @@ export const appRouter = router({
   }),
   document: router({
     preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ html: renderFcpHtml(input.title, input.data) })),
-    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf"]) })).mutation(async ({ ctx, input }) => {
+    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf"]), documentType: z.enum(["fcp", "plan-output"]).default("fcp") })).mutation(async ({ ctx, input }) => {
       requireRow(await db.getEngagement(ctx.user.id, input.id));
-      return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format)}` };
+      return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, input.documentType)}` };
     }),
     html: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ filename: safeFilename(input.title, "html"), mime: "text/html;charset=utf-8", content: renderFcpHtml(input.title, input.data) })),
     pdf: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(async ({ input }) => {

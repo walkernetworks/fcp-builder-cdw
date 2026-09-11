@@ -17,6 +17,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const DEFAULT_ENGAGEMENT_TITLE = "New FCP Engagement";
+type ExportDocumentType = "fcp" | "plan-output";
+type ActiveExport = { format: "html" | "pdf"; documentType: ExportDocumentType } | null;
 
 export default function Home() {
   const utils = trpc.useUtils();
@@ -28,7 +30,7 @@ export default function Home() {
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "unsaved">("saved");
   const [previewHtml, setPreviewHtml] = useState("");
-  const [exportingFormat, setExportingFormat] = useState<"html" | "pdf" | null>(null);
+  const [activeExport, setActiveExport] = useState<ActiveExport>(null);
   const [workspaceTab, setWorkspaceTab] = useState<"setup" | "timeline" | "preview">(() => {
     const requested = new URLSearchParams(window.location.search).get("tab");
     return requested === "timeline" || requested === "preview" ? requested : "setup";
@@ -128,22 +130,23 @@ export default function Home() {
   const mutateDocument = (next: EngagementDocument) => { setFcpDocument(next); setDirty(true); };
   const buildPlan = () => { mutateDocument(refreshDerivedDocument(fcpDocument, { forceRebuild: true })); toast.success("Adoption plans rebuilt from the confirmed inputs"); };
   const saveNow = () => { if (!selectedId) return; setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument }); };
-  const startExport = async (format: "html" | "pdf") => {
-    if (!selectedId || exportingFormat) return;
+  const startExport = async (format: "html" | "pdf", documentType: ExportDocumentType = "fcp") => {
+    if (!selectedId || activeExport) return;
 
-    setExportingFormat(format);
+    setActiveExport({ format, documentType });
     try {
       setSaveState("saving");
       await update.mutateAsync({ id: selectedId, title, data: fcpDocument });
-      const result = await downloadTicket.mutateAsync({ id: selectedId, format });
+      const result = await downloadTicket.mutateAsync({ id: selectedId, format, documentType });
       const response = await fetch(result.url, { credentials: "same-origin" });
-      await downloadServerAttachment(response, format, `${title || "FCP"}.${format}`);
-      toast.success(`${format.toUpperCase()} download started`);
+      const fallbackName = `${title || "FCP"}${documentType === "plan-output" ? "-Plan-Output" : ""}.${format}`;
+      await downloadServerAttachment(response, format, fallbackName);
+      toast.success(`${documentType === "plan-output" ? "Plan output" : "FCP"} ${format.toUpperCase()} download started`);
     } catch (error) {
-      console.error(`[Export] ${format.toUpperCase()} download failed`, error);
+      console.error(`[Export] ${documentType} ${format.toUpperCase()} download failed`, error);
       toast.error(error instanceof Error ? error.message : `The ${format.toUpperCase()} download could not be started.`);
     } finally {
-      setExportingFormat(null);
+      setActiveExport(null);
     }
   };
 
@@ -200,9 +203,9 @@ export default function Home() {
         <main className="min-w-0 p-4 md:p-6">
           {!selectedIsListed ? <EmptyState onCreate={openCreateDialog} /> : selected.isLoading || !selected.data ? <div className="grid min-h-[65vh] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div> : (
             <Tabs value={workspaceTab} onValueChange={value => { const next = value as "setup" | "timeline" | "preview"; setWorkspaceTab(next); const url = new URL(window.location.href); if (next === "setup") url.searchParams.delete("tab"); else url.searchParams.set("tab", next); window.history.replaceState({}, "", url); }} className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3"><TabsList className="h-11 rounded-xl bg-white p-1 shadow-sm"><TabsTrigger value="setup" className="rounded-lg px-5">Plan Setup</TabsTrigger><TabsTrigger value="timeline" className="rounded-lg px-5">Adoption Timelines</TabsTrigger><TabsTrigger value="preview" className="rounded-lg px-5">Export</TabsTrigger></TabsList><div className="flex gap-2"><Button variant="outline" size="sm" disabled={Boolean(exportingFormat)} onClick={() => void startExport("html")}>{exportingFormat === "html" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} HTML</Button><Button variant="outline" size="sm" disabled={Boolean(exportingFormat)} onClick={() => void startExport("pdf")}>{exportingFormat === "pdf" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} PDF</Button></div></div>
+              <div className="flex flex-wrap items-center justify-between gap-3"><TabsList className="h-11 rounded-xl bg-white p-1 shadow-sm"><TabsTrigger value="setup" className="rounded-lg px-5">Plan Setup</TabsTrigger><TabsTrigger value="timeline" className="rounded-lg px-5">Adoption Timelines</TabsTrigger><TabsTrigger value="preview" className="rounded-lg px-5">Export</TabsTrigger></TabsList><div className="flex gap-2"><Button variant="outline" size="sm" disabled={Boolean(activeExport)} onClick={() => void startExport("html")}>{activeExport?.format === "html" && activeExport.documentType === "fcp" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} HTML</Button><Button variant="outline" size="sm" disabled={Boolean(activeExport)} onClick={() => void startExport("pdf")}>{activeExport?.format === "pdf" && activeExport.documentType === "fcp" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} PDF</Button></div></div>
 
-              <TabsContent value="setup"><PlanSetup document={fcpDocument} onChange={mutateDocument} /></TabsContent>
+              <TabsContent value="setup"><PlanSetup document={fcpDocument} onChange={mutateDocument} onExportPlanOutput={format => void startExport(format, "plan-output")} exportingPlanOutput={activeExport?.documentType === "plan-output" ? activeExport.format : null} /></TabsContent>
 
               <TabsContent value="timeline" className="space-y-4">
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-[#c8102e]">Plan Basis</p><p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">{fcpDocument.rationale}</p></div><Button variant="outline" size="sm" onClick={buildPlan}><RefreshCw className="size-4" /> Reset Both Plans</Button></div>{fcpDocument.fields.timelineNotes && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs leading-5 text-amber-900"><strong>Timeline Constraints:</strong> {fcpDocument.fields.timelineNotes}</div>}</div>
@@ -230,6 +233,7 @@ export default function Home() {
                     switchId="include-operational-timeline-export"
                   />
                 </section>
+                <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#c8102e]/20 bg-red-50/60 p-4 shadow-sm"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Separate plan output</p><h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">VCF 9.1 delivery plan output</h2><p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">Download the focused delivery brief with entitlement activities and cohort-level VCF 9.1 progression reasons. It is separate from the complete FCP export.</p></div><div className="flex gap-2"><Button variant="outline" size="sm" disabled={Boolean(activeExport)} onClick={() => void startExport("html", "plan-output")}>{activeExport?.format === "html" && activeExport.documentType === "plan-output" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} HTML</Button><Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" disabled={Boolean(activeExport)} onClick={() => void startExport("pdf", "plan-output")}>{activeExport?.format === "pdf" && activeExport.documentType === "plan-output" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} PDF</Button></div></section>
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg"><div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-2"><div className="flex items-center gap-2 text-xs font-semibold text-emerald-700"><ShieldCheck className="size-4" /> Internal Engagement Workspace</div><span className="text-xs text-slate-500">Live FCP Preview</span><span className="text-xs text-slate-400">Auto-Updating</span></div>{preview.isPending && !previewHtml ? <div className="grid h-[720px] place-items-center"><Loader2 className="size-6 animate-spin text-[#c8102e]" /></div> : <iframe title="Live FCP Preview" srcDoc={previewHtml} className="h-[calc(100vh-190px)] min-h-[720px] w-full bg-white" sandbox="allow-scripts" />}</div>
               </TabsContent>
             </Tabs>
