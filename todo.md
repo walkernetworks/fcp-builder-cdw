@@ -466,3 +466,10 @@
 - [x] Synchronize entitlement adoption activities and timing from operational adoption timeline changes without overwriting unrelated manual entitlement edits.
 - [x] Add a persisted, accessible option to include or omit the operational adoption timeline from HTML and PDF exports.
 - [x] Add regression coverage, validate manual editing and export behavior, and publish the improvements.
+
+## Customer A RVTools Snapshot-Match Investigation
+
+- [x] Inspect the uploaded Customer A RVTools host identifiers, platform data, and parser output behind the reported no-snapshot-match result.
+- [x] Compare parsed host evidence with the HCL snapshot identity rules and distinguish absent snapshot records from naming or identifier normalization defects.
+- [x] Repair matching behavior and add regression coverage if valid source servers are incorrectly classified as unmatched.
+- [x] Report the server-level findings and publish any verified correction.

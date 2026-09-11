@@ -460,6 +460,8 @@ describe("planning considerations, exports, and access boundary", () => {
     const exact = assessHclPlatform("Dell Inc.", "PowerEdge R760", "Intel(R) Xeon(R) Gold 6430");
     const cpuMismatch = assessHclPlatform("Dell Inc.", "PowerEdge R760", "Intel(R) Xeon(R) Gold 6230");
     const digitGuard = assessHclPlatform("Dell Inc.", "PowerEdge R7600", "Intel(R) Xeon(R) Gold 6430");
+    const nativeCiscoBlade = assessHclPlatform("Cisco Systems Inc", "UCSB-B200-M6", "Intel(R) Xeon(R) Platinum 8362 CPU @ 2.80GHz");
+    const nativeCiscoRack = assessHclPlatform("Cisco Systems Inc", "UCSC-C220-M5SX", "Intel(R) Xeon(R) Silver 4210 CPU @ 2.20GHz");
 
     expect(exact).toMatchObject({
       status: "supported",
@@ -472,6 +474,8 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(cpuMismatch).toMatchObject({ status: "cpu-not-certified", matchedModel: "PowerEdge R760" });
     expect(digitGuard).toMatchObject({ status: "unknown", modelMatchMethod: "none" });
     expect(digitGuard.detail).toContain("different model-number identity");
+    expect(nativeCiscoBlade).toMatchObject({ status: "supported", matchedPartnerName: "Cisco", matchedModel: "Cisco UCS B200 M6" });
+    expect(nativeCiscoRack).toMatchObject({ status: "supported", matchedPartnerName: "Cisco", matchedModel: "Cisco UCS-C220-M5SX" });
   });
 
   it("adds HCL snapshot evidence to readiness and the consolidated delivery baseline without treating it as certification", () => {
