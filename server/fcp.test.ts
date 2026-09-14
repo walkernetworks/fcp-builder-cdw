@@ -4,7 +4,7 @@ import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAd
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, summarizeHclFindings } from "../shared/hcl";
 import type { TrpcContext } from "./_core/context";
-import { renderFcpHtml, renderPlanOutputHtml } from "./fcpRenderer";
+import { renderFcpHtml, renderHclCompatibilityPlanOutputHtml } from "./fcpRenderer";
 import { appRouter } from "./routers";
 
 function csvFile(name: string, rows: string[][]) {
@@ -530,7 +530,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(summaries[0].findings).toHaveLength(2);
   });
 
-  it("renders a separate plan-output document with cohort eligibility reasons and the editable entitlement sequence", () => {
+  it("renders a separate detailed HCL and compatibility document without adoption-timeline content", () => {
     const document = createDefaultDocument();
     Object.assign(document.inventory, {
       hosts: 6,
@@ -541,14 +541,26 @@ describe("planning considerations, exports, and access boundary", () => {
       ],
     });
     document.readiness = assessReadiness(document.fields, document.inventory);
-    const html = renderPlanOutputHtml("Meridian FCP", document);
+    document.readiness.hcl = {
+      findings: [
+        { checkId: "NET.NIC_COUNT_LOW", severity: "WARNING", title: "Fewer than two physical NICs", scope: "host", subject: "esx-a", evidence: "1 physical NIC row was reported.", remediation: "Add redundant uplinks before the host joins a workload domain.", releases: [] },
+        { checkId: "NET.NIC_COUNT_LOW", severity: "WARNING", title: "Fewer than two physical NICs", scope: "host", subject: "esx-b", evidence: "1 physical NIC row was reported.", remediation: "Add redundant uplinks before the host joins a workload domain.", releases: [] },
+      ],
+      coverageGaps: [{ kind: "missing-tab", subject: "vNIC evidence", impact: "Physical-uplink redundancy cannot be fully evaluated." }],
+    };
+    const html = renderHclCompatibilityPlanOutputHtml("Meridian FCP", document);
 
-    expect(html).toContain("VCF 9.1 Delivery Planning Output");
-    expect(html).toContain("Eligible for next-stage validation");
+    expect(html).toContain("VCF 9.1 HCL and Compatibility Plan Output");
+    expect(html).toContain("Eligible to progress");
     expect(html).toContain("Hold for remediation or alternate path");
     expect(html).toContain("reported CPU series is not listed");
-    expect(html).toContain("Scheduled delivery activities");
-    expect(html).not.toContain("Functional Consumption Plan</h2>");
+    expect(html).toContain("Consolidated technical findings and remediation");
+    expect(html).toContain("Fewer than two physical NICs");
+    expect(html).toMatch(/2<small>affected hosts<\/small>/);
+    expect(html).toContain("Coverage gaps and additional information required");
+    expect(html).not.toContain("Scheduled delivery activities");
+    expect(html).not.toContain("Entitlement delivery sequence");
+    expect(html).not.toContain("Operational Adoption Timeline");
   });
 
   it("builds immutable five-category Gantt rows and HCL-path buffers before module-gated migration", () => {

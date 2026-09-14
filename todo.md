@@ -488,3 +488,10 @@
 - [x] Replace the always-expanded findings list with a severity- and subject-grouped summary that includes affected-host or affected-subject counts and one shared remediation statement.
 - [x] Preserve individual evidence only in a collapsed drill-down so delivery teams can inspect it without forcing long scrolling in the default Plan Output view.
 - [x] Add regression coverage, validate the compact Plan Output behavior, and publish the improvement.
+
+## HCL and Compatibility-Focused Plan Output
+
+- [x] Audit the existing standalone Plan Output composition and remove all adoption-timeline and service-sequencing content from its scope.
+- [x] Expand Plan Output with detailed HCL 2.0 findings, compatibility cohort evidence, coverage gaps, affected subjects, decision rationale, and remediation actions.
+- [x] Preserve concise cohort summaries while providing enough detailed evidence for delivery and platform stakeholders to assess VCF 9.1 readiness.
+- [x] Add regression coverage, validate standalone HTML/PDF content, and publish the refocused Plan Output document.

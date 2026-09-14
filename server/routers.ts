@@ -7,7 +7,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
-import { renderFcpHtml, renderPlanOutputHtml } from "./fcpRenderer";
+import { renderFcpHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 
 function requireRow<T>(row: T | undefined): T {

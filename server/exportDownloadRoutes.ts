@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { engagementDocumentSchema } from "../shared/fcp";
 import * as db from "./db";
 import { verifyExportTicket } from "./exportTickets";
-import { renderFcpHtml, renderPlanOutputHtml } from "./fcpRenderer";
+import { renderFcpHtml, renderHclCompatibilityPlanOutputHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 
 export function safeExportFilename(title: string, extension: "html" | "pdf", documentType: "fcp" | "plan-output" = "fcp") {
@@ -28,7 +28,7 @@ export function registerExportDownloadRoutes(app: Express) {
       if (!row) return deny(res, 404, "Engagement not found.");
 
       const document = engagementDocumentSchema.parse(row.data);
-      const html = ticket.documentType === "plan-output" ? renderPlanOutputHtml(row.title, document) : renderFcpHtml(row.title, document);
+      const html = ticket.documentType === "plan-output" ? renderHclCompatibilityPlanOutputHtml(row.title, document) : renderFcpHtml(row.title, document);
       const filename = safeExportFilename(row.title, ticket.format, ticket.documentType);
 
       res.setHeader("Cache-Control", "private, no-store, max-age=0");
