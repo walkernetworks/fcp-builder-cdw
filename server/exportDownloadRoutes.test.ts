@@ -95,7 +95,7 @@ describe("signed binary export downloads", () => {
     expect(verifyExportTicket(ticket)).toMatchObject({ documentType: "plan-output" });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian-FCP-Plan-Plan-Output.html"');
-    expect(content).toContain("VCF 9.1 Delivery Planning Output");
+    expect(content).toContain("VCF 9.1 HCL and Compatibility Plan Output");
     expect(content).toContain("Observed host groups for VCF 9.1 planning");
   });
 
