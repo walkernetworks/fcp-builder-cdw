@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getIndustryDiscoveryTemplate, industryDiscoveryPromptBlock } from "./industryDiscovery";
-import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, hclAssessmentSchema, hclFindingSchedulePath, hclInventoryEvidenceSchema, hclSchedulePath, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, type HclSchedulePath } from "./hcl";
+import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, hclAssessmentSchema, hclFindingSchedulePath, hclInventoryEvidenceSchema, hclSchedulePath, HCL_CATALOG_METADATA, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, type HclSchedulePath } from "./hcl";
 
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
 export type TimelineColor = (typeof TIMELINE_COLORS)[number];
@@ -309,6 +309,22 @@ const defaultHclPlatformAssessment = {
     nextAction: "Revalidate the server and CPU pairing whenever the target ESXi or VCF release changes.",
     source: "",
   },
+  catalog: HCL_CATALOG_METADATA,
+  evidenceState: "catalog-record-required" as const,
+  evidenceConfidence: "low" as const,
+  releaseEvidence: [
+    { release: "ESXi 9.0" as const, status: "not-listed" as const, productIds: [], detailUrls: [] },
+    { release: "ESXi 9.1" as const, status: "not-listed" as const, productIds: [], detailUrls: [] },
+  ],
+  requiredEvidence: [
+    "confirmed OEM manufacturer and exact server model",
+    "installed processor model and CPU series",
+    "NIC and HBA/controller compatibility",
+    "firmware and driver alignment",
+    "OEM ESXi image or add-on selection",
+    "boot, storage, and vSAN/ReadyNode compatibility where applicable",
+    "cluster topology and workload-domain design validation",
+  ],
 };
 
 export const hclPlatformAssessmentSchema = z.object({
@@ -338,6 +354,32 @@ export const hclPlatformAssessmentSchema = z.object({
     nextAction: z.string(),
     source: z.string(),
   }).default(defaultHclPlatformAssessment.futureReleaseSupport),
+  catalog: z.object({
+    id: z.string(),
+    source: z.string(),
+    capturedAt: z.string(),
+    reportedCount: z.number().int().nonnegative(),
+    releaseScope: z.array(z.enum(["ESXi 9.0", "ESXi 9.1"])),
+    vendorCount: z.number().int().nonnegative(),
+  }).default(defaultHclPlatformAssessment.catalog),
+  evidenceState: z.enum([
+    "verified-supported",
+    "verified-not-listed",
+    "explicit-exclusion",
+    "cpu-evidence-required",
+    "identity-confirmation-required",
+    "catalog-record-required",
+    "source-refresh-required",
+    "conflicting-evidence",
+  ]).default(defaultHclPlatformAssessment.evidenceState),
+  evidenceConfidence: z.enum(["high", "medium", "low"]).default(defaultHclPlatformAssessment.evidenceConfidence),
+  releaseEvidence: z.array(z.object({
+    release: z.enum(["ESXi 9.0", "ESXi 9.1"]),
+    status: z.enum(["listed", "not-listed", "model-listed-cpu-unverified", "unresolved"]),
+    productIds: z.array(z.number().int().positive()),
+    detailUrls: z.array(z.string()),
+  })).default(defaultHclPlatformAssessment.releaseEvidence),
+  requiredEvidence: z.array(z.string()).default(defaultHclPlatformAssessment.requiredEvidence),
 });
 export type HclPlatformAssessment = z.infer<typeof hclPlatformAssessmentSchema>;
 
@@ -379,51 +421,51 @@ export type VcfCompatibilityCohort = {
   hclStatus: HclPlatformAssessment["status"];
   matchedModel: string;
   matchedCpuSeries: string;
+  observedEsxiVersions: InventorySummary["esxiVersions"];
+  clusterMembership: InventorySummary["clusterProfiles"];
+  catalog: HclPlatformAssessment["catalog"];
+  evidenceState: HclPlatformAssessment["evidenceState"];
+  evidenceConfidence: HclPlatformAssessment["evidenceConfidence"];
+  releaseEvidence: HclPlatformAssessment["releaseEvidence"];
+  requiredEvidence: string[];
   reason: string;
   nextAction: string;
   futureReleaseSupport: HclPlatformAssessment["futureReleaseSupport"];
 };
 
-function compatibilityDecision(status: HclPlatformAssessment["status"]): Pick<VcfCompatibilityCohort, "decision" | "decisionLabel" | "reason"> {
-  if (status === "supported") {
+function compatibilityDecision(hcl: HclPlatformAssessment): Pick<VcfCompatibilityCohort, "decision" | "decisionLabel" | "reason"> {
+  if (hcl.evidenceState === "verified-supported" && hcl.status === "supported") {
     return {
       decision: "eligible",
-      decisionLabel: "Eligible for next-stage validation",
-      reason: "The observed server and CPU pairing appears in the supplied offline ESXi 9.1 server snapshot.",
+      decisionLabel: "Target release listed",
+      reason: `The observed server and CPU pairing is listed for ${hcl.targetRelease} in maintained catalog ${hcl.catalog.id}.`,
     };
   }
-  if (status === "cpu-not-certified") {
+  if (hcl.evidenceState === "verified-not-listed" || hcl.evidenceState === "explicit-exclusion" || hcl.status === "cpu-not-certified" || hcl.status === "not-supported") {
     return {
       decision: "action-required",
-      decisionLabel: "Hold for remediation or alternate path",
-      reason: "The server model matched, but the reported CPU series is not listed for this ESXi 9.1 snapshot pairing.",
+      decisionLabel: "Not listed for target release",
+      reason: `The observed platform identity was established, but the server and CPU pairing is not listed for ${hcl.targetRelease} in catalog ${hcl.catalog.id}.`,
     };
   }
-  if (status === "not-supported") {
-    return {
-      decision: "action-required",
-      decisionLabel: "Hold for remediation or alternate path",
-      reason: "The observed platform does not have an eligible pairing in the supplied offline ESXi 9.1 snapshot.",
-    };
-  }
-  if (status === "supported-cpu-unverified") {
+  if (hcl.evidenceState === "cpu-evidence-required" || hcl.status === "supported-cpu-unverified") {
     return {
       decision: "validation-required",
-      decisionLabel: "Validate before platform gate",
+      decisionLabel: "CPU evidence required",
       reason: "The server model matched, but the imported CPU evidence is not sufficient to confirm the recorded snapshot pairing.",
     };
   }
-  if (status === "review") {
+  if (hcl.evidenceState === "identity-confirmation-required" || hcl.status === "review") {
     return {
       decision: "validation-required",
-      decisionLabel: "Validate before platform gate",
-      reason: "The imported server identity requires confirmation against the configuration reference before the platform gate.",
+      decisionLabel: "Identity confirmation required",
+      reason: "The imported vendor or model identity has a candidate match but is not deterministic enough to release the platform gate.",
     };
   }
   return {
     decision: "validation-required",
-    decisionLabel: "Validate before platform gate",
-    reason: "No deterministic server-and-CPU pairing was established from the imported evidence and supplied offline snapshot.",
+    decisionLabel: "Catalog evidence required",
+    reason: `No deterministic server-and-CPU pairing was established in maintained catalog ${hcl.catalog.id}.`,
   };
 }
 
@@ -435,14 +477,14 @@ function compatibilityDecision(status: HclPlatformAssessment["status"]): Pick<Vc
 export function summarizeVcfCompatibility(platforms: HardwarePlatformAssessment[]): VcfCompatibilityCohort[] {
   const cohorts = new Map<string, VcfCompatibilityCohort>();
   for (const platform of platforms) {
-    const decision = compatibilityDecision(platform.hcl.status);
+    const decision = compatibilityDecision(platform.hcl);
     const vendor = platform.vendor.trim() || "Unknown vendor";
     const model = platform.model.trim() || "Unknown model";
     const cpuModel = platform.cpuModel.trim() || "CPU model not reported";
     const futureReleaseSupport = platform.hcl.futureReleaseSupport;
-    const lifecycleDetail = futureReleaseSupport.status === "not-applicable" ? "" : ` ${futureReleaseSupport.detail}`;
-    const lifecycleAction = futureReleaseSupport.status === "not-applicable" ? "" : ` ${futureReleaseSupport.nextAction}`;
-    const key = [decision.decision, vendor, model, cpuModel, platform.hcl.status, platform.hcl.matchedModel, platform.hcl.matchedCpuSeries, futureReleaseSupport.status, futureReleaseSupport.vendorHardwareSupportEnd].join("|").toLowerCase();
+    const lifecycleDetail = futureReleaseSupport.status === "unsupported-from-release" ? ` ${futureReleaseSupport.detail}` : "";
+    const lifecycleAction = futureReleaseSupport.status === "unsupported-from-release" ? ` ${futureReleaseSupport.nextAction}` : "";
+    const key = [decision.decision, vendor, model, cpuModel, platform.hcl.status, platform.hcl.evidenceState, platform.hcl.matchedModel, platform.hcl.matchedCpuSeries, futureReleaseSupport.status, futureReleaseSupport.vendorHardwareSupportEnd].join("|").toLowerCase();
     const existing = cohorts.get(key);
     if (existing) {
       existing.hosts += platform.hosts;
@@ -459,6 +501,13 @@ export function summarizeVcfCompatibility(platforms: HardwarePlatformAssessment[
       hclStatus: platform.hcl.status,
       matchedModel: platform.hcl.matchedModel,
       matchedCpuSeries: platform.hcl.matchedCpuSeries,
+      observedEsxiVersions: platform.esxiVersions,
+      clusterMembership: platform.clusterMembership,
+      catalog: platform.hcl.catalog,
+      evidenceState: platform.hcl.evidenceState,
+      evidenceConfidence: platform.hcl.evidenceConfidence,
+      releaseEvidence: platform.hcl.releaseEvidence,
+      requiredEvidence: platform.hcl.requiredEvidence,
       reason: `${decision.reason}${lifecycleDetail}`,
       nextAction: `${platform.hcl.nextAction}${lifecycleAction}`,
       futureReleaseSupport,
@@ -466,6 +515,86 @@ export function summarizeVcfCompatibility(platforms: HardwarePlatformAssessment[
   }
   const order: Record<VcfCompatibilityDecision, number> = { "action-required": 0, "validation-required": 1, eligible: 2 };
   return Array.from(cohorts.values()).sort((left, right) => order[left.decision] - order[right.decision] || right.hosts - left.hosts || left.model.localeCompare(right.model));
+}
+
+export type CompatibilityDeliveryAction = {
+  id: string;
+  priority: "blocker" | "required" | "validation";
+  owner: string;
+  title: string;
+  affectedHosts: number;
+  gateCondition: string;
+  evidenceRequired: string[];
+  cohortIds: string[];
+};
+
+export type CompatibilityHandoffSummary = {
+  targetRelease: string;
+  catalog: HclPlatformAssessment["catalog"];
+  estateHosts: number;
+  assessedHosts: number;
+  unaccountedHosts: number;
+  allHostsAccountedFor: boolean;
+  supportedHosts: number;
+  blockedHosts: number;
+  unresolvedHosts: number;
+  cohorts: VcfCompatibilityCohort[];
+  actions: CompatibilityDeliveryAction[];
+};
+
+function actionOwner(state: HclPlatformAssessment["evidenceState"]): string {
+  if (state === "verified-not-listed" || state === "explicit-exclusion") return "Solution architecture and customer platform owner";
+  if (state === "cpu-evidence-required" || state === "identity-confirmation-required" || state === "catalog-record-required") return "Customer infrastructure owner with delivery engineering";
+  return "Delivery engineering";
+}
+
+export function summarizeCompatibilityHandoff(platforms: HardwarePlatformAssessment[], estateHosts: number): CompatibilityHandoffSummary {
+  const cohorts = summarizeVcfCompatibility(platforms);
+  const assessedHosts = cohorts.reduce((total, cohort) => total + cohort.hosts, 0);
+  const supportedHosts = cohorts.filter(cohort => cohort.decision === "eligible").reduce((total, cohort) => total + cohort.hosts, 0);
+  const blockedHosts = cohorts.filter(cohort => cohort.decision === "action-required").reduce((total, cohort) => total + cohort.hosts, 0);
+  const unresolvedHosts = cohorts.filter(cohort => cohort.decision === "validation-required").reduce((total, cohort) => total + cohort.hosts, 0);
+  const actionsByKey = new Map<string, CompatibilityDeliveryAction>();
+  for (const cohort of cohorts) {
+    const key = `${cohort.decision}|${cohort.evidenceState}|${cohort.nextAction}`;
+    const priority = cohort.decision === "action-required" ? "blocker" as const : cohort.decision === "validation-required" ? "required" as const : "validation" as const;
+    const existing = actionsByKey.get(key);
+    if (existing) {
+      existing.affectedHosts += cohort.hosts;
+      existing.cohortIds.push(cohort.id);
+      existing.evidenceRequired = Array.from(new Set([...existing.evidenceRequired, ...cohort.requiredEvidence]));
+      continue;
+    }
+    actionsByKey.set(key, {
+      id: key.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""),
+      priority,
+      owner: actionOwner(cohort.evidenceState),
+      title: cohort.nextAction,
+      affectedHosts: cohort.hosts,
+      gateCondition: cohort.decision === "eligible"
+        ? `Complete configuration-level evidence before the ${cohort.catalog.releaseScope.at(-1) || cohort.catalog.id} platform gate.`
+        : `Resolve this evidence state before the ${cohort.catalog.releaseScope.at(-1) || cohort.catalog.id} platform gate is released.`,
+      evidenceRequired: cohort.requiredEvidence,
+      cohortIds: [cohort.id],
+    });
+  }
+  const actionOrder = { blocker: 0, required: 1, validation: 2 } as const;
+  const actions = Array.from(actionsByKey.values()).sort((left, right) => actionOrder[left.priority] - actionOrder[right.priority] || right.affectedHosts - left.affectedHosts);
+  const catalog = cohorts[0]?.catalog || HCL_CATALOG_METADATA;
+  const unaccountedHosts = Math.max(0, estateHosts - assessedHosts);
+  return {
+    targetRelease: cohorts[0]?.releaseEvidence.at(-1)?.release || catalog.releaseScope.at(-1) || "ESXi release not available",
+    catalog,
+    estateHosts,
+    assessedHosts,
+    unaccountedHosts,
+    allHostsAccountedFor: assessedHosts === estateHosts,
+    supportedHosts,
+    blockedHosts,
+    unresolvedHosts,
+    cohorts,
+    actions,
+  };
 }
 
 const readinessV4Schema = z.object({
@@ -1718,7 +1847,7 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
     physicalCores: platform.physicalCores,
     esxiVersions,
     esxiCorrelation,
-    clusterMembership: platform.clusterMembership,
+    clusterMembership,
     minimumMemoryGiB: platform.minimumMemoryGiB,
     maximumMemoryGiB: platform.maximumMemoryGiB,
     hcl,

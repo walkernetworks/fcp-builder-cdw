@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
-import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, FIXED_GANTT_CATEGORIES, getFollowOnReadinessGuidance, getHclSchedulePath, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, summarizeVcfCompatibility, synchronizeEntitlementNotionalFromOperational, validateTimeline, type Timeline } from "../shared/fcp";
+import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, FIXED_GANTT_CATEGORIES, getFollowOnReadinessGuidance, getHclSchedulePath, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, summarizeCompatibilityHandoff, summarizeVcfCompatibility, synchronizeEntitlementNotionalFromOperational, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, summarizeHclFindings } from "../shared/hcl";
 import type { TrpcContext } from "./_core/context";
@@ -465,12 +465,17 @@ describe("planning considerations, exports, and access boundary", () => {
 
     expect(exact).toMatchObject({
       status: "supported",
+      evidenceState: "verified-supported",
+      evidenceConfidence: "high",
       modelMatchMethod: "exact",
       matchedPartnerName: "Dell",
       matchedModel: "PowerEdge R760",
       matchedCpuSeries: "Intel Xeon Gold 6400/5400 (Sapphire-Rapids-SP) Series",
     });
     expect(exact.detailUrl).toContain("productId=55720");
+    expect(exact.catalog).toMatchObject({ id: "broadcom-server-2026-07-28", reportedCount: 3423, vendorCount: 74, releaseScope: ["ESXi 9.0", "ESXi 9.1"] });
+    expect(exact.releaseEvidence.map(item => [item.release, item.status])).toEqual([["ESXi 9.0", "listed"], ["ESXi 9.1", "listed"]]);
+    expect(exact.requiredEvidence).toContain("firmware and driver alignment");
     expect(cpuMismatch).toMatchObject({ status: "cpu-not-certified", matchedModel: "PowerEdge R760" });
     expect(digitGuard).toMatchObject({ status: "unknown", modelMatchMethod: "none" });
     expect(digitGuard.detail).toContain("different model-number identity");
@@ -484,7 +489,34 @@ describe("planning considerations, exports, and access boundary", () => {
     });
     expect(nativeCiscoRack.futureReleaseSupport.detail).toContain("not officially supported from ESXi or VCF 9.2");
     expect(exact.futureReleaseSupport).toMatchObject({ status: "revalidation-required", verifiedThroughRelease: "ESXi 9.1", vendorHardwareSupportEnd: "" });
-    expect(exact.futureReleaseSupport.detail).toContain("later ESXi or VCF release is not verified");
+    expect(exact.futureReleaseSupport.detail).toContain("outside the catalog's verified scope");
+  });
+
+  it("normalizes representative multi-vendor RVTools identities into release-specific maintained-catalog evidence", () => {
+    const supportedFixtures = [
+      ["Dell Inc.", "PowerEdge R740", "Intel(R) Xeon(R) Gold 6130 CPU @ 2.10GHz", "Dell"],
+      ["HPE", "ProLiant DL360 Gen10", "Intel(R) Xeon(R) Gold 6130 CPU @ 2.10GHz", "Hewlett Packard Enterprise"],
+      ["LENOVO", "ThinkSystem SN550", "Intel(R) Xeon(R) Platinum 8160 CPU @ 2.10GHz", "Lenovo"],
+      ["Cisco Systems Inc", "UCSC-C220-M5L", "Intel(R) Xeon(R) Gold 6130 CPU @ 2.10GHz", "Cisco"],
+      ["Supermicro", "SYS-2029BT-HNC0R", "Intel(R) Xeon(R) Gold 6130 CPU @ 2.10GHz", "Supermicro Computer, Inc"],
+    ] as const;
+
+    for (const [vendor, model, cpu, matchedPartnerName] of supportedFixtures) {
+      const assessment = assessHclPlatform(vendor, model, cpu);
+      expect(assessment).toMatchObject({ status: "supported", evidenceState: "verified-supported", evidenceConfidence: "high", matchedPartnerName });
+      expect(assessment.releaseEvidence.map(item => [item.release, item.status])).toEqual([["ESXi 9.0", "listed"], ["ESXi 9.1", "listed"]]);
+      expect(assessment.catalog).toMatchObject({ id: "broadcom-server-2026-07-28", source: expect.stringContaining("compatibilityguide.broadcom.com") });
+      expect(assessment.requiredEvidence).toEqual(expect.arrayContaining(["firmware and driver alignment", "NIC and HBA/controller compatibility"]));
+    }
+
+    const cpuMismatch = assessHclPlatform("Dell Inc.", "PowerEdge R740", "Intel(R) Xeon(R) Gold 6430");
+    expect(cpuMismatch).toMatchObject({ status: "cpu-not-certified", evidenceState: "verified-not-listed", evidenceConfidence: "high" });
+    expect(cpuMismatch.releaseEvidence.every(item => item.status === "not-listed")).toBe(true);
+
+    const unresolved = assessHclPlatform("Unknown Vendor", "Mystery Server 1000", "Unknown CPU");
+    expect(unresolved).toMatchObject({ status: "unknown", evidenceState: "identity-confirmation-required", evidenceConfidence: "low" });
+    expect(unresolved.releaseEvidence.every(item => item.status === "unresolved")).toBe(true);
+    expect(unresolved.requiredEvidence).toContain("confirmed OEM manufacturer and exact server model");
   });
 
   it("adds HCL snapshot evidence to readiness and the consolidated delivery baseline without treating it as certification", () => {
@@ -514,7 +546,7 @@ describe("planning considerations, exports, and access boundary", () => {
   it("summarizes VCF 9.1 host cohorts into clear delivery progression decisions", () => {
     const document = createDefaultDocument();
     Object.assign(document.inventory, {
-      hosts: 6,
+      hosts: 9,
       physicalCores: 384,
       hostModels: [
         { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6430", hosts: 4, physicalCores: 256, esxiVersions: [{ version: "8.0.3", hosts: 4 }], esxiCorrelation: "per-platform" },
@@ -525,12 +557,16 @@ describe("planning considerations, exports, and access boundary", () => {
     const cohorts = summarizeVcfCompatibility(assessReadiness(document.fields, document.inventory).hardwarePlatforms);
 
     expect(cohorts.map(cohort => [cohort.decision, cohort.hosts])).toEqual([["action-required", 2], ["eligible", 4], ["eligible", 3]]);
-    expect(cohorts.find(cohort => cohort.decision === "eligible")?.decisionLabel).toBe("Eligible for next-stage validation");
-    expect(cohorts.find(cohort => cohort.decision === "action-required")?.reason).toContain("reported CPU series is not listed");
+    expect(cohorts.find(cohort => cohort.decision === "eligible")?.decisionLabel).toBe("Target release listed");
+    expect(cohorts.find(cohort => cohort.decision === "action-required")?.reason).toContain("not listed for ESXi 9.1");
     const m5 = cohorts.find(cohort => cohort.model.includes("M5SX"));
     expect(m5?.futureReleaseSupport.status).toBe("unsupported-from-release");
     expect(m5?.reason).toContain("not officially supported from ESXi or VCF 9.2");
     expect(m5?.nextAction).toContain("Do not select ESXi or VCF 9.2");
+    const handoff = summarizeCompatibilityHandoff(assessReadiness(document.fields, document.inventory).hardwarePlatforms, document.inventory.hosts);
+    expect(handoff).toMatchObject({ estateHosts: 9, assessedHosts: 9, unaccountedHosts: 0, allHostsAccountedFor: true, supportedHosts: 7, blockedHosts: 2, unresolvedHosts: 0 });
+    expect(handoff.actions.map(action => action.priority)).toEqual(["blocker", "validation", "validation"]);
+    expect(handoff.actions[0].owner).toContain("Solution architecture");
   });
 
   it("consolidates repeated HCL host findings without discarding delivery evidence", () => {
@@ -564,14 +600,17 @@ describe("planning considerations, exports, and access boundary", () => {
     };
     const html = renderHclCompatibilityPlanOutputHtml("Meridian FCP", document);
 
-    expect(html).toContain("VCF 9.1 HCL and Compatibility Plan Output");
-    expect(html).toContain("Eligible to progress");
-    expect(html).toContain("Hold for remediation or alternate path");
-    expect(html).toContain("reported CPU series is not listed");
-    expect(html).toContain("Consolidated technical findings and remediation");
+    expect(html).toContain("VCF Compatibility Delivery Handoff");
+    expect(html).toContain("broadcom-server-2026-07-28");
+    expect(html).toContain("3,423 records · 74 manufacturers");
+    expect(html).toContain("Target release listed");
+    expect(html).toContain("Not listed for target release");
+    expect(html).toContain("Every observed server and CPU cohort");
+    expect(html).toContain("Compatibility action register");
+    expect(html).toContain("Consolidated estate findings and remediation");
     expect(html).toContain("Fewer than two physical NICs");
-    expect(html).toMatch(/2<small>affected hosts<\/small>/);
-    expect(html).toContain("Coverage gaps and additional information required");
+    expect(html).toContain("2 affected hosts");
+    expect(html).toContain("Information still required to complete the handoff");
     expect(html).not.toContain("Scheduled delivery activities");
     expect(html).not.toContain("Entitlement delivery sequence");
     expect(html).not.toContain("Operational Adoption Timeline");
@@ -589,10 +628,10 @@ describe("planning considerations, exports, and access boundary", () => {
     document.readiness = assessReadiness(document.fields, document.inventory);
     const html = renderHclCompatibilityPlanOutputHtml("M5 Support Boundary", document);
 
-    expect(html).toContain("VMware support boundary:");
+    expect(html).toContain("Release boundary:");
     expect(html).toContain("supported through ESXi 9.1; not officially supported from ESXi 9.2 / VCF 9.2");
     expect(html).toContain("Do not select ESXi or VCF 9.2");
-    expect(html).toContain("Separate Cisco hardware support ends 2028-10-31");
+    expect(html).toContain("hardware support end date of October 31, 2028");
   });
 
   it("builds immutable five-category Gantt rows and HCL-path buffers before module-gated migration", () => {
@@ -1014,8 +1053,8 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).not.toContain("Intended Outcome");
     expect(html).not.toContain("Sequence Notes");
     expect(html).toContain("Executive operational view:");
-    expect(html).toContain("VCF 9.1 readiness");
-    expect(html).toContain("Delivery readiness summary");
+    expect(html).toContain("ESXi 9.1 compatibility posture");
+    expect(html).toContain("Presales-to-delivery handoff");
     expect(html).toContain("Reported ESXi");
     expect(html).toContain("220 VM records");
     expect(html).toContain("Customer-aligned delivery plan");
@@ -1026,8 +1065,8 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).not.toContain("RVTools Export(s)");
     expect(html).not.toContain("HCL Server + CPU Evidence");
     expect(html).not.toContain("Physical cores");
-    expect(html).toContain("Priority readiness actions");
-    expect(html).toContain("Detailed host-by-host findings remain available in the planning workspace");
+    expect(html).toContain("Priority delivery actions");
+    expect(html).toContain("standalone compatibility deliverable contains the complete cohort evidence and action register");
     expect(html).toContain("Migration Waves");
     expect(html).toContain('<div class="timeline-corner">Category</div>');
     expect(html).toContain("timeline-category-lane");
@@ -1044,7 +1083,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).not.toContain("VCF Networking and NSX Lifecycle Progression");
     expect(html).not.toContain("independently from security services");
     const planSummaryStart = html.indexOf('<div class="plan-summary">');
-    const readinessStart = html.indexOf("Delivery readiness summary");
+    const readinessStart = html.indexOf("Presales-to-delivery handoff");
     const planSummary = html.slice(planSummaryStart, readinessStart);
     expect(planSummaryStart).toBeGreaterThan(-1);
     expect(readinessStart).toBeGreaterThan(planSummaryStart);
@@ -1064,7 +1103,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain(".summary-plan{height:8.5in;min-height:8.5in");
     expect(html).toContain("@page{size:letter landscape;margin:0}");
     expect(html).toContain('<section class="hardware-evidence">');
-    expect(html).toContain("Material actions");
+    expect(html).toContain("Estate reconciliation");
     expect(html).not.toContain('class="compact-table hardware-table"');
     expect(html).toContain('class="notional-year-sheet notional-year-one"');
     expect(html).not.toContain('class="notional-year-sheet notional-year-two"');
@@ -1122,7 +1161,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).not.toContain("Executive operational view:");
     expect(html).not.toContain('class="operational-print-sheet');
     expect(html).toContain("Entitlement Notional");
-    expect(html).toContain("VCF 9.1 readiness");
+    expect(html).toContain("ESXi 9.1 compatibility posture");
   });
 
   it("defaults export preferences and preserves ambiguous legacy plans as manual when authority metadata is absent", () => {
@@ -1208,9 +1247,9 @@ describe("HCL 2.0 estate evidence", () => {
     expect(document.readiness.hclSchedulePath).toBe("red");
     expect(estateReadiness).toMatchObject({ status: "attention", title: "HCL 2.0 Estate Evidence" });
     expect(estateReadiness?.detail).toContain("blocker");
-    expect(html).toContain("VCF 9.1 readiness");
-    expect(html).toContain("Delivery decision");
-    expect(html).toContain("Priority readiness actions");
+    expect(html).toContain("ESXi 9.1 compatibility posture");
+    expect(html).toContain("Presales-to-delivery handoff");
+    expect(html).toContain("Priority delivery actions");
     expect(html).not.toContain("Coverage Gaps and Evidence Required");
   });
 });

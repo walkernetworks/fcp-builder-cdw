@@ -516,3 +516,22 @@
 - [x] Separate release-specific VMware compatibility exclusions from the generic current-snapshot revalidation notice and OEM hardware lifecycle dates.
 - [x] Add an explicit supported-through ESXi 9.1 / unsupported-from ESXi or VCF 9.2 finding, cohort flag, and technical Plan Output evidence for affected Cisco M5 platforms only when verified.
 - [x] Add regression coverage, revalidate the Customer A evidence, and publish the corrected supportability assessment.
+
+## Comprehensive Multi-Vendor Compatibility and Delivery Handoff Redesign
+
+- [x] Audit the current server normalization, HCL snapshot, release-boundary, confidence, workspace, FCP export, and compatibility deliverable flows to identify incomplete or misleading outcomes.
+- [x] Research authoritative Broadcom/VMware and major OEM compatibility sources, their release semantics, available query mechanisms, update cadence, and limitations.
+- [x] Define a release-aware evidence model that distinguishes exact verified support, explicit exclusion, absence from a current matrix, partial identity, conflicting sources, stale evidence, and missing data without collapsing them into a generic disclaimer.
+- [x] Normalize arbitrary RVTools vendor/model/CPU identities into stable cohorts and support deterministic matching for Cisco, Dell, HPE, Lenovo, Supermicro, and other observed manufacturers with an actionable unresolved path for unknown platforms.
+- [ ] Add selectable current and target ESXi/VCF releases, source provenance, evidence timestamps, confidence, support-through boundaries, and delivery dispositions for every cohort.
+- [x] Redesign the workspace into concise estate posture, release-support, blockers, evidence gaps, and delivery-action summaries with drill-down to host-level evidence only when needed.
+- [x] Rebuild the main FCP and standalone compatibility deliverables as a complete presales-to-delivery handoff covering estate scope, supported cohorts, blocked cohorts, future-release constraints, evidence gaps, remediation, ownership, and next validation actions.
+- [x] Add broad multi-vendor and unknown-platform regression fixtures, validate representative customer workbooks and rendered HTML/PDF documents, and publish the redesign.
+
+## Maintained Verified Catalog Architecture
+
+- [x] Make the versioned Broadcom server catalog the deterministic compatibility source used during every RVTools import, without requiring live vendor availability.
+- [x] Persist catalog identity, capture time, release scope, target release, product-record links, match method, and confidence with each assessed cohort.
+- [x] Give every imported host cohort an explicit evidence state and delivery disposition, including exact support, target-release not listed, CPU evidence required, identity confirmation required, catalog record required, source refresh required, and explicit exclusion.
+- [x] Reconcile assessed cohort host counts to the imported estate total and expose any unaccounted hosts as a blocking evidence-quality gap.
+- [x] Document a controlled catalog refresh and validation workflow so newer release data can replace the production snapshot without changing customer results silently.

@@ -7,6 +7,44 @@ export const HCL_TARGET_RELEASE = "ESXi 9.1" as const;
 const TARGET_RELEASE_MASK = 2;
 const DETAIL_URL = "https://compatibilityguide.broadcom.com/detail?programId=server&productId=";
 
+export const HCL_CATALOG_RELEASES = ["ESXi 9.0", "ESXi 9.1"] as const;
+export type HclCatalogRelease = (typeof HCL_CATALOG_RELEASES)[number];
+export type HclCatalogMetadata = {
+  id: string;
+  source: string;
+  capturedAt: string;
+  reportedCount: number;
+  releaseScope: HclCatalogRelease[];
+  vendorCount: number;
+};
+export const HCL_CATALOG_METADATA: HclCatalogMetadata = {
+  id: `broadcom-server-${HCL_SNAPSHOT.capturedAt.slice(0, 10)}`,
+  source: HCL_SNAPSHOT.source,
+  capturedAt: HCL_SNAPSHOT.capturedAt,
+  reportedCount: HCL_SNAPSHOT.reportedCount,
+  releaseScope: [...HCL_CATALOG_RELEASES],
+  vendorCount: new Set(HCL_SERVER_CATALOG.map(record => record[0])).size,
+};
+
+export const HCL_EVIDENCE_STATES = [
+  "verified-supported",
+  "verified-not-listed",
+  "explicit-exclusion",
+  "cpu-evidence-required",
+  "identity-confirmation-required",
+  "catalog-record-required",
+  "source-refresh-required",
+  "conflicting-evidence",
+] as const;
+export type HclEvidenceState = (typeof HCL_EVIDENCE_STATES)[number];
+export type HclEvidenceConfidence = "high" | "medium" | "low";
+export type HclReleaseEvidence = {
+  release: HclCatalogRelease;
+  status: "listed" | "not-listed" | "model-listed-cpu-unverified" | "unresolved";
+  productIds: number[];
+  detailUrls: string[];
+};
+
 export const HCL_EVALUATION_STATUSES = [
   "supported",
   "supported-cpu-unverified",
@@ -64,16 +102,16 @@ const CISCO_M5_BLADE_LIFECYCLE_SOURCE = "https://www.cisco.com/c/en/us/products/
 const CISCO_M5_RACK_LIFECYCLE_SOURCE = "https://www.cisco.com/c/en/us/products/collateral/servers-unified-computing/ucs-c-series-rack-servers/ucs-m5-rack-server-c220-c240-c480-eol.html";
 const CISCO_M5_VMWARE_COMPATIBILITY_SOURCE = "https://ucshcltool.cloudapps.cisco.com/public/";
 
-function futureReleaseSupport(partnerName: string, model: string): HclFutureReleaseSupport {
+function futureReleaseSupport(partnerName: string, model: string, verifiedThroughRelease: string = HCL_TARGET_RELEASE): HclFutureReleaseSupport {
   const identity = `${partnerName} ${model}`.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
   const m5Match = identity.match(/\b(B200|C220|C240)\s+M5[A-Z0-9]*\b/);
   const genericBoundary: HclFutureReleaseSupport = {
     status: "revalidation-required",
-    verifiedThroughRelease: HCL_TARGET_RELEASE,
+    verifiedThroughRelease,
     unsupportedFromRelease: "",
     vendorHardwareSupportEnd: "",
-    detail: `The supplied offline HCL snapshot contains server-and-CPU evidence through ${HCL_TARGET_RELEASE}. Support for a later ESXi or VCF release is not verified by this snapshot.`,
-    nextAction: `Before selecting any release later than ${HCL_TARGET_RELEASE}, revalidate the complete server configuration in the current Broadcom Compatibility Guide.`,
+    detail: `This server-and-CPU pairing is listed through ${verifiedThroughRelease} in maintained catalog ${HCL_CATALOG_METADATA.id}. A later release is outside the catalog's verified scope and requires a catalog refresh before a support decision is made.`,
+    nextAction: `Keep ${verifiedThroughRelease} as the supported-through planning boundary until a validated catalog update includes a later release for this exact pairing.`,
     source: HCL_SNAPSHOT.source,
   };
   if (!identity.startsWith("CISCO ") || !m5Match) return genericBoundary;
@@ -109,7 +147,46 @@ export type HclPlatformAssessment = {
   detail: string;
   nextAction: string;
   futureReleaseSupport: HclFutureReleaseSupport;
+  catalog: typeof HCL_CATALOG_METADATA;
+  evidenceState: HclEvidenceState;
+  evidenceConfidence: HclEvidenceConfidence;
+  releaseEvidence: HclReleaseEvidence[];
+  requiredEvidence: string[];
 };
+
+function releaseMask(release: HclCatalogRelease): number {
+  return release === "ESXi 9.0" ? 1 : 2;
+}
+
+function releaseEvidence(entries: readonly HclCatalogRecord[], cpuSeries: string): HclReleaseEvidence[] {
+  const cpuEntries = cpuSeries ? entries.filter(entry => entry[2] === cpuSeries) : [];
+  return HCL_CATALOG_RELEASES.map(release => {
+    const mask = releaseMask(release);
+    const exactRows = cpuEntries.filter(entry => (entry[3] & mask) !== 0);
+    const modelRows = entries.filter(entry => (entry[3] & mask) !== 0);
+    const sourceRows = exactRows.length ? exactRows : modelRows;
+    return {
+      release,
+      status: exactRows.length ? "listed" as const : modelRows.length && !cpuSeries ? "model-listed-cpu-unverified" as const : modelRows.length ? "not-listed" as const : "unresolved" as const,
+      productIds: Array.from(new Set(sourceRows.map(entry => entry[5]))).sort((left, right) => left - right),
+      detailUrls: Array.from(new Set(sourceRows.map(entry => hclEntryUrl(entry[5])))).filter(Boolean),
+    };
+  });
+}
+
+const COMPLETE_CONFIGURATION_EVIDENCE = [
+  "NIC and HBA/controller compatibility",
+  "firmware and driver alignment",
+  "OEM ESXi image or add-on selection",
+  "boot, storage, and vSAN/ReadyNode compatibility where applicable",
+  "cluster topology and workload-domain design validation",
+];
+
+function matchConfidence(modelMatch: ModelResolution, cpu: CpuResolution): HclEvidenceConfidence {
+  if (!modelMatch.entries.length || !modelMatch.vendorResolved || modelMatch.method === "none") return "low";
+  if (modelMatch.method === "fuzzy" || cpu.confidence === "inferred" || cpu.confidence === "unknown") return "medium";
+  return cpu.confidence === "exact" ? "high" : "low";
+}
 
 type CpuResolution = {
   series: string;
@@ -402,6 +479,12 @@ function hclEntryUrl(productId: number): string {
 }
 
 function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolution, cpu: CpuResolution, detail: string, nextAction: string): HclPlatformAssessment {
+  const evidenceState: HclEvidenceState = modelMatch.vendorResolved && !modelMatch.candidates.length ? "catalog-record-required" : "identity-confirmation-required";
+  const requiredEvidence = [
+    "confirmed OEM manufacturer and exact server model",
+    "installed processor model and CPU series",
+    ...COMPLETE_CONFIGURATION_EVIDENCE,
+  ];
   return {
     targetRelease: HCL_TARGET_RELEASE,
     snapshotCapturedAt: HCL_SNAPSHOT.capturedAt,
@@ -421,6 +504,11 @@ function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolutio
     detail,
     nextAction,
     futureReleaseSupport: NO_FUTURE_RELEASE_BOUNDARY,
+    catalog: HCL_CATALOG_METADATA,
+    evidenceState,
+    evidenceConfidence: matchConfidence(modelMatch, cpu),
+    releaseEvidence: releaseEvidence([], cpu.series),
+    requiredEvidence,
   };
 }
 
@@ -446,6 +534,8 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
   const cpuEntries = cpu.series ? entries.filter(entry => entry[2] === cpu.series) : [];
   const targetCpuEntries = cpuEntries.filter(entry => (entry[3] & TARGET_RELEASE_MASK) !== 0);
   const confirmationReported = targetCpuEntries.some(entry => (entry[4] & TARGET_RELEASE_MASK) !== 0);
+  const supportedReleaseEvidence = releaseEvidence(entries, cpu.series);
+  const verifiedThroughRelease = supportedReleaseEvidence.filter(item => item.status === "listed").at(-1)?.release || HCL_TARGET_RELEASE;
   const sourceEvidence = `${matchingPartner} ${matchingModel}; ${cpu.series || "CPU series unresolved"}; snapshot ${HCL_SNAPSHOT.capturedAt}`;
   const statusFromFuzzyOrVendor = !modelMatch.vendorResolved || modelMatch.method === "fuzzy";
   const baseline = {
@@ -463,13 +553,18 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
     vcfVendorConfirmation: targetCpuEntries.length ? (confirmationReported ? "reported" as const : "not-reported" as const) : "unknown" as const,
     supportedCpuSeries,
     candidateModels: modelMatch.candidates,
-    futureReleaseSupport: targetCpuEntries.length ? futureReleaseSupport(matchingPartner, matchingModel) : NO_FUTURE_RELEASE_BOUNDARY,
+    futureReleaseSupport: targetCpuEntries.length ? futureReleaseSupport(matchingPartner, matchingModel, verifiedThroughRelease) : NO_FUTURE_RELEASE_BOUNDARY,
+    catalog: HCL_CATALOG_METADATA,
+    evidenceConfidence: matchConfidence(modelMatch, cpu),
+    releaseEvidence: supportedReleaseEvidence,
+    requiredEvidence: COMPLETE_CONFIGURATION_EVIDENCE,
   };
 
   if (statusFromFuzzyOrVendor) {
     return {
       ...baseline,
       status: "review",
+      evidenceState: "identity-confirmation-required",
       detail: `${modelMatch.note || "The reported vendor or model required a non-exact HCL match."} Candidate evidence: ${sourceEvidence}. This remains unproven until the OEM model identity is confirmed.`,
       nextAction: "Confirm the OEM vendor and exact server model, then validate the full configuration in the Broadcom Compatibility Guide before treating this as a supported pairing.",
     };
@@ -478,6 +573,8 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
     return {
       ...baseline,
       status: "supported-cpu-unverified",
+      evidenceState: "cpu-evidence-required",
+      requiredEvidence: ["installed processor model and CPU series", ...COMPLETE_CONFIGURATION_EVIDENCE],
       detail: `The server model is present in the offline ${HCL_TARGET_RELEASE} snapshot, but the reported CPU string could not be resolved to one of its certified series. ${cpu.note} Candidate CPU series: ${supportedCpuSeries.join("; ") || "not reported"}.`,
       nextAction: "Verify the installed CPU series against the HCL detail record and complete the NIC, HBA/controller, firmware, driver, storage, and vSAN/ReadyNode checks.",
     };
@@ -487,6 +584,8 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
     return {
       ...baseline,
       status: cpu.confidence === "inferred" ? "supported-cpu-unverified" : "supported",
+      evidenceState: cpu.confidence === "inferred" ? "cpu-evidence-required" : "verified-supported",
+      requiredEvidence: cpu.confidence === "inferred" ? ["confirmed installed processor model and CPU series", ...COMPLETE_CONFIGURATION_EVIDENCE] : COMPLETE_CONFIGURATION_EVIDENCE,
       detail: `The offline HCL snapshot lists the exact server-model and CPU-series pairing for ${HCL_TARGET_RELEASE}: ${sourceEvidence}.${verificationNote} This is source evidence only, not complete configuration certification.`,
       nextAction: "Retain the HCL evidence in the delivery baseline and validate NIC, HBA/controller, firmware, driver, OEM image, storage, vSAN/ReadyNode, build, and topology requirements before deployment.",
     };
@@ -495,6 +594,7 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
     return {
       ...baseline,
       status: "not-supported",
+      evidenceState: "verified-not-listed",
       detail: `The offline HCL snapshot contains ${sourceEvidence}, but not for ${HCL_TARGET_RELEASE}.`,
       nextAction: "Select a release-supported platform path or validate an approved replacement, repurpose, or exception decision before deployment planning proceeds.",
     };
@@ -502,6 +602,7 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
   return {
     ...baseline,
     status: "cpu-not-certified",
+    evidenceState: "verified-not-listed",
     detail: `The server model is present in the offline ${HCL_TARGET_RELEASE} snapshot, but not with the reported CPU series ${cpu.series}. Candidate CPU series: ${supportedCpuSeries.join("; ") || "not reported"}.`,
     nextAction: "Validate the CPU generation and supported configuration; plan replacement, repurpose, or an approved exception before the VCF deployment path is committed.",
   };
@@ -842,18 +943,6 @@ function hclHardwareFindings(evidence: HclInventoryEvidence): HclFinding[] {
       assessment.nextAction,
       { cluster: host.cluster || undefined, releases: [HCL_TARGET_RELEASE], source: assessment.detailUrl || HCL_SNAPSHOT.source },
     ));
-    if (assessment.futureReleaseSupport.status === "revalidation-required") {
-      findings.push(hclFinding(
-        "HW.FUTURE_RELEASE_REVALIDATION",
-        "ADVISORY",
-        "Future-release support requires revalidation",
-        "host",
-        hclHostLabel(host),
-        assessment.futureReleaseSupport.detail,
-        assessment.futureReleaseSupport.nextAction,
-        { cluster: host.cluster || undefined, releases: [HCL_TARGET_RELEASE], source: assessment.futureReleaseSupport.source },
-      ));
-    }
   }
   return findings;
 }
