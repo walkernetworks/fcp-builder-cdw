@@ -456,9 +456,11 @@ export function renderHclCompatibilityPlanOutputHtml(title: string, document: En
   const cohortRows = cohorts.length
     ? cohorts.map(cohort => {
       const lifecycle = cohort.futureReleaseSupport;
-      const lifecycleFlag = lifecycle.status === "revalidation-required"
-        ? `<small><strong>Future-release boundary:</strong> verified through ${esc(lifecycle.verifiedThroughRelease)}; revalidate before a later ESXi or VCF release.${lifecycle.vendorHardwareSupportEnd ? ` Vendor hardware support ends ${esc(lifecycle.vendorHardwareSupportEnd)}.` : ""}</small>`
-        : "";
+      const lifecycleFlag = lifecycle.status === "unsupported-from-release"
+        ? `<small><strong>VMware support boundary:</strong> supported through ${esc(lifecycle.verifiedThroughRelease)}; not officially supported from ${esc(lifecycle.unsupportedFromRelease)}.${lifecycle.vendorHardwareSupportEnd ? ` Separate Cisco hardware support ends ${esc(lifecycle.vendorHardwareSupportEnd)}.` : ""}</small>`
+        : lifecycle.status === "revalidation-required"
+          ? `<small><strong>Future-release boundary:</strong> verified through ${esc(lifecycle.verifiedThroughRelease)}; revalidate before a later ESXi or VCF release.</small>`
+          : "";
       return `<tr><td><span class="decision ${decisionStyle(cohort.decision)}">${esc(cohort.decisionLabel)}</span><small>${esc(hclStatusLabel(cohort.hclStatus))}</small>${lifecycleFlag}</td><td><strong>${esc(`${cohort.vendor} ${cohort.model}`)}</strong><small>${esc(cohort.cpuModel)}</small></td><td>${cohort.hosts} host${cohort.hosts === 1 ? "" : "s"}</td><td>${esc(cohort.reason)}${cohort.matchedModel ? `<small>Offline snapshot pairing: ${esc(cohort.matchedModel)}${cohort.matchedCpuSeries ? ` · ${esc(cohort.matchedCpuSeries)}` : ""}</small>` : ""}</td><td>${esc(cohort.nextAction)}</td></tr>`;
     }).join("")
     : '<tr><td colspan="5">No host cohorts are available. Upload RVTools vHost data to establish VCF 9.1 compatibility evidence.</td></tr>';

@@ -477,11 +477,12 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(nativeCiscoBlade).toMatchObject({ status: "supported", matchedPartnerName: "Cisco", matchedModel: "Cisco UCS B200 M6" });
     expect(nativeCiscoRack).toMatchObject({ status: "supported", matchedPartnerName: "Cisco", matchedModel: "Cisco UCS-C220-M5SX" });
     expect(nativeCiscoRack.futureReleaseSupport).toMatchObject({
-      status: "revalidation-required",
+      status: "unsupported-from-release",
       verifiedThroughRelease: "ESXi 9.1",
+      unsupportedFromRelease: "ESXi 9.2 / VCF 9.2",
       vendorHardwareSupportEnd: "2028-10-31",
     });
-    expect(nativeCiscoRack.futureReleaseSupport.detail).toContain("later ESXi or VCF release is not verified");
+    expect(nativeCiscoRack.futureReleaseSupport.detail).toContain("not officially supported from ESXi or VCF 9.2");
     expect(exact.futureReleaseSupport).toMatchObject({ status: "revalidation-required", verifiedThroughRelease: "ESXi 9.1", vendorHardwareSupportEnd: "" });
     expect(exact.futureReleaseSupport.detail).toContain("later ESXi or VCF release is not verified");
   });
@@ -527,8 +528,9 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(cohorts.find(cohort => cohort.decision === "eligible")?.decisionLabel).toBe("Eligible for next-stage validation");
     expect(cohorts.find(cohort => cohort.decision === "action-required")?.reason).toContain("reported CPU series is not listed");
     const m5 = cohorts.find(cohort => cohort.model.includes("M5SX"));
-    expect(m5?.reason).toContain("later ESXi or VCF release is not verified");
-    expect(m5?.nextAction).toContain("Before selecting any release later than ESXi 9.1");
+    expect(m5?.futureReleaseSupport.status).toBe("unsupported-from-release");
+    expect(m5?.reason).toContain("not officially supported from ESXi or VCF 9.2");
+    expect(m5?.nextAction).toContain("Do not select ESXi or VCF 9.2");
   });
 
   it("consolidates repeated HCL host findings without discarding delivery evidence", () => {
@@ -573,6 +575,24 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).not.toContain("Scheduled delivery activities");
     expect(html).not.toContain("Entitlement delivery sequence");
     expect(html).not.toContain("Operational Adoption Timeline");
+  });
+
+  it("renders Cisco M5's explicit post-9.1 VMware support boundary in the technical Plan Output", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.inventory, {
+      hosts: 3,
+      physicalCores: 48,
+      hostModels: [
+        { vendor: "Cisco Systems Inc", model: "UCSC-C220-M5SX", cpuModel: "Intel(R) Xeon(R) Silver 4210 CPU @ 2.20GHz", hosts: 3, physicalCores: 48, esxiVersions: [{ version: "8.0.3", hosts: 3 }], esxiCorrelation: "per-platform" },
+      ],
+    });
+    document.readiness = assessReadiness(document.fields, document.inventory);
+    const html = renderHclCompatibilityPlanOutputHtml("M5 Support Boundary", document);
+
+    expect(html).toContain("VMware support boundary:");
+    expect(html).toContain("supported through ESXi 9.1; not officially supported from ESXi 9.2 / VCF 9.2");
+    expect(html).toContain("Do not select ESXi or VCF 9.2");
+    expect(html).toContain("Separate Cisco hardware support ends 2028-10-31");
   });
 
   it("builds immutable five-category Gantt rows and HCL-path buffers before module-gated migration", () => {

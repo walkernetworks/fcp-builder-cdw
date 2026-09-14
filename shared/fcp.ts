@@ -303,6 +303,7 @@ const defaultHclPlatformAssessment = {
   futureReleaseSupport: {
     status: "not-applicable" as const,
     verifiedThroughRelease: "ESXi 9.1",
+    unsupportedFromRelease: "",
     vendorHardwareSupportEnd: "",
     detail: "No model-specific future-release boundary is encoded in the current offline HCL planning snapshot.",
     nextAction: "Revalidate the server and CPU pairing whenever the target ESXi or VCF release changes.",
@@ -329,8 +330,9 @@ export const hclPlatformAssessmentSchema = z.object({
   detail: z.string(),
   nextAction: z.string(),
   futureReleaseSupport: z.object({
-    status: z.enum(["not-applicable", "revalidation-required"]),
+    status: z.enum(["not-applicable", "revalidation-required", "unsupported-from-release"]),
     verifiedThroughRelease: z.string(),
+    unsupportedFromRelease: z.string().default(""),
     vendorHardwareSupportEnd: z.string(),
     detail: z.string(),
     nextAction: z.string(),
@@ -438,8 +440,8 @@ export function summarizeVcfCompatibility(platforms: HardwarePlatformAssessment[
     const model = platform.model.trim() || "Unknown model";
     const cpuModel = platform.cpuModel.trim() || "CPU model not reported";
     const futureReleaseSupport = platform.hcl.futureReleaseSupport;
-    const lifecycleDetail = futureReleaseSupport.status === "revalidation-required" ? ` ${futureReleaseSupport.detail}` : "";
-    const lifecycleAction = futureReleaseSupport.status === "revalidation-required" ? ` ${futureReleaseSupport.nextAction}` : "";
+    const lifecycleDetail = futureReleaseSupport.status === "not-applicable" ? "" : ` ${futureReleaseSupport.detail}`;
+    const lifecycleAction = futureReleaseSupport.status === "not-applicable" ? "" : ` ${futureReleaseSupport.nextAction}`;
     const key = [decision.decision, vendor, model, cpuModel, platform.hcl.status, platform.hcl.matchedModel, platform.hcl.matchedCpuSeries, futureReleaseSupport.status, futureReleaseSupport.vendorHardwareSupportEnd].join("|").toLowerCase();
     const existing = cohorts.get(key);
     if (existing) {

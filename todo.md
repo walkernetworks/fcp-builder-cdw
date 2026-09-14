@@ -509,3 +509,10 @@
 - [x] Keep vendor end-of-support dates model-specific and evidence-based; do not invent lifecycle dates for platforms without authoritative source material.
 - [x] Add a clear workspace and Plan Output flag that distinguishes current-snapshot support from future-release supportability requiring revalidation.
 - [x] Add regression coverage, validate the customer-facing cohort evidence, and publish the expanded lifecycle-risk assessment.
+
+## Cisco M5 VMware Post-9.1 Compatibility Boundary Correction
+
+- [x] Verify authoritative VMware, Broadcom, or Cisco-published evidence that identifies Cisco M5 as unsupported for ESXi or VCF 9.2 and later.
+- [x] Separate release-specific VMware compatibility exclusions from the generic current-snapshot revalidation notice and OEM hardware lifecycle dates.
+- [x] Add an explicit supported-through ESXi 9.1 / unsupported-from ESXi or VCF 9.2 finding, cohort flag, and technical Plan Output evidence for affected Cisco M5 platforms only when verified.
+- [x] Add regression coverage, revalidate the Ascensus evidence, and publish the corrected supportability assessment.
