@@ -4,7 +4,6 @@ export { HCL_SNAPSHOT };
 
 export const HCL_EVALUATION_VERSION = "2.0.0" as const;
 export const HCL_TARGET_RELEASE = "ESXi 9.1" as const;
-const TARGET_RELEASE_MASK = 2;
 const DETAIL_URL = "https://compatibilityguide.broadcom.com/detail?programId=server&productId=";
 
 export const HCL_CATALOG_RELEASES = ["ESXi 9.0", "ESXi 9.1"] as const;
@@ -129,7 +128,7 @@ function futureReleaseSupport(partnerName: string, model: string, verifiedThroug
 }
 
 export type HclPlatformAssessment = {
-  targetRelease: typeof HCL_TARGET_RELEASE;
+  targetRelease: HclCatalogRelease;
   snapshotCapturedAt: string;
   snapshotSource: string;
   status: HclEvaluationStatus;
@@ -478,7 +477,7 @@ function hclEntryUrl(productId: number): string {
   return productId ? `${DETAIL_URL}${productId}` : "";
 }
 
-function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolution, cpu: CpuResolution, detail: string, nextAction: string): HclPlatformAssessment {
+function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolution, cpu: CpuResolution, detail: string, nextAction: string, targetRelease: HclCatalogRelease): HclPlatformAssessment {
   const evidenceState: HclEvidenceState = modelMatch.vendorResolved && !modelMatch.candidates.length ? "catalog-record-required" : "identity-confirmation-required";
   const requiredEvidence = [
     "confirmed OEM manufacturer and exact server model",
@@ -486,7 +485,7 @@ function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolutio
     ...COMPLETE_CONFIGURATION_EVIDENCE,
   ];
   return {
-    targetRelease: HCL_TARGET_RELEASE,
+    targetRelease,
     snapshotCapturedAt: HCL_SNAPSHOT.capturedAt,
     snapshotSource: HCL_SNAPSHOT.source,
     status,
@@ -512,7 +511,7 @@ function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolutio
   };
 }
 
-export function assessHclPlatform(vendor: string, model: string, cpuModel: string): HclPlatformAssessment {
+export function assessHclPlatform(vendor: string, model: string, cpuModel: string, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HclPlatformAssessment {
   const modelMatch = resolveModel(vendor, model);
   const cpu = resolveCpuSeries(cpuModel);
   if (!modelMatch.entries.length) {
@@ -523,23 +522,25 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
       cpu,
       `${modelMatch.note}${legacyDetail} The result is unresolved against the offline ${HCL_TARGET_RELEASE} server snapshot.`,
       "Confirm the exact OEM server model and CPU, then validate the complete configuration in the Broadcom Compatibility Guide before selecting the VCF path.",
+      targetRelease,
     );
   }
 
   const entries = modelMatch.entries;
   const matchingPartner = entries[0][0];
   const matchingModel = entries[0][1];
-  const supportedCpuSeries = Array.from(new Set(entries.filter(entry => (entry[3] & TARGET_RELEASE_MASK) !== 0).map(entry => entry[2]))).sort();
+  const targetReleaseMask = releaseMask(targetRelease);
+  const supportedCpuSeries = Array.from(new Set(entries.filter(entry => (entry[3] & targetReleaseMask) !== 0).map(entry => entry[2]))).sort();
   const allProductIds = Array.from(new Set(entries.map(entry => entry[5]))).sort((left, right) => left - right);
   const cpuEntries = cpu.series ? entries.filter(entry => entry[2] === cpu.series) : [];
-  const targetCpuEntries = cpuEntries.filter(entry => (entry[3] & TARGET_RELEASE_MASK) !== 0);
-  const confirmationReported = targetCpuEntries.some(entry => (entry[4] & TARGET_RELEASE_MASK) !== 0);
+  const targetCpuEntries = cpuEntries.filter(entry => (entry[3] & targetReleaseMask) !== 0);
+  const confirmationReported = targetCpuEntries.some(entry => (entry[4] & targetReleaseMask) !== 0);
   const supportedReleaseEvidence = releaseEvidence(entries, cpu.series);
   const verifiedThroughRelease = supportedReleaseEvidence.filter(item => item.status === "listed").at(-1)?.release || HCL_TARGET_RELEASE;
   const sourceEvidence = `${matchingPartner} ${matchingModel}; ${cpu.series || "CPU series unresolved"}; snapshot ${HCL_SNAPSHOT.capturedAt}`;
   const statusFromFuzzyOrVendor = !modelMatch.vendorResolved || modelMatch.method === "fuzzy";
   const baseline = {
-    targetRelease: HCL_TARGET_RELEASE,
+    targetRelease,
     snapshotCapturedAt: HCL_SNAPSHOT.capturedAt,
     snapshotSource: HCL_SNAPSHOT.source,
     modelMatchMethod: modelMatch.method,
@@ -575,7 +576,7 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
       status: "supported-cpu-unverified",
       evidenceState: "cpu-evidence-required",
       requiredEvidence: ["installed processor model and CPU series", ...COMPLETE_CONFIGURATION_EVIDENCE],
-      detail: `The server model is present in the offline ${HCL_TARGET_RELEASE} snapshot, but the reported CPU string could not be resolved to one of its certified series. ${cpu.note} Candidate CPU series: ${supportedCpuSeries.join("; ") || "not reported"}.`,
+      detail: `The server model is present in maintained catalog ${HCL_CATALOG_METADATA.id} for ${targetRelease}, but the reported CPU string could not be resolved to one of its listed series. ${cpu.note} Candidate CPU series: ${supportedCpuSeries.join("; ") || "not reported"}.`,
       nextAction: "Verify the installed CPU series against the HCL detail record and complete the NIC, HBA/controller, firmware, driver, storage, and vSAN/ReadyNode checks.",
     };
   }
@@ -586,7 +587,7 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
       status: cpu.confidence === "inferred" ? "supported-cpu-unverified" : "supported",
       evidenceState: cpu.confidence === "inferred" ? "cpu-evidence-required" : "verified-supported",
       requiredEvidence: cpu.confidence === "inferred" ? ["confirmed installed processor model and CPU series", ...COMPLETE_CONFIGURATION_EVIDENCE] : COMPLETE_CONFIGURATION_EVIDENCE,
-      detail: `The offline HCL snapshot lists the exact server-model and CPU-series pairing for ${HCL_TARGET_RELEASE}: ${sourceEvidence}.${verificationNote} This is source evidence only, not complete configuration certification.`,
+      detail: `Maintained catalog ${HCL_CATALOG_METADATA.id} lists the exact server-model and CPU-series pairing for ${targetRelease}: ${sourceEvidence}.${verificationNote} This is server-and-CPU evidence only, not complete configuration certification.`,
       nextAction: "Retain the HCL evidence in the delivery baseline and validate NIC, HBA/controller, firmware, driver, OEM image, storage, vSAN/ReadyNode, build, and topology requirements before deployment.",
     };
   }
@@ -595,7 +596,7 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
       ...baseline,
       status: "not-supported",
       evidenceState: "verified-not-listed",
-      detail: `The offline HCL snapshot contains ${sourceEvidence}, but not for ${HCL_TARGET_RELEASE}.`,
+      detail: `Maintained catalog ${HCL_CATALOG_METADATA.id} contains ${sourceEvidence}, but the pairing is not listed for ${targetRelease}.`,
       nextAction: "Select a release-supported platform path or validate an approved replacement, repurpose, or exception decision before deployment planning proceeds.",
     };
   }
@@ -603,7 +604,7 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
     ...baseline,
     status: "cpu-not-certified",
     evidenceState: "verified-not-listed",
-    detail: `The server model is present in the offline ${HCL_TARGET_RELEASE} snapshot, but not with the reported CPU series ${cpu.series}. Candidate CPU series: ${supportedCpuSeries.join("; ") || "not reported"}.`,
+    detail: `The server model is present in maintained catalog ${HCL_CATALOG_METADATA.id} for ${targetRelease}, but not with the reported CPU series ${cpu.series}. Candidate CPU series: ${supportedCpuSeries.join("; ") || "not reported"}.`,
     nextAction: "Validate the CPU generation and supported configuration; plan replacement, repurpose, or an approved exception before the VCF deployment path is committed.",
   };
 }
@@ -918,10 +919,10 @@ function hclTextList(items: string[], limit = 10): string {
   return `${shown.join(", ")}${unique.length > limit ? ` (+${unique.length - limit} more)` : ""}`;
 }
 
-function hclHardwareFindings(evidence: HclInventoryEvidence): HclFinding[] {
+function hclHardwareFindings(evidence: HclInventoryEvidence, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HclFinding[] {
   const findings: HclFinding[] = [];
   for (const host of evidence.hosts) {
-    const assessment = assessHclPlatform(host.vendor, host.model, host.cpuModel);
+    const assessment = assessHclPlatform(host.vendor, host.model, host.cpuModel, targetRelease);
     const status = assessment.status;
     const severity: HclFindingSeverity = status === "supported"
       ? "INFO"
@@ -941,7 +942,7 @@ function hclHardwareFindings(evidence: HclInventoryEvidence): HclFinding[] {
       hclHostLabel(host),
       assessment.detail,
       assessment.nextAction,
-      { cluster: host.cluster || undefined, releases: [HCL_TARGET_RELEASE], source: assessment.detailUrl || HCL_SNAPSHOT.source },
+      { cluster: host.cluster || undefined, releases: [targetRelease], source: assessment.detailUrl || HCL_SNAPSHOT.source },
     ));
   }
   return findings;
@@ -1414,9 +1415,9 @@ function hclCoverageGaps(evidence: HclInventoryEvidence): HclCoverageGap[] {
  * RVTools evidence. Driver and guest OS compatibility are explicitly reported
  * as unavailable because the supplied offline archive lacks their datasets.
  */
-export function assessHclEstate(evidence: HclInventoryEvidence, now: Date = new Date()): HclAssessment {
+export function assessHclEstate(evidence: HclInventoryEvidence, now: Date = new Date(), targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HclAssessment {
   const findings = [
-    ...hclHardwareFindings(evidence),
+    ...hclHardwareFindings(evidence, targetRelease),
     ...hclHostCapacityFindings(evidence, now),
     ...hclNicLayoutFindings(evidence),
     ...hclClusterFindings(evidence),

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { getIndustryDiscoveryTemplate, industryDiscoveryPromptBlock } from "./industryDiscovery";
-import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, hclAssessmentSchema, hclFindingSchedulePath, hclInventoryEvidenceSchema, hclSchedulePath, HCL_CATALOG_METADATA, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, type HclSchedulePath } from "./hcl";
+import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, hclAssessmentSchema, hclFindingSchedulePath, hclInventoryEvidenceSchema, hclSchedulePath, HCL_CATALOG_METADATA, HCL_CATALOG_RELEASES, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, HCL_TARGET_RELEASE, type HclCatalogRelease, type HclSchedulePath } from "./hcl";
 
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
 export type TimelineColor = (typeof TIMELINE_COLORS)[number];
@@ -196,6 +196,7 @@ export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   adoptionCadence: timelineCadenceSchema,
   adoptionDetails: adoptionDetailsSchema,
   exportPreferences: exportPreferencesSchema.default({ includeVcfReadiness: true, includeOperationalTimeline: true }),
+  compatibilityTargetRelease: z.enum(HCL_CATALOG_RELEASES).default(HCL_TARGET_RELEASE),
 });
 export type MinimalFields = z.infer<typeof minimalFieldsSchema>;
 
@@ -328,7 +329,7 @@ const defaultHclPlatformAssessment = {
 };
 
 export const hclPlatformAssessmentSchema = z.object({
-  targetRelease: z.literal("ESXi 9.1"),
+  targetRelease: z.enum(HCL_CATALOG_RELEASES),
   snapshotCapturedAt: z.string(),
   snapshotSource: z.string(),
   status: z.enum(["supported", "supported-cpu-unverified", "review", "cpu-not-certified", "not-supported", "unknown"]),
@@ -788,6 +789,7 @@ export function createDefaultFields(): MinimalFields {
     adoptionCadence: "month",
     adoptionDetails: createDefaultAdoptionDetails(),
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
+    compatibilityTargetRelease: HCL_TARGET_RELEASE,
   };
 }
 
@@ -1759,7 +1761,7 @@ function platformId(vendor: string, model: string, cpuModel: string): string {
   return `${vendor}-${model}-${cpuModel}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
-function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][number]): HardwarePlatformAssessment {
+function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][number], targetRelease: HclCatalogRelease): HardwarePlatformAssessment {
   const vendor = platform.vendor.trim();
   const model = platform.model.trim();
   const cpuModel = platform.cpuModel.trim();
@@ -1776,7 +1778,7 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
   const missingIdentity = !vendor || !model || /^unknown(?: vendor| model)?$/i.test(vendor) || /^unknown(?: vendor| model)?$/i.test(model);
   const currentDellPowerEdge = /\b(?:r760|r760xa|r760xs|r660|r860|r750|r650)\b/i.test(identifier);
   const legacyDellPowerEdge = /\b(?:r730|r530|r630|r430|r330|r720|r520|m630|m530|t630)\b/i.test(identifier);
-  const hcl = assessHclPlatform(vendor, model, cpuModel);
+  const hcl = assessHclPlatform(vendor, model, cpuModel, targetRelease);
 
   if (missingIdentity) {
     return {
@@ -1793,7 +1795,7 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       maximumMemoryGiB,
       hcl,
       status: "unavailable",
-      detail: `RVTools observed this host group but did not provide a usable vendor and model, so the plan begins with platform evidence collection before a VCF 9.1 path can be selected.${esxiDetail}`,
+      detail: `RVTools observed this host group but did not provide a usable vendor and model, so the plan begins with platform evidence collection before a ${targetRelease} path can be selected.${esxiDetail}`,
       nextAction: "Run the Platform Evidence Collection plan: collect the server make, model, CPU, BIOS, firmware, adapter, and storage-controller details before compatibility review.",
     };
   }
@@ -1813,7 +1815,7 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
       maximumMemoryGiB,
       hcl,
       status: "upgrade-required",
-      detail: `This legacy Dell PowerEdge generation has a replacement or exception decision plan for VCF 9.1; it is not assumed to be an in-place upgrade target.${esxiDetail}`,
+      detail: `This legacy Dell PowerEdge generation has a replacement or exception decision plan for ${targetRelease}; it is not assumed to be an in-place upgrade target.${esxiDetail}`,
       nextAction: "Run the Replacement or Exception Decision plan: validate the exact configuration in the Broadcom Compatibility Guide and determine the replacement, repurpose, or exception path before Upgrade Services begins.",
     };
   }
@@ -1852,13 +1854,13 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
     maximumMemoryGiB: platform.maximumMemoryGiB,
     hcl,
     status: "review-required",
-    detail: `RVTools provides a usable platform identity, so the plan starts with configuration compatibility confirmation; the server model alone cannot establish an official VCF 9.1 outcome.${esxiDetail}`,
+      detail: `RVTools provides a usable platform identity, so the plan starts with configuration compatibility confirmation; the server model alone cannot establish an official ${targetRelease} outcome.${esxiDetail}`,
     nextAction: "Run the Compatibility Confirmation plan: validate the exact server, CPU, adapters, storage controllers, firmware, drivers, and vSAN/ReadyNode requirements in the Broadcom Compatibility Guide.",
   };
 }
 
-export function assessHardwarePlatforms(inventory: InventorySummary): HardwarePlatformAssessment[] {
-  return inventory.hostModels.map(hardwarePlatformAssessment);
+export function assessHardwarePlatforms(inventory: InventorySummary, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HardwarePlatformAssessment[] {
+  return inventory.hostModels.map(platform => hardwarePlatformAssessment(platform, targetRelease));
 }
 
 function extractEsxiMajorVersion(version: string): number | null {
@@ -1891,7 +1893,7 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     id: "software-baseline",
     category: "software",
     status: legacyHosts ? "attention" : v9Hosts ? "info" : v8Hosts ? "info" : hasEsxiEvidence ? "info" : "unknown",
-    title: "VCF 9.1 ESX BOM Alignment Signal",
+    title: `${fields.compatibilityTargetRelease} Software Baseline Signal`,
     detail: legacyHosts
       ? `${legacyHosts} host(s) report ESXi 7.x or older.`
       : v9Hosts
@@ -1904,8 +1906,8 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     evidence: inventory.esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ") || "No vHost version data",
   });
 
-  const hardwarePlatforms = assessHardwarePlatforms(inventory);
-  const hcl = assessHclEstate(inventory.hclEvidence);
+  const hardwarePlatforms = assessHardwarePlatforms(inventory, fields.compatibilityTargetRelease);
+  const hcl = assessHclEstate(inventory.hclEvidence, new Date(), fields.compatibilityTargetRelease);
   const hclSchedulePath = hclSchedulePathForAssessment(inventory, hcl);
   const hclBlockers = hcl.findings.filter(finding => finding.severity === "BLOCKER");
   const hclWarnings = hcl.findings.filter(finding => finding.severity === "WARNING");
@@ -1919,11 +1921,11 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     id: "hardware-compatibility",
     category: "hardware",
     status: !hardwarePlatforms.length ? "attention" : upgradeRequiredPlatforms.length ? "attention" : unavailablePlatforms.length ? "unknown" : "info",
-    title: "VCF 9.1 Hardware Platform Precheck",
+    title: `${fields.compatibilityTargetRelease} Hardware Platform Evidence`,
     detail: !hardwarePlatforms.length
       ? "Host vendor and model data are missing."
       : upgradeRequiredPlatforms.length
-        ? `${upgradeRequiredPlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) are on legacy platform generations that need a replacement or formal exception decision for VCF 9.1 planning. ${candidatePlatforms.length ? `${candidatePlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) remain candidate platforms pending exact configuration validation.` : ""}`
+        ? `${upgradeRequiredPlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) are on legacy platform generations that need a replacement or formal exception decision for ${fields.compatibilityTargetRelease} planning. ${candidatePlatforms.length ? `${candidatePlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) remain candidate platforms pending exact configuration validation.` : ""}`
         : candidatePlatforms.length
           ? `${candidatePlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) are on candidate platform generation(s); exact configuration validation is still required.`
           : "Every observed platform has a configuration compatibility confirmation plan; RVTools cannot determine final certification from server identity alone.",
@@ -2079,6 +2081,7 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
     ...fields,
     adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise" },
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
+    compatibilityTargetRelease: HCL_TARGET_RELEASE,
   };
 }
 

@@ -523,7 +523,7 @@
 - [x] Research authoritative Broadcom/VMware and major OEM compatibility sources, their release semantics, available query mechanisms, update cadence, and limitations.
 - [x] Define a release-aware evidence model that distinguishes exact verified support, explicit exclusion, absence from a current matrix, partial identity, conflicting sources, stale evidence, and missing data without collapsing them into a generic disclaimer.
 - [x] Normalize arbitrary RVTools vendor/model/CPU identities into stable cohorts and support deterministic matching for Cisco, Dell, HPE, Lenovo, Supermicro, and other observed manufacturers with an actionable unresolved path for unknown platforms.
-- [ ] Add selectable current and target ESXi/VCF releases, source provenance, evidence timestamps, confidence, support-through boundaries, and delivery dispositions for every cohort.
+- [x] Add selectable current and target ESXi/VCF releases, source provenance, evidence timestamps, confidence, support-through boundaries, and delivery dispositions for every cohort.
 - [x] Redesign the workspace into concise estate posture, release-support, blockers, evidence gaps, and delivery-action summaries with drill-down to host-level evidence only when needed.
 - [x] Rebuild the main FCP and standalone compatibility deliverables as a complete presales-to-delivery handoff covering estate scope, supported cohorts, blocked cohorts, future-release constraints, evidence gaps, remediation, ownership, and next validation actions.
 - [x] Add broad multi-vendor and unknown-platform regression fixtures, validate representative customer workbooks and rendered HTML/PDF documents, and publish the redesign.

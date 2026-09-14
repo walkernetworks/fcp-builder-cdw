@@ -10,7 +10,7 @@ import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { CompatibilityHandoffPanel } from "@/components/CompatibilityHandoffPanel";
 import { parseRvToolsFiles } from "@/lib/rvtools";
 import { applyScheduleFieldPatch, assessReadiness, calculateEntitlementEndDate, emptyInventory, getHclSchedulePath, refreshDerivedDocument, summarizeVcfCompatibility, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
-import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings, type HclFinding } from "@shared/hcl";
+import { HCL_CATALOG_RELEASES, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings, type HclFinding } from "@shared/hcl";
 import { Download, ExternalLink, FileSpreadsheet, HardDrive, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -38,6 +38,7 @@ const derivedPlanInputFields = new Set<keyof EngagementDocument["fields"]>([
   "priorities",
   "timelineNotes",
   "adoptionDetails",
+  "compatibilityTargetRelease",
 ]);
 
 type Props = {
@@ -115,6 +116,7 @@ export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPla
             <Field label="Entitlement amount (USD)" required hint="Total customer entitlement funds available for this term."><Input type="number" min={0} step="1000" value={fields.entitlementAmount || ""} onChange={event => updateFields({ entitlementAmount: Math.max(0, Number(event.target.value) || 0) })} placeholder="0" /></Field>
             <Field label="Entitlement starts" required><Input type="date" value={fields.entitlementStart} onChange={event => updateFields({ entitlementStart: event.target.value })} /></Field>
             <Field label="Entitlement ends" required hint="Calculated as twelve calendar months after the entitlement start date."><Input type="date" value={calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd} readOnly aria-readonly="true" className="bg-slate-50 text-slate-600" /></Field>
+            <Field label="Compatibility target release" required hint="The maintained catalog is evaluated against this release. Current ESXi versions remain derived from RVTools evidence."><Select value={fields.compatibilityTargetRelease} onValueChange={value => updateFields({ compatibilityTargetRelease: value as typeof fields.compatibilityTargetRelease })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{HCL_CATALOG_RELEASES.map(release => <SelectItem key={release} value={release}>{release}</SelectItem>)}</SelectContent></Select></Field>
           </div></section>
         </TabsContent>
 
