@@ -41,8 +41,9 @@ export type HclCandidate = {
 };
 
 export type HclFutureReleaseSupport = {
-  status: "not-applicable" | "revalidation-required";
+  status: "not-applicable" | "revalidation-required" | "unsupported-from-release";
   verifiedThroughRelease: string;
+  unsupportedFromRelease: string;
   vendorHardwareSupportEnd: string;
   detail: string;
   nextAction: string;
@@ -52,6 +53,7 @@ export type HclFutureReleaseSupport = {
 const NO_FUTURE_RELEASE_BOUNDARY: HclFutureReleaseSupport = {
   status: "not-applicable",
   verifiedThroughRelease: HCL_TARGET_RELEASE,
+  unsupportedFromRelease: "",
   vendorHardwareSupportEnd: "",
   detail: "No model-specific future-release boundary is encoded in the current offline HCL planning snapshot.",
   nextAction: "Revalidate the server and CPU pairing whenever the target ESXi or VCF release changes.",
@@ -60,13 +62,15 @@ const NO_FUTURE_RELEASE_BOUNDARY: HclFutureReleaseSupport = {
 
 const CISCO_M5_BLADE_LIFECYCLE_SOURCE = "https://www.cisco.com/c/en/us/products/collateral/servers-unified-computing/ucs-b-series-blade-servers/ucs-m5-blade-server-b200-eol.html";
 const CISCO_M5_RACK_LIFECYCLE_SOURCE = "https://www.cisco.com/c/en/us/products/collateral/servers-unified-computing/ucs-c-series-rack-servers/ucs-m5-rack-server-c220-c240-c480-eol.html";
+const CISCO_M5_VMWARE_COMPATIBILITY_SOURCE = "https://ucshcltool.cloudapps.cisco.com/public/";
 
 function futureReleaseSupport(partnerName: string, model: string): HclFutureReleaseSupport {
   const identity = `${partnerName} ${model}`.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
-  const m5Match = identity.match(/\b(B200|C220|C240|C480)\s+M5[A-Z0-9]*\b/);
+  const m5Match = identity.match(/\b(B200|C220|C240)\s+M5[A-Z0-9]*\b/);
   const genericBoundary: HclFutureReleaseSupport = {
     status: "revalidation-required",
     verifiedThroughRelease: HCL_TARGET_RELEASE,
+    unsupportedFromRelease: "",
     vendorHardwareSupportEnd: "",
     detail: `The supplied offline HCL snapshot contains server-and-CPU evidence through ${HCL_TARGET_RELEASE}. Support for a later ESXi or VCF release is not verified by this snapshot.`,
     nextAction: `Before selecting any release later than ${HCL_TARGET_RELEASE}, revalidate the complete server configuration in the current Broadcom Compatibility Guide.`,
@@ -77,10 +81,12 @@ function futureReleaseSupport(partnerName: string, model: string): HclFutureRele
   const source = m5Match[1] === "B200" ? CISCO_M5_BLADE_LIFECYCLE_SOURCE : CISCO_M5_RACK_LIFECYCLE_SOURCE;
   return {
     ...genericBoundary,
+    status: "unsupported-from-release",
+    unsupportedFromRelease: "ESXi 9.2 / VCF 9.2",
     vendorHardwareSupportEnd: "2028-10-31",
-    detail: `${genericBoundary.detail} Cisco publishes a hardware support end date of October 31, 2028 for this M5 family.`,
-    nextAction: `${genericBoundary.nextAction} Confirm Cisco support coverage through the planned service life.`,
-    source: `${HCL_SNAPSHOT.source}; ${source}`,
+    detail: `Cisco's current UCS Hardware and Software Compatibility matrix lists this M5 family through ${HCL_TARGET_RELEASE} and does not list an ESXi 9.2 pairing. Broadcom states that hardware not listed for a desired ESXi release is not officially compatible and can have VMware support limitations; treat ${m5Match[1]} M5 hosts as supported through ${HCL_TARGET_RELEASE} and not officially supported from ESXi or VCF 9.2. Cisco publishes a separate hardware support end date of October 31, 2028 for this M5 family.`,
+    nextAction: `Do not select ESXi or VCF 9.2 for this ${m5Match[1]} M5 cohort. Keep the cohort on ${HCL_TARGET_RELEASE} or plan a supported hardware refresh before a 9.2 adoption; recheck the current Cisco and Broadcom compatibility matrices if either vendor publishes a revised listing.`,
+    source: `${CISCO_M5_VMWARE_COMPATIBILITY_SOURCE}; ${HCL_SNAPSHOT.source}; ${source}`,
   };
 }
 
