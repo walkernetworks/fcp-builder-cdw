@@ -492,6 +492,19 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(exact.futureReleaseSupport.detail).toContain("outside the catalog's verified scope");
   });
 
+  it("evaluates host cohorts against the selected maintained-catalog target release", () => {
+    const esxi90 = assessHclPlatform("Dell", "PowerEdge M640 VRTX", "Intel(R) Xeon(R) Gold 6230R CPU @ 2.10GHz", "ESXi 9.0");
+    const esxi91 = assessHclPlatform("Dell", "PowerEdge M640 VRTX", "Intel(R) Xeon(R) Gold 6230R CPU @ 2.10GHz", "ESXi 9.1");
+
+    expect(esxi90).toMatchObject({ targetRelease: "ESXi 9.0", status: "supported", evidenceState: "verified-supported" });
+    expect(esxi91).toMatchObject({ targetRelease: "ESXi 9.1", status: "not-supported", evidenceState: "verified-not-listed" });
+    expect(esxi90.releaseEvidence.map(item => [item.release, item.status])).toEqual([["ESXi 9.0", "listed"], ["ESXi 9.1", "not-listed"]]);
+
+    const legacy = createDefaultDocument();
+    delete (legacy.fields as Partial<typeof legacy.fields>).compatibilityTargetRelease;
+    expect(migrateDocument(legacy).fields.compatibilityTargetRelease).toBe("ESXi 9.1");
+  });
+
   it("normalizes representative multi-vendor RVTools identities into release-specific maintained-catalog evidence", () => {
     const supportedFixtures = [
       ["Dell Inc.", "PowerEdge R740", "Intel(R) Xeon(R) Gold 6130 CPU @ 2.10GHz", "Dell"],
@@ -702,7 +715,7 @@ describe("planning considerations, exports, and access boundary", () => {
     ]);
     expect(readiness.items.find(item => item.id === "hardware-compatibility")).toMatchObject({
       status: "attention",
-      title: "VCF 9.1 Hardware Platform Precheck",
+      title: "ESXi 9.1 Hardware Platform Evidence",
     });
     expect(readiness.hardwarePlatforms[0]).toMatchObject({
       model: "PowerEdge R760",
@@ -873,7 +886,7 @@ describe("planning considerations, exports, and access boundary", () => {
     const readiness = assessReadiness(document.fields, document.inventory);
     expect(readiness.items.find(item => item.id === "software-baseline")).toMatchObject({
       status: "info",
-      title: "VCF 9.1 ESX BOM Alignment Signal",
+      title: "ESXi 9.1 Software Baseline Signal",
       detail: expect.stringContaining("not confirmation of the required exact build"),
     });
     expect(readiness.items.find(item => item.id === "management-domain-cohort-uniformity")).toMatchObject({
