@@ -94,14 +94,15 @@ describe("signed binary export downloads", () => {
 
     expect(verifyExportTicket(ticket)).toMatchObject({ documentType: "plan-output" });
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian-FCP-Plan-Plan-Output.html"');
-    expect(content).toContain("VCF 9.1 HCL and Compatibility Plan Output");
-    expect(content).toContain("Observed host groups for VCF 9.1 planning");
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian-FCP-Plan-Compatibility-Handoff.html"');
+    expect(content).toContain("VCF Compatibility Delivery Handoff");
+    expect(content).toContain("Every observed server and CPU cohort");
+    expect(content).toContain("Compatibility action register");
   });
 
   it("normalizes unsafe and empty export names", () => {
     expect(safeExportFilename("  ACME / FCP: West  ", "pdf")).toBe("ACME-FCP-West.pdf");
-    expect(safeExportFilename("  ACME / FCP: West  ", "pdf", "plan-output")).toBe("ACME-FCP-West-Plan-Output.pdf");
+    expect(safeExportFilename("  ACME / FCP: West  ", "pdf", "plan-output")).toBe("ACME-FCP-West-Compatibility-Handoff.pdf");
     expect(safeExportFilename("///", "html")).toBe("FCP.html");
   });
 });

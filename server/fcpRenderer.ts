@@ -1,6 +1,7 @@
 import type { EngagementDocument, HardwarePlatformAssessment, Timeline, TimelineBar, TimelineLane } from "../shared/fcp";
-import { calculateEntitlementEndDate, colorForWorkstreamType, FIXED_GANTT_CATEGORIES, getHclSchedulePath, summarizeVcfCompatibility, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
+import { calculateEntitlementEndDate, colorForWorkstreamType, FIXED_GANTT_CATEGORIES, getHclSchedulePath, summarizeCompatibilityHandoff, summarizeVcfCompatibility, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
 import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings } from "../shared/hcl";
+import { renderCompatibilityHandoffHtml } from "./compatibilityHandoffRenderer";
 
 const palette: Record<string, { bg: string; fg: string; border: string }> = {
   slate: { bg: "#334155", fg: "#ffffff", border: "#1e293b" },
@@ -202,18 +203,17 @@ function renderHclEstateEvidence(document: EngagementDocument) {
 
 function renderReadinessExecutiveSnapshot(document: EngagementDocument) {
   const inventory = document.inventory;
-  const assessment = document.readiness.hcl;
-  const path = getHclSchedulePath(inventory);
-  const blockers = assessment.findings.filter(finding => finding.severity === "BLOCKER");
-  const warnings = assessment.findings.filter(finding => finding.severity === "WARNING");
-  const materialFindings = [...blockers, ...warnings].slice(0, 3);
-  const actionContent = materialFindings.length
-    ? `<ul style="margin:10px 0 0;padding-left:18px;color:#405066;font-size:12px;line-height:1.55">${materialFindings.map(finding => `<li><strong>${esc(finding.title)}</strong> — ${esc(finding.remediation)}</li>`).join("")}</ul>`
-    : `<p>No material blocking or warning findings are currently recorded from the imported evidence. Confirm sequencing and prerequisites during delivery mobilisation.</p>`;
+  const handoff = summarizeCompatibilityHandoff(document.readiness.hardwarePlatforms, inventory.hosts);
+  const actionContent = handoff.actions.length
+    ? `<ol style="margin:10px 0 0;padding-left:18px;color:#405066;font-size:11px;line-height:1.5">${handoff.actions.slice(0, 5).map(action => `<li><strong>${number(action.affectedHosts)} host${action.affectedHosts === 1 ? "" : "s"} · ${esc(action.owner)}</strong><br>${esc(action.title)}</li>`).join("")}</ol>`
+    : `<p>No cohort action was derived because no host evidence is available.</p>`;
   const esxiSummary = inventory.esxiVersions.length
     ? inventory.esxiVersions.map(row => `${row.version} · ${row.hosts} host${row.hosts === 1 ? "" : "s"}`).join("; ")
     : "Not reported";
-  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Delivery readiness summary</span><h3>VCF 9.1 readiness</h3></div><p>Decision-relevant estate evidence used to sequence platform delivery, validation, and follow-up actions.</p></div><div class="hardware-snapshot"><div><span>Estate delivery path</span><strong>${esc(path.toUpperCase())}</strong><small>Readiness informs delivery sequencing</small></div><div><span>Observed footprint</span><strong>${number(inventory.vmCount)} VMs</strong><small>${number(inventory.hosts)} ESXi hosts</small></div><div><span>Reported ESXi</span><strong>${inventory.esxiVersions.length || "—"} release${inventory.esxiVersions.length === 1 ? "" : "s"}</strong><small>${esc(esxiSummary)}</small></div><div><span>Material actions</span><strong>${blockers.length + warnings.length}</strong><small>${blockers.length} blocker${blockers.length === 1 ? "" : "s"} · ${warnings.length} warning${warnings.length === 1 ? "" : "s"}</small></div></div><div class="grid2" style="margin-top:16px"><div class="card"><h4 style="margin:0;color:#10233f">Delivery decision</h4><p>${esc(path === "green" ? "Proceed with implementation planning while validating delivery prerequisites." : path === "yellow" ? "Sequence remediation and verification before the relevant platform gate." : path === "red" ? "Resolve the required procurement, migration, or design decision before the platform gate." : "Collect the missing evidence needed to establish the delivery path.")}</p></div><div class="card"><h4 style="margin:0;color:#10233f">Priority readiness actions</h4>${actionContent}</div></div><p style="margin:14px 0 0;font-size:10px;line-height:1.5;color:#64748b">The default export intentionally summarizes RVTools-derived estate evidence. Detailed host-by-host findings remain available in the planning workspace for delivery validation.</p></section>`;
+  const reconciliation = handoff.allHostsAccountedFor
+    ? `${number(handoff.assessedHosts)} of ${number(handoff.estateHosts)} imported hosts are reconciled to a compatibility cohort.`
+    : `${number(handoff.unaccountedHosts)} imported hosts are not represented in the compatibility cohorts and must be resolved before handoff.`;
+  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Presales-to-delivery handoff</span><h3>${esc(handoff.targetRelease)} compatibility posture</h3></div><p>Catalog-versioned server and CPU evidence, current-estate context, release disposition, and owned delivery actions.</p></div><div class="hardware-snapshot"><div><span>Target release listed</span><strong>${number(handoff.supportedHosts)}</strong><small>hosts</small></div><div><span>Blocked / not listed</span><strong>${number(handoff.blockedHosts)}</strong><small>hosts</small></div><div><span>Evidence required</span><strong>${number(handoff.unresolvedHosts)}</strong><small>hosts</small></div><div><span>Estate reconciliation</span><strong>${handoff.allHostsAccountedFor ? "Complete" : "Gap"}</strong><small>${esc(reconciliation)}</small></div></div><div class="grid2" style="margin-top:16px"><div class="card"><h4 style="margin:0;color:#10233f">Maintained evidence baseline</h4><p><strong>${esc(handoff.catalog.id)}</strong><br>${number(handoff.catalog.reportedCount)} server records across ${number(handoff.catalog.vendorCount)} manufacturers; release scope ${esc(handoff.catalog.releaseScope.join(" and "))}; captured ${esc(handoff.catalog.capturedAt)}.</p><p><strong>Observed ESXi:</strong> ${esc(esxiSummary)}</p></div><div class="card"><h4 style="margin:0;color:#10233f">Priority delivery actions</h4>${actionContent}</div></div><p style="margin:14px 0 0;font-size:10px;line-height:1.5;color:#64748b">Server-and-CPU support is one gate. Delivery must also validate NICs, HBAs/controllers, firmware, drivers, OEM image or add-on, boot, storage, vSAN/ReadyNode where applicable, and cluster topology. The standalone compatibility deliverable contains the complete cohort evidence and action register.</p></section>`;
 }
 
 function renderObservedInventory(document: EngagementDocument) {
@@ -434,6 +434,10 @@ export function renderPlanOutputHtml(title: string, document: EngagementDocument
  * delivery teams need to establish a VCF 9.1 platform-gate decision.
  */
 export function renderHclCompatibilityPlanOutputHtml(title: string, document: EngagementDocument) {
+  return renderCompatibilityHandoffHtml(title, document);
+}
+
+function renderLegacyHclCompatibilityPlanOutputHtml(title: string, document: EngagementDocument) {
   const f = document.fields;
   const path = document.readiness.hclSchedulePath || getHclSchedulePath(document.inventory);
   const cohorts = summarizeVcfCompatibility(document.readiness.hardwarePlatforms);

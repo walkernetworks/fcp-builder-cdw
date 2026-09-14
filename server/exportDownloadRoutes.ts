@@ -10,7 +10,7 @@ export function safeExportFilename(title: string, extension: "html" | "pdf", doc
     .replace(/[^a-z0-9-_]+/gi, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80) || "FCP";
-  return `${stem}${documentType === "plan-output" ? "-Plan-Output" : ""}.${extension}`;
+  return `${stem}${documentType === "plan-output" ? "-Compatibility-Handoff" : ""}.${extension}`;
 }
 
 function deny(res: Response, status: number, message: string) {
