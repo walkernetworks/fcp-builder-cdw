@@ -300,6 +300,14 @@ const defaultHclPlatformAssessment = {
   candidateModels: [],
   detail: "HCL evidence has not yet been generated for this saved assessment.",
   nextAction: "Refresh the inventory assessment to evaluate this cohort against the supplied offline HCL snapshot.",
+  futureReleaseSupport: {
+    status: "not-applicable" as const,
+    verifiedThroughRelease: "ESXi 9.1",
+    vendorHardwareSupportEnd: "",
+    detail: "No model-specific future-release boundary is encoded in the current offline HCL planning snapshot.",
+    nextAction: "Revalidate the server and CPU pairing whenever the target ESXi or VCF release changes.",
+    source: "",
+  },
 };
 
 export const hclPlatformAssessmentSchema = z.object({
@@ -320,6 +328,14 @@ export const hclPlatformAssessmentSchema = z.object({
   candidateModels: z.array(hclCandidateSchema),
   detail: z.string(),
   nextAction: z.string(),
+  futureReleaseSupport: z.object({
+    status: z.enum(["not-applicable", "revalidation-required"]),
+    verifiedThroughRelease: z.string(),
+    vendorHardwareSupportEnd: z.string(),
+    detail: z.string(),
+    nextAction: z.string(),
+    source: z.string(),
+  }).default(defaultHclPlatformAssessment.futureReleaseSupport),
 });
 export type HclPlatformAssessment = z.infer<typeof hclPlatformAssessmentSchema>;
 
@@ -363,6 +379,7 @@ export type VcfCompatibilityCohort = {
   matchedCpuSeries: string;
   reason: string;
   nextAction: string;
+  futureReleaseSupport: HclPlatformAssessment["futureReleaseSupport"];
 };
 
 function compatibilityDecision(status: HclPlatformAssessment["status"]): Pick<VcfCompatibilityCohort, "decision" | "decisionLabel" | "reason"> {
@@ -420,7 +437,10 @@ export function summarizeVcfCompatibility(platforms: HardwarePlatformAssessment[
     const vendor = platform.vendor.trim() || "Unknown vendor";
     const model = platform.model.trim() || "Unknown model";
     const cpuModel = platform.cpuModel.trim() || "CPU model not reported";
-    const key = [decision.decision, vendor, model, cpuModel, platform.hcl.status, platform.hcl.matchedModel, platform.hcl.matchedCpuSeries].join("|").toLowerCase();
+    const futureReleaseSupport = platform.hcl.futureReleaseSupport;
+    const lifecycleDetail = futureReleaseSupport.status === "revalidation-required" ? ` ${futureReleaseSupport.detail}` : "";
+    const lifecycleAction = futureReleaseSupport.status === "revalidation-required" ? ` ${futureReleaseSupport.nextAction}` : "";
+    const key = [decision.decision, vendor, model, cpuModel, platform.hcl.status, platform.hcl.matchedModel, platform.hcl.matchedCpuSeries, futureReleaseSupport.status, futureReleaseSupport.vendorHardwareSupportEnd].join("|").toLowerCase();
     const existing = cohorts.get(key);
     if (existing) {
       existing.hosts += platform.hosts;
@@ -437,8 +457,9 @@ export function summarizeVcfCompatibility(platforms: HardwarePlatformAssessment[
       hclStatus: platform.hcl.status,
       matchedModel: platform.hcl.matchedModel,
       matchedCpuSeries: platform.hcl.matchedCpuSeries,
-      reason: decision.reason,
-      nextAction: platform.hcl.nextAction,
+      reason: `${decision.reason}${lifecycleDetail}`,
+      nextAction: `${platform.hcl.nextAction}${lifecycleAction}`,
+      futureReleaseSupport,
     });
   }
   const order: Record<VcfCompatibilityDecision, number> = { "action-required": 0, "validation-required": 1, eligible: 2 };

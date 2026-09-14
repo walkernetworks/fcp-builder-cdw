@@ -40,6 +40,50 @@ export type HclCandidate = {
   productId: number;
 };
 
+export type HclFutureReleaseSupport = {
+  status: "not-applicable" | "revalidation-required";
+  verifiedThroughRelease: string;
+  vendorHardwareSupportEnd: string;
+  detail: string;
+  nextAction: string;
+  source: string;
+};
+
+const NO_FUTURE_RELEASE_BOUNDARY: HclFutureReleaseSupport = {
+  status: "not-applicable",
+  verifiedThroughRelease: HCL_TARGET_RELEASE,
+  vendorHardwareSupportEnd: "",
+  detail: "No model-specific future-release boundary is encoded in the current offline HCL planning snapshot.",
+  nextAction: "Revalidate the server and CPU pairing whenever the target ESXi or VCF release changes.",
+  source: "",
+};
+
+const CISCO_M5_BLADE_LIFECYCLE_SOURCE = "https://www.cisco.com/c/en/us/products/collateral/servers-unified-computing/ucs-b-series-blade-servers/ucs-m5-blade-server-b200-eol.html";
+const CISCO_M5_RACK_LIFECYCLE_SOURCE = "https://www.cisco.com/c/en/us/products/collateral/servers-unified-computing/ucs-c-series-rack-servers/ucs-m5-rack-server-c220-c240-c480-eol.html";
+
+function futureReleaseSupport(partnerName: string, model: string): HclFutureReleaseSupport {
+  const identity = `${partnerName} ${model}`.toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+  const m5Match = identity.match(/\b(B200|C220|C240|C480)\s+M5[A-Z0-9]*\b/);
+  const genericBoundary: HclFutureReleaseSupport = {
+    status: "revalidation-required",
+    verifiedThroughRelease: HCL_TARGET_RELEASE,
+    vendorHardwareSupportEnd: "",
+    detail: `The supplied offline HCL snapshot contains server-and-CPU evidence through ${HCL_TARGET_RELEASE}. Support for a later ESXi or VCF release is not verified by this snapshot.`,
+    nextAction: `Before selecting any release later than ${HCL_TARGET_RELEASE}, revalidate the complete server configuration in the current Broadcom Compatibility Guide.`,
+    source: HCL_SNAPSHOT.source,
+  };
+  if (!identity.startsWith("CISCO ") || !m5Match) return genericBoundary;
+
+  const source = m5Match[1] === "B200" ? CISCO_M5_BLADE_LIFECYCLE_SOURCE : CISCO_M5_RACK_LIFECYCLE_SOURCE;
+  return {
+    ...genericBoundary,
+    vendorHardwareSupportEnd: "2028-10-31",
+    detail: `${genericBoundary.detail} Cisco publishes a hardware support end date of October 31, 2028 for this M5 family.`,
+    nextAction: `${genericBoundary.nextAction} Confirm Cisco support coverage through the planned service life.`,
+    source: `${HCL_SNAPSHOT.source}; ${source}`,
+  };
+}
+
 export type HclPlatformAssessment = {
   targetRelease: typeof HCL_TARGET_RELEASE;
   snapshotCapturedAt: string;
@@ -58,6 +102,7 @@ export type HclPlatformAssessment = {
   candidateModels: HclCandidate[];
   detail: string;
   nextAction: string;
+  futureReleaseSupport: HclFutureReleaseSupport;
 };
 
 type CpuResolution = {
@@ -369,6 +414,7 @@ function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolutio
     candidateModels: modelMatch.candidates,
     detail,
     nextAction,
+    futureReleaseSupport: NO_FUTURE_RELEASE_BOUNDARY,
   };
 }
 
@@ -411,6 +457,7 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
     vcfVendorConfirmation: targetCpuEntries.length ? (confirmationReported ? "reported" as const : "not-reported" as const) : "unknown" as const,
     supportedCpuSeries,
     candidateModels: modelMatch.candidates,
+    futureReleaseSupport: targetCpuEntries.length ? futureReleaseSupport(matchingPartner, matchingModel) : NO_FUTURE_RELEASE_BOUNDARY,
   };
 
   if (statusFromFuzzyOrVendor) {
@@ -789,6 +836,18 @@ function hclHardwareFindings(evidence: HclInventoryEvidence): HclFinding[] {
       assessment.nextAction,
       { cluster: host.cluster || undefined, releases: [HCL_TARGET_RELEASE], source: assessment.detailUrl || HCL_SNAPSHOT.source },
     ));
+    if (assessment.futureReleaseSupport.status === "revalidation-required") {
+      findings.push(hclFinding(
+        "HW.FUTURE_RELEASE_REVALIDATION",
+        "ADVISORY",
+        "Future-release support requires revalidation",
+        "host",
+        hclHostLabel(host),
+        assessment.futureReleaseSupport.detail,
+        assessment.futureReleaseSupport.nextAction,
+        { cluster: host.cluster || undefined, releases: [HCL_TARGET_RELEASE], source: assessment.futureReleaseSupport.source },
+      ));
+    }
   }
   return findings;
 }

@@ -495,3 +495,17 @@
 - [x] Expand Plan Output with detailed HCL 2.0 findings, compatibility cohort evidence, coverage gaps, affected subjects, decision rationale, and remediation actions.
 - [x] Preserve concise cohort summaries while providing enough detailed evidence for delivery and platform stakeholders to assess VCF 9.1 readiness.
 - [x] Add regression coverage, validate standalone HTML/PDF content, and publish the refocused Plan Output document.
+
+## M5 Release-Boundary Supportability and Future-Release Risk
+
+- [x] Research authoritative support and lifecycle boundaries for the observed Cisco M5 platforms across VCF 9.1 and later product releases.
+- [x] Define explicit evidence-based release-boundary metadata for supported-through and unsupported-after conditions without inferring unsupported status where the source is incomplete.
+- [x] Add lifecycle-aware HCL findings, workspace summaries, and Plan Output detail that warn customers when a currently supported platform has a verified future-release support boundary.
+- [x] Add regression coverage, validate the affected customer evidence, and publish the supportability enhancement.
+
+## Platform-Wide Latest-Snapshot and Future-Release Risk
+
+- [x] Apply the latest-verified-release boundary to every supported host cohort, rather than only Cisco M5 systems.
+- [x] Keep vendor end-of-support dates model-specific and evidence-based; do not invent lifecycle dates for platforms without authoritative source material.
+- [x] Add a clear workspace and Plan Output flag that distinguishes current-snapshot support from future-release supportability requiring revalidation.
+- [x] Add regression coverage, validate the customer-facing cohort evidence, and publish the expanded lifecycle-risk assessment.

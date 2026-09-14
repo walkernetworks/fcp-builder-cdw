@@ -476,6 +476,14 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(digitGuard.detail).toContain("different model-number identity");
     expect(nativeCiscoBlade).toMatchObject({ status: "supported", matchedPartnerName: "Cisco", matchedModel: "Cisco UCS B200 M6" });
     expect(nativeCiscoRack).toMatchObject({ status: "supported", matchedPartnerName: "Cisco", matchedModel: "Cisco UCS-C220-M5SX" });
+    expect(nativeCiscoRack.futureReleaseSupport).toMatchObject({
+      status: "revalidation-required",
+      verifiedThroughRelease: "ESXi 9.1",
+      vendorHardwareSupportEnd: "2028-10-31",
+    });
+    expect(nativeCiscoRack.futureReleaseSupport.detail).toContain("later ESXi or VCF release is not verified");
+    expect(exact.futureReleaseSupport).toMatchObject({ status: "revalidation-required", verifiedThroughRelease: "ESXi 9.1", vendorHardwareSupportEnd: "" });
+    expect(exact.futureReleaseSupport.detail).toContain("later ESXi or VCF release is not verified");
   });
 
   it("adds HCL snapshot evidence to readiness and the consolidated delivery baseline without treating it as certification", () => {
@@ -510,13 +518,17 @@ describe("planning considerations, exports, and access boundary", () => {
       hostModels: [
         { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6430", hosts: 4, physicalCores: 256, esxiVersions: [{ version: "8.0.3", hosts: 4 }], esxiCorrelation: "per-platform" },
         { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6230", hosts: 2, physicalCores: 128, esxiVersions: [{ version: "8.0.3", hosts: 2 }], esxiCorrelation: "per-platform" },
+        { vendor: "Cisco Systems Inc", model: "UCSC-C220-M5SX", cpuModel: "Intel(R) Xeon(R) Silver 4210 CPU @ 2.20GHz", hosts: 3, physicalCores: 48, esxiVersions: [{ version: "8.0.3", hosts: 3 }], esxiCorrelation: "per-platform" },
       ],
     });
     const cohorts = summarizeVcfCompatibility(assessReadiness(document.fields, document.inventory).hardwarePlatforms);
 
-    expect(cohorts.map(cohort => [cohort.decision, cohort.hosts])).toEqual([["action-required", 2], ["eligible", 4]]);
+    expect(cohorts.map(cohort => [cohort.decision, cohort.hosts])).toEqual([["action-required", 2], ["eligible", 4], ["eligible", 3]]);
     expect(cohorts.find(cohort => cohort.decision === "eligible")?.decisionLabel).toBe("Eligible for next-stage validation");
     expect(cohorts.find(cohort => cohort.decision === "action-required")?.reason).toContain("reported CPU series is not listed");
+    const m5 = cohorts.find(cohort => cohort.model.includes("M5SX"));
+    expect(m5?.reason).toContain("later ESXi or VCF release is not verified");
+    expect(m5?.nextAction).toContain("Before selecting any release later than ESXi 9.1");
   });
 
   it("consolidates repeated HCL host findings without discarding delivery evidence", () => {
