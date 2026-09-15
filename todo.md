@@ -535,3 +535,12 @@
 - [x] Give every imported host cohort an explicit evidence state and delivery disposition, including exact support, target-release not listed, CPU evidence required, identity confirmation required, catalog record required, source refresh required, and explicit exclusion.
 - [x] Reconcile assessed cohort host counts to the imported estate total and expose any unaccounted hosts as a blocking evidence-quality gap.
 - [x] Document a controlled catalog refresh and validation workflow so newer release data can replace the production snapshot without changing customer results silently.
+
+## Design-First, Delayed-Implementation Entitlement Notional
+
+- [x] Audit the current Entitlement Notional and Plan-Adoption generation path, including the Month 1 mobilization wording and date sources.
+- [x] Add a clear design-first versus implementation-start planning model so planned project start can precede upgrade and migration services by several months.
+- [x] Make the Plan-Adoption intake straightforward for selecting an implementation target window or deferral, while preserving authoritative manual plans and maintained-catalog compatibility behavior.
+- [x] Update Entitlement Notional, Operational Adoption Timeline, workspace copy, and HTML/PDF exports to explain the gap and avoid implying upgrades begin immediately.
+- [x] Add Ascensus-style regression coverage for design starting now with upgrade/migration beginning in March, run the full release gate, and checkpoint the release.
+

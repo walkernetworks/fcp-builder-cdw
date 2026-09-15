@@ -171,6 +171,8 @@ const minimalFieldsV5Schema = z.object({
   entitlementEnd: z.string(),
   /** Independently persisted delivery date; legacy targetStart remains a compatibility fallback. */
   plannedProjectStart: z.string().default(""),
+  /** Optional date when implementation, upgrade, and migration services are expected to begin. */
+  plannedImplementationStart: z.string().default(""),
   targetStart: z.string(),
   targetComplete: z.string(),
   hardwareAvailability: z.enum(["existing", "new", "unknown"]),
@@ -780,6 +782,7 @@ export function createDefaultFields(): MinimalFields {
     entitlementStart: "",
     entitlementEnd: "",
     plannedProjectStart: "",
+    plannedImplementationStart: "",
     targetStart: "",
     targetComplete: "",
     hardwareAvailability: "unknown",
@@ -911,11 +914,18 @@ export function applyScheduleFieldPatch(fields: MinimalFields, patch: Partial<Mi
   const nextEntitlementStart = patch.entitlementStart ?? fields.entitlementStart;
   const calculatedEntitlementEnd = calculateEntitlementEndDate(nextEntitlementStart);
   const nextEntitlementEnd = calculatedEntitlementEnd || patch.entitlementEnd || fields.entitlementEnd;
+  const nextProjectStart = (patch.plannedProjectStart ?? fields.plannedProjectStart) || fields.targetStart || fields.entitlementStart;
+  const requestedImplementationStart = (patch.plannedImplementationStart ?? fields.plannedImplementationStart) || nextProjectStart;
+  const nextImplementationStart = parseIsoDate(requestedImplementationStart) && parseIsoDate(nextProjectStart) && requestedImplementationStart < nextProjectStart
+    ? nextProjectStart
+    : requestedImplementationStart;
   return {
     ...fields,
     ...patch,
     // Entitlement changes affect only the calculated entitlement end. Planned delivery dates remain independent.
     entitlementEnd: nextEntitlementEnd,
+    ...(nextProjectStart ? { plannedProjectStart: nextProjectStart } : {}),
+    ...(nextImplementationStart ? { plannedImplementationStart: nextImplementationStart } : {}),
   };
 }
 
@@ -1193,18 +1203,18 @@ function buildPlatformInventoryActivity(inventory: InventorySummary, cadence: Ti
 
   if (!platforms.length) {
     return {
-      label: `${openingWindow}: Mobilize and Freeze VCF Delivery Baseline`,
+      label: `${openingWindow}: Mobilize and Establish Delivery Baseline`,
       color: "amber",
       dependsOn: appendDeliveryContext("Upload RVTools vHost data with server make, model, CPU, adapters, storage-controller, and ESXi fields; confirm the bill of materials and delivery prerequisites before platform deployment begins."),
-      outcome: "Time-box the delivery baseline, then release the management-domain, networking, workload-domain, migration, and handover workstreams for execution.",
+      outcome: "Use the opening window to confirm design decisions, evidence, dependencies, and delivery ownership; implementation services begin only in the selected implementation window.",
     };
   }
 
   return {
-    label: `${openingWindow}: Mobilize and Freeze VCF Delivery Baseline`,
+    label: `${openingWindow}: Mobilize and Establish Delivery Baseline`,
     color: "teal",
       dependsOn: appendDeliveryContext(`RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${observedModels || platforms.length} host model${(observedModels || platforms.length) === 1 ? "" : "s"}. ${hclPathContext} ${hclDeliveryContext} Confirm server configuration, CPU, NIC, storage controller, firmware, driver, vSAN/ReadyNode details, bill of materials, and implementation prerequisites before platform deployment begins.`),
-      outcome: `Time-box the delivery baseline, capture the offline HCL evidence and remaining configuration decisions, then release the management-domain, networking, workload-domain, migration, and handover workstreams for execution.`,
+      outcome: `Use the opening window to capture the offline HCL evidence, design decisions, and remaining delivery dependencies; implementation services begin only in the selected implementation window.`,
   };
 }
 
@@ -1307,6 +1317,12 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const deliveryContext = confirmedDeliveryContext(fields);
   const appendDeliveryContext = (value: string) => deliveryContext ? `${value} ${deliveryContext}` : value;
   const range = (start: number, duration: number) => boundedRange(Math.min(count, Math.max(1, start)), duration, count);
+  const plannedImplementationStart = parseIsoDate(fields.plannedImplementationStart || startDate) || parseIsoDate(startDate)!;
+  const projectStart = parseIsoDate(startDate)!;
+  const implementationOffset = cadence === "month"
+    ? Math.max(0, monthDifference(new Date(Date.UTC(projectStart.getUTCFullYear(), projectStart.getUTCMonth(), 1)), new Date(Date.UTC(plannedImplementationStart.getUTCFullYear(), plannedImplementationStart.getUTCMonth(), 1))))
+    : Math.max(0, Math.ceil((plannedImplementationStart.getTime() - projectStart.getTime()) / 604800000));
+  const implementationStartColumn = Math.min(count, 1 + implementationOffset);
   const platformInventory = buildPlatformInventoryActivity(inventory, cadence, fields);
 
   const [mobilizationStart, mobilizationEnd] = range(1, mobilizationDuration);
@@ -1344,7 +1360,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const [hclGateStart, hclGateEnd] = range(hclBufferEnd, 1);
   programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", `HCL Gate: ${hclPathLabel(path)}`, true, false, hclDependency, "Authorize foundation work only after the required HCL path evidence is recorded."));
 
-  const [managementStart, managementEnd] = range(hclGateEnd, managementDuration);
+  const deliveryStart = Math.max(hclGateEnd, implementationStartColumn);
+  const [managementStart, managementEnd] = range(deliveryStart, managementDuration);
   const [networkingStart, networkingEnd] = networkingInScope ? range(managementEnd, networkingDuration) : [managementEnd, managementEnd];
   const foundationEnd = networkingInScope ? networkingEnd : managementEnd;
   const [workloadStart, workloadEnd] = range(foundationEnd, workloadDuration);
@@ -1395,7 +1412,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const cloudEnd = cloudBars.length ? cloudCursor : workloadEnd;
 
   const securityBars: TimelineBar[] = [];
-  let securityCursor = hclGateEnd;
+  let securityCursor = deliveryStart;
   const addSecurityTask = (id: string, label: string) => {
     const [taskStart, taskEnd] = range(securityCursor, securityDuration);
     securityBars.push(bar(id, taskStart, taskEnd, colorForWorkstreamType("Security & Resiliency"), label, false, false, "Begin after the HCL gate; this work does not wait for cloud module enablement.", "Implement the selected resilience and security capability with controlled evidence and ownership."));
@@ -1735,6 +1752,8 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const platformInventorySummary = buildPlatformInventoryActivity(inventory, fields.adoptionCadence, fields).outcome;
   const planningContext = planningInputContext(fields);
   const openingWindow = fields.adoptionCadence === "week" ? "the first two weeks" : "the first calendar month";
+  const implementationStart = fields.plannedImplementationStart || plannedProjectStart;
+  const implementationIsDeferred = Boolean(parseIsoDate(implementationStart) && parseIsoDate(plannedProjectStart) && implementationStart > plannedProjectStart);
   const customerContext = planningContext.customerNotes
     ? `Confirmed customer objectives or constraints are applied to sequencing and dependencies: “${planningContext.customerNotes}”.`
     : "No additional customer-specific objectives or constraints were recorded beyond the selected outcomes.";
@@ -1748,7 +1767,10 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
     ? "management-domain deployment, the confirmed VCF networking and NSX implementation, workload-domain creation or import, controlled upgrade or migration waves, and operational handover"
     : "management-domain deployment, workload-domain creation or import, controlled upgrade or migration waves, and operational handover";
   const customer = fields.customerName || "The customer";
-  const rationale = `${customer} is planning a VCF adoption around ${estate}, ${cadence}, and ${details}. Delivery posture: implementation begins with mobilisation and delivery-baseline work in ${openingWindow}; it then advances through ${platformDeliverySequence}. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The Entitlement Notional begins at the planned project start (${entitlementNotionalStart}) and ends at entitlement end (${entitlementEnd || "TBD"}); it is bounded by ${amount} and retains only delivery, governance, lifecycle, handover, and selected expansion work scheduled within that entitlement period. ${followOnSummary}. Multiple independently typed workstreams can coexist within the same fixed category, and every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const deliveryTiming = implementationIsDeferred
+    ? `Design and delivery-baseline work starts at the planned project start (${plannedProjectStart}), while implementation, upgrade, and migration services are planned to begin on ${implementationStart}. The gap is intentional and represents design, decision, dependency, procurement, and change-window preparation rather than idle delivery.`
+    : `Design, delivery baseline, and implementation services are currently planned to begin at the planned project start (${plannedProjectStart}); change the implementation-services start when the customer is still in design or planning.`;
+  const rationale = `${customer} is planning a VCF adoption around ${estate}, ${cadence}, and ${details}. Delivery posture: ${deliveryTiming} The opening window is used to mobilize and establish the delivery baseline; it then advances through ${platformDeliverySequence}. ${upgradePathNarrative(fields.adoptionDetails.upgradePath)} ${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The Entitlement Notional begins at the planned project start (${entitlementNotionalStart}) and ends at entitlement end (${entitlementEnd || "TBD"}); it is bounded by ${amount} and retains only delivery, governance, lifecycle, handover, and selected expansion work scheduled within that entitlement period. ${followOnSummary}. Multiple independently typed workstreams can coexist within the same fixed category, and every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -2157,10 +2179,12 @@ function needsImplementationTimelineRebaseline(timeline: Timeline): boolean {
 function normalizePlanningDates(fields: MinimalFields): MinimalFields {
   const entitlementEnd = calculateEntitlementEndDate(fields.entitlementStart);
   const plannedProjectStart = fields.plannedProjectStart || fields.targetStart || fields.entitlementStart;
+  const plannedImplementationStart = fields.plannedImplementationStart || plannedProjectStart;
   return {
     ...fields,
     ...(entitlementEnd ? { entitlementEnd } : {}),
     ...(plannedProjectStart ? { plannedProjectStart } : {}),
+    ...(plannedImplementationStart ? { plannedImplementationStart } : {}),
   };
 }
 
@@ -2378,6 +2402,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     entitlementStart: stringValue(oldFields.entitlementStart || oldFields.termStart),
     entitlementEnd: stringValue(oldFields.entitlementEnd || oldFields.entitlementEndDate || oldFields.termEnd),
     plannedProjectStart: stringValue(oldFields.plannedProjectStart || oldFields.projectPlannedStart || oldFields.targetStart || oldFields.kickoffDate),
+    plannedImplementationStart: stringValue(oldFields.plannedImplementationStart || oldFields.implementationStart || oldFields.upgradeStart || oldFields.targetStart || oldFields.kickoffDate),
     targetStart: stringValue(oldFields.targetStart || oldFields.kickoffDate),
     targetComplete: stringValue(oldFields.targetComplete || oldFields.termEnd),
     hardwareAvailability: oldFields.hardwareAvailability === "existing" || oldFields.hardwareAvailability === "new" || oldFields.hardwareAvailability === "unknown" ? oldFields.hardwareAvailability : oldFields.hardwareIsNetNew === true ? "new" : oldFields.hardwareIsNetNew === false ? "existing" : "unknown",

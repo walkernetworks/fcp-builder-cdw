@@ -111,10 +111,10 @@ describe("calendar-month adoption plans", () => {
     expect(plans.twoYearPlan.lanes.flatMap(lane => lane.bars).every(candidate => candidate.endCol <= plans.twoYearPlan.columns.length + 1)).toBe(true);
     expect(plans.twoYearPlan.lanes.map(lane => lane.name).join(" ")).not.toMatch(/Year [12] ·/);
     expect(plans.rationale).toContain("$2,500,000");
-    expect(plans.rationale).toContain("implementation begins with mobilisation and delivery-baseline work in the first calendar month");
+    expect(plans.rationale).toContain("Design, delivery baseline, and implementation services are currently planned to begin at the planned project start (2027-01-01)");
     expect(plans.rationale).toContain("The Entitlement Notional begins at the planned project start (2027-01-01) and ends at entitlement end (2028-01-01)");
     expect(labels).toEqual(expect.arrayContaining([
-      "Month 1: Mobilize and Freeze VCF Delivery Baseline",
+      "Month 1: Mobilize and Establish Delivery Baseline",
       "Deploy VCF Management Domain and Core Control Plane",
       "Create or Import Workload Domain and Prepare Clusters",
       expect.stringContaining("HCL Gate:"),
@@ -127,6 +127,39 @@ describe("calendar-month adoption plans", () => {
     expect(handover.startCol).toBeGreaterThanOrEqual(upgrade.endCol);
     expect(validateTimeline(plans.adoptionTimeline)).toEqual([]);
     expect(validateTimeline(plans.twoYearPlan)).toEqual([]);
+  });
+
+  it("separates design and delivery-baseline work from delayed implementation and migration services", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, {
+      plannedProjectStart: "2026-09-14",
+      plannedImplementationStart: "2027-03-01",
+      targetComplete: "2027-12-31",
+      entitlementStart: "2026-09-01",
+      entitlementEnd: "2027-09-01",
+      priorities: ["operations", "automation"],
+      adoptionDetails: { ...document.fields.adoptionDetails, upgradePath: "in-place" },
+    });
+    const plans = buildAdoptionPlans(document.fields, document.inventory);
+    const activities = plans.adoptionTimeline.lanes.flatMap(lane => lane.bars);
+    const baseline = activities.find(activity => activity.id === "bar-platform-plan")!;
+    const managementDomain = activities.find(activity => activity.id === "bar-management-domain")!;
+    const upgrade = activities.find(activity => activity.id === "bar-vcf-upgrade-services")!;
+    expect(baseline.label).toBe("Month 1: Mobilize and Establish Delivery Baseline");
+    expect(baseline.startCol).toBe(1);
+    expect(managementDomain.startCol).toBe(7);
+    expect(upgrade.startCol).toBeGreaterThan(managementDomain.startCol);
+    expect(plans.rationale).toContain("Design and delivery-baseline work starts at the planned project start (2026-09-14)");
+    expect(plans.rationale).toContain("implementation, upgrade, and migration services are planned to begin on 2027-03-01");
+    expect(plans.twoYearPlan.startDate).toBe("2026-09-14");
+    expect(validateTimeline(plans.adoptionTimeline)).toEqual([]);
+    expect(validateTimeline(plans.twoYearPlan)).toEqual([]);
+
+    const migrated = migrateDocument({
+      ...document,
+      fields: { ...document.fields, plannedImplementationStart: undefined },
+    });
+    expect(migrated.fields.plannedImplementationStart).toBe("2026-09-14");
   });
 
   it("creates exact weekly operational windows and detailed customer-confirmed capability activities", () => {
@@ -193,7 +226,7 @@ describe("calendar-month adoption plans", () => {
     expect(upgrade).toMatchObject({ label: "Execute VCF 9.1 Migration Waves" });
     expect(upgrade?.dependsOn).toContain("Pilot the first two application cohorts");
     expect(upgrade?.dependsOn).toContain("No production cutovers during the final two weeks of March");
-    expect(mobilization?.label).toBe("Weeks 1–2: Mobilize and Freeze VCF Delivery Baseline");
+    expect(mobilization?.label).toBe("Weeks 1–2: Mobilize and Establish Delivery Baseline");
     expect(refreshed.rationale).toContain("Financial services and insurance industry discovery lens");
     expect(refreshed.rationale).toContain("it informs the planning narrative only and does not add scope");
     expect(labels).not.toContain("Custom Operations Dashboards Plan");
@@ -226,6 +259,11 @@ describe("calendar-month adoption plans", () => {
     expect(entitlementPatched.plannedProjectStart).toBe("2027-01-17");
     expect(entitlementPatched.targetStart).toBe("2027-01-01");
     expect(entitlementPatched.targetComplete).toBe("2027-06-30");
+    expect(entitlementPatched.plannedImplementationStart).toBe("2027-01-17");
+    const delayed = applyScheduleFieldPatch(document.fields, { plannedImplementationStart: "2027-03-01" });
+    expect(delayed.plannedImplementationStart).toBe("2027-03-01");
+    const movedProject = applyScheduleFieldPatch(delayed, { plannedProjectStart: "2027-04-01" });
+    expect(movedProject.plannedImplementationStart).toBe("2027-04-01");
     expect(refreshed.startDate).toBe("2027-01-17");
     expect(refreshed.columns).toEqual(original.columns);
     expect(validateTimeline(refreshed)).toEqual([]);
@@ -364,7 +402,7 @@ describe("calendar-month adoption plans", () => {
     expect(migrated.twoYearPlan.columns).toHaveLength(13);
     expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Deploy VCF Management Domain and Core Control Plane");
     expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).not.toMatch(/Consumption Plan|Workshop/i);
-    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Month 1: Mobilize and Freeze VCF Delivery Baseline");
+    expect(JSON.stringify([migrated.adoptionTimeline, migrated.twoYearPlan])).toContain("Month 1: Mobilize and Establish Delivery Baseline");
     expect(migrated.readiness.hardwarePlatforms).toEqual([]);
   });
 
@@ -764,10 +802,10 @@ describe("planning considerations, exports, and access boundary", () => {
     const mirroredAssessment = plans.twoYearPlan.lanes.flatMap(lane => lane.bars).find(activity => activity.id === "bar-platform-plan");
 
     expect(assessment).toMatchObject({
-      label: "Month 1: Mobilize and Freeze VCF Delivery Baseline",
+      label: "Month 1: Mobilize and Establish Delivery Baseline",
       dependsOn: expect.stringContaining("bill of materials"),
     });
-    expect(mirroredAssessment?.label).toBe("Month 1: Mobilize and Freeze VCF Delivery Baseline");
+    expect(mirroredAssessment?.label).toBe("Month 1: Mobilize and Establish Delivery Baseline");
     expect(plans.adoptionTimeline.lanes.some(lane => lane.id.startsWith("lane-host-platform-"))).toBe(false);
     expect(plans.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"))).toBe(false);
     expect(plans.rationale).toContain("HCL 2.0 evaluation path");
@@ -784,7 +822,7 @@ describe("planning considerations, exports, and access boundary", () => {
     });
     const reopened = migrateDocument(JSON.parse(JSON.stringify(document)));
     expect(reopened.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(activity => activity.id === "bar-platform-plan")).toMatchObject({
-      label: "Month 1: Mobilize and Freeze VCF Delivery Baseline",
+      label: "Month 1: Mobilize and Establish Delivery Baseline",
       dependsOn: expect.stringContaining("bill of materials"),
     });
     expect(reopened.adoptionTimeline.lanes.some(lane => lane.id.startsWith("lane-host-platform-"))).toBe(false);
