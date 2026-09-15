@@ -1249,9 +1249,11 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("#two-year .notional-year-sheet{height:8.5in;min-height:8.5in");
     expect(html).not.toContain('class="two-year-sequence-sheet"');
     expect(html).toContain('class="operational-print-sheet entitlement-one-sheet cadence-month"');
-    expect(html).toContain("Entitlement Adoption Timeline · Full entitlement year");
+    expect(html).toContain("Entitlement Adoption Timeline · 12-month entitlement year");
     const operationalWindowCount = (html.match(/class="operational-print-sheet/g) || []).length;
     expect(operationalWindowCount).toBe(1);
+    const entitlementSheet = html.match(/class="operational-print-sheet entitlement-one-sheet cadence-month">([\s\S]*?)<\/section>/)?.[1] || "";
+    expect((entitlementSheet.match(/class="timeline-head"/g) || []).length).toBe(12);
     expect(html).toContain("#adoption .operational-print-sheet .timeline-grid{width:100%;min-width:0!important}");
     expect(html).toContain("#adoption .operational-print-sheet.entitlement-one-sheet .timeline-row{min-height:22px!important}");
     expect(html).toContain("#adoption .operational-print-sheet.entitlement-one-sheet .timeline-bar{margin:1px!important;padding:1px 2px!important;min-height:11px!important");

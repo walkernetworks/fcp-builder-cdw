@@ -170,9 +170,10 @@ function renderTwoYearNotional(document: EngagementDocument) {
 function renderOperationalTimeline(timeline: Timeline) {
   if (!timeline.lanes.length) return renderTimeline(timeline, "No operational-adoption activities are currently scheduled.");
   const printTimeline = projectOperationalTimelineToMonths(timeline);
-  const windowStart = printTimeline.columns[0] || "Plan start";
-  const windowEnd = printTimeline.columns[printTimeline.columns.length - 1] || "Plan end";
-  const entitlementSheet = `<section class="operational-print-sheet entitlement-one-sheet cadence-month"><div class="operational-window-heading"><span>Entitlement Adoption Timeline · Full entitlement year</span><h3>${esc(windowStart)} through ${esc(windowEnd)}</h3><p>The complete entitlement-year drawdown schedule is shown on one landscape sheet. Package labels are intentionally concise; the SOW register carries detailed outcomes, dependencies, and acceptance direction.</p></div>${renderTimeline(printTimeline, "No operational-adoption activities are scheduled in the entitlement year.", 42)}</section>`;
+  const entitlementTimeline = sliceTimeline(printTimeline, 1, Math.min(12, printTimeline.columns.length));
+  const windowStart = entitlementTimeline.columns[0] || "Plan start";
+  const windowEnd = entitlementTimeline.columns[entitlementTimeline.columns.length - 1] || "Plan end";
+  const entitlementSheet = `<section class="operational-print-sheet entitlement-one-sheet cadence-month"><div class="operational-window-heading"><span>Entitlement Adoption Timeline · 12-month entitlement year</span><h3>${esc(windowStart)} through ${esc(windowEnd)}</h3><p>The entitlement drawdown schedule is limited to exactly twelve calendar months on one landscape sheet. Package labels are concise here; the SOW register carries detailed outcomes, dependencies, and acceptance direction.</p></div>${renderTimeline(entitlementTimeline, "No operational-adoption activities are scheduled in the entitlement year.", 42)}</section>`;
   return `<div class="operational-screen-timeline">${renderTimeline(timeline, "No operational-adoption activities are currently scheduled.")}</div><div class="operational-print-layout">${entitlementSheet}</div>`;
 }
 
