@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryReviewContent, industryDiscoveryPromptBlock, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "@shared/industryDiscovery";
-import { getVcfPlaybookPlan, type AdoptionDepth, type AdoptionDetails, type Capability, type DomainTopology, type IndustryTemplateId, type MinimalFields, type PrincipalStorage, type UpgradePath } from "@shared/fcp";
+import { FIXED_GANTT_CATEGORIES, getVcfComponentDesignOwnership, getVcfPlaybookPlan, getVcfPlaybookWorkPackageOwnership, type AdoptionDepth, type AdoptionDetails, type Capability, type DomainTopology, type IndustryTemplateId, type MinimalFields, type PrincipalStorage, type UpgradePath } from "@shared/fcp";
 
 type DetailKey = "operations" | "automation" | "networking" | "security" | "resilience" | "kubernetes" | "privateAi";
 
@@ -134,6 +134,16 @@ const depthOptions: Array<{ value: AdoptionDepth; label: string; description: st
   { value: "tier-3", label: "Tier 3 · Business consumption", description: "Changes how infrastructure is consumed and requires durable product or policy ownership." },
 ];
 
+const componentDesignTitles: Record<Capability, string> = {
+  operations: "Design VCF Operations Adoption",
+  automation: "Design VCF Automation and Self-Service",
+  networking: "Design VCF Networking and NSX",
+  security: "Design vDefend and Security Policy",
+  resilience: "Design Recovery and Resilience Services",
+  kubernetes: "Design VKS Platform and Developer Consumption",
+  "private-ai": "Design Private AI Platform and Governance",
+};
+
 const softPrerequisiteOptions = [
   { value: "dns-ntp", label: "DNS, NTP, and core services", description: "Validate required shared services while a Red-path procurement buffer is open." },
   { value: "ip-pools", label: "Management and workload IP pools", description: "Reserve and validate addressing independently of hardware delivery." },
@@ -152,6 +162,17 @@ export function DetailedAdoptionIntake({ fields, onPatch }: Props) {
   const templatePromptBlock = industryDiscoveryPromptBlock(details.industryTemplate);
   const hasTemplatePrompts = details.notes.includes(templatePromptBlock);
   const selectedFocusCount = discoveryGroups.reduce((total, group) => total + (details[group.key] as string[]).length, 0);
+  const categoryPlacement = FIXED_GANTT_CATEGORIES.map(category => ({
+    category,
+    items: [
+      ...[...playbookPlan.designPackages, ...playbookPlan.implementationPackages]
+        .map(item => ({ label: item.title, ownership: getVcfPlaybookWorkPackageOwnership(details.upgradePath, item) })),
+      ...fields.priorities.map(capability => ({
+        label: componentDesignTitles[capability],
+        ownership: getVcfComponentDesignOwnership(capability),
+      })),
+    ].filter(item => item.ownership.category === category),
+  })).filter(group => group.items.length > 0);
 
   const updateDetails = (patch: Partial<AdoptionDetails>) => onPatch({ adoptionDetails: { ...details, ...patch } });
 
@@ -174,6 +195,8 @@ export function DetailedAdoptionIntake({ fields, onPatch }: Props) {
       <div className="mt-5 grid gap-4 xl:grid-cols-[1.1fr_.9fr]"><div className="border border-slate-200 bg-white p-4"><Label className="text-sm font-semibold">VCF adoption pathway</Label><Select value={details.upgradePath} onValueChange={value => updateDetails({ upgradePath: value as UpgradePath })}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent>{upgradeOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select><p className="mt-2 text-xs leading-5 text-slate-500">{upgradeOptions.find(option => option.value === details.upgradePath)?.description || playbookPlan.description}</p><div className="mt-4 grid gap-3 md:grid-cols-2"><div><Label className="text-xs font-semibold">Domain topology</Label><Select value={details.domainTopology} onValueChange={value => updateDetails({ domainTopology: value as DomainTopology })}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent>{topologyOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div><div><Label className="text-xs font-semibold">Principal storage</Label><Select value={details.principalStorage} onValueChange={value => updateDetails({ principalStorage: value as PrincipalStorage })}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent>{storageOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div></div></div><div className="border border-slate-200 bg-white p-4"><Label className="text-sm font-semibold">Customer outcome and assumption summary</Label><Textarea className="mt-2 min-h-32 bg-white" value={details.notes} onChange={event => updateDetails({ notes: event.target.value })} placeholder="Capture confirmed desired outcomes, scope boundaries, integration constraints, pilot assumptions, decision owners, or customer responsibilities." /></div></div>
 
       <section className="mt-4 overflow-hidden border border-[#10233f] bg-white"><div className="bg-[#10233f] px-4 py-4 text-white"><p className="text-[10px] font-black uppercase tracking-[.16em] text-red-300">Generated from the selected pathway</p><div className="mt-1 flex flex-wrap items-start justify-between gap-3"><div><h4 className="text-lg font-semibold">{playbookPlan.label}</h4><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-300">{playbookPlan.description}</p></div><span className="border border-white/20 px-3 py-1 text-xs font-semibold">{playbookPlan.designPackages.length} design · {playbookPlan.implementationPackages.length} implementation</span></div></div><div className="grid gap-px bg-slate-200 lg:grid-cols-2"><div className="bg-white p-4"><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#c8102e]">Design deliverables</p><div className="mt-3 space-y-3">{playbookPlan.designPackages.map((item, index) => <article key={item.id} className="border-l-2 border-[#10233f] pl-3"><p className="text-xs font-semibold text-slate-950">{index + 1}. {item.title}</p><p className="mt-1 text-xs leading-5 text-slate-600">{item.outcome}</p><p className="mt-1 text-[11px] leading-4 text-slate-500"><strong>Accepted when:</strong> {item.acceptance}</p></article>)}</div></div><div className="bg-white p-4"><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#c8102e]">Implementation and adoption</p>{playbookPlan.implementationPackages.length ? <div className="mt-3 space-y-3">{playbookPlan.implementationPackages.map((item, index) => <article key={item.id} className="border-l-2 border-[#c8102e] pl-3"><p className="text-xs font-semibold text-slate-950">{index + 1}. {item.title}</p><p className="mt-1 text-xs leading-5 text-slate-600">{item.outcome}</p><p className="mt-1 text-[11px] leading-4 text-slate-500"><strong>Gate:</strong> {item.dependsOn}</p></article>)}</div> : <p className="mt-3 text-xs leading-5 text-slate-600">No implementation work is generated until the pathway is selected or execution is explicitly included.</p>}</div></div><div className="border-t border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600"><strong>Decision inputs:</strong> {playbookPlan.decisions.join(" · ")}</div></section>
+
+      <section className="mt-4 border border-slate-200 bg-white p-4"><div className="flex flex-wrap items-end justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-[.14em] text-[#c8102e]">Timeline category placement</p><h4 className="mt-1 text-sm font-semibold text-slate-950">Where the generated packages will appear</h4></div><p className="max-w-xl text-xs leading-5 text-slate-500">Infrastructure architecture and upgrade delivery are owned by Modernize Infrastructure. Operations is reserved for the operating model, lifecycle, observability, and service handoff.</p></div><div className="mt-4 grid gap-3 lg:grid-cols-2">{categoryPlacement.map(group => <article key={group.category} className="border border-slate-200 bg-slate-50 p-3"><h5 className="text-xs font-bold text-slate-950">{group.category}</h5><div className="mt-2 space-y-1.5">{group.items.map((item, index) => <div key={`${group.category}-${item.label}-${index}`} className="flex items-start justify-between gap-3 border-t border-slate-200 pt-1.5 first:border-t-0 first:pt-0"><span className="text-[11px] leading-4 text-slate-700">{item.label}</span><span className="shrink-0 text-[9px] font-bold uppercase tracking-[.08em] text-[#315b8a]">{item.ownership.workstreamType}</span></div>)}</div></article>)}</div></section>
 
       <Accordion type="multiple" className="mt-5 border border-slate-200 bg-white px-4">
         <AccordionItem value="depth"><AccordionTrigger className="text-sm font-semibold">Component adoption depth <span className="ml-2 text-xs font-normal text-slate-500">controls entitlement drawdown</span></AccordionTrigger><AccordionContent><p className="pb-3 text-xs leading-5 text-slate-500">Select how far each confirmed component should be taken. Deployment alone is Tier 1; operational adoption is Tier 2; business-consumption outcomes are Tier 3 and require durable customer ownership.</p><div className="grid gap-3 pb-4 md:grid-cols-2 xl:grid-cols-3">{([
