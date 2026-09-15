@@ -609,7 +609,7 @@
 
 ## Exact 12-Month Entitlement Timeline Correction
 
-- [ ] Trace why the entitlement PDF window renders extra months beyond the actual entitlement year.
-- [ ] Constrain the Entitlement Adoption Timeline PDF to exactly twelve calendar months from the entitlement/project anchor, with correct start and end labels.
-- [ ] Add exact-window regressions and validate a real customer PDF so no 13th–15th month appears on the entitlement sheet.
-- [ ] Publish the corrected one-year timeline.
+- [x] Trace why the entitlement PDF window renders extra months beyond the actual entitlement year.
+- [x] Constrain the Entitlement Adoption Timeline PDF to exactly twelve calendar months from the entitlement/project anchor, with correct start and end labels.
+- [x] Add exact-window regressions and validate a real customer PDF so no 13th–15th month appears on the entitlement sheet.
+- [x] Publish the corrected one-year timeline.
