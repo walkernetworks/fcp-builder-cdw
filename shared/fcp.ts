@@ -117,6 +117,32 @@ export type TimelineBar = z.infer<typeof timelineBarSchema>;
 export type TimelineLane = z.infer<typeof timelineLaneSchema>;
 export type Timeline = z.infer<typeof timelineSchema>;
 
+export type DeliveryStaffingAssignment = {
+  role: string;
+  workstreamType: WorkstreamType;
+  categories: TimelineLane["category"][];
+  workPackages: string[];
+  startCol: number;
+  endCol: number;
+  startLabel: string;
+  endLabel: string;
+};
+
+export type DeliveryStaffingPlan = {
+  assignments: DeliveryStaffingAssignment[];
+  workPackageCount: number;
+  peakConcurrentPackages: number;
+};
+
+export const DELIVERY_ROLE_BY_WORKSTREAM: Record<WorkstreamType, string> = {
+  Governance: "Engagement Manager / Project Manager",
+  "Operating Model / Platform": "VCF Architect + Operations Lead",
+  "Infrastructure Build": "VCF Implementation Engineer",
+  "Migration Waves": "Migration Lead + Application Owners",
+  "Consume / Handover": "Automation / Platform Engineer",
+  "Security & Resiliency": "Security / Resilience Engineer",
+};
+
 export const capabilitySchema = z.enum(["operations", "automation", "networking", "security", "resilience", "kubernetes", "private-ai"]);
 export type Capability = z.infer<typeof capabilitySchema>;
 
@@ -1031,6 +1057,37 @@ export function applyWorkstreamPresentation(timeline: Timeline): Timeline {
         deferred: false,
       })),
     })),
+  };
+}
+
+/**
+ * Converts the authoritative delivery timeline into resource-role and calendar-window guidance.
+ * It deliberately does not estimate commercial effort, rates, utilization, or named staffing.
+ */
+export function summarizeDeliveryStaffing(timeline: Timeline): DeliveryStaffingPlan {
+  const populatedLanes = timeline.lanes.filter(lane => lane.bars.length);
+  const assignments = WORKSTREAM_TYPES.flatMap(workstreamType => {
+    const lanes = populatedLanes.filter(lane => lane.workstreamType === workstreamType);
+    const bars = lanes.flatMap(lane => lane.bars);
+    if (!bars.length) return [];
+    const startCol = Math.min(...bars.map(activity => activity.startCol));
+    const endCol = Math.max(...bars.map(activity => activity.endCol));
+    return [{
+      role: DELIVERY_ROLE_BY_WORKSTREAM[workstreamType],
+      workstreamType,
+      categories: Array.from(new Set(lanes.map(lane => lane.category))),
+      workPackages: bars.map(activity => activity.label),
+      startCol,
+      endCol,
+      startLabel: timeline.columns[startCol - 1] || `Window ${startCol}`,
+      endLabel: timeline.columns[Math.max(startCol - 1, endCol - 2)] || `Window ${endCol - 1}`,
+    }];
+  });
+  const peakConcurrentPackages = Math.max(0, ...timeline.columns.map((_, index) => populatedLanes.flatMap(lane => lane.bars).filter(activity => activity.startCol <= index + 1 && activity.endCol > index + 1).length));
+  return {
+    assignments,
+    workPackageCount: populatedLanes.flatMap(lane => lane.bars).length,
+    peakConcurrentPackages,
   };
 }
 
@@ -2153,7 +2210,13 @@ function normalizeRawTimelineTaxonomy(value: unknown): unknown {
         const inferred = typeof rawLane.id === "string" ? inferredLaneMetadata(rawLane.id) : null;
         const category = inferred?.category || canonicalTimelineCategory(rawLane.category) || DEFAULT_TIMELINE_LANE_METADATA.category;
         const workstreamType = canonicalWorkstreamType(rawLane.workstreamType) || inferred?.workstreamType || DEFAULT_TIMELINE_LANE_METADATA.workstreamType;
-        return { ...rawLane, category, workstreamType, name: workstreamType, bars: Array.isArray(rawLane.bars) ? rawLane.bars.map(bar => ({ ...(bar as Record<string, unknown>), color: colorForWorkstreamType(workstreamType), deferred: false })) : rawLane.bars };
+        return { ...rawLane, category, workstreamType, name: workstreamType, bars: Array.isArray(rawLane.bars) ? rawLane.bars.map(bar => {
+          const rawBar = bar as Record<string, unknown>;
+          const label = typeof rawBar.label === "string"
+            ? rawBar.label.replace("Mobilize and Freeze VCF Delivery Baseline", "Mobilize and Establish Delivery Baseline")
+            : rawBar.label;
+          return { ...rawBar, label, color: colorForWorkstreamType(workstreamType), deferred: false };
+        }) : rawLane.bars };
       }),
     };
   };

@@ -544,3 +544,15 @@
 - [x] Update Entitlement Notional, Operational Adoption Timeline, workspace copy, and HTML/PDF exports to explain the gap and avoid implying upgrades begin immediately.
 - [x] Add Customer A-style regression coverage for design starting now with upgrade/migration beginning in March, run the full release gate, and checkpoint the release.
 
+## End-to-End Entitlement Consumption Plan Redesign
+
+- [x] Audit the current engagement navigation, setup tabs, timeline workspace, compatibility handoff, and export flow against the intended presales-to-delivery lifecycle.
+- [x] Define one coherent engagement workflow from customer context and entitlement through service scope, delivery plan, staffing timeline, technical handoff, and final deliverables.
+- [x] Replace the clunky top-level Plan Setup, Adoption Timelines, and Export split with a persistent stage-based engagement workspace and clear completion status.
+- [x] Reframe the product around Broadcom services-entitlement drawdown, with visible entitlement period, plan horizon, scope posture, and delivery readiness throughout the workflow.
+- [x] Build a guided high-level SOW plan that captures service outcomes, work packages, assumptions, dependencies, acceptance outcomes, and implementation timing without pretending to be a signed legal SOW.
+- [x] Elevate the Adoption Timeline into the primary staffing workspace, showing delivery phases, resource roles, staffing windows, concurrency, gates, and handoff requirements.
+- [x] Add deterministic staffing guidance derived from selected work packages and compatibility dispositions while preserving editable authoritative manual plans.
+- [x] Unify plan review and document generation so the final FCP, staffing timeline, and Compatibility Delivery Handoff are accessible from one delivery package stage rather than a disconnected Export area.
+- [x] Preserve maintained-catalog compatibility, design-first delayed implementation, RVTools reconciliation, manual-plan authority, signed downloads, and current engagement data migrations.
+- [x] Add responsive workflow, navigation, staffing, export, and migration regressions; visually validate desktop and mobile; run the full release gate and publish the redesign.

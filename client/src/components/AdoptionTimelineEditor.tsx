@@ -4,19 +4,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { applyTimelineGesture, applyWorkstreamPresentation, colorForWorkstreamType, FIXED_GANTT_CATEGORIES, normalizeActivityLabel, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS, type Timeline, type TimelineBar } from "@shared/fcp";
+import { applyTimelineGesture, applyWorkstreamPresentation, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, normalizeActivityLabel, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS, type Timeline, type TimelineBar } from "@shared/fcp";
 import { CalendarRange, Flag, Plus, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const colorClasses: Record<string, string> = {
   slate: "bg-slate-700 text-white border-slate-800",
-  blue: "bg-blue-600 text-white border-blue-700",
-  teal: "bg-teal-700 text-white border-teal-800",
-  amber: "bg-amber-400 text-slate-950 border-amber-500",
-  red: "bg-[#c8102e] text-white border-[#9f0b24]",
-  green: "bg-green-700 text-white border-green-800",
-  gate: "bg-violet-700 text-white border-violet-800",
+  blue: "bg-[#315b8a] text-white border-[#25476d]",
+  teal: "bg-[#2f736e] text-white border-[#235752]",
+  amber: "bg-[#d99a1f] text-slate-950 border-[#b87912]",
+  red: "bg-[#b42339] text-white border-[#8f1b2c]",
+  green: "bg-[#2d6a4f] text-white border-[#21503b]",
+  gate: "bg-[#6b4f8a] text-white border-[#513a6c]",
   deferred: "bg-slate-200 text-slate-600 border-slate-400 border-dashed",
 };
 
@@ -59,7 +59,7 @@ export function AdoptionTimelineEditor({
   timeline,
   onChange,
   title = "Adoption Timeline",
-  description = "The five category rows are fixed, but each can contain multiple independently typed workstreams. Change an activity’s workstream to place it in a sibling lane; activities may overlap when work can proceed concurrently. Drag a task to move it and drag either edge to resize it.",
+  description = "Use the five delivery categories to coordinate staffable work packages. Each workstream carries a lead resource role, and packages may overlap when delivery can proceed concurrently. Drag a package to move it and drag either edge to resize its staffing window.",
 }: Props) {
   const [selected, setSelected] = useState<{ laneId: string; barId: string } | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -137,7 +137,7 @@ export function AdoptionTimelineEditor({
       name: workstreamType,
       category,
       workstreamType,
-      bars: [{ id: barId, startCol: 1, endCol: 2, color: colorForWorkstreamType(workstreamType), label: "Custom Plan", milestone: false, deferred: false }],
+      bars: [{ id: barId, startCol: 1, endCol: 2, color: colorForWorkstreamType(workstreamType), label: "Custom Work Package", milestone: false, deferred: false }],
     };
     onChange(applyWorkstreamPresentation({ ...timeline, lanes: [...timeline.lanes, next] }));
     setSelected({ laneId, barId });
@@ -172,9 +172,9 @@ export function AdoptionTimelineEditor({
         <div>
           <div className="flex items-center gap-2"><CalendarRange className="size-5 text-[#c8102e]" /><h2 className="text-lg font-semibold text-slate-950">{title}</h2></div>
           <p className="mt-1 text-sm text-slate-500">{description}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Workstream color legend"><span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Workstream color key</span>{WORKSTREAM_TYPES.map(type => <span key={type} className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-semibold", colorClasses[WORKSTREAM_TYPE_COLORS[type]])}><span className="size-2 rounded-full border border-current/25 bg-current/35" />{type}</span>)}</div>
+          <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Delivery workstream color legend"><span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Delivery workstream key</span>{WORKSTREAM_TYPES.map(type => <span key={type} title={`Lead role: ${DELIVERY_ROLE_BY_WORKSTREAM[type]}`} className={cn("inline-flex items-center gap-1 border px-2 py-1 text-[10px] font-semibold", colorClasses[WORKSTREAM_TYPE_COLORS[type]])}><span className="size-2 rounded-full border border-current/25 bg-current/35" />{type}</span>)}</div>
         </div>
-        <Button variant="outline" onClick={() => addLane()}><Plus className="size-4" /> Add Workstream</Button>
+        <Button variant="outline" onClick={() => addLane()}><Plus className="size-4" /> Add Work Package</Button>
       </div>
 
       {errors.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{errors[0]}</div>}
@@ -182,15 +182,15 @@ export function AdoptionTimelineEditor({
       <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label={`${title} ${unitLabel} grid`}>
         <div style={{ width: canvasWidth }}>
           <div className="grid border-b border-slate-200 bg-slate-50" style={{ gridTemplateColumns: `${workstreamWidth}px repeat(${timeline.columns.length}, minmax(${columnWidth}px,1fr))` }}>
-            <div className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">Category</div>
+            <div className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">Delivery category</div>
             {timeline.columns.map((column, index) => <div key={`${column}-${index}`} className="border-l border-slate-200 px-2 py-3 text-center text-[11px] font-semibold leading-tight text-slate-600">{column}</div>)}
           </div>
 
           {categoryGroups.map(group => (
             <div key={group.category} className="grid border-b border-slate-200 last:border-b-0" style={{ gridTemplateColumns: `${workstreamWidth}px repeat(${timeline.columns.length}, minmax(${columnWidth}px,1fr))` }}>
               <div className="sticky left-0 z-10 flex min-h-full items-center justify-between gap-2 border-r border-slate-200 bg-slate-50 px-4 py-3 shadow-[6px_0_10px_-10px_rgba(15,23,42,.5)]">
-                <div className="min-w-0 space-y-1.5"><strong className="block text-sm font-bold leading-snug text-slate-800">{group.category}</strong><div className="flex flex-wrap gap-1">{group.lanes.filter(lane => lane.bars.length > 0).map(lane => <span key={lane.id} className={cn("rounded border px-1.5 py-0.5 text-[9px] font-bold leading-none", colorClasses[WORKSTREAM_TYPE_COLORS[lane.workstreamType]])}>{lane.workstreamType}</span>)}</div></div>
-                <Tooltip><TooltipTrigger asChild><Button size="icon" variant="ghost" className="size-7 shrink-0 text-slate-500" onClick={() => addLane(group.category)} aria-label={`Add workstream to ${group.category}`}><Plus className="size-3.5" /></Button></TooltipTrigger><TooltipContent>Add workstream</TooltipContent></Tooltip>
+                <div className="min-w-0 space-y-1.5"><strong className="block text-sm font-bold leading-snug text-slate-800">{group.category}</strong><div className="flex flex-wrap gap-1">{group.lanes.filter(lane => lane.bars.length > 0).map(lane => <span key={lane.id} title={`Lead role: ${DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType]}`} className={cn("border px-1.5 py-0.5 text-[9px] font-bold leading-none", colorClasses[WORKSTREAM_TYPE_COLORS[lane.workstreamType]])}>{lane.workstreamType}</span>)}</div></div>
+                <Tooltip><TooltipTrigger asChild><Button size="icon" variant="ghost" className="size-7 shrink-0 text-slate-500" onClick={() => addLane(group.category)} aria-label={`Add work package to ${group.category}`}><Plus className="size-3.5" /></Button></TooltipTrigger><TooltipContent>Add work package</TooltipContent></Tooltip>
               </div>
 
               <div
@@ -212,15 +212,15 @@ export function AdoptionTimelineEditor({
                     style={{ gridColumn: `${activity.startCol} / ${activity.endCol}`, gridRow: track + 1 }}
                     onClick={() => setSelected({ laneId: lane.id, barId: activity.id })}
                     onPointerDown={event => beginDrag(event, lane.id, activity, "move", group.category)}
-                    aria-label={`${lane.workstreamType}: ${activity.label}. ${timeline.columns[activity.startCol - 1]} to ${timeline.columns[Math.max(activity.startCol - 1, activity.endCol - 2)]}`}
-                    title={`${lane.workstreamType}: ${activity.label}\n${timeline.columns[activity.startCol - 1]} to ${timeline.columns[Math.max(activity.startCol - 1, activity.endCol - 2)]}${activity.outcome ? `\nIntended outcome: ${activity.outcome}` : ""}${activity.dependsOn ? `\n${activity.dependsOn}` : ""}`}
+                    aria-label={`${lane.workstreamType}: ${activity.label}. Lead role ${DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType]}. ${timeline.columns[activity.startCol - 1]} to ${timeline.columns[Math.max(activity.startCol - 1, activity.endCol - 2)]}`}
+                    title={`${lane.workstreamType}: ${activity.label}\nLead role: ${DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType]}\n${timeline.columns[activity.startCol - 1]} to ${timeline.columns[Math.max(activity.startCol - 1, activity.endCol - 2)]}${activity.outcome ? `\nIntended outcome: ${activity.outcome}` : ""}${activity.dependsOn ? `\n${activity.dependsOn}` : ""}`}
                   >
                     <button className="absolute inset-y-0 left-0 w-3 cursor-ew-resize touch-none border-r border-black/10 bg-black/10 sm:w-2" onPointerDown={event => beginDrag(event, lane.id, activity, "start", group.category)} aria-label={`Resize ${activity.label} start`} />
                     <span className="truncate">{activity.milestone && "◆ "}{activity.label}</span>
                     <button className="absolute inset-y-0 right-0 w-3 cursor-ew-resize touch-none border-l border-black/10 bg-black/10 sm:w-2" onPointerDown={event => beginDrag(event, lane.id, activity, "end", group.category)} aria-label={`Resize ${activity.label} end`} />
                   </div>
                 ))}
-                {group.activities.length === 0 && <button className="col-span-full m-3 rounded-lg border border-dashed border-slate-300 py-3 text-xs text-slate-500 hover:border-slate-500" onClick={() => addLane(group.category)}>Add the First Workstream</button>}
+                {group.activities.length === 0 && <button className="col-span-full m-3 border border-dashed border-slate-300 py-3 text-xs text-slate-500 hover:border-slate-500" onClick={() => addLane(group.category)}>Add the First Work Package</button>}
               </div>
             </div>
           ))}
@@ -229,9 +229,9 @@ export function AdoptionTimelineEditor({
 
       {selectedBar && selectedLane && (
         <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto_auto] lg:items-end">
-          <label className="space-y-1 text-xs font-semibold text-slate-600">Activity Name<Input value={selectedBar.label} onChange={event => changeBar(selectedLane.id, selectedBar.id, { label: event.target.value })} onBlur={event => changeBar(selectedLane.id, selectedBar.id, { label: normalizeActivityLabel(event.target.value) })} /></label>
+          <label className="space-y-1 text-xs font-semibold text-slate-600">Work Package Name<Input value={selectedBar.label} onChange={event => changeBar(selectedLane.id, selectedBar.id, { label: event.target.value })} onBlur={event => changeBar(selectedLane.id, selectedBar.id, { label: normalizeActivityLabel(event.target.value) })} /></label>
           <div className="space-y-1 text-xs font-semibold text-slate-600"><span>Category</span><div className="flex h-10 items-center rounded-md border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700" aria-label="Fixed category">{selectedLane.category}</div></div>
-          <label className="space-y-1 text-xs font-semibold text-slate-600">Workstream Type<Select value={selectedLane.workstreamType} onValueChange={workstreamType => moveBarToWorkstream(selectedLane.id, selectedBar.id, workstreamType as TimelineLane["workstreamType"])}><SelectTrigger className={cn("text-xs font-semibold", colorClasses[WORKSTREAM_TYPE_COLORS[selectedLane.workstreamType]])}><SelectValue /></SelectTrigger><SelectContent>{WORKSTREAM_TYPES.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><span className="block text-[10px] font-normal leading-tight text-slate-500">Changing type moves this activity to a sibling workstream in the same category.</span></label>
+          <label className="space-y-1 text-xs font-semibold text-slate-600">Delivery Workstream<Select value={selectedLane.workstreamType} onValueChange={workstreamType => moveBarToWorkstream(selectedLane.id, selectedBar.id, workstreamType as TimelineLane["workstreamType"])}><SelectTrigger className={cn("text-xs font-semibold", colorClasses[WORKSTREAM_TYPE_COLORS[selectedLane.workstreamType]])}><SelectValue /></SelectTrigger><SelectContent>{WORKSTREAM_TYPES.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><span className="block text-[10px] font-normal leading-tight text-slate-500">Lead role: {DELIVERY_ROLE_BY_WORKSTREAM[selectedLane.workstreamType]}</span></label>
           <label className="space-y-1 text-xs font-semibold text-slate-600">Start {unitLabelTitle}<Select value={String(selectedBar.startCol)} onValueChange={value => changeBar(selectedLane.id, selectedBar.id, { startCol: Number(value) }, true)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timeline.columns.map((window, index) => <SelectItem key={`${window}-start-${index}`} value={String(index + 1)}>{window}</SelectItem>)}</SelectContent></Select></label>
           <label className="space-y-1 text-xs font-semibold text-slate-600">End {unitLabelTitle}<Select value={String(selectedBar.endCol)} onValueChange={value => changeBar(selectedLane.id, selectedBar.id, { endCol: Number(value) }, true)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timeline.columns.map((window, index) => <SelectItem key={`${window}-end-${index}`} value={String(index + 2)}>{window}</SelectItem>)}</SelectContent></Select></label>
           <Tooltip><TooltipTrigger asChild><label className="flex h-10 items-center gap-2 text-xs font-semibold text-slate-600"><Switch checked={selectedBar.milestone} onCheckedChange={milestone => changeBar(selectedLane.id, selectedBar.id, { milestone })} /><Flag className="size-4" /></label></TooltipTrigger><TooltipContent>Milestone Marker</TooltipContent></Tooltip>
