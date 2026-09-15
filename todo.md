@@ -606,3 +606,10 @@
 - [x] Fit the complete Entitlement Adoption Timeline onto one readable landscape PDF sheet without clipping, while keeping the Two-Year Notional as separate Month 1–12 and Month 13–24 sheets.
 - [x] Add pagination regressions and validate the real-customer PDF output.
 - [x] Publish the corrected PDF layout.
+
+## Exact 12-Month Entitlement Timeline Correction
+
+- [ ] Trace why the entitlement PDF window renders extra months beyond the actual entitlement year.
+- [ ] Constrain the Entitlement Adoption Timeline PDF to exactly twelve calendar months from the entitlement/project anchor, with correct start and end labels.
+- [ ] Add exact-window regressions and validate a real customer PDF so no 13th–15th month appears on the entitlement sheet.
+- [ ] Publish the corrected one-year timeline.
