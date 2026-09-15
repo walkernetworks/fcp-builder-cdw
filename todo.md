@@ -599,3 +599,10 @@
 - [x] Redesign the Compatibility Delivery Handoff around estate posture, cohort decisions, blockers, evidence gaps, owned actions, support boundaries, and concise engineering detail.
 - [x] Add print-layout regressions covering section order, 24-month visibility, split-sheet continuation, table headers, page-break classes, compatibility sections, and prohibited overflow patterns.
 - [x] Render real Customer A FCP and Compatibility Handoff PDFs, inspect every page for clipping and readability, run the full release gate, and publish the redesign.
+
+## One-Sheet Entitlement Adoption Timeline PDF
+
+- [x] Audit the current entitlement timeline print layout and row density.
+- [x] Fit the complete Entitlement Adoption Timeline onto one readable landscape PDF sheet without clipping, while keeping the Two-Year Notional as separate Month 1–12 and Month 13–24 sheets.
+- [x] Add pagination regressions and validate the real-customer PDF output.
+- [x] Publish the corrected PDF layout.
