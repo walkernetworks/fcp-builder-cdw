@@ -59,7 +59,7 @@ export function AdoptionTimelineEditor({
   timeline,
   onChange,
   title = "Adoption Timeline",
-  description = "Use the five delivery categories to coordinate staffable work packages. Each workstream carries a lead resource role, and packages may overlap when delivery can proceed concurrently. Drag a package to move it and drag either edge to resize its staffing window.",
+  description = "Use the five delivery categories to coordinate scoped work packages. Each workstream carries a lead delivery role, and packages may overlap when delivery can proceed concurrently. Drag a package to move it and drag either edge to resize its delivery window.",
 }: Props) {
   const [selected, setSelected] = useState<{ laneId: string; barId: string } | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -208,7 +208,7 @@ export function AdoptionTimelineEditor({
                 {group.activities.map(({ lane, activity, track }) => (
                   <div
                     key={activity.id}
-                    className={cn("group relative z-[1] m-1.5 flex min-h-10 cursor-grab touch-none select-none items-center overflow-hidden rounded-lg border px-4 text-[11px] font-semibold leading-tight shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing", colorClasses[activity.color], selected?.barId === activity.id && "ring-2 ring-slate-950 ring-offset-2")}
+                    className={cn("group relative z-[1] m-1.5 flex min-h-12 cursor-grab touch-none select-none items-center overflow-hidden rounded-lg border px-4 py-2 text-[11px] font-semibold leading-tight shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing", colorClasses[activity.color], selected?.barId === activity.id && "ring-2 ring-slate-950 ring-offset-2")}
                     style={{ gridColumn: `${activity.startCol} / ${activity.endCol}`, gridRow: track + 1 }}
                     onClick={() => setSelected({ laneId: lane.id, barId: activity.id })}
                     onPointerDown={event => beginDrag(event, lane.id, activity, "move", group.category)}
@@ -216,7 +216,7 @@ export function AdoptionTimelineEditor({
                     title={`${lane.workstreamType}: ${activity.label}\nLead role: ${DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType]}\n${timeline.columns[activity.startCol - 1]} to ${timeline.columns[Math.max(activity.startCol - 1, activity.endCol - 2)]}${activity.outcome ? `\nIntended outcome: ${activity.outcome}` : ""}${activity.dependsOn ? `\n${activity.dependsOn}` : ""}`}
                   >
                     <button className="absolute inset-y-0 left-0 w-3 cursor-ew-resize touch-none border-r border-black/10 bg-black/10 sm:w-2" onPointerDown={event => beginDrag(event, lane.id, activity, "start", group.category)} aria-label={`Resize ${activity.label} start`} />
-                    <span className="truncate">{activity.milestone && "◆ "}{activity.label}</span>
+                    <span className="line-clamp-2 break-words">{activity.milestone && "◆ "}{activity.label}</span>
                     <button className="absolute inset-y-0 right-0 w-3 cursor-ew-resize touch-none border-l border-black/10 bg-black/10 sm:w-2" onPointerDown={event => beginDrag(event, lane.id, activity, "end", group.category)} aria-label={`Resize ${activity.label} end`} />
                   </div>
                 ))}

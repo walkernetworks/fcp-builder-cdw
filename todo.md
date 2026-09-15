@@ -565,3 +565,15 @@
  - [x] Define canonical in-place-upgrade design work packages covering discovery/baseline, architecture and target-state design, management-domain and networking design, workload-domain and migration design, validation/change planning, and delivery handoff.
  - [x] Rebuild outcome-to-work-package mapping so each selected service path produces the correct design and implementation activities with clear outcomes, dependencies, and acceptance direction.
  - [x] Add regression coverage for in-place upgrade, related upgrade paths, delayed implementation, correct work-package labels, and both timeline views; validate UI and exports.
+
+## Visible VCF 9.1 Playbook Redesign Correction
+
+- [x] Reproduce the current selected engagement and confirm why the previous playbook work packages are not visible after upgrade-path selection or ordinary plan loading.
+- [x] Extract the complete VCF 9.1 design artifact, pathway, component-depth, quarterly drawdown, and discovery-input model from the supplied playbook.
+- [x] Redesign the Service Plan pathway selection so in-place upgrade and other paths expose the design deliverables they will generate before rebuilding.
+- [x] Build a canonical pathway-to-work-package model with distinct design, implementation, validation, adoption, and handoff packages rather than generic outcome labels.
+- [x] Rebuild Entitlement Adoption Timeline and Two-Year Notional generation from that canonical model, including correct sequencing, dependencies, outcomes, and delayed implementation behavior.
+- [x] Make plan rebuild behavior explicit for existing authoritative manual plans so users can preview and intentionally apply the new playbook template without silently overwriting manual edits.
+- [x] Add a visible design deliverables and outcome-mapping review in the Service Plan stage and carry the same content into the FCP export.
+- [x] Add regression coverage for existing/manual engagement rebuild, in-place upgrade design packages, pathway variants, terminology, timeline synchronization, and export content.
+- [x] Validate the corrected experience using Ascensus and a fresh engagement, visually inspect both timeline views and the rendered PDF, then publish.
