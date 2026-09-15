@@ -25,7 +25,7 @@ VMware’s current VCF deployment-planning guidance also frames successful deplo
 | --- | --- | --- |
 | **1. Engagement** | What entitlement, customer context, timing, and estate evidence define the engagement? | Entitlement period, value, project dates, RVTools footprint, and target release. |
 | **2. Service Plan** | What outcomes and work packages will draw down the entitlement? | High-level SOW scope, assumptions, dependencies, intended outcomes, and excluded or deferred work. |
-| **3. Staffing Timeline** | When will delivery work occur and which roles must be staffed? | Editable operational timeline, entitlement-aligned view, role demand by window, gates, and concurrent workstreams. |
+| **3. Entitlement Adoption Timeline** | When will delivery work occur and which roles must be staffed? | Editable operational timeline, entitlement-aligned view, delivery-role guidance by window, gates, and concurrent workstreams. |
 | **4. Technical Handoff** | What compatibility or evidence actions must delivery resolve? | Reconciled cohort posture, blockers, evidence gaps, owners, and prerequisite actions. |
 | **5. Delivery Package** | Is the plan ready to hand to delivery, and what documents should be issued? | Plan completeness checks, FCP preview, staffing summary, compatibility handoff, and downloads. |
 
