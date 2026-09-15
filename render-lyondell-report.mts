@@ -3,6 +3,8 @@ import { desc, like, or } from "drizzle-orm";
 import { engagements } from "./drizzle/schema";
 import { getDb } from "./server/db";
 import { renderFcpHtml } from "./server/fcpRenderer";
+import { closePdfBrowser, renderPdf } from "./server/pdf";
+import { migrateDocument } from "./shared/fcp";
 
 const db = await getDb();
 if (!db) throw new Error("Database is not configured");
@@ -15,12 +17,18 @@ const rows = await db
 const engagement = rows[0];
 if (!engagement) throw new Error("No Lyondell engagement was found");
 const output = "/home/ubuntu/fcp-builder-cdw/.tmp-lyondell-report.html";
-await writeFile(output, renderFcpHtml(engagement.title, engagement.data), "utf8");
+const document = migrateDocument(engagement.data);
+const html = renderFcpHtml(engagement.title, document);
+const pdfOutput = "/home/ubuntu/fcp-builder-cdw/.tmp-lyondell-report.pdf";
+await writeFile(output, html, "utf8");
+await writeFile(pdfOutput, await renderPdf(html));
+await closePdfBrowser();
 console.log(JSON.stringify({
   title: engagement.title,
-  plannedProjectStart: engagement.data.fields.plannedProjectStart,
-  entitlementEnd: engagement.data.fields.entitlementEnd,
-  notionalColumns: engagement.data.twoYearPlan.columns,
+  plannedProjectStart: document.fields.plannedProjectStart,
+  entitlementEnd: document.fields.entitlementEnd,
+  notionalColumns: document.twoYearPlan.columns,
   output,
+  pdfOutput,
 }, null, 2));
 process.exit(0);

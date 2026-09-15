@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRvToolsFiles } from "../client/src/lib/rvtools";
-import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, FIXED_GANTT_CATEGORIES, getFollowOnReadinessGuidance, getHclSchedulePath, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, summarizeCompatibilityHandoff, summarizeVcfCompatibility, synchronizeEntitlementNotionalFromOperational, validateTimeline, type Timeline } from "../shared/fcp";
+import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAdoptionPlans, buildMonthColumns, buildTwoYearNotionalColumns, buildWeekColumns, calculateEntitlementEndDate, colorForWorkstreamType, createDefaultDocument, FIXED_GANTT_CATEGORIES, getFollowOnReadinessGuidance, getHclSchedulePath, migrateDocument, normalizeActivityLabel, normalizeWorkstreamLabel, refreshDerivedDocument, summarizeCompatibilityHandoff, summarizeDeliveryStaffing, summarizeVcfCompatibility, synchronizeEntitlementNotionalFromOperational, validateTimeline, type Timeline } from "../shared/fcp";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, summarizeHclFindings } from "../shared/hcl";
 import type { TrpcContext } from "./_core/context";
@@ -70,6 +70,30 @@ describe("calendar-month adoption plans", () => {
     expect(notional[0]).toBe("Jan 15–31, 2027");
     expect(notional[11]).toBe("Dec 2027");
     expect(notional[12]).toBe("Jan 1–15, 2028");
+  });
+
+  it("derives deterministic delivery staffing from the authoritative work-package timeline", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, {
+      customerName: "Staffing Test",
+      plannedProjectStart: "2027-01-01",
+      plannedImplementationStart: "2027-03-01",
+      targetComplete: "2027-12-31",
+      priorities: ["operations", "automation", "security"],
+      adoptionDetails: { ...document.fields.adoptionDetails, upgradePath: "in-place", operations: ["lifecycle"], automation: ["vm-self-service"], security: ["identity-rbac"] },
+    });
+    Object.assign(document.inventory, { hosts: 24, vmCount: 600 });
+    const plans = buildAdoptionPlans(document.fields, document.inventory);
+    const staffing = summarizeDeliveryStaffing(plans.adoptionTimeline);
+
+    expect(staffing.workPackageCount).toBe(plans.adoptionTimeline.lanes.flatMap(lane => lane.bars).length);
+    expect(staffing.peakConcurrentPackages).toBeGreaterThan(0);
+    expect(staffing.assignments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: "Engagement Manager / Project Manager", workstreamType: "Governance" }),
+      expect.objectContaining({ role: "VCF Implementation Engineer", workstreamType: "Infrastructure Build" }),
+      expect.objectContaining({ role: "VCF Architect + Operations Lead", workstreamType: "Operating Model / Platform" }),
+    ]));
+    expect(staffing.assignments.every(assignment => assignment.startLabel.length > 0 && assignment.endLabel.length > 0)).toBe(true);
   });
 
   it("time-boxes discovery and then sequences the selected implementation workstreams without adding unselected networking scope", () => {
@@ -1053,6 +1077,20 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(rebuilt.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(activity => activity.id === "bar-platform-plan")?.label).not.toBe("Customer-scheduled mobilisation window");
   });
 
+  it("modernizes legacy baseline wording without changing an authoritative manual schedule", () => {
+    const document = createDefaultDocument();
+    document.planAuthority = "manual";
+    const activity = document.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(candidate => candidate.id === "bar-platform-plan")!;
+    activity.label = "Weeks 1–2: Mobilize and Freeze VCF Delivery Baseline";
+    const originalWindow = { startCol: activity.startCol, endCol: activity.endCol };
+
+    const migrated = migrateDocument(JSON.parse(JSON.stringify(document)));
+    const migratedActivity = migrated.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(candidate => candidate.id === "bar-platform-plan")!;
+    expect(migrated.planAuthority).toBe("manual");
+    expect(migratedActivity.label).toBe("Weeks 1–2: Mobilize and Establish Delivery Baseline");
+    expect({ startCol: migratedActivity.startCol, endCol: migratedActivity.endCol }).toEqual(originalWindow);
+  });
+
   it("synchronizes changed operational activities into entitlement adoption while retaining independent Notional work", () => {
     const document = createDefaultDocument();
     const operational = JSON.parse(JSON.stringify(document.adoptionTimeline)) as Timeline;
@@ -1095,15 +1133,15 @@ describe("planning considerations, exports, and access boundary", () => {
     const html = renderFcpHtml("Meridian FCP", document);
     expect(html).toContain("Meridian Health");
     expect(html).toContain("$3,000,000");
-    expect(html).toContain("Operational Adoption Timeline");
+    expect(html).toContain("Delivery Staffing Timeline");
     expect(html).toContain("Entitlement Notional");
-    expect(html).toContain("Executive operational view:");
+    expect(html).toContain("Delivery resource view:");
     expect(html).toContain("Entitlement-period delivery view:");
     expect(html).toContain("Planned Delivery Start Through Entitlement End");
     expect(html).toContain("Delivery is scheduled from 2027-01-01 through 2028-01-01");
     expect(html).not.toContain("Intended Outcome");
     expect(html).not.toContain("Sequence Notes");
-    expect(html).toContain("Executive operational view:");
+    expect(html).toContain("Delivery resource view:");
     expect(html).toContain("ESXi 9.1 compatibility posture");
     expect(html).toContain("Presales-to-delivery handoff");
     expect(html).toContain("Reported ESXi");
@@ -1111,7 +1149,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Customer-aligned delivery plan");
     expect(html).toContain("delivery-led VCF adoption");
     expect(html).toContain("Delivery planning is informed by a current-state estate view");
-    expect(html).toContain("Service delivery &amp; handover");
+    expect(html).toContain("Service delivery &amp; staffing");
     expect(html).toContain("Implementation-led");
     expect(html).not.toContain("RVTools Export(s)");
     expect(html).not.toContain("HCL Server + CPU Evidence");
@@ -1119,16 +1157,19 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Priority delivery actions");
     expect(html).toContain("standalone compatibility deliverable contains the complete cohort evidence and action register");
     expect(html).toContain("Migration Waves");
-    expect(html).toContain('<div class="timeline-corner">Category</div>');
+    expect(html).toContain('<div class="timeline-corner">Delivery Category</div>');
     expect(html).toContain("timeline-category-lane");
     expect(html).toContain("timeline-category-row");
     expect(html).toContain('grid-template-rows:repeat(');
-    expect(html).not.toContain('class="sequence-category"');
+    expect(html).toContain('class="sequence-category"');
     expect(html).not.toContain("Entitlement-Period Service Sequence");
     expect(html).not.toContain("Operational Activity Sequence");
     expect(html).not.toContain("Category Group / Workstream Type");
     expect(html).not.toContain("<th>Workstream type</th>");
-    expect(html).toContain("Workstream color key");
+    expect(html).toContain("Delivery workstream key");
+    expect(html).toContain("Lead Delivery Role");
+    expect(html).toContain("VCF Implementation Engineer");
+    expect(html).toContain("High-Level SOW Work Package Register");
     expect(html).toContain("Infrastructure Build");
     expect(html).not.toContain("Implement VCF Networking, NSX Transport, Edge, and Routing");
     expect(html).not.toContain("VCF Networking and NSX Lifecycle Progression");
@@ -1142,7 +1183,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(planSummary).toContain("<h3>Observed footprint</h3>");
     expect(planSummary).toContain("<h3>Selected scope</h3>");
     expect(planSummary).toContain("<h3>Entitlement Notional</h3>");
-    expect(planSummary).toContain("<h3>Operational Adoption Timeline</h3>");
+    expect(planSummary).toContain("<h3>Delivery Staffing Timeline</h3>");
     expect(planSummary).toContain('<span class="summary-index">01</span>');
     expect(planSummary).not.toContain("data-step=");
     expect(html).toContain('<section class="executive-sheet">');
@@ -1197,7 +1238,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Customer background");
     expect(html).toContain("Observed footprint");
     expect(html).toContain("Entitlement Notional");
-    expect(html).toContain("Operational Adoption Timeline");
+    expect(html).toContain("Delivery Staffing Timeline");
   });
 
   it("can omit the operational adoption timeline while retaining entitlement and readiness output", () => {
@@ -1208,8 +1249,8 @@ describe("planning considerations, exports, and access boundary", () => {
     const html = renderFcpHtml("Meridian FCP", document);
     expect(html).not.toContain('data-tab="adoption"');
     expect(html).not.toContain('<section id="adoption"');
-    expect(html).not.toContain("Operational Adoption Timeline");
-    expect(html).not.toContain("Executive operational view:");
+    expect(html).not.toContain("Delivery Staffing Timeline");
+    expect(html).not.toContain("Delivery resource view:");
     expect(html).not.toContain('class="operational-print-sheet');
     expect(html).toContain("Entitlement Notional");
     expect(html).toContain("ESXi 9.1 compatibility posture");
@@ -1232,7 +1273,7 @@ describe("planning considerations, exports, and access boundary", () => {
     document.fields.customerName = "Meridian Health";
     const result = await appRouter.createCaller(authenticatedContext()).document.html({ title: "Meridian Health / FCP", data: document });
     expect(result.filename).toBe("Meridian-Health-FCP.html");
-    expect(result.content).toContain("Adoption Timeline");
+    expect(result.content).toContain("Delivery Staffing Timeline");
   });
 
   it("rejects business-data procedures without an authenticated user", async () => {

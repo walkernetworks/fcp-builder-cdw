@@ -47,9 +47,10 @@ type Props = {
   onChange: (document: EngagementDocument) => void;
   onExportPlanOutput: (format: "html" | "pdf") => void;
   exportingPlanOutput: "html" | "pdf" | null;
+  step?: "upload" | "customer" | "timeline" | "review";
 };
 
-export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPlanOutput }: Props) {
+export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPlanOutput, step }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const fields = document.fields;
@@ -88,13 +89,13 @@ export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPla
 
   return (
     <div className="space-y-5">
-      <Tabs defaultValue="upload" className="space-y-5">
-        <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl bg-white p-1 shadow-sm lg:grid-cols-4">
+      <Tabs value={step} defaultValue="upload" className="space-y-5">
+        {!step && <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl bg-white p-1 shadow-sm lg:grid-cols-4">
           <TabsTrigger value="upload" className="rounded-lg py-2.5"><span className="mr-2 text-[10px] font-black text-[#c8102e]">01</span> Upload</TabsTrigger>
           <TabsTrigger value="customer" className="rounded-lg py-2.5"><span className="mr-2 text-[10px] font-black text-[#c8102e]">02</span> Customer</TabsTrigger>
           <TabsTrigger value="timeline" className="rounded-lg py-2.5"><span className="mr-2 text-[10px] font-black text-[#c8102e]">03</span> Adoption</TabsTrigger>
           <TabsTrigger value="review" className="rounded-lg py-2.5"><span className="mr-2 text-[10px] font-black text-[#c8102e]">04</span> Plan Output</TabsTrigger>
-        </TabsList>
+        </TabsList>}
 
         <TabsContent value="upload" className="space-y-5">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
@@ -124,7 +125,7 @@ export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPla
         <TabsContent value="timeline">
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
             <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Adoption window</p>
-            <h2 className="mt-1 text-2xl font-semibold tracking-tight">Adoption Timeline and Outcomes</h2>
+            <h2 className="mt-1 text-2xl font-semibold tracking-tight">Delivery Scope, Timing, and Outcomes</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Set the planned project start for design and mobilization, then set the implementation-services start for the month when platform build, upgrade, and migration work is expected to begin. For example, a customer can start design now and target March for implementation. Changing these dates or other confirmed inputs immediately refreshes the deterministic operational plan. The separate Notional remains monthly and runs from the planned project start through the calculated entitlement end.</p>
             <div className="mt-6 grid gap-5 md:grid-cols-2">
               <Field label="Planned project start" required hint="When design, mobilization, and delivery-baseline work begins. This is independent of the entitlement period."><Input type="date" value={fields.plannedProjectStart || fields.targetStart} onChange={event => updateFields({ plannedProjectStart: event.target.value })} /></Field>
@@ -137,12 +138,12 @@ export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPla
             {fields.plannedProjectStart && fields.plannedImplementationStart && fields.plannedImplementationStart > fields.plannedProjectStart ? <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm leading-6 text-blue-950"><strong>Design-first plan:</strong> design and delivery-baseline work begins on {fields.plannedProjectStart}; implementation, upgrade, and migration services are held for {fields.plannedImplementationStart}. The generated Entitlement Notional will show that preparation gap rather than implying services start immediately.</div> : <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-700"><strong>Immediate implementation plan:</strong> design, mobilization, and implementation services currently share the planned project start. Move the implementation-services start later when the customer is not ready for build or migration work.</div>}
             <div className="mt-7"><Label className="text-sm font-semibold">Which VCF outcomes should the plan prioritize?</Label><div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">{capabilities.map(capability => { const checked = fields.priorities.includes(capability.value); return <label key={capability.value} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${checked ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 hover:bg-slate-50"}`}><Checkbox checked={checked} className="mt-0.5" onCheckedChange={next => updateFields({ priorities: next ? [...fields.priorities, capability.value] : fields.priorities.filter(item => item !== capability.value) })} /><span><strong className="block text-sm">{capability.label}</strong><span className={`mt-1 block text-xs leading-5 ${checked ? "text-slate-300" : "text-slate-500"}`}>{capability.description}</span></span></label>; })}</div></div>
             <DetailedAdoptionIntake fields={fields} onPatch={updateFields} />
-            <Field label="Adoption Timeline Notes" hint="Only exceptions, fixed dates, blackout windows, or sequencing constraints."><Textarea className="mt-2 min-h-28" value={fields.timelineNotes} onChange={event => updateFields({ timelineNotes: event.target.value })} placeholder="Example: production freeze in December; datacenter exit must finish by Q3." /></Field>
+            <Field label="Delivery Assumptions and Calendar Constraints" hint="Capture only material assumptions, fixed dates, customer responsibilities, blackout windows, or sequencing constraints."><Textarea className="mt-2 min-h-28" value={fields.timelineNotes} onChange={event => updateFields({ timelineNotes: event.target.value })} placeholder="Example: customer supplies DNS and IP allocations; production freeze in December; datacenter exit must finish by Q3." /></Field>
           </section>
         </TabsContent>
 
         <TabsContent value="review" className="space-y-5">
-          <PlanOutputExportPanel onExport={onExportPlanOutput} exportingFormat={exportingPlanOutput} />
+          {!step && <PlanOutputExportPanel onExport={onExportPlanOutput} exportingFormat={exportingPlanOutput} />}
           <InventoryCards document={document} />
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Current estate</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Compatibility delivery handoff</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Every imported host is reconciled to a release-specific catalog decision, evidence gap, and delivery action.</p></div><Badge variant="outline" className="border-slate-300">Maintained catalog</Badge></div><CompatibilityHandoffPanel platforms={document.readiness.hardwarePlatforms} estateHosts={document.inventory.hosts} /></section>
           <HclEstateFindings document={document} />
