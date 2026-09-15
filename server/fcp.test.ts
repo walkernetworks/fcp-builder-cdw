@@ -1248,13 +1248,13 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).not.toContain("#two-year .notional-year-sheet .timeline-grid{width:100%;min-width:0!important;grid-template-columns:1.45in repeat(12,minmax(0,1fr))!important}");
     expect(html).toContain("#two-year .notional-year-sheet{height:8.5in;min-height:8.5in");
     expect(html).not.toContain('class="two-year-sequence-sheet"');
-    expect(html).toContain('class="operational-print-sheet cadence-month"');
-    expect(html).toContain("Operational delivery horizon · Year 1");
+    expect(html).toContain('class="operational-print-sheet entitlement-one-sheet cadence-month"');
+    expect(html).toContain("Entitlement Adoption Timeline · Full entitlement year");
     const operationalWindowCount = (html.match(/class="operational-print-sheet/g) || []).length;
-    expect(operationalWindowCount).toBeGreaterThan(0);
-    expect(operationalWindowCount).toBeLessThanOrEqual(2);
+    expect(operationalWindowCount).toBe(1);
     expect(html).toContain("#adoption .operational-print-sheet .timeline-grid{width:100%;min-width:0!important}");
-    expect(html).toContain("#adoption .operational-print-sheet.cadence-month .timeline-grid{grid-template-columns:120px repeat(12,minmax(0,1fr))!important}");
+    expect(html).toContain("#adoption .operational-print-sheet.entitlement-one-sheet .timeline-row{min-height:22px!important}");
+    expect(html).toContain("#adoption .operational-print-sheet.entitlement-one-sheet .timeline-bar{margin:1px!important;padding:1px 2px!important;min-height:11px!important");
     expect(html).not.toContain("#adoption .operational-sequence-sheet{page-break-before:always;break-before:page}");
     expect(html).toContain("page-break-after:always;break-after:page");
     const visibleReport = html.replace(/<style>[\s\S]*?<\/style>/i, "");

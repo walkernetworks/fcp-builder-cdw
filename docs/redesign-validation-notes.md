@@ -99,3 +99,9 @@ The prior blank trailing page is gone. The redesigned Ascensus Compatibility Del
 The final FCP validation confirms that the cover now uses its space more effectively. The added four-part document guide makes the PDF sequence immediately understandable and sets expectations for executive review, entitlement drawdown, work-package detail, and the 24-month roadmap.
 
 The final pages also confirm that the High-Level SOW Work Package Register remains readable and that the Two-Year Notional is no longer clipped. Year 1 and Year 2 now render as separate full-width sheets with visible month ranges and repeated category labels. The Year 2 continuation still has more white space than earlier sections, but that is now a presentation choice rather than a pagination defect, and all months are fully visible on paper.
+
+## One-Sheet Entitlement Timeline Validation
+
+The Lyondell render remains an 8-page letter-landscape PDF. Pages 1–4 confirm the cover guide, executive snapshot, plan-on-a-page, and VCF 9.1 readiness sections remain clean and ordered. The cover guide continues to present the entitlement timeline before the Two-Year Notional. The remaining pages are being checked specifically for the new full-year entitlement sheet and preserved two-sheet notional.
+
+The remaining Lyondell pages confirm the entitlement layout correction. Page 5 preserves the pathway-and-design deliverables tables. Page 6 now carries the entire entitlement-year drawdown schedule on a single landscape sheet, spanning **Aug 26 through Jul 28** without a continuation page. The timeline is compact but still legible, with category rows, monthly headers, and package bars visible on one sheet. Pages 7 and 8 preserve the SOW register and the separate Two-Year Notional sequence, with the notional still split onto its own dedicated continuation pages rather than being merged back into the entitlement section.
