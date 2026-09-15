@@ -683,15 +683,15 @@ describe("planning considerations, exports, and access boundary", () => {
 
     expect(html).toContain("VCF Compatibility Delivery Handoff");
     expect(html).toContain("broadcom-server-2026-07-28");
-    expect(html).toContain("3,423 records · 74 manufacturers");
+    expect(html).toContain("3,423 server records across 74 manufacturers");
     expect(html).toContain("Target release listed");
     expect(html).toContain("Not listed for target release");
     expect(html).toContain("Every observed server and CPU cohort");
     expect(html).toContain("Compatibility action register");
-    expect(html).toContain("Consolidated estate findings and remediation");
+    expect(html).toContain("Conditions that affect sequence or release gates");
     expect(html).toContain("Fewer than two physical NICs");
     expect(html).toContain("2 affected hosts");
-    expect(html).toContain("Information still required to complete the handoff");
+    expect(html).toContain("Information required to complete the handoff");
     expect(html).not.toContain("Scheduled delivery activities");
     expect(html).not.toContain("Entitlement delivery sequence");
     expect(html).not.toContain("Operational Adoption Timeline");
@@ -1173,9 +1173,11 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Entitlement Adoption Timeline");
     expect(html).toContain("Two-Year Notional");
     expect(html).toContain("Delivery resource view:");
-    expect(html).toContain("24-month adoption view:");
-    expect(html).toContain("Planned Project Start Through Month 24");
-    expect(html).toContain("The notional runs from 2027-01-01 through Dec 2028");
+    expect(html).toContain("Directional 24-month roadmap:");
+    expect(html).toContain("Two-Year Notional · Months 1–12");
+    expect(html).toContain("Two-Year Notional · Months 13–24");
+    expect(html).toContain("The first-year roadmap runs from Jan 2027 through Dec 2027");
+    expect(html).toContain("The second-year roadmap continues from Jan 2028 through Dec 2028");
     expect(html).not.toContain("Intended Outcome");
     expect(html).not.toContain("Sequence Notes");
     expect(html).toContain("Delivery resource view:");
@@ -1235,15 +1237,16 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Estate reconciliation");
     expect(html).not.toContain('class="compact-table hardware-table"');
     expect(html).toContain('class="notional-year-sheet notional-year-one"');
-    expect(html).not.toContain('class="notional-year-sheet notional-year-two"');
-    expect(html).toContain("Planned Project Start Through Month 24");
-    expect(html).toContain("Two-Year Adoption Outlook");
-    expect(html).not.toContain("Months 13–24");
+    expect(html).toContain('class="notional-year-sheet notional-year-two"');
+    expect(html).toContain("Two-Year Notional · Months 1–12");
+    expect(html).toContain("Two-Year Notional · Months 13–24");
+    expect(html).toContain("Year 1 Adoption Outlook");
+    expect(html).toContain("Year 2 Continuation");
     expect(html).not.toContain("Continuous Year 2 Delivery");
     expect(html).not.toContain("Year 2 Follow-On Services");
     expect(html).toContain("#two-year .notional-year-sheet .timeline-grid{width:100%;min-width:0!important}");
     expect(html).not.toContain("#two-year .notional-year-sheet .timeline-grid{width:100%;min-width:0!important;grid-template-columns:1.45in repeat(12,minmax(0,1fr))!important}");
-    expect(html).not.toContain("#two-year .notional-year-two{page-break-before:always;break-before:page}");
+    expect(html).toContain("#two-year .notional-year-sheet{height:8.5in;min-height:8.5in");
     expect(html).not.toContain('class="two-year-sequence-sheet"');
     expect(html).toContain('class="operational-print-sheet cadence-month"');
     expect(html).toContain("Operational delivery horizon · Year 1");
@@ -1447,5 +1450,44 @@ describe("HCL 2.0 estate evidence", () => {
     expect(categoryFor("in-place", "bar-playbook-component-design-security")).toMatchObject({ category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" });
     expect(categoryFor("in-place", "bar-playbook-component-design-resilience")).toMatchObject({ category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" });
     expect(categoryFor("in-place", "bar-playbook-component-design-efficiency")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" });
+  });
+
+  it("renders the entitlement schedule before a complete two-sheet Two-Year Notional", () => {
+    const document = createDefaultDocument();
+    document.fields.customerName = "Print Layout Customer";
+    const html = renderFcpHtml("Print Layout FCP", document);
+    const entitlementSection = html.indexOf('<section id="adoption"');
+    const notionalSection = html.indexOf('<section id="two-year"');
+
+    expect(entitlementSection).toBeGreaterThan(-1);
+    expect(notionalSection).toBeGreaterThan(entitlementSection);
+    expect((html.match(/class="notional-year-sheet/g) || [])).toHaveLength(2);
+    expect(html).toContain("Two-Year Notional · Months 1–12");
+    expect(html).toContain("Two-Year Notional · Months 13–24");
+    expect(html).toContain("grid-template-columns:116px repeat(12,minmax(0,1fr))!important");
+    expect(html).toContain("page-break-before:always;break-before:page;page-break-inside:avoid");
+  });
+
+  it("renders the compatibility handoff as decision, action, cohort, findings, and coverage sections", () => {
+    const document = createDefaultDocument();
+    const html = renderHclCompatibilityPlanOutputHtml("Print Layout Compatibility", document);
+    const summary = html.indexOf('class="sheet summary-sheet"');
+    const actions = html.indexOf('class="sheet actions-sheet"');
+    const cohortIndex = html.indexOf('class="sheet cohort-index-sheet"');
+    const cohortEvidence = html.indexOf('class="sheet cohort-evidence-sheet"');
+    const blockers = html.indexOf('class="sheet findings-sheet"');
+    const advisories = html.indexOf('class="sheet advisory-sheet"');
+    const coverage = html.indexOf('class="sheet coverage-sheet"');
+
+    expect(summary).toBeGreaterThan(-1);
+    expect(actions).toBeGreaterThan(summary);
+    expect(cohortIndex).toBeGreaterThan(actions);
+    expect(cohortEvidence).toBeGreaterThan(cohortIndex);
+    expect(blockers).toBeGreaterThan(cohortEvidence);
+    expect(advisories).toBeGreaterThan(blockers);
+    expect(coverage).toBeGreaterThan(advisories);
+    expect(html).toContain("<thead>");
+    expect(html).toContain("break-inside:avoid;page-break-inside:avoid");
+    expect(html).not.toContain("Release support register");
   });
 });

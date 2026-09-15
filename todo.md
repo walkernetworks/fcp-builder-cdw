@@ -587,3 +587,15 @@
 - [x] Map cloud consumption, Kubernetes/application platform, security, resilience, and Private AI packages into their appropriate categories instead of Operations.
 - [x] Apply category ownership consistently to Entitlement Adoption Timeline, Two-Year Notional, Service Plan preview, SOW register, staffing/resource summaries, and exports.
 - [x] Add regressions across in-place, converge, import, greenfield, hybrid, and design-only pathways; validate Customer A visually and publish the correction.
+
+## Print-First FCP and Compatibility PDF Redesign
+
+- [x] Audit the current FCP and Compatibility Handoff page order, density, typography, repeated content, table widths, page breaks, and timeline clipping using real customer renders.
+- [x] Define one shared print design system for cover pages, section openers, summaries, notices, metrics, tables, timelines, footers, page numbering, and continuation pages.
+- [x] Reorder the FCP so the Entitlement Adoption Timeline appears before the Two-Year Notional in both HTML and PDF output.
+- [x] Redesign the Entitlement Adoption Timeline as a readable executable drawdown section with category ownership, delivery windows, gates, and concise package detail.
+- [x] Redesign the Two-Year Notional as two deliberate 12-month landscape sheets with repeated category labels and legends, no clipping, and clear directional-funding language.
+- [x] Simplify the FCP’s executive, scope, pathway, compatibility, timeline, SOW-register, assumptions, and handoff sections into a clean delivery narrative without duplicate explanations.
+- [x] Redesign the Compatibility Delivery Handoff around estate posture, cohort decisions, blockers, evidence gaps, owned actions, support boundaries, and concise engineering detail.
+- [x] Add print-layout regressions covering section order, 24-month visibility, split-sheet continuation, table headers, page-break classes, compatibility sections, and prohibited overflow patterns.
+- [x] Render real Customer A FCP and Compatibility Handoff PDFs, inspect every page for clipping and readability, run the full release gate, and publish the redesign.
