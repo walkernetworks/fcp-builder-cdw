@@ -122,8 +122,8 @@ describe("calendar-month adoption plans", () => {
     const workloadDomain = activity("bar-workload-domain");
     const upgrade = activity("bar-playbook-execution-migration-waves");
     const handover = activity("bar-platform-handover");
-    const cloudStarts = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-cloud")!.bars.map(candidate => candidate.startCol);
-    const securityStarts = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-security-resilience")!.bars.map(candidate => candidate.startCol);
+    const cloudStarts = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-cloud")!.bars.filter(candidate => !candidate.id.startsWith("bar-playbook-component-design-")).map(candidate => candidate.startCol);
+    const securityStarts = plans.adoptionTimeline.lanes.find(lane => lane.id === "lane-security-resilience")!.bars.filter(candidate => !candidate.id.startsWith("bar-playbook-component-design-")).map(candidate => candidate.startCol);
 
     expect(plans.adoptionTimeline.columns.length).toBeGreaterThanOrEqual(10);
     expect(new Set(plans.adoptionTimeline.lanes.map(lane => lane.category))).toEqual(new Set(FIXED_GANTT_CATEGORIES));
@@ -1085,6 +1085,35 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(rebuilt.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(activity => activity.id === "bar-platform-plan")?.label).not.toBe("Customer-scheduled mobilisation window");
   });
 
+  it("rebaselines stale generated category ownership while preserving authoritative manual placement", () => {
+    const source = createDefaultDocument();
+    source.fields = {
+      ...source.fields,
+      priorities: ["operations", "networking"],
+      adoptionDetails: { ...source.fields.adoptionDetails, upgradePath: "in-place" },
+    };
+    const generated = refreshDerivedDocument(source, { forceRebuild: true });
+    const stale = JSON.parse(JSON.stringify(generated)) as typeof generated;
+    const misplaced = stale.adoptionTimeline.lanes.flatMap(lane => lane.bars.filter(activity => activity.id.startsWith("bar-playbook-design-") || activity.id.startsWith("bar-playbook-component-design-")));
+    stale.adoptionTimeline.lanes = stale.adoptionTimeline.lanes.map(lane => ({
+      ...lane,
+      bars: lane.id === "lane-operations"
+        ? [...lane.bars, ...misplaced.filter(activity => !lane.bars.some(existing => existing.id === activity.id))]
+        : lane.bars.filter(activity => !misplaced.some(candidate => candidate.id === activity.id)),
+    }));
+
+    const migratedGenerated = migrateDocument({ ...stale, planAuthority: "generated" });
+    const targetStateLane = migratedGenerated.adoptionTimeline.lanes.find(lane => lane.bars.some(activity => activity.id === "bar-playbook-design-target-state"));
+    const operationsDesignLane = migratedGenerated.adoptionTimeline.lanes.find(lane => lane.bars.some(activity => activity.id === "bar-playbook-component-design-operations"));
+    expect(targetStateLane).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" });
+    expect(operationsDesignLane).toMatchObject({ category: "Operations", workstreamType: "Operating Model / Platform" });
+
+    const migratedManual = migrateDocument({ ...stale, planAuthority: "manual" });
+    const manualTargetStateLane = migratedManual.adoptionTimeline.lanes.find(lane => lane.bars.some(activity => activity.id === "bar-playbook-design-target-state"));
+    expect(migratedManual.planAuthority).toBe("manual");
+    expect(manualTargetStateLane).toMatchObject({ category: "Operations", workstreamType: "Operating Model / Platform" });
+  });
+
   it("modernizes legacy baseline wording without changing an authoritative manual schedule", () => {
     const document = createDefaultDocument();
     document.planAuthority = "manual";
@@ -1377,5 +1406,46 @@ describe("HCL 2.0 estate evidence", () => {
     expect(html).toContain("Entitlement Adoption Timeline");
     expect(html).toContain("Design Upgrade Runbook, Validation, and Change Windows");
     expect(html).not.toContain("Staffing Timeline");
+  });
+
+  it("assigns playbook design and execution packages to their accountable delivery categories", () => {
+    const document = createDefaultDocument();
+    const categoryFor = (path: "in-place" | "converge" | "import-workload-domain" | "greenfield" | "hybrid" | "design-only", activityId: string) => {
+      const fields = {
+        ...document.fields,
+        priorities: ["operations", "automation", "networking", "security", "resilience", "kubernetes", "private-ai"] as typeof document.fields.priorities,
+        adoptionDetails: {
+          ...document.fields.adoptionDetails,
+          upgradePath: path,
+          componentDepths: { operations: "tier-2" as const, automation: "tier-2" as const, networkingSecurity: "tier-2" as const, kubernetesAi: "tier-1" as const, efficiency: "tier-1" as const },
+        },
+      };
+      const timeline = buildAdoptionPlans(fields, document.inventory).adoptionTimeline;
+      return timeline.lanes.find(lane => lane.bars.some(activity => activity.id === activityId));
+    };
+
+    expect(categoryFor("in-place", "bar-playbook-design-requirements")).toMatchObject({ category: "Program Management & Governance", workstreamType: "Governance" });
+    expect(categoryFor("in-place", "bar-playbook-design-target-state")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" });
+    expect(categoryFor("in-place", "bar-playbook-design-platform-design")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" });
+    expect(categoryFor("in-place", "bar-playbook-design-upgrade-runbook")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Migration Waves" });
+    expect(categoryFor("in-place", "bar-playbook-execution-upgrade-waves")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Migration Waves" });
+    expect(categoryFor("in-place", "bar-playbook-adoption-vcf-management")).toMatchObject({ category: "Operations", workstreamType: "Operating Model / Platform" });
+
+    expect(categoryFor("converge", "bar-playbook-design-converge-runbook")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Migration Waves" });
+    expect(categoryFor("converge", "bar-converge-management-domain")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" });
+    expect(categoryFor("import-workload-domain", "bar-import-workload-domain")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Migration Waves" });
+    expect(categoryFor("greenfield", "bar-playbook-design-migration-design")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Migration Waves" });
+    expect(categoryFor("hybrid", "bar-playbook-execution-delivery-waves")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Migration Waves" });
+    expect(categoryFor("design-only", "bar-playbook-design-logical-physical-design")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" });
+    expect(categoryFor("design-only", "bar-playbook-design-implementation-handoff")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Migration Waves" });
+
+    expect(categoryFor("in-place", "bar-playbook-component-design-operations")).toMatchObject({ category: "Operations", workstreamType: "Operating Model / Platform" });
+    expect(categoryFor("in-place", "bar-playbook-component-design-networking")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" });
+    expect(categoryFor("in-place", "bar-playbook-component-design-automation")).toMatchObject({ category: "Modernize Cloud", workstreamType: "Consume / Handover" });
+    expect(categoryFor("in-place", "bar-playbook-component-design-kubernetes")).toMatchObject({ category: "Modernize Cloud", workstreamType: "Consume / Handover" });
+    expect(categoryFor("in-place", "bar-playbook-component-design-private-ai")).toMatchObject({ category: "Modernize Cloud", workstreamType: "Consume / Handover" });
+    expect(categoryFor("in-place", "bar-playbook-component-design-security")).toMatchObject({ category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" });
+    expect(categoryFor("in-place", "bar-playbook-component-design-resilience")).toMatchObject({ category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" });
+    expect(categoryFor("in-place", "bar-playbook-component-design-efficiency")).toMatchObject({ category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" });
   });
 });

@@ -577,3 +577,13 @@
 - [x] Add a visible design deliverables and outcome-mapping review in the Service Plan stage and carry the same content into the FCP export.
 - [x] Add regression coverage for existing/manual engagement rebuild, in-place upgrade design packages, pathway variants, terminology, timeline synchronization, and export content.
 - [x] Validate the corrected experience using Ascensus and a fresh engagement, visually inspect both timeline views and the rendered PDF, then publish.
+
+## VCF Playbook Category Ownership Redesign
+
+- [x] Audit every generated pathway, design, component, execution, adoption, and handoff package for its current timeline category and workstream assignment.
+- [x] Define canonical ownership rules across Program Management & Governance, Modernize Infrastructure, Operations, Modernize Cloud, and Modernize Security & Resilience.
+- [x] Move platform architecture, management-domain design, networking/fabric design, hardware prerequisites, upgrade preparation, and execution into Modernize Infrastructure.
+- [x] Keep Operations limited to operating model, observability, lifecycle, automation governance, and operational handoff work.
+- [x] Map cloud consumption, Kubernetes/application platform, security, resilience, and Private AI packages into their appropriate categories instead of Operations.
+- [x] Apply category ownership consistently to Entitlement Adoption Timeline, Two-Year Notional, Service Plan preview, SOW register, staffing/resource summaries, and exports.
+- [x] Add regressions across in-place, converge, import, greenfield, hybrid, and design-only pathways; validate Ascensus visually and publish the correction.

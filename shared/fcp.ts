@@ -179,6 +179,11 @@ export type VcfPlaybookPlan = {
   implementationPackages: VcfPlaybookWorkPackage[];
 };
 
+export type VcfPlaybookOwnership = {
+  category: TimelineCategory;
+  workstreamType: WorkstreamType;
+};
+
 export function canonicalVcfDeliveryPath(path: UpgradePath): VcfDeliveryPath {
   if (path === "new-build") return "greenfield";
   if (path === "migration-waves") return "hybrid";
@@ -281,6 +286,63 @@ const PLAYBOOK_PATHS: Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, "path">> = {
 export function getVcfPlaybookPlan(path: UpgradePath): VcfPlaybookPlan {
   const canonical = canonicalVcfDeliveryPath(path);
   return { path: canonical, ...PLAYBOOK_PATHS[canonical] };
+}
+
+const GOVERNANCE_OWNERSHIP: VcfPlaybookOwnership = { category: "Program Management & Governance", workstreamType: "Governance" };
+const INFRASTRUCTURE_DESIGN_OWNERSHIP: VcfPlaybookOwnership = { category: "Modernize Infrastructure", workstreamType: "Infrastructure Build" };
+const INFRASTRUCTURE_WAVE_OWNERSHIP: VcfPlaybookOwnership = { category: "Modernize Infrastructure", workstreamType: "Migration Waves" };
+const OPERATIONS_OWNERSHIP: VcfPlaybookOwnership = { category: "Operations", workstreamType: "Operating Model / Platform" };
+
+/** Canonical ownership for pathway-level design, execution, adoption, and handoff packages. */
+export function getVcfPlaybookWorkPackageOwnership(path: UpgradePath, workPackage: VcfPlaybookWorkPackage): VcfPlaybookOwnership {
+  const canonicalPath = canonicalVcfDeliveryPath(path);
+  const ownershipByPath: Record<VcfDeliveryPath, Record<string, VcfPlaybookOwnership>> = {
+    undecided: {
+      requirements: GOVERNANCE_OWNERSHIP,
+      "pathway-decision": GOVERNANCE_OWNERSHIP,
+    },
+    "in-place": {
+      requirements: GOVERNANCE_OWNERSHIP,
+      "target-state": INFRASTRUCTURE_DESIGN_OWNERSHIP,
+      "platform-design": INFRASTRUCTURE_DESIGN_OWNERSHIP,
+      "upgrade-runbook": INFRASTRUCTURE_WAVE_OWNERSHIP,
+      "upgrade-waves": INFRASTRUCTURE_WAVE_OWNERSHIP,
+      "vcf-management": OPERATIONS_OWNERSHIP,
+    },
+    converge: {
+      requirements: GOVERNANCE_OWNERSHIP,
+      "target-state": INFRASTRUCTURE_DESIGN_OWNERSHIP,
+      "converge-runbook": INFRASTRUCTURE_WAVE_OWNERSHIP,
+      converge: INFRASTRUCTURE_DESIGN_OWNERSHIP,
+    },
+    "import-workload-domain": {
+      requirements: GOVERNANCE_OWNERSHIP,
+      "domain-design": INFRASTRUCTURE_DESIGN_OWNERSHIP,
+      "import-runbook": INFRASTRUCTURE_WAVE_OWNERSHIP,
+      import: INFRASTRUCTURE_WAVE_OWNERSHIP,
+    },
+    greenfield: {
+      requirements: GOVERNANCE_OWNERSHIP,
+      "target-state": INFRASTRUCTURE_DESIGN_OWNERSHIP,
+      "migration-design": INFRASTRUCTURE_WAVE_OWNERSHIP,
+      foundation: INFRASTRUCTURE_DESIGN_OWNERSHIP,
+      "migration-waves": INFRASTRUCTURE_WAVE_OWNERSHIP,
+    },
+    hybrid: {
+      requirements: GOVERNANCE_OWNERSHIP,
+      "pathway-decision": GOVERNANCE_OWNERSHIP,
+      "integrated-runbook": INFRASTRUCTURE_WAVE_OWNERSHIP,
+      "delivery-waves": INFRASTRUCTURE_WAVE_OWNERSHIP,
+    },
+    "design-only": {
+      requirements: GOVERNANCE_OWNERSHIP,
+      "decision-register": GOVERNANCE_OWNERSHIP,
+      "logical-physical-design": INFRASTRUCTURE_DESIGN_OWNERSHIP,
+      "implementation-handoff": INFRASTRUCTURE_WAVE_OWNERSHIP,
+    },
+  };
+  return ownershipByPath[canonicalPath][workPackage.id]
+    || (workPackage.phase === "Implementation" ? INFRASTRUCTURE_WAVE_OWNERSHIP : workPackage.phase === "Adoption" ? OPERATIONS_OWNERSHIP : GOVERNANCE_OWNERSHIP);
 }
 
 export const domainTopologySchema = z.enum(["undecided", "consolidated", "standard"]);
@@ -1377,15 +1439,19 @@ const focusLabels: Record<Capability, Record<string, string>> = {
   },
 };
 
-const componentDesignProfiles: Record<Capability, { title: string; outcome: string; dependency: string }> = {
-  operations: { title: "Design VCF Operations Adoption", outcome: "Issue the Operations architecture, data sources, dashboard and alert scope, lifecycle ownership, and operating acceptance criteria.", dependency: "Confirm the operations depth, platform owners, telemetry sources, and support model." },
-  automation: { title: "Design VCF Automation and Self-Service", outcome: "Issue the organization, project, catalog, blueprint, policy, approval, source-control, and service-ownership design.", dependency: "Confirm the automation depth, catalog product owner, tenant model, approvals, and integration boundaries." },
-  networking: { title: "Design VCF Networking and NSX", outcome: "Issue the physical fabric, transport zone, Edge, routing, overlay, IP, MTU, and network-operations design.", dependency: "Confirm network ownership, fabric standards, routing handoffs, NSX scope, and selected adoption depth." },
-  security: { title: "Design vDefend and Security Policy", outcome: "Issue the segmentation, policy, identity, hardening, evidence, rollout-wave, and security-operations design.", dependency: "Confirm the security owner, application dependency evidence, policy lifecycle, and selected adoption depth." },
-  resilience: { title: "Design Recovery and Resilience Services", outcome: "Issue the protection tiers, RPO/RTO, recovery topology, runbooks, exercise model, and acceptance evidence.", dependency: "Confirm protected workloads, business recovery objectives, tooling, sites, and recovery ownership." },
-  kubernetes: { title: "Design VKS Platform and Developer Consumption", outcome: "Issue the workload-domain, Supervisor, namespace, policy, lifecycle, data-protection, and developer-consumption design.", dependency: "Confirm the platform owner, sponsored workload, network and security controls, and selected adoption depth." },
-  "private-ai": { title: "Design Private AI Platform and Governance", outcome: "Issue the GPU capacity, workload-domain, data boundary, model access, security, lifecycle, pilot, and acceptance design.", dependency: "Confirm funded GPU capacity, a named use case, data classification, security approval, and selected adoption depth." },
+const componentDesignProfiles: Record<Capability, { title: string; outcome: string; dependency: string; ownership: VcfPlaybookOwnership }> = {
+  operations: { title: "Design VCF Operations Adoption", outcome: "Issue the Operations architecture, data sources, dashboard and alert scope, lifecycle ownership, and operating acceptance criteria.", dependency: "Confirm the operations depth, platform owners, telemetry sources, and support model.", ownership: OPERATIONS_OWNERSHIP },
+  automation: { title: "Design VCF Automation and Self-Service", outcome: "Issue the organization, project, catalog, blueprint, policy, approval, source-control, and service-ownership design.", dependency: "Confirm the automation depth, catalog product owner, tenant model, approvals, and integration boundaries.", ownership: { category: "Modernize Cloud", workstreamType: "Consume / Handover" } },
+  networking: { title: "Design VCF Networking and NSX", outcome: "Issue the physical fabric, transport zone, Edge, routing, overlay, IP, MTU, and network-operations design.", dependency: "Confirm network ownership, fabric standards, routing handoffs, NSX scope, and selected adoption depth.", ownership: INFRASTRUCTURE_DESIGN_OWNERSHIP },
+  security: { title: "Design vDefend and Security Policy", outcome: "Issue the segmentation, policy, identity, hardening, evidence, rollout-wave, and security-operations design.", dependency: "Confirm the security owner, application dependency evidence, policy lifecycle, and selected adoption depth.", ownership: { category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" } },
+  resilience: { title: "Design Recovery and Resilience Services", outcome: "Issue the protection tiers, RPO/RTO, recovery topology, runbooks, exercise model, and acceptance evidence.", dependency: "Confirm protected workloads, business recovery objectives, tooling, sites, and recovery ownership.", ownership: { category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" } },
+  kubernetes: { title: "Design VKS Platform and Developer Consumption", outcome: "Issue the workload-domain, Supervisor, namespace, policy, lifecycle, data-protection, and developer-consumption design.", dependency: "Confirm the platform owner, sponsored workload, network and security controls, and selected adoption depth.", ownership: { category: "Modernize Cloud", workstreamType: "Consume / Handover" } },
+  "private-ai": { title: "Design Private AI Platform and Governance", outcome: "Issue the GPU capacity, workload-domain, data boundary, model access, security, lifecycle, pilot, and acceptance design.", dependency: "Confirm funded GPU capacity, a named use case, data classification, security approval, and selected adoption depth.", ownership: { category: "Modernize Cloud", workstreamType: "Consume / Handover" } },
 };
+
+export function getVcfComponentDesignOwnership(capability: Capability): VcfPlaybookOwnership {
+  return componentDesignProfiles[capability].ownership;
+}
 
 function componentDepthFor(fields: MinimalFields, capability: Capability): AdoptionDepth {
   if (capability === "operations") return fields.adoptionDetails.componentDepths.operations;
@@ -1581,62 +1647,88 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const platformInventory = buildPlatformInventoryActivity(inventory, cadence, fields);
 
   const playbookPlan = getVcfPlaybookPlan(fields.adoptionDetails.upgradePath);
-  const upgradeDesignBars: TimelineBar[] = [];
-  let upgradeDesignCursor = 1;
+  type DesignLaneKey = "program" | "infrastructureBuild" | "infrastructureWaves" | "operations" | "cloud" | "security";
+  const designBars: Record<DesignLaneKey, TimelineBar[]> = {
+    program: [],
+    infrastructureBuild: [],
+    infrastructureWaves: [],
+    operations: [],
+    cloud: [],
+    security: [],
+  };
+  const designLaneKey = (ownership: VcfPlaybookOwnership): DesignLaneKey => {
+    if (ownership.category === "Program Management & Governance") return "program";
+    if (ownership.category === "Modernize Infrastructure") return ownership.workstreamType === "Migration Waves" ? "infrastructureWaves" : "infrastructureBuild";
+    if (ownership.category === "Modernize Cloud") return "cloud";
+    if (ownership.category === "Modernize Security & Resilience") return "security";
+    return "operations";
+  };
+  let pathwayDesignCursor = 1;
   playbookPlan.designPackages.forEach((workPackage, index) => {
     const duration = index === 0 ? scheduleUnits(cadence, 2, 1) : scheduleUnits(cadence, 3, 1);
-    const [taskStart, taskEnd] = range(upgradeDesignCursor, duration);
-    upgradeDesignBars.push(bar(
+    const [taskStart, taskEnd] = range(pathwayDesignCursor, duration);
+    const ownership = getVcfPlaybookWorkPackageOwnership(playbookPlan.path, workPackage);
+    designBars[designLaneKey(ownership)].push(bar(
       `bar-playbook-design-${workPackage.id}`,
       taskStart,
       taskEnd,
-      colorForWorkstreamType("Operating Model / Platform"),
+      colorForWorkstreamType(ownership.workstreamType),
       workPackage.title,
       false,
       false,
       appendDeliveryContext(workPackage.dependsOn),
       `${workPackage.outcome} Acceptance: ${workPackage.acceptance}`,
     ));
-    upgradeDesignCursor = taskEnd;
+    pathwayDesignCursor = taskEnd;
   });
+  const componentDesignCursors: Record<DesignLaneKey, number> = {
+    program: pathwayDesignCursor,
+    infrastructureBuild: pathwayDesignCursor,
+    infrastructureWaves: pathwayDesignCursor,
+    operations: pathwayDesignCursor,
+    cloud: pathwayDesignCursor,
+    security: pathwayDesignCursor,
+  };
   fields.priorities.forEach(capability => {
     const profile = componentDesignProfiles[capability];
     const depth = componentDepthFor(fields, capability);
-    const [taskStart, taskEnd] = range(upgradeDesignCursor, scheduleUnits(cadence, 2, 1));
-    upgradeDesignBars.push(bar(
+    const laneKey = designLaneKey(profile.ownership);
+    const [taskStart, taskEnd] = range(componentDesignCursors[laneKey], scheduleUnits(cadence, 2, 1));
+    designBars[laneKey].push(bar(
       `bar-playbook-component-design-${capability}`,
       taskStart,
       taskEnd,
-      colorForWorkstreamType(capability === "security" || capability === "resilience" ? "Security & Resiliency" : "Operating Model / Platform"),
+      colorForWorkstreamType(profile.ownership.workstreamType),
       `${profile.title} — ${componentDepthLabel(depth)}`,
       false,
       false,
       appendDeliveryContext(profile.dependency),
       `${profile.outcome} The committed adoption depth is ${componentDepthLabel(depth)}.`,
     ));
-    upgradeDesignCursor = taskEnd;
+    componentDesignCursors[laneKey] = taskEnd;
   });
   if (fields.adoptionDetails.componentDepths.efficiency !== "not-selected") {
-    const [taskStart, taskEnd] = range(upgradeDesignCursor, scheduleUnits(cadence, 2, 1));
-    upgradeDesignBars.push(bar(
+    const [taskStart, taskEnd] = range(componentDesignCursors.infrastructureBuild, scheduleUnits(cadence, 2, 1));
+    designBars.infrastructureBuild.push(bar(
       "bar-playbook-component-design-efficiency",
       taskStart,
       taskEnd,
-      colorForWorkstreamType("Operating Model / Platform"),
+      colorForWorkstreamType("Infrastructure Build"),
       `Design Efficiency, Memory Tiering, and Sizing — ${componentDepthLabel(fields.adoptionDetails.componentDepths.efficiency)}`,
       false,
       false,
       "Confirm hardware architecture, performance baseline, supported memory-tiering configuration, vSAN layout, and financial measurement method.",
       "Issue the hardware-efficiency sizing model, implementation boundaries, performance validation plan, and measurable acceptance direction.",
     ));
-    upgradeDesignCursor = taskEnd;
+    componentDesignCursors.infrastructureBuild = taskEnd;
   }
 
   const [mobilizationStart, mobilizationEnd] = range(1, mobilizationDuration);
   const programBars: TimelineBar[] = [
     bar("bar-platform-plan", mobilizationStart, mobilizationEnd, colorForWorkstreamType("Governance"), platformInventory.label, false, false, platformInventory.dependsOn, platformInventory.outcome),
+    ...designBars.program,
   ];
-  const infrastructureBars: TimelineBar[] = [];
+  const infrastructureBars: TimelineBar[] = [...designBars.infrastructureBuild];
   let hclBufferEnd = mobilizationEnd;
   let hclDependency = `${HCL_EVALUATION_VERSION} HCL path classified as ${hclPathLabel(path)} after the mobilisation baseline.`;
 
@@ -1667,10 +1759,13 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const [hclGateStart, hclGateEnd] = range(hclBufferEnd, 1);
   programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", `HCL Gate: ${hclPathLabel(path)}`, true, false, hclDependency, "Authorize foundation work only after the required HCL path evidence is recorded."));
 
-  const upgradeDesignEnd = upgradeDesignBars.length ? upgradeDesignCursor : hclGateEnd;
-  const deliveryStart = Math.max(hclGateEnd, implementationStartColumn, upgradeDesignEnd);
+  const pathwayDesignEnd = playbookPlan.designPackages.length ? pathwayDesignCursor : hclGateEnd;
+  const infrastructureDesignEnd = Math.max(pathwayDesignEnd, componentDesignCursors.infrastructureBuild, componentDesignCursors.infrastructureWaves);
+  const deliveryStart = Math.max(hclGateEnd, implementationStartColumn, infrastructureDesignEnd);
   let foundationEnd = deliveryStart;
   let workloadEnd = deliveryStart;
+  let directMigrationExecutionEnd = deliveryStart;
+  const migrationBars: TimelineBar[] = [...designBars.infrastructureWaves];
   const addInfrastructurePackage = (id: string, title: string, start: number, duration: number, dependsOn: string, outcome: string) => {
     const [taskStart, taskEnd] = range(start, duration);
     infrastructureBars.push(bar(id, taskStart, taskEnd, colorForWorkstreamType("Infrastructure Build"), title, false, false, appendDeliveryContext(dependsOn), outcome));
@@ -1685,7 +1780,11 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     workloadEnd = foundationEnd;
   } else if (playbookPlan.path === "import-workload-domain") {
     foundationEnd = addInfrastructurePackage("bar-import-foundation-validation", "Validate Destination VCF Foundation for Import", deliveryStart, managementDuration, "Begin after the destination VCF instance, capacity, networking, storage, and lifecycle health are accepted.", "Confirm the destination foundation can receive the complete source vCenter as a workload domain.");
-    workloadEnd = addInfrastructurePackage("bar-import-workload-domain", "Import Existing vCenter as a VCF Workload Domain", foundationEnd, workloadDuration, playbookPlan.implementationPackages[0]?.dependsOn || "Begin after destination-foundation acceptance.", playbookPlan.implementationPackages[0]?.outcome || "Import and validate the approved workload domain.");
+    workloadEnd = foundationEnd;
+    const importPackage = playbookPlan.implementationPackages[0];
+    const [importStart, importEnd] = range(foundationEnd, workloadDuration);
+    migrationBars.push(bar("bar-import-workload-domain", importStart, importEnd, colorForWorkstreamType("Migration Waves"), "Import Existing vCenter as a VCF Workload Domain", false, false, appendDeliveryContext(importPackage?.dependsOn || "Begin after destination-foundation acceptance."), importPackage?.outcome || "Import and validate the approved workload domain."));
+    directMigrationExecutionEnd = importEnd;
   } else if (playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid") {
     const foundationTitle = playbookPlan.path === "greenfield" ? "Deploy and Validate the Greenfield VCF Foundation" : "Establish the Shared VCF Foundation for Approved Cohorts";
     foundationEnd = addInfrastructurePackage("bar-management-domain", foundationTitle, deliveryStart, managementDuration, playbookPlan.path === "greenfield" ? "Begin only after separately funded hardware, rack, network, storage, DNS, NTP, and IP prerequisites are accepted." : "Begin after the cohort decision register and shared target-state design are approved.", playbookPlan.path === "greenfield" ? "Deploy the approved management-domain foundation and validate core platform health." : "Establish the common VCF control plane required by the approved cohort pathways.");
@@ -1695,12 +1794,11 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     workloadEnd = addInfrastructurePackage("bar-workload-domain", "Create and Validate the Initial VCF Workload Domain", foundationEnd, workloadDuration, "Begin after management-domain health and the approved network and storage prerequisites are validated.", "Create the workload-domain foundation used by migration waves and selected component adoption.");
   }
 
-  const migrationBars: TimelineBar[] = [];
   const executionPackage = playbookPlan.path === "greenfield"
     ? playbookPlan.implementationPackages.at(-1)
     : playbookPlan.implementationPackages[0];
   const migrationRange = migrationDuration && executionPackage ? range(workloadEnd, migrationDuration) : null;
-  const migrationEnd = migrationRange?.[1] ?? workloadEnd;
+  const migrationEnd = Math.max(migrationRange?.[1] ?? workloadEnd, directMigrationExecutionEnd);
   if (migrationRange && executionPackage) {
     migrationBars.push(bar(
       `bar-playbook-execution-${executionPackage.id}`,
@@ -1717,8 +1815,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   const platformReadyEnd = migrationEnd;
   const implementationApproved = playbookPlan.path !== "undecided" && playbookPlan.path !== "design-only";
-  const operationsBars: TimelineBar[] = [...upgradeDesignBars];
-  let operationsCursor = Math.max(upgradeDesignCursor, platformReadyEnd);
+  const operationsBars: TimelineBar[] = [...designBars.operations];
+  let operationsCursor = Math.max(componentDesignCursors.operations, platformReadyEnd);
   if (playbookPlan.path === "in-place" && playbookPlan.implementationPackages[1]) {
     const managementPackage = playbookPlan.implementationPackages[1];
     const [taskStart, taskEnd] = range(operationsCursor, moduleDuration);
@@ -1739,8 +1837,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     }
   }
 
-  const cloudBars: TimelineBar[] = [];
-  let cloudCursor = platformReadyEnd;
+  const cloudBars: TimelineBar[] = [...designBars.cloud];
+  let cloudCursor = Math.max(componentDesignCursors.cloud, platformReadyEnd);
   const addCloudTask = (id: string, label: string, dependency: string) => {
     const [taskStart, taskEnd] = range(cloudCursor, moduleDuration);
     cloudBars.push(bar(id, taskStart, taskEnd, colorForWorkstreamType("Consume / Handover"), label, false, false, dependency, "Enable the confirmed cloud capability on the accepted VCF foundation."));
@@ -1761,8 +1859,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   }
   const cloudEnd = cloudBars.length ? cloudCursor : platformReadyEnd;
 
-  const securityBars: TimelineBar[] = [];
-  let securityCursor = platformReadyEnd;
+  const securityBars: TimelineBar[] = [...designBars.security];
+  let securityCursor = Math.max(componentDesignCursors.security, platformReadyEnd);
   const addSecurityTask = (id: string, label: string) => {
     const [taskStart, taskEnd] = range(securityCursor, securityDuration);
     securityBars.push(bar(id, taskStart, taskEnd, colorForWorkstreamType("Security & Resiliency"), label, false, false, "Begin after the HCL gate; this work does not wait for cloud module enablement.", "Implement the selected resilience and security capability with controlled evidence and ownership."));
@@ -2529,6 +2627,31 @@ function needsImplementationTimelineRebaseline(timeline: Timeline): boolean {
   return requiredFixedLaneIds.some(laneId => !timeline.lanes.some(lane => lane.id === laneId));
 }
 
+function needsPlaybookCategoryRebaseline(timeline: Timeline, fields: MinimalFields): boolean {
+  const plan = getVcfPlaybookPlan(fields.adoptionDetails.upgradePath);
+  const laneForActivity = (activityId: string) => timeline.lanes.find(lane => lane.bars.some(activity => activity.id === activityId));
+  const hasExpectedOwnership = (activityId: string, ownership: VcfPlaybookOwnership) => {
+    const lane = laneForActivity(activityId);
+    return Boolean(lane && lane.category === ownership.category && lane.workstreamType === ownership.workstreamType);
+  };
+
+  for (const workPackage of [...plan.designPackages, ...plan.implementationPackages]) {
+    const prefix = workPackage.phase === "Implementation" ? "bar-playbook-execution" : workPackage.phase === "Adoption" ? "bar-playbook-adoption" : "bar-playbook-design";
+    const activityId = `${prefix}-${workPackage.id}`;
+    if (plan.path === "converge" && workPackage.id === "converge") continue;
+    if (plan.path === "import-workload-domain" && workPackage.id === "import") continue;
+    if (plan.path === "greenfield" && workPackage.id === "foundation") continue;
+    if (!hasExpectedOwnership(activityId, getVcfPlaybookWorkPackageOwnership(plan.path, workPackage))) return true;
+  }
+
+  for (const capability of fields.priorities) {
+    if (!hasExpectedOwnership(`bar-playbook-component-design-${capability}`, getVcfComponentDesignOwnership(capability))) return true;
+  }
+  if (fields.adoptionDetails.componentDepths.efficiency !== "not-selected" && !hasExpectedOwnership("bar-playbook-component-design-efficiency", INFRASTRUCTURE_DESIGN_OWNERSHIP)) return true;
+  if (plan.path === "import-workload-domain" && !hasExpectedOwnership("bar-import-workload-domain", INFRASTRUCTURE_WAVE_OWNERSHIP)) return true;
+  return false;
+}
+
 function normalizePlanningDates(fields: MinimalFields): MinimalFields {
   const entitlementEnd = calculateEntitlementEndDate(fields.entitlementStart);
   const plannedProjectStart = fields.plannedProjectStart || fields.targetStart || fields.entitlementStart;
@@ -2563,7 +2686,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     const fields = normalizePlanningDates(current.data.fields);
     const generated = buildAdoptionPlans(fields, current.data.inventory);
     const planAuthority = inferredPlanAuthority(normalizedValue, current.data, generated);
-    if (needsImplementationTimelineRebaseline(current.data.adoptionTimeline) && planAuthority !== "manual") {
+    if ((needsImplementationTimelineRebaseline(current.data.adoptionTimeline) || needsPlaybookCategoryRebaseline(current.data.adoptionTimeline, fields)) && planAuthority !== "manual") {
       return {
         ...current.data,
         planAuthority: "generated",
