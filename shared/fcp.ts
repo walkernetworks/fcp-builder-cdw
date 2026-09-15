@@ -1106,22 +1106,22 @@ export function normalizeTimelineTaxonomy(timeline: Timeline): Timeline {
 
 function upgradeServiceLabel(path: UpgradePath): string {
   const labels: Record<UpgradePath, string> = {
-    undecided: "Approve VCF Delivery Path and Execute the Confirmed Runbook",
-    "in-place": "Execute VCF 9.1 In-Place Upgrade Waves",
-    "new-build": "Deploy VCF 9.1 New Build and Converge Workloads",
-    "migration-waves": "Execute VCF 9.1 Migration Waves",
-    "design-only": "Close Architecture Decisions and Implementation Runbook",
+    undecided: "Execute Approved VCF Pathway and Controlled Delivery Waves",
+    "in-place": "Execute Approved In-Place Upgrade and Validation Waves",
+    "new-build": "Deploy Approved VCF Foundation and Converge Workloads",
+    "migration-waves": "Execute Approved Workload Migration and Cutover Waves",
+    "design-only": "Issue VCF Target-State Design and Implementation Runbook",
   };
   return labels[path];
 }
 
 function upgradePathNarrative(path: UpgradePath): string {
   const narratives: Record<UpgradePath, string> = {
-    undecided: "The delivery path remains open until the implementation decision, rollback approach, and change windows are confirmed during mobilisation.",
-    "in-place": "The in-place path sequences controlled VCF 9.1 upgrade waves with rollback and post-wave health checks.",
-    "new-build": "The new-build path establishes the target VCF platform before converging approved workloads through the accepted migration sequence.",
-    "migration-waves": "The migration-waves path uses bounded workload waves with dependency, cutover, rollback, and post-migration validation controls.",
-    "design-only": "The design-only path intentionally stops before migration execution and delivers architecture decisions plus an implementation-ready runbook.",
+    undecided: "The pathway remains open until the requirements and constraints register, decision register, rollback approach, and change windows are confirmed.",
+    "in-place": "The in-place path is designed around requirements and constraints, target-state and decision design, management-domain and platform design, an approved upgrade runbook, controlled upgrade waves, and post-wave validation before operational handover.",
+    "new-build": "The new-build path sequences target-state and physical design, supported hardware and foundation acceptance, VCF platform deployment, workload convergence, migration validation, and operational handover.",
+    "migration-waves": "The migration path sequences workload-domain and migration design, dependency and rollback planning, controlled cutover waves, post-migration validation, and operational handover.",
+    "design-only": "The design-only path issues the requirements and constraints register, decision register, logical and physical design, migration and cutover plan, validation criteria, and implementation-ready handover package without executing migration.",
   };
   return narratives[path];
 }
@@ -1382,6 +1382,20 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const implementationStartColumn = Math.min(count, 1 + implementationOffset);
   const platformInventory = buildPlatformInventoryActivity(inventory, cadence, fields);
 
+  const upgradeDesignBars: TimelineBar[] = [];
+  let upgradeDesignCursor = 1;
+  const addUpgradeDesign = (id: string, label: string, duration: number, dependsOn: string, outcome: string) => {
+    const [taskStart, taskEnd] = range(upgradeDesignCursor, duration);
+    upgradeDesignBars.push(bar(id, taskStart, taskEnd, colorForWorkstreamType("Operating Model / Platform"), label, false, false, dependsOn, outcome));
+    upgradeDesignCursor = taskEnd;
+  };
+  if (fields.adoptionDetails.upgradePath === "in-place") {
+    addUpgradeDesign("bar-upgrade-requirements", "Confirm Upgrade Requirements and Constraints", scheduleUnits(cadence, 2, 1), appendDeliveryContext("Start from the imported estate, exact ESXi build evidence, HCL disposition, customer constraints, and change calendar."), "Issue the requirements and constraints register, including rollback limits, acceptance conditions, and named customer decisions.");
+    addUpgradeDesign("bar-upgrade-target-state", "Design VCF 9.1 Target State and Record Decisions", scheduleUnits(cadence, 2, 1), "Begin after the requirements and constraints register is confirmed.", "Issue the decision register and target-state decisions for pathway, domain topology, component placement, storage, and network ownership.");
+    addUpgradeDesign("bar-upgrade-platform-design", "Design Management Domain, Platform, and Prerequisites", scheduleUnits(cadence, 3, 1), "Begin after target-state decisions and the HCL gate are accepted.", "Issue logical and physical platform design, host and cluster placement, IP/DNS/NTP plan, and prerequisite closure list.");
+    addUpgradeDesign("bar-upgrade-runbook", "Design Upgrade Runbook, Validation, and Change Windows", scheduleUnits(cadence, 2, 1), "Begin after platform design and the customer change calendar are available.", "Issue the implementation runbook with prechecks, sequencing, rollback, post-upgrade validation, acceptance criteria, and approved change windows.");
+  }
+
   const [mobilizationStart, mobilizationEnd] = range(1, mobilizationDuration);
   const programBars: TimelineBar[] = [
     bar("bar-platform-plan", mobilizationStart, mobilizationEnd, colorForWorkstreamType("Governance"), platformInventory.label, false, false, platformInventory.dependsOn, platformInventory.outcome),
@@ -1417,7 +1431,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const [hclGateStart, hclGateEnd] = range(hclBufferEnd, 1);
   programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", `HCL Gate: ${hclPathLabel(path)}`, true, false, hclDependency, "Authorize foundation work only after the required HCL path evidence is recorded."));
 
-  const deliveryStart = Math.max(hclGateEnd, implementationStartColumn);
+  const upgradeDesignEnd = fields.adoptionDetails.upgradePath === "in-place" ? upgradeDesignCursor : hclGateEnd;
+  const deliveryStart = Math.max(hclGateEnd, implementationStartColumn, upgradeDesignEnd);
   const [managementStart, managementEnd] = range(deliveryStart, managementDuration);
   const [networkingStart, networkingEnd] = networkingInScope ? range(managementEnd, networkingDuration) : [managementEnd, managementEnd];
   const foundationEnd = networkingInScope ? networkingEnd : managementEnd;
@@ -1432,7 +1447,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     );
   }
 
-  const operationsBars: TimelineBar[] = [];
+  const operationsBars: TimelineBar[] = [...upgradeDesignBars];
   const [operationsDesignStart, operationsDesignEnd] = range(hclGateEnd, Math.max(1, Math.min(workloadDuration, scheduleUnits(cadence, 4, 2))));
   operationsBars.push(bar("bar-platform-design", operationsDesignStart, operationsDesignEnd, colorForWorkstreamType("Operating Model / Platform"), "Define Operating Model, Lifecycle, Monitoring, and Backup Controls", false, false, "Begin after the HCL gate and run in parallel with the VCF foundation build.", "Set operating ownership, lifecycle controls, monitoring, backup, and service-management expectations."));
   let operationsCursor = Math.max(operationsDesignEnd, workloadEnd);

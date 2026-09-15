@@ -556,3 +556,12 @@
 - [x] Unify plan review and document generation so the final FCP, staffing timeline, and Compatibility Delivery Handoff are accessible from one delivery package stage rather than a disconnected Export area.
 - [x] Preserve maintained-catalog compatibility, design-first delayed implementation, RVTools reconciliation, manual-plan authority, signed downloads, and current engagement data migrations.
 - [x] Add responsive workflow, navigation, staffing, export, and migration regressions; visually validate desktop and mobile; run the full release gate and publish the redesign.
+
+## Entitlement Adoption Timeline and VCF Design Mapping Correction
+
+ - [x] Read and extract the supplied VCF 9.1 Design and Drawdown Playbook’s upgrade-design work packages, outcomes, dependencies, and sequencing.
+ - [x] Audit current outcome labels, work-package names, in-place-upgrade mapping, and generated timeline activities for mismatches.
+ - [x] Restore customer-facing terminology to Entitlement Adoption Timeline and Two-Year Notional across the workspace, renderer, exports, and tests; do not call the primary view a Staffing Timeline.
+ - [x] Define canonical in-place-upgrade design work packages covering discovery/baseline, architecture and target-state design, management-domain and networking design, workload-domain and migration design, validation/change planning, and delivery handoff.
+ - [x] Rebuild outcome-to-work-package mapping so each selected service path produces the correct design and implementation activities with clear outcomes, dependencies, and acceptance direction.
+ - [x] Add regression coverage for in-place upgrade, related upgrade paths, delayed implementation, correct work-package labels, and both timeline views; validate UI and exports.

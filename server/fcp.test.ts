@@ -212,7 +212,7 @@ describe("calendar-month adoption plans", () => {
     expect(plans.adoptionTimeline.columns[4]).toBe("Feb 14–Feb 20, 27");
     expect(plans.adoptionTimeline.columns.length).toBeGreaterThanOrEqual(5);
     expect(labels).toEqual(expect.arrayContaining([
-      "Execute VCF 9.1 Migration Waves",
+      "Execute Approved Workload Migration and Cutover Waves",
       "Launch a Governed VM Self-Service Catalog",
       "Build Infrastructure-as-Code Blueprints and Release Controls",
       "Publish Operational Dashboards and Service Measures",
@@ -247,7 +247,7 @@ describe("calendar-month adoption plans", () => {
     const mobilization = refreshedActivities.find(activity => activity.id === "bar-platform-plan");
     const labels = refreshedActivities.map(activity => activity.label);
 
-    expect(upgrade).toMatchObject({ label: "Execute VCF 9.1 Migration Waves" });
+    expect(upgrade).toMatchObject({ label: "Execute Approved Workload Migration and Cutover Waves" });
     expect(upgrade?.dependsOn).toContain("Pilot the first two application cohorts");
     expect(upgrade?.dependsOn).toContain("No production cutovers during the final two weeks of March");
     expect(mobilization?.label).toBe("Weeks 1–2: Mobilize and Establish Delivery Baseline");
@@ -260,7 +260,7 @@ describe("calendar-month adoption plans", () => {
       fields: { ...document.fields, adoptionDetails: { ...document.fields.adoptionDetails, upgradePath: "design-only" } },
     });
     expect(designOnly.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(activity => activity.id === "bar-vcf-upgrade-services")).toBeUndefined();
-    expect(designOnly.rationale).toContain("design-only path intentionally stops before migration execution");
+    expect(designOnly.rationale).toContain("design-only path issues the requirements and constraints register");
   });
 
   it("keeps planned delivery timing independent while recalculating the entitlement term", () => {
@@ -746,7 +746,7 @@ describe("planning considerations, exports, and access boundary", () => {
     const greenfield = redBars.find(activity => activity.label === "Provision and Validate Greenfield Hardware Baseline");
     const hclGate = redBars.find(activity => activity.label.includes("HCL Gate: Red"));
     const prerequisite = redBars.find(activity => activity.label === "Confirm DNS, NTP, and core services");
-    const migration = redBars.find(activity => activity.label.includes("Migration Waves"));
+    const migration = redBars.find(activity => activity.label.includes("Migration and Cutover Waves"));
     const cloud = redBars.find(activity => activity.label === "Launch a Governed VM Self-Service Catalog");
     const security = redBars.find(activity => activity.label === "Implement Segmentation and Security Policy");
     const resilience = redBars.find(activity => activity.label === "Implement Recovery Architecture");
@@ -1133,7 +1133,7 @@ describe("planning considerations, exports, and access boundary", () => {
     const html = renderFcpHtml("Meridian FCP", document);
     expect(html).toContain("Meridian Health");
     expect(html).toContain("$3,000,000");
-    expect(html).toContain("Delivery Staffing Timeline");
+    expect(html).toContain("Entitlement Adoption Timeline");
     expect(html).toContain("Entitlement Notional");
     expect(html).toContain("Delivery resource view:");
     expect(html).toContain("Entitlement-period delivery view:");
@@ -1183,7 +1183,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(planSummary).toContain("<h3>Observed footprint</h3>");
     expect(planSummary).toContain("<h3>Selected scope</h3>");
     expect(planSummary).toContain("<h3>Entitlement Notional</h3>");
-    expect(planSummary).toContain("<h3>Delivery Staffing Timeline</h3>");
+    expect(planSummary).toContain("<h3>Entitlement Adoption Timeline</h3>");
     expect(planSummary).toContain('<span class="summary-index">01</span>');
     expect(planSummary).not.toContain("data-step=");
     expect(html).toContain('<section class="executive-sheet">');
@@ -1238,7 +1238,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Customer background");
     expect(html).toContain("Observed footprint");
     expect(html).toContain("Entitlement Notional");
-    expect(html).toContain("Delivery Staffing Timeline");
+    expect(html).toContain("Entitlement Adoption Timeline");
   });
 
   it("can omit the operational adoption timeline while retaining entitlement and readiness output", () => {
@@ -1249,7 +1249,7 @@ describe("planning considerations, exports, and access boundary", () => {
     const html = renderFcpHtml("Meridian FCP", document);
     expect(html).not.toContain('data-tab="adoption"');
     expect(html).not.toContain('<section id="adoption"');
-    expect(html).not.toContain("Delivery Staffing Timeline");
+    expect(html).not.toContain("Entitlement Adoption Timeline");
     expect(html).not.toContain("Delivery resource view:");
     expect(html).not.toContain('class="operational-print-sheet');
     expect(html).toContain("Entitlement Notional");
@@ -1273,7 +1273,7 @@ describe("planning considerations, exports, and access boundary", () => {
     document.fields.customerName = "Meridian Health";
     const result = await appRouter.createCaller(authenticatedContext()).document.html({ title: "Meridian Health / FCP", data: document });
     expect(result.filename).toBe("Meridian-Health-FCP.html");
-    expect(result.content).toContain("Delivery Staffing Timeline");
+    expect(result.content).toContain("Entitlement Adoption Timeline");
   });
 
   it("rejects business-data procedures without an authenticated user", async () => {
@@ -1343,5 +1343,31 @@ describe("HCL 2.0 estate evidence", () => {
     expect(html).toContain("Presales-to-delivery handoff");
     expect(html).toContain("Priority delivery actions");
     expect(html).not.toContain("Coverage Gaps and Evidence Required");
+  });
+  it("maps an in-place upgrade to explicit VCF design work packages before execution", () => {
+    const document = createDefaultDocument();
+    const fields = {
+      ...document.fields,
+      adoptionDetails: { ...document.fields.adoptionDetails, upgradePath: "in-place" as const },
+    };
+    const plans = buildAdoptionPlans(fields, document.inventory);
+    const activities = plans.adoptionTimeline.lanes.flatMap(lane => lane.bars);
+    const byId = (id: string) => activities.find(activity => activity.id === id);
+    expect(activities.map(activity => activity.label)).toEqual(expect.arrayContaining([
+      "Confirm Upgrade Requirements and Constraints",
+      "Design VCF 9.1 Target State and Record Decisions",
+      "Design Management Domain, Platform, and Prerequisites",
+      "Design Upgrade Runbook, Validation, and Change Windows",
+      "Execute Approved In-Place Upgrade and Validation Waves",
+    ]));
+    expect(byId("bar-upgrade-requirements")?.outcome).toContain("requirements and constraints register");
+    expect(byId("bar-upgrade-target-state")?.startCol).toBeGreaterThanOrEqual(byId("bar-upgrade-requirements")?.endCol ?? 0);
+    expect(byId("bar-upgrade-platform-design")?.dependsOn).toContain("target-state decisions");
+    expect(byId("bar-upgrade-runbook")?.outcome).toContain("implementation runbook");
+    expect(byId("bar-vcf-upgrade-services")?.dependsOn).toContain("rollback planning");
+    const html = renderFcpHtml("In-Place Mapping Test", { ...document, fields, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan });
+    expect(html).toContain("Entitlement Adoption Timeline");
+    expect(html).toContain("Design Upgrade Runbook, Validation, and Change Windows");
+    expect(html).not.toContain("Staffing Timeline");
   });
 });

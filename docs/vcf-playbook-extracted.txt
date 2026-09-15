@@ -1,0 +1,1161 @@
+
+
+VMware Cloud Foundation 9.1
+
+Design and Entitlement Drawdown Playbook
+
+
+Consuming a 12 month VCF adoption services entitlement ahead of the October 2027 vSphere 8 deadline
+
+Prepared by: CDW Virtualization Practice
+
+Audience: Account teams, solution architects, and customer infrastructure leads
+
+Version: 1.0, draft for practice review
+
+Classification: Internal working document. Customer-facing extracts require review.
+
+
+
+
+Contents
+TOC \h \o "1-2"
+
+
+
+
+
+1. Purpose and How to Use This Document
+
+This playbook does two jobs at once. It explains what a VMware Cloud Foundation design actually consists of, and it converts that design into a sequenced program of work that a customer can use to consume a large adoption services entitlement inside a fixed twelve month window.
+
+The fund in scope buys VCF adoption services only. It does not buy hardware and it does not buy licensing. That single constraint shapes every recommendation in this document, and it inverts the usual scoping instinct. When a fund can buy hardware, the fastest way to consume it is to build something new. When a fund can only buy services, the only way to consume it is depth: how far into each component the customer is willing to go, and how much of their team&apos;s time they can commit to absorbing it.
+
+Section 8 is therefore the heart of this document rather than a late sub-decision. Sections 4 through 7 narrow the target; Section 8 determines whether the fund is spent.
+
+Use it in this order:
+
+
+Run the discovery inputs in Section 11 before proposing anything.
+
+
+Work Sections 4 through 7 as a decision register with the customer. Record the choice and the reason, not just the choice.
+
+
+Use Section 8 to set the depth tier for each component the customer selected. With a services-only fund, this is the primary drawdown mechanism, not a refinement.
+
+
+Build the quarterly plan from Section 9 and price it against the levers in Section 10.
+
+
+
+A note on sequencing
+
+With a services-only fund the binding constraint is rarely the October 2027 date and never the hardware lead time. It is how much change the customer&apos;s platform team can absorb while still running production. Build the plan backward from their capacity and their change freeze calendar, then check it against the deadline.
+
+
+
+2. The Forcing Function and the Funding Constraint
+
+
+2.1 The deadline
+
+vSphere 8 reaches End of General Support on 11 October 2027. That covers ESXi 8.x, vCenter Server 8.x, and vSAN 8.x. End of Technical Guidance follows on 11 October 2029, but technical guidance is documentation-based self-help with no patches, so it should not be treated as extra safe running time.
+
+Two details matter in scoping conversations and are routinely missed:
+
+
+Individual update releases have their own support windows. An older 8.0 update can fall out of support well before the line-level date. Inventory exact build numbers, not just major versions.
+
+
+vSphere 8 is the last release available under perpetual licensing. What follows requires subscription, which is why the EOGS date functions as a whole-platform decision deadline rather than a routine upgrade.
+
+Against that date, a twelve month program starting now lands with roughly a year of margin. That margin is the single strongest argument for starting while the entitlement is available rather than deferring to the final quarters, when professional services capacity across the market will be constrained and the fund will have expired.
+
+
+
+Milestone
+
+Date
+
+What changes
+
+vSphere 7 EOGS
+
+2 October 2025
+
+Already passed. Customers still on 7.x are operating unsupported today.
+
+vSphere 8 EOGS
+
+11 October 2027
+
+No security patches, no bug fixes, no standard support. No new hardware certification.
+
+vSphere 8 EOTG
+
+11 October 2029
+
+Self-service documentation only.
+
+
+
+Verify before use: dates above are taken from Broadcom&apos;s published lifecycle information as reported across multiple sources. Confirm the exact EOGS date for the customer&apos;s specific product, edition, and update release in the Broadcom Product Lifecycle Matrix before putting it in a proposal.
+
+
+2.2 What the entitlement can and cannot buy
+
+The fund covers VCF adoption services. Everything else is out of scope and must be funded by the customer through a separate mechanism, on a separate timeline, with separate approval.
+
+
+
+In scope
+
+Out of scope
+
+Design and architecture engagements
+
+Server, storage, and network hardware
+
+Deployment and configuration of VCF components
+
+Licensing and subscription
+
+Migration planning and execution
+
+Third party software and ISV licences
+
+Enablement, workshops, and knowledge transfer
+
+Facilities, power, cooling, circuits
+
+Operational readiness, runbooks, and handover
+
+Internal customer labour
+
+Security policy authoring and governance setup
+
+Anything capitalised
+
+
+
+Three consequences follow, and all three should be stated to the customer in the first meeting rather than discovered in month seven.
+
+
+Pathway choice narrows. Any option requiring new hosts depends on a capital purchase the fund cannot make. Pathways that reuse existing hardware move to the front by default, not because they are technically superior but because they are the ones the fund can actually deliver.
+
+
+Depth replaces breadth as the drawdown lever. A services fund is consumed by taking fewer components further, not by deploying more components shallowly. Section 8 is where that is decided.
+
+
+Customer team capacity becomes the ceiling. Services cannot be delivered into an organisation that has nobody to receive them. This is the most common reason a large services entitlement expires partly unspent.
+
+
+
+
+2.3 The delivery model
+
+In these engagements CDW sells the VCF product, the customer receives adoption services entitlement against that purchase, and Broadcom Professional Services is the prime on the resulting services work. CDW delivers as subcontractor to Broadcom. The practical result is margin on the product sale and margin on the delivery, with the services attaching to the account team as well.
+
+That structure is commercially attractive and operationally constraining at the same time, and the constraints are the part that gets underestimated.
+
+
+
+What changes
+
+What it means for how we scope
+
+The statement of work sits between Broadcom and the customer, not between CDW and the customer.
+
+Scope, acceptance criteria, change control, and invoicing follow Broadcom&apos;s process and timeline. Build that lead time into the plan rather than assuming our own turnaround.
+
+Scope is set at SOW time, and additions require a change order through the prime.
+
+Everything we intend to deliver across twelve months has to be visible in the original scope. Depth tiers in Section 8 must be chosen before signature, not discovered in Q3.
+
+Deliverables are described against Broadcom service definitions.
+
+Write scope in their catalogue language. A deliverable we can describe but they cannot price is a deliverable that does not get delivered.
+
+Resourcing commitments flow through the prime&apos;s demand process.
+
+Confirm our consultant availability and get it booked against the engagement early. Late resourcing requests compete with every other partner.
+
+Escalation runs through Broadcom rather than directly to the customer sponsor.
+
+Agree the escalation path in writing at kickoff. On site presence does not confer contractual standing.
+
+Services attach credits back to the selling team.
+
+Accurate drawdown forecasting matters for practice capacity planning as well as for the customer outcome. An optimistic burn rate forecast distorts both.
+
+
+
+Where the leverage actually is
+
+Because scope is fixed at SOW and we are not the prime, the influence point is pre-sale. The design conversation that shapes the depth tiers has to happen before the services scope is written, which means Sections 4 through 8 of this document are a pre-sale instrument, not a delivery instrument. Once the SOW is signed our ability to expand scope is limited to change orders we do not control.
+
+
+
+Do not export this section
+
+Section 2.3 describes CDW commercial mechanics. It is appropriate internally and inappropriate in anything a customer or the prime sees. If this playbook is adapted for external use, remove 2.3 in full rather than softening it.
+
+
+
+3. What a VCF Design Actually Consists Of
+
+A VCF design is not a diagram. It is a set of linked artifacts, each of which answers a different question and each of which has a different consumer. Scoping a design engagement without naming these artifacts is how engagements end up unbounded.
+
+
+
+Artifact
+
+Answers
+
+Primary consumer
+
+Requirements and constraints register
+
+What must be true, and what cannot change
+
+Customer sponsor
+
+Decision register
+
+Every design decision, the options considered, the choice, and the justification
+
+Architects and auditors
+
+Logical design
+
+Domains, clusters, network and storage topology, component placement
+
+Architects
+
+Physical design
+
+Host models, core counts, memory, NICs, switch ports, IP and VLAN plan, DNS and NTP
+
+Procurement and network team
+
+Bill of materials
+
+Exactly what is being bought, in what quantity
+
+Procurement
+
+Migration and cutover plan
+
+Wave sequencing, rollback, change windows, freeze dates
+
+Operations
+
+Operational handover
+
+Runbooks, dashboards, alert definitions, RACI, escalation
+
+Day 2 operations team
+
+Validation and acceptance criteria
+
+How everyone agrees the project is finished
+
+Everyone
+
+
+
+Broadcom publishes VCF Design Blueprints and Fleet Latency Diagrams, refreshed for 9.1, plus an Upgrade Planner. Start from those rather than a blank page. They shorten the logical design phase materially and give the customer a reference point that is not a vendor opinion from us.
+
+
+
+Scoping tip
+
+Price the decision register as a distinct deliverable. It is the artifact customers value most six months later, it is the one that survives staff turnover, and it is the easiest thing to cut when an engagement is under time pressure. Naming it separately protects it.
+
+
+
+4. Decision One: Migration Pathway
+
+This is the first and most consequential decision, because it determines hardware spend, risk profile, and how much of the fund can realistically be consumed. There are four pathways. Most large estates use more than one.
+
+
+
+Pathway
+
+What it is
+
+Best when
+
+Watch out for
+
+In-place upgrade
+
+Upgrade existing vSphere in situ to 9.x, then bring under VCF management.
+
+Hardware is current and on the 9.x HCL. Estate is relatively uniform. Downtime windows exist.
+
+No rollback beyond snapshots and backups. Hardware compatibility becomes a hard gate. Least fund consumption.
+
+Converge existing vCenter
+
+Re-use an existing vSphere cluster and convert it into a VCF management domain via the Converge workflow.
+
+Customer has a healthy existing vCenter and wants VCF management without rebuilding. Also the route for storage types outside the greenfield workflow.
+
+Existing NSX installations are not initially supported for convergence to a management domain. A fresh NSX instance is installed as part of the process.
+
+Import as workload domain
+
+Bring an existing vCenter into an established VCF instance as a workload domain.
+
+A VCF instance already exists and there are satellite or acquired vCenters to absorb.
+
+All clusters within the vCenter are imported together. You do not get to import selectively.
+
+Greenfield with staging hardware
+
+Build new VCF 9.1 on new hosts alongside production, then migrate workloads in waves.
+
+A hardware refresh is already funded separately and is due anyway. Risk tolerance is low.
+
+The hardware is not fundable from this entitlement. Only viable if the customer has separate capital already approved. Do not build a plan around it otherwise.
+
+
+
+
+4.1 Minimum host counts by pathway
+
+These thresholds drive the hardware line of the bill of materials, so get them right early.
+
+
+
+Scenario
+
+Minimum hosts
+
+Notes
+
+New VCF 9 management domain, vSAN
+
+3
+
+Installer floor. Production guidance remains 4 so a node can be out for maintenance while the cluster still tolerates a failure.
+
+New VCF 9 management domain, external storage
+
+2
+
+NFSv3 or VMFS on Fibre Channel only in the greenfield workflow.
+
+Converge existing vCenter to management domain
+
+3 vSAN ready nodes, or 2 hosts on NFS or VMFS on FC
+
+Lower threshold than greenfield. Often the cheapest entry into VCF.
+
+Import existing vCenter as workload domain
+
+3 vSAN ready nodes, or 2 hosts on NFS or VMFS on FC
+
+Same thresholds as convergence.
+
+VCF 5.x management domain (for comparison)
+
+4
+
+vSAN was mandatory. This is the number most customers still have in their heads.
+
+
+
+Conflict to resolve with the customer&apos;s account team
+
+Broadcom&apos;s VCF 9 deployment pathways blog states a minimum of 4 hosts for a new management cluster, while the installer enforces 3 with vSAN and 2 with external storage. Published guidance and installer behaviour are not saying the same number. Check configmax for the exact release before committing a figure to a design.
+
+
+
+
+4.2 Choosing between them
+
+With a services-only entitlement the default changes. Converge an existing healthy vSphere cluster into the VCF management domain, then import the remaining production vCenters as workload domains in waves. Both pathways reuse hardware the customer already owns, both are services intensive, and both have lower host thresholds than a greenfield build. That combination is the best available fit for a fund that can pay for effort but not for equipment.
+
+Reserve in-place upgrade for estates where the hardware is current, on the 9.x HCL, and reasonably uniform. It is the least services intensive pathway, which in this context is a weakness rather than a virtue, but it is the right answer where it is the right answer. Do not manufacture complexity to absorb budget.
+
+Treat greenfield as conditional. If the customer already has approved capital for a refresh, it becomes viable and the services wrapped around it are substantial. If they do not, it is not a pathway, and proposing it wastes a discovery cycle.
+
+
+
+Pathway
+
+Hardware needed from the customer
+
+Services the fund can absorb
+
+In-place upgrade
+
+None, if existing hosts are on the 9.x HCL
+
+Low to medium
+
+Converge existing vCenter
+
+None beyond the existing cluster
+
+Medium to high
+
+Import as workload domain
+
+None beyond the existing cluster
+
+Medium to high, scales with domain count
+
+Greenfield with staging hardware
+
+Substantial, separately funded
+
+High, but gated on capital the fund cannot provide
+
+
+
+5. Decision Two: Domain Topology
+
+A VCF domain is a group of ESX hosts managed by one vCenter instance. The mapping is one vCenter per domain, and it is fixed. This is the single most common point of confusion in early design conversations.
+
+
+
+
+
+Consolidated
+
+Standard (separated)
+
+Structure
+
+Management and customer workloads share the management domain. One vCenter.
+
+Management domain plus one or more VI workload domains. A vCenter per domain.
+
+Isolation
+
+vSphere resource pools separate management from workload VMs.
+
+Hard separation. Management plane is unaffected by workload behaviour.
+
+Entry host count
+
+Lower. 3 or 4 depending on storage.
+
+Higher. Management domain plus the first workload domain, roughly 7 or more.
+
+Component placement
+
+First VI workload domain triggers deployment of a vCenter instance and a three node NSX Manager cluster in the management domain.
+
+Each subsequent workload domain adds another vCenter.
+
+Recommended for
+
+Small scale, proof of concept, environments intended to extend later.
+
+Production at any meaningful scale. This is the recommended model.
+
+Can you change later
+
+Yes. Create a VI workload domain, move workload VMs out of the compute resource pool, then update shares and reservations on the pool left behind.
+
+n/a
+
+
+
+Standard architecture is almost always the right answer for a production estate. Consolidated exists to lower the entry host count, which matters when hardware is the constraint. Here it usually is not, because a customer converging an existing estate already owns the hosts and is redistributing them rather than buying more. Check that assumption during discovery: if the existing estate is genuinely tight on capacity, standard architecture may require hosts the entitlement cannot buy, and that becomes a capital conversation the customer has to open separately.
+
+The exception is a customer running multiple small sites, where consolidated per site may be correct. There the services are consumed across site count rather than depth at any one site.
+
+
+
+
+5.1 Workload domain segmentation
+
+Once standard architecture is chosen, the next question is how many workload domains and on what boundary. Common and defensible boundaries:
+
+
+Security or compliance zone, where an audit boundary makes a shared vCenter untenable.
+
+
+Lifecycle independence, so that a domain running a legacy application can stay on an older version while the rest moves forward.
+
+
+Tenancy, where business units require genuine administrative separation rather than RBAC within one vCenter.
+
+
+Workload class, most commonly separating a VKS and AI domain from traditional VM workloads because the hardware profile genuinely differs.
+
+Resist segmenting on geography alone when sites are well connected, and resist segmenting per application. Both produce vCenter sprawl that the customer pays to operate for years.
+
+
+
+6. Decision Three: Principal Storage
+
+VCF 9 removed the vSAN requirement for the management domain, which changes the conversation with any customer holding a significant array investment.
+
+
+
+Storage type
+
+Greenfield workflow
+
+Path if not greenfield
+
+vSAN (OSA or ESA)
+
+Supported. Recommended default.
+
+n/a
+
+NFS v3
+
+Supported.
+
+n/a
+
+VMFS on Fibre Channel
+
+Supported.
+
+n/a
+
+iSCSI
+
+Not available in greenfield.
+
+Build ESX and vCenter manually on the datastore, then use the Converge workflow. See Broadcom KB 416270.
+
+NFS v4.1
+
+Not available in greenfield.
+
+Same as above.
+
+FCoE
+
+Not available in greenfield.
+
+Same as above.
+
+NVMe over Fabrics (FC, TCP, RDMA)
+
+Not available in greenfield.
+
+Same as above.
+
+
+
+If a cluster presents more than one datastore type, VCF selects the primary automatically in this priority order: vSAN, NFS v3, VMFS, NFS v4.1, iSCSI. This matters when converging an existing mixed cluster, because the selection is not offered to the administrator.
+
+
+
+Positioning note
+
+The vSAN entitlement is included whether the customer uses it or not. Choosing external storage is a decision about reusing an existing investment and operational familiarity, not a cost avoidance. Do not let the customer believe otherwise, because they will discover it later and it damages the rest of the engagement.
+
+
+
+7. Decision Four: Which Components to Deploy
+
+This is where scoping either becomes precise or falls apart. Each component carries a management footprint, which drives host sizing, and an operational burden, which drives services and enablement. List them explicitly and mark each one in or out.
+
+
+
+Component
+
+What it delivers
+
+Scoping impact
+
+vSphere and vCenter
+
+Core compute platform.
+
+Baseline. Always in.
+
+vSAN
+
+Software defined storage.
+
+Drives disk and network spec on every host in the cluster.
+
+VCF Operations
+
+Observability, capacity, cost, health and diagnostics, compliance posture.
+
+Management domain appliances. Sizing scales with object count.
+
+VCF Operations Fleet Management
+
+Lifecycle and patching across the fleet.
+
+Modest footprint. High operational value.
+
+VCF Automation
+
+Self service, catalog, IaC, multi tenancy, quotas.
+
+Significant management footprint. Requires additional consecutive IP addresses.
+
+VCF Networking (NSX)
+
+Overlay, routing, VPC constructs, Edge or Virtual Network Appliance.
+
+Edge nodes are real hosts or VMs and must be sized. Largest variable in networking spend.
+
+vDefend
+
+Distributed firewall, IDS/IPS, advanced threat prevention, virtual patching.
+
+CPU overhead on workload hosts. Rule authoring is a services line, not a product line.
+
+Avi Load Balancer
+
+L4 to L7 application delivery, WAF, API protection, K8s ingress.
+
+Service Engine VMs consume workload capacity.
+
+vSphere Kubernetes Service
+
+Kubernetes on the platform, Supervisor, VM and container services.
+
+Supervisor control plane VMs. Separate cluster sizing exercise.
+
+VCF Private AI Services
+
+Model runtime, vector DB, agents, GPU virtualization.
+
+GPU hosts. A distinct hardware profile and usually a distinct domain.
+
+Data Services Manager
+
+Database as a service.
+
+Optional add on. Appliance per domain.
+
+Live Recovery / Protection and Recovery
+
+Replication, DR orchestration, ransomware clean room.
+
+Second site or isolated recovery environment. Often doubles a hardware line.
+
+VMware Salt
+
+Configuration management, drift detection, compliance enforcement.
+
+Low footprint, high enablement need.
+
+
+
+8. Decision Five: How Deep to Go in Each Component
+
+Deploying a component and adopting it are different things, and the gap between them is where most entitlement funds are either well spent or quietly wasted. For each selected component, agree a depth tier explicitly. Tier 1 is deployed and functional. Tier 2 is genuinely in use by the platform team. Tier 3 changes how the business consumes infrastructure.
+
+
+8.1 VCF Operations
+
+Tier
+
+Scope
+
+Typical services effort
+
+1. Deployed
+
+Installed, inventory discovered, out of the box dashboards, default alerting, log management enabled.
+
+Days
+
+2. Operationalised
+
+Custom dashboards and views, super metrics, curated alert definitions tied to the customer&apos;s actual SLAs, capacity and rightsizing workflows in active use, health and diagnostics adopted as the first response tool.
+
+Weeks
+
+3. Financial and governance
+
+Cost drivers configured, rate cards built, showback or chargeback reporting delivered to business units, security posture management and fleet configuration compliance enforced, custom management packs for third party data sources.
+
+Weeks to months, plus recurring
+
+
+
+Chargeback deserves a specific warning. Showback is an infrastructure exercise and can be delivered inside a normal engagement. Chargeback is a finance exercise that requires a cost model the customer&apos;s finance function will accept, agreement on how shared costs are apportioned, and a dispute process. Scope chargeback as a joint workstream with finance or do not scope it at all.
+
+
+8.2 VCF Automation
+
+Tier
+
+Scope
+
+Typical services effort
+
+1. Deployed
+
+Installed, provider and organisation constructs configured, projects defined, basic catalog of VM blueprints.
+
+Days to weeks
+
+2. Self service
+
+Tenant onboarding with quotas and infrastructure policies, approval workflows, content catalog, App Stack formation from existing VMs, integration with the customer&apos;s ITSM.
+
+Weeks
+
+3. Platform as product
+
+Infrastructure as code via Terraform providers and templates, GitOps pipelines, application repository to self service delivery, Kubernetes cluster provisioning as a catalog item, full multi tenancy.
+
+Months
+
+
+
+The honest question to ask before scoping Tier 3: does the customer have anyone who will own the catalog after we leave. Automation platforms without a product owner decay within two quarters. If the answer is no, scope Tier 2 and spend the difference on enablement.
+
+
+8.3 VCF Networking and vDefend
+
+This is the widest range in the entire document and the most common source of underscoped engagements. The difference between the tiers is not a feature toggle, it is a change in who operates the network.
+
+
+
+Tier
+
+Scope
+
+Organisational implication
+
+1. Overlay handoff
+
+NSX deployed, overlay transport zones configured, workloads on overlay segments, traffic handed off to the physical fabric at the Edge. Physical network team retains routing and policy.
+
+Minimal change. Network team keeps ownership.
+
+2. Software defined networking
+
+Tier 0 and Tier 1 gateways, dynamic routing with the fabric, VPC constructs for self service consumption, EVPN integration with Cisco Nexus or Arista where applicable, Avi for load balancing.
+
+Network team must learn NSX or cede scope to the virtualization team. This is a political conversation, not a technical one.
+
+3. Zero trust and lateral security
+
+Distributed firewall with micro segmentation, application dependency mapping, tagging and grouping schema, IDS/IPS, advanced threat prevention, virtual patching, policy lifecycle governance.
+
+Requires a security owner and an ongoing policy governance process. Not a project with an end date.
+
+
+
+Where funds get stranded
+
+Customers routinely buy Tier 3 capability and deploy Tier 1. Micro segmentation is the clearest example: the licence is included, the product is deployed, and three years later it is in monitoring mode with no enforced rules. If the customer wants the security outcome, the services line for application dependency mapping and rule authoring is the deliverable, not the NSX install.
+
+
+8.4 Efficiency features: memory tiering and vSAN
+
+These are the easiest items to justify in the current market and should be near the front of any twelve month plan, because they change the hardware quantity in the rest of the plan.
+
+
+
+
+NVMe memory tiering. Broadcom positions this as supporting materially higher VM density on existing hardware and improved TCO. With DRAM pricing where it is, this is the single most credible cost argument available. It also reduces the host count needed for every later phase, so run it early.
+
+
+vSAN efficiency. Global deduplication and compression, QLC support, and the ability to re-use qualified legacy servers. For a customer with an array refresh due, model vSAN against the array renewal rather than against the VCF licence.
+
+
+Topology aware scheduling and CPU tuning. Real gains on high core count modern processors. Low effort, usually a configuration and validation exercise rather than a project.
+
+Treat these as a distinct early phase with measurable before and after numbers. They produce the evidence that funds the rest of the program internally.
+
+
+8.5 Private AI and VKS
+
+Only scope these where a real workload exists. An AI platform built speculatively to consume budget is the worst possible use of an entitlement fund, because it creates ongoing cost with no consumer.
+
+
+
+Tier
+
+Scope
+
+Prerequisite to check
+
+1. Foundation
+
+VKS enabled, Supervisor configured, one or two clusters, GPU passthrough or vGPU on a small host group.
+
+A named application team who will actually deploy to it.
+
+2. Platform
+
+Model runtime service, vector database, model storage and governance, Avi ingress, vDefend policy for cluster workloads, observability for Kubernetes and AI.
+
+A data science or application function with funded use cases.
+
+3. Production AI
+
+Agentic workflows, MCP integration, token and cost governance, confidential computing, air gapped or sovereign patterns where required.
+
+Security and legal sign off on data handling. Usually the long pole.
+
+
+
+9. The Twelve Month Drawdown Plan
+
+This is a template, not a prescription. It assumes an existing estate being converged and imported rather than rebuilt, a standard architecture target, and a services-only entitlement. Compress or extend each phase against the customer&apos;s change calendar and team capacity.
+
+The shape differs from a capital funded program in one important way. There is no large early commitment to anchor the spend, so the fund is consumed through sustained parallel effort across the full twelve months. That means the plan has to be staffed from week one and has to run several workstreams at once, which in turn means the customer needs more than one person available to receive it.
+
+Because we deliver as subcontractor to the prime, the entire twelve months has to be scoped before the statement of work is signed. Treat the quarterly plan below as an input to that scoping exercise rather than something that evolves during delivery. Anything not named at SOW time will require a change order we do not control, and change orders across a partner boundary are slow enough that a late addition in Q3 frequently does not land inside the entitlement window at all.
+
+
+
+Quarter
+
+Workstreams
+
+Services intensity
+
+Q1
+Design and foundation
+
+Discovery and full estate inventory including exact build numbers. Decision register workshops. Logical and physical design. Management domain converged from an existing cluster. Efficiency assessment started: memory tiering, rightsizing, idle VM reclamation. Platform team enablement begins immediately rather than at handover.
+
+High. Design plus enablement in parallel.
+
+Q2
+Core platform and first waves
+
+First workload domains imported. VCF Operations deployed and taken to Tier 2. Fleet management adopted for lifecycle. NSX to the agreed tier. First migration wave executed. Backup, DR, and monitoring integrations validated against 9.1.
+
+Peak. Multiple parallel workstreams.
+
+Q3
+Depth
+
+Migration waves continue. Automation deployed and taken to the agreed tier. vDefend application dependency mapping and rule authoring if Tier 3 networking was selected. Showback or chargeback workstream with finance. VKS or Private AI foundation where a real workload exists.
+
+Peak. This is where a services fund is genuinely consumed.
+
+Q4
+Completion, depth, and handover
+
+Final migration waves. Legacy estate decommissioned. Operational handover, runbooks, RACI. Validation against acceptance criteria. Remaining entitlement directed at the next depth tier on components already delivered, plus certification and advanced enablement.
+
+Sustained. Do not allow this quarter to taper.
+
+
+
+The failure mode specific to a services-only fund
+
+Capital programs fail by spending everything early and starving adoption. Services programs fail the opposite way: the engagement runs at the pace the customer&apos;s team can comfortably absorb, that pace turns out to be roughly half what the fund assumed, and a large balance expires. Model the required monthly burn rate in month one and review it monthly against actual. If the burn rate is below plan by the end of Q1, the plan is wrong and needs more parallel workstreams, not more time.
+
+
+
+
+9.1 Burn rate and absorption
+
+Divide the entitlement by twelve and ask whether the customer can genuinely receive that much delivery every month. Then check it against three limits.
+
+
+Receiving capacity. Each workstream needs a named customer counterpart who can make decisions and attend sessions. A platform team of three cannot absorb five parallel workstreams regardless of how the fund is structured.
+
+
+Change windows. Migration and upgrade work is gated by the change calendar. Enablement, design, policy authoring, and dashboard work are not. Load the non-disruptive workstreams into the freeze periods deliberately.
+
+
+Delivery capacity. Confirm our own consultant availability across the full twelve months before committing to a burn rate. Booking the work is what protects it.
+
+
+
+Where absorption is genuinely the constraint, the right answer is to shift scope toward workstreams that consume services without consuming much customer time: policy authoring, runbook development, dashboard and report construction, migration execution, and assessment work. These still deliver value and still draw the fund down, but they place less load on the customer&apos;s calendar than workshop-led adoption does.
+
+
+
+10. Where the Services Money Actually Goes
+
+With hardware and licensing out of scope, these are the remaining levers, roughly in order of how much entitlement they can absorb inside twelve months.
+
+
+
+Lever
+
+Notes
+
+Absorbs
+
+Migration services
+
+Wave planning and execution. Scales with VM count, not host count, which makes it the largest single absorber in most large estates.
+
+Very high
+
+Design and architecture
+
+Discovery, decision register, logical and physical design, validated acceptance criteria. Front loaded but substantial.
+
+High
+
+Deployment and configuration
+
+Management domain, workload domains, NSX, Avi, Operations, Automation. Scales with component count and domain count.
+
+High
+
+Security services
+
+Application dependency mapping, micro segmentation rule authoring, policy governance setup, IDS/IPS tuning. Effectively unbounded in a large estate.
+
+Very high
+
+Operational readiness
+
+Runbooks, dashboards, alert definitions, custom management packs, reports, RACI, handover. Low customer time cost per dollar delivered.
+
+High
+
+Enablement and certification
+
+VCF certification tracks, Broadcom Knight paths, custom workshops, shadowing. Raise this early and often.
+
+Medium to high
+
+Assessment and optimisation
+
+Memory tiering assessment, rightsizing, licence position analysis, capacity modelling, private cloud maturity assessment.
+
+Medium
+
+Automation build
+
+Catalog construction, blueprints, IaC templates, pipeline integration, ITSM integration.
+
+Medium to high
+
+Tooling re-certification
+
+Backup, monitoring, and ISV validation against 9.1. Unglamorous, always underestimated, and a genuine services line.
+
+Medium
+
+Managed services transition
+
+Ongoing operation post handover. Sits outside the prime&apos;s services scope in most cases, so treat it as a separate CDW commercial motion rather than an entitlement line.
+
+Separate motion
+
+
+
+Two of these deserve to be pushed harder than account teams usually push them. Security services, because micro segmentation rule authoring in a large estate is effectively unbounded work that customers routinely leave undone after buying the capability. And operational readiness, because runbooks, dashboards, and alert definitions consume real delivery effort while placing very little load on the customer&apos;s calendar, which makes them the ideal filler when absorption is the constraint.
+
+
+
+On manufacturing scope
+
+There is a difference between finding legitimate depth the customer will benefit from and inventing work to consume a balance. The first builds a practice relationship; the second is discovered eventually and ends one. If the honest assessment is that the estate cannot absorb the full entitlement, say so early and help the customer request a scope or timeline change while that is still possible.
+
+
+
+11. Discovery Inputs to Collect
+
+Nothing in Sections 4 through 9 can be scoped without these. Collect them before the first design workshop.
+
+
+
+
+Commercial
+
+
+Entitlement size, expiry date, and the exact wording of what it may be spent against.
+
+
+Whether unused balance can be extended, rolled over, or converted. Ask now, not in month ten.
+
+
+Which Broadcom service definitions the intended scope maps to, and whether anything we want to deliver has no corresponding definition.
+
+
+Named Broadcom engagement manager and the expected SOW turnaround time.
+
+
+Change order process and realistic lead time through the prime.
+
+
+Whether enablement and certification qualify inside the services scope or need to be sold separately.
+
+
+Any approved capital budget for hardware sitting outside this entitlement, and its timeline.
+
+
+Current contract end date and renewal date. The renewal usually binds before the EOGS date does.
+
+
+Existing licence position: entitlements held, core counts, editions.
+
+
+Technical estate
+
+
+Host count, exact ESXi build numbers, vCenter versions and builds.
+
+
+Total core count and per host core density. Actual CPU and memory utilisation, not allocated.
+
+
+VM count, including a count of powered off and idle VMs.
+
+
+Storage: array models, protocols in use, capacity, refresh dates.
+
+
+Current vSAN and NSX adoption, including whether NSX is already deployed, which affects convergence options.
+
+
+Network: switch models, port speeds, available ports, MTU capability, VLAN availability.
+
+
+Hardware age and HCL status against vSphere 9.
+
+
+Operational
+
+
+DR topology, RPO and RTO commitments, current DR tooling.
+
+
+Backup product and version, and its support matrix for 9.1.
+
+
+Certified ISV applications and their support statements for the target version.
+
+
+Compliance obligations and audit boundaries.
+
+
+Change freeze calendar for the next eighteen months.
+
+
+Platform team size, skills, and certification status.
+
+
+Named counterparts available per workstream, and how much of their week they can commit. This sets the achievable burn rate.
+
+
+Competing initiatives over the next twelve months that will contend for the same people.
+
+
+Who owns the network, and whether they are willing to cede scope to NSX.
+
+
+
+12. Risks and Watch-outs
+
+
+
+Risk
+
+Mitigation
+
+The VCF 9.x installer enforces prerequisites as hard gates. DNS, NTP, NIC speed, disk eligibility, and IP availability are checked before anything deploys, and bring-up stops on failure.
+
+Complete and verify DNS, NTP, and IP planning before the deployment window. Treat the planning workbook as a deliverable, not a formality.
+
+The 9.1 management footprint is heavier than earlier releases. Topology choice (simple versus highly available) and component sizing drive host and memory requirements.
+
+Size the management domain against the chosen topology and component set, not against a minimum host count.
+
+Hardware is not fundable from the entitlement, but some pathways require it. A design can stall waiting on capital that was never approved.
+
+Establish in discovery whether separate capital exists. If not, rule out greenfield and design around convergence and import.
+
+Existing NSX deployments are not initially supported for convergence into a VCF management domain. A fresh NSX instance is installed as part of the process.
+
+Identify NSX presence during discovery. It may force a different pathway for that estate.
+
+Update-release support windows are shorter than the line-level EOGS date.
+
+Inventory exact builds. Some clusters may already be unsupported.
+
+Skills gap on the platform team, particularly NSX and Automation.
+
+Fund enablement early in the program, not with leftover budget at the end.
+
+Chargeback stalls on finance approval rather than technical delivery.
+
+Scope it jointly with finance from the start, or deliver showback and stop there.
+
+Entitlement expires partly unspent because the customer&apos;s team could not absorb the delivery rate the plan assumed.
+
+Model the required monthly burn rate in month one. Review monthly. Shift toward low customer time workstreams if actual falls behind plan.
+
+Scope not captured at SOW time cannot be added without a change order through the prime, and cross-partner change orders are slow.
+
+Scope the full twelve months, depth tiers included, before signature. Treat Sections 4 through 8 as a pre-sale exercise.
+
+A deliverable we can describe has no matching Broadcom service definition and cannot be priced.
+
+Map every intended deliverable to a service definition during scoping. Raise gaps with the engagement manager early.
+
+Escalation has no direct contractual path to the customer sponsor because we are not the prime.
+
+Agree the escalation route in writing at kickoff and keep the prime&apos;s engagement manager close.
+
+Consultant availability is not booked against the engagement through the prime&apos;s demand process.
+
+Secure and book resourcing when the plan is agreed. Late requests compete with every other partner.
+
+Scope is padded late in the program to consume a remaining balance.
+
+Agree the full twelve month scope in Q1 with depth tiers named. Raise a shortfall honestly and early while a scope or timeline change is still possible.
+
+Our own consultant availability is not secured across the full twelve months.
+
+Book delivery capacity at the same time the plan is agreed, not sprint by sprint.
+
+
+
+13. Before This Goes to a Customer
+
+This document was assembled from Broadcom published guidance, product documentation, and practitioner sources as of September 2026. Several items should be re-verified against the customer&apos;s specific release before any of it appears in a proposal.
+
+
+
+
+Exact EOGS and EOTG dates for the customer&apos;s specific products, editions, and update releases, from the Broadcom Product Lifecycle Matrix.
+
+
+Minimum host counts for the exact VCF release in scope, from configmax. Published guidance and installer behaviour currently disagree.
+
+
+Supported principal storage types and greenfield workflow coverage for the release in scope.
+
+
+Convergence and import support statements, particularly regarding existing NSX.
+
+
+The current VCF Design Blueprints and Upgrade Planner, which Broadcom refreshed for 9.1.
+
+
+Component availability and packaging, which vary between VVF and VCF entitlements.
+
+
+The precise scope wording of the adoption services entitlement, including qualifying activity types and any rollover provision.
+
+
+Current Broadcom service definitions and how the intended scope maps to them. These change between programme years.
+
+
+
+Sections 8 and 10 reflect CDW practice judgement rather than vendor documentation. The depth tiers and drawdown weightings are a framework for structuring the conversation, not published Broadcom guidance. Mark them as such if this document is adapted for customer use.
+
+
+
+Section 2.3 must be removed before this document is shared outside CDW. It describes our commercial position as subcontractor to the prime and is written for an internal audience only.
+
+
