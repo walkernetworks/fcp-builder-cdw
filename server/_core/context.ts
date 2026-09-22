@@ -1,6 +1,5 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
-import { sdk } from "./sdk";
 import { authenticateTrustedSso } from "../trustedSso";
 
 export type TrpcContext = {
@@ -16,7 +15,6 @@ export async function createContext(
 
   try {
     user = await authenticateTrustedSso(opts.req);
-    if (!user) user = await sdk.authenticateRequest(opts.req);
   } catch (error) {
     user = null;
   }
