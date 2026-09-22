@@ -13,7 +13,7 @@ The repository already includes the container definition, health endpoint, confi
 | Controlled pilot | Five to ten named SAs using synthetic or sanitized RVTools exports | Non-production CDW subscription or approved sandbox; private ingress; Entra ID/Okta group access | Validate workflow, export quality, support ownership, and security controls |
 | Production | Internal CDW staff using approved customer engagement data | CDW-approved container platform and managed database; private endpoint; corporate SSO; centralized logs and backups | Complete application, identity, data, vulnerability, and operational review |
 
-Using the Manus Publish control can provide a temporary review build, but it should be used only if CDW permits the external hosting boundary and private-access model. For the lowest-friction security posture, the recommended production deployment remains inside CDW’s approved tenant and network.
+The app has no external hosting or third-party platform dependency. The recommended production deployment remains inside CDW’s approved tenant and network.
 
 ## Minimum production architecture
 

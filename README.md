@@ -8,7 +8,7 @@ RVTools files are parsed in browser memory. Raw workbooks and per-object invento
 
 | Capability | Implementation |
 |---|---|
-| Protected workspace | Hosted authentication for review plus a config-driven trusted OIDC gateway hook for CDW Entra ID or Okta. |
+| Protected workspace | Config-driven trusted OIDC gateway for CDW Entra ID or Okta; the app has no login flow or third-party platform dependency of its own. |
 | Engagement management | Owner-scoped create, list, open, update, duplicate, and delete operations. |
 | Local RVTools intake | Multi-file XLSX/CSV parsing and duplicate-aware aggregation in the browser, with no raw-inventory upload API. |
 | Minimal confirmed inputs | Customer identity, entitled physical cores, entitlement dollar value, entitlement start/end dates, desired outcomes, and timeline notes. |
