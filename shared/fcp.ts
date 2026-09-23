@@ -88,6 +88,8 @@ export const timelineBarSchema = z.object({
   color: z.enum(TIMELINE_COLORS),
   label: z.string().min(1),
   dependsOn: z.string().min(1).optional(),
+  /** Ids of activities that must finish before this one starts; checked by validateTimelineSequence. */
+  prerequisites: z.array(z.string().min(1)).optional(),
   outcome: z.string().min(1).optional(),
   milestone: z.boolean().default(false),
   deferred: z.boolean().default(false),
@@ -1754,11 +1756,22 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     );
     hclBufferEnd = greenfieldEnd;
     hclDependency = `${HCL_EVALUATION_VERSION} Red gate closes after procurement or greenfield provisioning is accepted.`;
+  }
+
+  // Site-readiness prerequisites run alongside the HCL buffer and must close before platform build starts.
+  const executionPathway = playbookPlan.path !== "undecided" && playbookPlan.path !== "design-only";
+  const sitePrerequisiteIds: string[] = [];
+  let sitePrerequisiteEnd = mobilizationEnd;
+  if (path === "red" || executionPathway) {
     fields.adoptionDetails.softPrerequisites.forEach((prerequisite) => {
       const [softStart, softEnd] = range(mobilizationEnd, scheduleUnits(cadence, 3, 1));
-      infrastructureBars.push(
-        bar(`bar-soft-prerequisite-${prerequisite}`, softStart, softEnd, "teal", softPrerequisiteLabel(prerequisite), false, false, "This soft prerequisite may run in parallel with Red-path procurement and greenfield provisioning.", "Remove an infrastructure dependency without delaying the hardware procurement buffer."),
-      );
+      const id = `bar-soft-prerequisite-${prerequisite}`;
+      infrastructureBars.push({
+        ...bar(id, softStart, softEnd, "teal", softPrerequisiteLabel(prerequisite), false, false, path === "red" ? "This site-readiness prerequisite may run in parallel with Red-path procurement and greenfield provisioning." : "This site-readiness prerequisite runs in parallel with the HCL evidence review and closes before platform build begins.", path === "red" ? "Remove an infrastructure dependency without delaying the hardware procurement buffer." : "Remove an infrastructure dependency before the platform build window opens."),
+        prerequisites: ["bar-platform-plan"],
+      });
+      sitePrerequisiteIds.push(id);
+      sitePrerequisiteEnd = Math.max(sitePrerequisiteEnd, softEnd);
     });
   }
 
@@ -1767,7 +1780,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   const pathwayDesignEnd = playbookPlan.designPackages.length ? pathwayDesignCursor : hclGateEnd;
   const infrastructureDesignEnd = Math.max(pathwayDesignEnd, componentDesignCursors.infrastructureBuild, componentDesignCursors.infrastructureWaves);
-  const deliveryStart = Math.max(hclGateEnd, implementationStartColumn, infrastructureDesignEnd);
+  const deliveryStart = Math.max(hclGateEnd, implementationStartColumn, infrastructureDesignEnd, sitePrerequisiteEnd);
   let foundationEnd = deliveryStart;
   let workloadEnd = deliveryStart;
   let directMigrationExecutionEnd = deliveryStart;
@@ -1885,6 +1898,28 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     addSecuritySelections("resilience", "Implement Resilience, DR, and Cyber-Recovery Controls");
   }
   const securityEnd = securityBars.length ? securityCursor : platformReadyEnd;
+
+  if (!implementationApproved) {
+    // Without an approved execution pathway the plan still runs to entitlement end: the design is taken to an
+    // execution decision, then governed and prepared for implementation rather than leaving the window empty.
+    const designEnd = Math.max(pathwayDesignEnd, hclGateEnd, ...Object.values(componentDesignCursors));
+    const lastDesignPackage = playbookPlan.designPackages.at(-1);
+    const [decisionStart, decisionEnd] = range(designEnd, 1);
+    programBars.push({
+      ...bar("bar-platform-execution-decision", decisionStart, decisionEnd, colorForWorkstreamType("Governance"), playbookPlan.path === "design-only" ? "Approve Implementation Funding and Delivery Window" : "Approve the VCF Adoption Pathway and Execution Funding", true, false, "Begin after the design package is accepted by the architecture and funding owners.", "Record the approved execution pathway, funding, delivery window, and implementation partner so implementation can be planned."),
+      ...(lastDesignPackage ? { prerequisites: [`bar-playbook-design-${lastDesignPackage.id}`] } : {}),
+    });
+    const [governanceStart, governanceEnd] = range(decisionEnd, count + 1 - decisionEnd);
+    programBars.push({
+      ...bar("bar-platform-design-authority", governanceStart, governanceEnd, colorForWorkstreamType("Governance"), "Maintain Design Authority and Entitlement Governance", false, false, "Continue after the execution decision through entitlement end.", "Keep the decision register, design baseline, risks, and entitlement drawdown current until implementation is contracted."),
+      prerequisites: ["bar-platform-execution-decision"],
+    });
+    const [readinessStart, readinessEnd] = range(designEnd, count + 1 - designEnd);
+    operationsBars.push({
+      ...bar("bar-platform-operating-readiness", readinessStart, readinessEnd, colorForWorkstreamType("Operating Model / Platform"), "Prepare Operating Model, Skills, and Runbooks for Implementation", false, false, "Begin after the design package is accepted.", "Prepare platform ownership, skills, support model, and operational runbooks so implementation can start without delay once approved."),
+      ...(lastDesignPackage ? { prerequisites: [`bar-playbook-design-${lastDesignPackage.id}`] } : {}),
+    });
+  }
 
   if (implementationApproved) {
     const [handoverStart, handoverEnd] = range(Math.max(migrationEnd, operationsCursor, cloudEnd, securityEnd), handoverDuration);
@@ -2216,7 +2251,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const implementationPackageSummary = playbookPlan.implementationPackages.map(item => item.title).join(", ");
   const migrationGateContext = playbookPlan.implementationPackages.length
     ? `Implementation begins only after the playbook design package and HCL gate are accepted. The approved execution sequence is ${implementationPackageSummary}. Selected component adoption begins after platform acceptance and may overlap later approved upgrade or migration waves where the workstreams are independent.`
-    : "No implementation or migration work is generated until an execution pathway is approved; the current plan remains focused on design decisions and implementation-ready artifacts.";
+    : "No implementation or migration work is generated until an execution pathway is approved; the current plan remains focused on design decisions and implementation-ready artifacts, followed by an execution decision, continuing design authority, and operating readiness through entitlement end.";
   const customer = fields.customerName || "The customer";
   const deliveryTiming = implementationIsDeferred
     ? `Design and delivery-baseline work starts at the planned project start (${plannedProjectStart}), while implementation, upgrade, and migration services are planned to begin on ${implementationStart}. The gap is intentional and represents design, decision, dependency, procurement, and change-window preparation rather than idle delivery.`
@@ -2983,6 +3018,22 @@ export function validateTimeline(timeline: Timeline): string[] {
     }
   }
   return errors;
+}
+
+/**
+ * Ordering warnings for activities that start before a prerequisite activity finishes.
+ * Prerequisites that are no longer in the timeline are ignored; this never blocks editing.
+ */
+export function validateTimelineSequence(timeline: Timeline): string[] {
+  const activities = new Map(timeline.lanes.flatMap(lane => lane.bars).map(activity => [activity.id, activity]));
+  const warnings: string[] = [];
+  for (const activity of Array.from(activities.values())) {
+    for (const prerequisiteId of activity.prerequisites ?? []) {
+      const prerequisite = activities.get(prerequisiteId);
+      if (prerequisite && activity.startCol < prerequisite.endCol) warnings.push(`“${activity.label}” starts before its prerequisite “${prerequisite.label}” finishes.`);
+    }
+  }
+  return warnings;
 }
 
 export type TimelineGestureMode = "move" | "start" | "end";
