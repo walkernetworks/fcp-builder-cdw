@@ -1,28 +1,36 @@
 import type { EngagementDocument, MinimalFields, Timeline, TimelineBar } from "./fcp";
 
 /**
- * Maps a generated FCP onto the Broadcom VCF 9 Building Blocks workbook ("Full Version" tab).
+ * Maps a generated FCP onto the Broadcom VCF 9 Building Blocks tool: its categories, blocks, and block statuses.
  * Each block is matched to plan activities by their stable bar id; activities the planner
  * added by hand are matched by label keywords instead, because their ids carry no meaning.
  */
 
-export const CAPABILITY_RATINGS = ["Strongly Agree", "Mostly Agree", "Mostly Disagree", "Strongly Disagree", "*Out of Scope"] as const;
-export type CapabilityRating = (typeof CAPABILITY_RATINGS)[number];
+/** Block statuses offered by the Building Blocks tool. "Stalled" is never derived; the planner sets it by hand. */
+export const BLOCK_STATUSES = ["Planning", "In Progress", "Stalled", "Completed", "Out of Scope"] as const;
+export type BlockStatus = (typeof BLOCK_STATUSES)[number];
 
-export const CUSTOMER_DELIVERABLE_STATUSES = ["In Progress", "Out of Scope", "Planning/TBD", "Completed"] as const;
-export type CustomerDeliverableStatus = (typeof CUSTOMER_DELIVERABLE_STATUSES)[number];
-
-/** "selected" activities come from an explicit outcome, focus, or pathway choice; "depth" activities only from an adoption-depth tier. */
-type MatchKind = "selected" | "depth";
+/** Categories in the order the Building Blocks tool lists them. */
+export const BLOCK_CATEGORIES = [
+  "Discovery & Assessment",
+  "Platform Foundation",
+  "Storage / Datastore",
+  "Networking & Connectivity (Network Fabric)",
+  "Operational Observability",
+  "Apps & Cloud Consumption",
+  "Resilience & Recovery",
+  "Security & Compliance",
+] as const;
+export type BlockCategory = (typeof BLOCK_CATEGORIES)[number];
 
 type BarRule = {
   id: RegExp;
-  kind?: MatchKind;
   when?: (fields: MinimalFields) => boolean;
 };
 
 export type BuildingBlockDefinition = {
-  /** Assessment Area (column C) exactly as the template names it, whitespace-normalized. */
+  category: BlockCategory;
+  /** Block name exactly as the Building Blocks tool shows it. */
   area: string;
   rules: BarRule[];
   /** Matches activities that were added by hand in the timeline editor. */
@@ -33,74 +41,86 @@ const usesVsan = (fields: MinimalFields) => fields.adoptionDetails.principalStor
 const hasNetworkingFocus = (focus: MinimalFields["adoptionDetails"]["networking"][number]) => (fields: MinimalFields) => fields.adoptionDetails.networking.includes(focus);
 
 const PLATFORM_BUILD = /^bar-(management-domain|converge-management-domain|import-foundation-validation|workload-domain|playbook-execution-(upgrade|delivery)-waves)$/;
+const MANAGEMENT_DOMAIN_BUILD = /^bar-(management-domain|converge-management-domain|import-foundation-validation|playbook-execution-(upgrade|delivery)-waves)$/;
 
+const discovery = (area: string, rules: BarRule[], keywords?: RegExp): BuildingBlockDefinition => ({ category: "Discovery & Assessment", area, rules, keywords });
+const platform = (area: string, rules: BarRule[], keywords?: RegExp): BuildingBlockDefinition => ({ category: "Platform Foundation", area, rules, keywords });
+const storage = (area: string, rules: BarRule[], keywords?: RegExp): BuildingBlockDefinition => ({ category: "Storage / Datastore", area, rules, keywords });
+const networking = (area: string, rules: BarRule[], keywords?: RegExp): BuildingBlockDefinition => ({ category: "Networking & Connectivity (Network Fabric)", area, rules, keywords });
+const observability = (area: string, rules: BarRule[], keywords?: RegExp): BuildingBlockDefinition => ({ category: "Operational Observability", area, rules, keywords });
+const apps = (area: string, rules: BarRule[], keywords?: RegExp): BuildingBlockDefinition => ({ category: "Apps & Cloud Consumption", area, rules, keywords });
+const resilience = (area: string, rules: BarRule[], keywords?: RegExp): BuildingBlockDefinition => ({ category: "Resilience & Recovery", area, rules, keywords });
+const security = (area: string, rules: BarRule[], keywords?: RegExp): BuildingBlockDefinition => ({ category: "Security & Compliance", area, rules, keywords });
+
+/** Every block in the order the Building Blocks tool lists it. */
 export const BUILDING_BLOCKS: BuildingBlockDefinition[] = [
-  // Platform Foundation
-  { area: "Assess & Review Workshop", rules: [{ id: /^bar-(platform-plan|playbook-design-(requirements|pathway-decision|target-state|decision-register))$/ }], keywords: /\b(assess|discovery|requirements) workshop\b/i },
-  { area: "Site Readiness Validation", rules: [{ id: /^bar-(hcl-gate|hcl-remediation|in-place-preparation|import-foundation-validation|soft-prerequisite-.+|playbook-design-platform-design)$/ }], keywords: /\bsite readiness\b|\bHCL\b/i },
-  { area: "VCF Management Domain (SDDC, Ops, NSX Manager, vCenter and Automation)", rules: [{ id: PLATFORM_BUILD }, { id: /^bar-playbook-adoption-.+$/ }, { id: /^bar-playbook-design-logical-physical-design$/ }], keywords: /\bmanagement domain\b/i },
-  { area: "Identity Broker & Multi-Tenancy", rules: [{ id: /^bar-(security-identity-rbac|operations-identity-certificates|cloud-automation-governance)$/ }], keywords: /\bidentity broker\b|\bmulti-?tenan/i },
-  { area: "Solution License Management", rules: [{ id: PLATFORM_BUILD }], keywords: /\blicens/i },
-  // Storage / Datastore
-  { area: "Assess & Review (vSAN)", rules: [{ id: /^bar-playbook-design-(platform-design|target-state|logical-physical-design)$/, when: usesVsan }], keywords: /\bvSAN\b.*\b(design|assess)/i },
-  { area: "vSAN ESA Implementation", rules: [{ id: PLATFORM_BUILD, when: usesVsan }], keywords: /\bvSAN\b/i },
-  { area: "NVMe Memory Tiering", rules: [{ id: /^bar-playbook-component-design-efficiency$/, kind: "depth" }], keywords: /\bmemory tiering\b/i },
-  // Networking & Connectivity
-  { area: "Assess & Review (NSX)", rules: [{ id: /^bar-playbook-component-design-networking$/, kind: "depth" }], keywords: /\bNSX\b.*\b(design|assess)/i },
-  { area: "NSX Overlay Networking", rules: [{ id: /^bar-(vcf-networking-nsx|two-year-baseline-networking-nsx)$/ }], keywords: /\boverlay\b/i },
-  { area: "VCF VPC", rules: [], keywords: /\bVPC\b|\btransit gateway\b/i },
-  { area: "NSX Edge Connectivity", rules: [{ id: /^bar-vcf-networking-nsx$/, when: hasNetworkingFocus("edge-cluster-routing") }], keywords: /\bedge\b|\bBGP\b/i },
-  // Operational Observability
-  { area: "Assess & Review (VCF Operations)", rules: [{ id: /^bar-playbook-component-design-operations$/, kind: "depth" }], keywords: /\bVCF Operations\b.*\b(design|assess)/i },
-  { area: "Dashboards & Logs", rules: [{ id: /^bar-operations-(observability|custom-dashboards)$/ }], keywords: /\bdashboard/i },
-  { area: "Fleet Management", rules: [{ id: /^bar-playbook-adoption-.+$/ }], keywords: /\bfleet\b/i },
-  { area: "Capacity Management (Forecast & Right-size)", rules: [{ id: /^bar-operations-capacity-cost$/ }], keywords: /\bcapacity\b|\bright-?siz/i },
-  { area: "Lifecycle Management", rules: [{ id: /^bar-(operations-lifecycle|operations-core|two-year-baseline-operating-model)$/ }], keywords: /\blifecycle\b|\bpatch/i },
-  { area: "Certificate & Password Mgmt", rules: [{ id: /^bar-operations-identity-certificates$/ }], keywords: /\bcertificate|\bpassword|\bcredential/i },
-  { area: "Compliance Management", rules: [{ id: /^bar-security-hardening-compliance$/ }], keywords: /\bcompliance\b/i },
-  { area: "Log Management & Analytics", rules: [{ id: /^bar-operations-observability$/ }], keywords: /\blog(s|ging)?\b/i },
-  { area: "Proactive Support & Diagnostics", rules: [{ id: /^bar-operations-(observability|event-integration)$/ }], keywords: /\bdiagnostic|\bsupport bundle/i },
-  { area: "FinOps (Chargeback & Showback)", rules: [{ id: /^bar-operations-capacity-cost$/ }], keywords: /\bfinops\b|\bchargeback\b|\bshowback\b/i },
-  { area: "Hybrid Cloud Mobility (HCX)", rules: [{ id: /^bar-playbook-(design-migration-design|design-integrated-runbook|execution-migration-waves|execution-delivery-waves)$/ }], keywords: /\bHCX\b|\bmigration\b/i },
-  // Apps & Cloud Consumption
-  { area: "Assess & Review (Automation/Apps)", rules: [{ id: /^bar-playbook-component-design-automation$/, kind: "depth" }], keywords: /\bautomation\b.*\b(design|assess)/i },
-  { area: "Infrastructure-as-Code", rules: [{ id: /^bar-cloud-automation-infrastructure-as-code$/ }], keywords: /\binfrastructure-as-code\b|\bIaC\b|\bterraform\b/i },
-  { area: "Self-Service Catalog", rules: [{ id: /^bar-cloud-automation(-(vm-self-service|governance|application-provisioning|day-2-automation))?$/ }], keywords: /\bself-service\b|\bcatalog\b/i },
-  { area: "VCF Kubernetes Service (VKS)", rules: [{ id: /^bar-cloud-kubernetes(-.+)?$/ }, { id: /^bar-playbook-component-design-kubernetes$/, kind: "depth" }], keywords: /\bkubernetes\b|\bVKS\b|\bsupervisor\b/i },
-  { area: "Enterprise Image Registry (Harbor)", rules: [{ id: /^bar-cloud-kubernetes-(developer-experience|platform-operations)$/ }], keywords: /\bharbor\b|\bimage registry\b/i },
-  { area: "Data Services Manager (DSM)", rules: [], keywords: /\bdata services\b|\bDSM\b/i },
-  { area: "Private AI Services", rules: [{ id: /^bar-cloud-private-ai(-.+)?$/ }, { id: /^bar-playbook-component-design-private-ai$/, kind: "depth" }], keywords: /\bprivate AI\b|\bGPU\b/i },
-  { area: "Avi Load Balancer (App Ingress)", rules: [], keywords: /\bavi\b|\bload balanc/i },
-  // Resilience & Recovery
-  { area: "Assess & Review (DR/Cyber)", rules: [{ id: /^bar-playbook-component-design-resilience$/, kind: "depth" }], keywords: /\b(recovery|resilience)\b.*\b(design|assess)/i },
-  { area: "Site Recovery (SRM or ACC SRM)", rules: [{ id: /^bar-resilience-(recovery-architecture|recovery-exercises|core)$/ }], keywords: /\bsite recovery\b|\bSRM\b|\bdisaster recovery\b/i },
-  { area: "Cyber Recovery (Cloud or On Prem)", rules: [{ id: /^bar-resilience-cyber-recovery$/ }], keywords: /\bcyber[- ]recovery\b/i },
-  { area: "Cloud Recovery", rules: [], keywords: /\bcloud recovery\b/i },
-  // Security & Compliance
-  { area: "Assess & Review (Security)", rules: [{ id: /^bar-playbook-component-design-security$/, kind: "depth" }], keywords: /\bsecurity\b.*\b(design|assess)/i },
-  { area: "Distributed Firewall (DFW)", rules: [{ id: /^bar-security-(segmentation|core)$/ }], keywords: /\bDFW\b|\bdistributed firewall\b|\bsegmentation\b/i },
-  { area: "vDefend ATP (Distributed IDS/IPS)", rules: [], keywords: /\bIDS\b|\bIPS\b/i },
-  { area: "vDefend ATP (Malware Prevention & Sandbox)", rules: [], keywords: /\bmalware\b|\bsandbox/i },
-  { area: "vDefend ATP (Identity-Aware Firewall)", rules: [], keywords: /\bidentity[- ]aware\b|\bidentity firewall\b/i },
-  { area: "vDefend ATP (Security Intelligence)", rules: [], keywords: /\bsecurity intelligence\b|\btraffic (analytics|visuali[sz]ation)\b/i },
-  { area: "AVI LB (Layer-7 WAF & Ingress Security)", rules: [], keywords: /\bWAF\b/i },
-  { area: "Salt (ACC)", rules: [{ id: /^bar-security-hardening-compliance$/ }], keywords: /\bsalt\b|\bconfiguration management\b/i },
+  discovery("Scoping & Environment Assessment", [{ id: /^bar-(platform-plan|playbook-design-requirements)$/ }], /\b(assess(ment)?|discovery|requirements|scoping) workshop\b|\bscoping\b|\benvironment assessment\b/i),
+  discovery("Deployment Posture Assessment", [{ id: /^bar-playbook-design-(pathway-decision|target-state|decision-register)$/ }], /\bposture\b|\bpathway decision\b|\bdecision register\b/i),
+  discovery("Site Readiness", [{ id: /^bar-(hcl-(gate|remediation|greenfield|procurement)|in-place-preparation|import-foundation-validation|soft-prerequisite-.+|playbook-design-platform-design)$/ }], /\bsite readiness\b|\bHCL\b/i),
+  discovery("Migration Execution Readiness", [{ id: /^bar-playbook-design-(migration-design|integrated-runbook|converge-runbook|implementation-handoff)$/ }], /\bmigration (readiness|design|plan)|\bcutover\b|\brunbook\b/i),
+
+  platform("Platform Design & Scope", [{ id: /^bar-playbook-design-(target-state|platform-design|logical-physical-design)$/ }], /\bplatform design\b|\blogical and physical\b/i),
+  platform("VVF Core", [], /\bVVF\b|\bvSphere Foundation\b/i),
+  platform("VCF Management Domain", [{ id: MANAGEMENT_DOMAIN_BUILD }, { id: /^bar-playbook-adoption-.+$/ }], /\bmanagement domain\b/i),
+  platform("VCF Workload Domain", [{ id: /^bar-(workload-domain|import-workload-domain)$/ }], /\bworkload domain\b/i),
+  platform("Identity Broker & Multi-Tenancy", [{ id: /^bar-(security-identity-rbac|operations-identity-certificates|cloud-automation-governance)$/ }], /\bidentity broker\b|\bmulti-?tenan/i),
+  platform("Solution License Management", [{ id: PLATFORM_BUILD }], /\blicens/i),
+
+  storage("Storage Design & Scope", [{ id: /^bar-playbook-design-(platform-design|target-state|logical-physical-design)$/, when: usesVsan }], /\b(vSAN|storage)\b.*\b(design|assess)/i),
+  storage("vSAN ESA Implementation", [{ id: PLATFORM_BUILD, when: usesVsan }], /\bvSAN\b/i),
+  storage("NVMe Memory Tiering", [{ id: /^bar-playbook-component-design-efficiency$/ }], /\bmemory tiering\b/i),
+
+  networking("NSX Design & Scope", [{ id: /^bar-playbook-component-design-networking$/ }], /\bNSX\b.*\b(design|assess)/i),
+  networking("NSX Overlay Networking", [{ id: /^bar-(vcf-networking-nsx|two-year-baseline-networking-nsx)$/ }], /\boverlay\b/i),
+  networking("VCF VPC", [], /\bVPC\b|\btransit gateway\b/i),
+  networking("NSX Edge Connectivity", [{ id: /^bar-vcf-networking-nsx$/, when: hasNetworkingFocus("edge-cluster-routing") }], /\bedge\b|\bBGP\b/i),
+
+  observability("Operations Design & Scope", [{ id: /^bar-playbook-component-design-operations$/ }], /\b(VCF )?Operations\b.*\b(design|assess)/i),
+  observability("Dashboards & Logs", [{ id: /^bar-operations-(observability|custom-dashboards)$/ }], /\bdashboard/i),
+  observability("Fleet Management", [{ id: /^bar-playbook-adoption-.+$/ }], /\bfleet\b/i),
+  observability("Capacity Management (Forecast & Right-size)", [{ id: /^bar-operations-capacity-cost$/ }], /\bcapacity\b|\bright-?siz/i),
+  observability("Lifecycle Management", [{ id: /^bar-(operations-lifecycle|operations-core|two-year-baseline-operating-model)$/ }], /\blifecycle\b|\bpatch/i),
+  observability("Certificate & Password Mgmt", [{ id: /^bar-operations-identity-certificates$/ }], /\bcertificate|\bpassword|\bcredential/i),
+  observability("Compliance Management", [{ id: /^bar-security-hardening-compliance$/ }], /\bcompliance\b/i),
+  observability("Log Management & Analytics", [{ id: /^bar-operations-observability$/ }], /\blog(s|ging)?\b/i),
+  observability("Proactive Support & Diagnostics", [{ id: /^bar-operations-(observability|event-integration)$/ }], /\bdiagnostic|\bsupport bundle/i),
+  observability("FinOps (Chargeback & Showback)", [{ id: /^bar-operations-capacity-cost$/ }], /\bfinops\b|\bchargeback\b|\bshowback\b/i),
+  observability("Hybrid Cloud Mobility (HCX)", [{ id: /^bar-playbook-(design-migration-design|design-integrated-runbook|execution-migration-waves|execution-delivery-waves)$/ }], /\bHCX\b|\bmigration\b/i),
+
+  apps("Automation Design & Scope", [{ id: /^bar-playbook-component-design-automation$/ }], /\bautomation\b.*\b(design|assess)/i),
+  apps("Infrastructure-as-Code", [{ id: /^bar-cloud-automation-infrastructure-as-code$/ }], /\binfrastructure-as-code\b|\bIaC\b|\bterraform\b/i),
+  apps("Self-Service Catalog", [{ id: /^bar-cloud-automation(-(vm-self-service|governance|application-provisioning|day-2-automation))?$/ }], /\bself-service\b|\bcatalog\b/i),
+  apps("vSphere Kubernetes Services (VKS)", [{ id: /^bar-cloud-kubernetes(-.+)?$/ }, { id: /^bar-playbook-component-design-kubernetes$/ }], /\bkubernetes\b|\bVKS\b|\bsupervisor\b/i),
+  apps("Enterprise Image Registry (Harbor)", [{ id: /^bar-cloud-kubernetes-(developer-experience|platform-operations)$/ }], /\bharbor\b|\bimage registry\b/i),
+  apps("Data Services Manager (DSM)", [], /\bdata services\b|\bDSM\b/i),
+  apps("Private AI Services", [{ id: /^bar-cloud-private-ai(-.+)?$/ }, { id: /^bar-playbook-component-design-private-ai$/ }], /\bprivate AI\b|\bGPU\b/i),
+  apps("Avi Load Balancer (App Ingress)", [], /\bavi\b|\bload balanc/i),
+
+  resilience("Resilience Design & Scope", [{ id: /^bar-playbook-component-design-resilience$/ }], /\b(recovery|resilience)\b.*\b(design|assess)/i),
+  resilience("Site Recovery (SRM or ACC SRM)", [{ id: /^bar-resilience-(recovery-architecture|recovery-exercises|core)$/ }], /\bsite recovery\b|\bSRM\b|\bdisaster recovery\b/i),
+  resilience("Cyber Recovery (On Prem)", [{ id: /^bar-resilience-cyber-recovery$/ }], /^(?!.*\bcloud\b).*\bcyber[- ]recovery\b/i),
+  resilience("Cyber Recovery (Cloud)", [], /\bcyber[- ]recovery\b.*\bcloud\b|\bcloud\b.*\bcyber[- ]recovery\b|\bcloud recovery\b/i),
+
+  security("Security Design & Scope", [{ id: /^bar-playbook-component-design-security$/ }], /\bsecurity\b.*\b(design|assess)/i),
+  security("Distributed Firewall (DFW)", [{ id: /^bar-security-(segmentation|core)$/ }], /\bDFW\b|\bdistributed firewall\b|\bsegmentation\b/i),
+  security("vDefend ATP (Distributed IDS/IPS)", [], /\bIDS\b|\bIPS\b/i),
+  security("vDefend ATP (Malware Prevention & Sandbox)", [], /\bmalware\b|\bsandbox/i),
+  security("vDefend ATP (Identity-Aware Firewall)", [], /\bidentity[- ]aware\b|\bidentity firewall\b/i),
+  security("vDefend ATP (Security Intelligence)", [], /\bsecurity intelligence\b|\btraffic (analytics|visuali[sz]ation)\b/i),
+  security("AVI LB (Layer-7 WAF & Ingress Security)", [], /\bWAF\b/i),
+  security("Salt (ACC)", [{ id: /^bar-security-hardening-compliance$/ }], /\bsalt\b|\bconfiguration management\b/i),
 ];
 
 export type BuildingBlockAssessment = {
+  category: BlockCategory;
   area: string;
-  rating: CapabilityRating;
-  deliverable: CustomerDeliverableStatus;
+  status: BlockStatus;
   /** ISO dates (inclusive); empty when the block is not in the plan. */
   projectedStart: string;
   projectedEnd: string;
   projectedDates: string;
   activities: string[];
 };
-
-export function normalizeBlockArea(value: string): string {
-  return value.replace(/\s+/g, " ").trim().toLowerCase();
-}
 
 function parseIsoDate(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
@@ -133,13 +153,13 @@ function displayDate(value: string): string {
   return date ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(date) : value;
 }
 
-type Match = { bar: TimelineBar; kind: MatchKind; window: { start: string; end: string } | null };
+type Match = { bar: TimelineBar; window: { start: string; end: string } | null };
 
 function blockMatches(block: BuildingBlockDefinition, timeline: Timeline, fields: MinimalFields, recognizedIds: Set<string>): Match[] {
   return timeline.lanes.flatMap(lane => lane.bars).flatMap(bar => {
     const rule = block.rules.find(candidate => candidate.id.test(bar.id) && (!candidate.when || candidate.when(fields)));
-    if (rule) return [{ bar, kind: rule.kind ?? "selected", window: barWindow(timeline, bar) }];
-    if (!recognizedIds.has(bar.id) && block.keywords?.test(bar.label)) return [{ bar, kind: "selected" as const, window: barWindow(timeline, bar) }];
+    if (rule) return [{ bar, window: barWindow(timeline, bar) }];
+    if (!recognizedIds.has(bar.id) && block.keywords?.test(bar.label)) return [{ bar, window: barWindow(timeline, bar) }];
     return [];
   });
 }
@@ -151,19 +171,18 @@ function recognizedBarIds(timeline: Timeline): Set<string> {
   return new Set(timeline.lanes.flatMap(lane => lane.bars).map(bar => bar.id).filter(id => GENERATED_BAR_ID.test(id)));
 }
 
-function deliverableStatus(window: { start: string; end: string } | null, today: string): CustomerDeliverableStatus {
-  if (!window) return "Planning/TBD";
-  if (today < window.start) return "Planning/TBD";
+function derivedStatus(window: { start: string; end: string } | null, today: string): BlockStatus {
+  if (!window) return "Planning";
+  if (today < window.start) return "Planning";
   if (today > window.end) return "Completed";
   return "In Progress";
 }
 
 /**
- * Scores every building block against the plan:
- * - Strongly Agree: an explicitly selected activity is in the Entitlement Adoption Timeline
- * - Mostly Agree: only adoption-depth design activities are in the Entitlement Adoption Timeline
- * - Mostly Disagree: the block appears only in the Two-Year Notional (or is deferred)
- * - *Out of Scope: nothing in the plan covers the block
+ * Assesses every building block against the plan. A block takes its activities from the Entitlement
+ * Adoption Timeline when any are committed there, otherwise from deferred or Two-Year Notional activities.
+ * Status follows the projected window against today (Planning, In Progress, Completed); a block that
+ * nothing in the plan covers is Out of Scope.
  */
 export function assessBuildingBlocks(document: EngagementDocument, today: string = isoDate(new Date())): BuildingBlockAssessment[] {
   const { fields, adoptionTimeline, twoYearPlan } = document;
@@ -176,23 +195,15 @@ export function assessBuildingBlocks(document: EngagementDocument, today: string
     const directional = committed.length ? [] : [...adoptionMatches, ...blockMatches(block, twoYearPlan, fields, twoYearIds)];
     const matches = committed.length ? committed : directional;
 
-    const rating: CapabilityRating = committed.some(match => match.kind === "selected")
-      ? "Strongly Agree"
-      : committed.length
-        ? "Mostly Agree"
-        : directional.length
-          ? "Mostly Disagree"
-          : "*Out of Scope";
-
     const windows = matches.flatMap(match => (match.window ? [match.window] : []));
     const projectedStart = windows.length ? windows.map(window => window.start).sort()[0] : "";
     const projectedEnd = windows.length ? windows.map(window => window.end).sort().at(-1)! : "";
     const window = projectedStart ? { start: projectedStart, end: projectedEnd } : null;
 
     return {
+      category: block.category,
       area: block.area,
-      rating,
-      deliverable: matches.length ? deliverableStatus(window, today) : "Out of Scope",
+      status: matches.length ? derivedStatus(window, today) : "Out of Scope",
       projectedStart,
       projectedEnd,
       projectedDates: window ? `${displayDate(window.start)} – ${displayDate(window.end)}` : "",
