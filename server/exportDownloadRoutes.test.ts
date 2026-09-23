@@ -100,6 +100,35 @@ describe("signed binary export downloads", () => {
     expect(content).toContain("Compatibility action register");
   });
 
+  it("streams the Building Blocks workbook for commercial customers", async () => {
+    const data = createDefaultDocument();
+    data.fields.customerSegment = "commercial";
+    getEngagement.mockResolvedValueOnce({ ...(await getEngagement.getMockImplementation()!(7, 41))!, data });
+    const ticket = createExportTicket(7, 41, "xlsx", "building-blocks");
+    const response = await fetch(`${baseUrl}/api/download/${ticket}`);
+    const content = Buffer.from(await response.arrayBuffer());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian-FCP-Plan-Building-Blocks.xlsx"');
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(content.subarray(0, 2).toString("utf8")).toBe("PK");
+  });
+
+  it("refuses the Building Blocks workbook unless the customer is commercial", async () => {
+    const ticket = createExportTicket(7, 41, "xlsx", "building-blocks");
+    const response = await fetch(`${baseUrl}/api/download/${ticket}`);
+
+    expect(response.status).toBe(409);
+    expect(await response.text()).toContain("commercial customers");
+  });
+
+  it("only issues XLSX tickets for the Building Blocks workbook", () => {
+    expect(verifyExportTicket(createExportTicket(7, 41, "xlsx", "building-blocks"))).toMatchObject({ format: "xlsx", documentType: "building-blocks" });
+    expect(verifyExportTicket(createExportTicket(7, 41, "xlsx", "fcp"))).toBeNull();
+    expect(verifyExportTicket(createExportTicket(7, 41, "pdf", "building-blocks"))).toBeNull();
+  });
+
   it("normalizes unsafe and empty export names", () => {
     expect(safeExportFilename("  ACME / FCP: West  ", "pdf")).toBe("ACME-FCP-West.pdf");
     expect(safeExportFilename("  ACME / FCP: West  ", "pdf", "plan-output")).toBe("ACME-FCP-West-Compatibility-Handoff.pdf");

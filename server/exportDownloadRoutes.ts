@@ -1,6 +1,8 @@
 import type { Express, Request, Response } from "express";
+import { isCommercialCustomer } from "../shared/buildingBlocks";
 import { engagementDocumentSchema } from "../shared/fcp";
 import * as db from "./db";
+import { BUILDING_BLOCKS_MIME, buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
 import { verifyExportTicket } from "./exportTickets";
 import { renderFcpHtml, renderHclCompatibilityPlanOutputHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
@@ -28,12 +30,20 @@ export function registerExportDownloadRoutes(app: Express) {
       if (!row) return deny(res, 404, "Engagement not found.");
 
       const document = engagementDocumentSchema.parse(row.data);
-      const html = ticket.documentType === "plan-output" ? renderHclCompatibilityPlanOutputHtml(row.title, document) : renderFcpHtml(row.title, document);
-      const filename = safeExportFilename(row.title, ticket.format, ticket.documentType);
 
       res.setHeader("Cache-Control", "private, no-store, max-age=0");
       res.setHeader("Pragma", "no-cache");
       res.setHeader("X-Content-Type-Options", "nosniff");
+
+      if (ticket.documentType === "building-blocks") {
+        if (!isCommercialCustomer(document.fields)) return deny(res, 409, "The Building Blocks workbook is produced only for commercial customers. Set the customer segment to Commercial.");
+        const workbook = renderBuildingBlocksWorkbook(document);
+        res.setHeader("Content-Disposition", `attachment; filename="${buildingBlocksFilename(row.title)}"`);
+        return res.status(200).type(BUILDING_BLOCKS_MIME).send(Buffer.from(workbook));
+      }
+
+      const html = ticket.documentType === "plan-output" ? renderHclCompatibilityPlanOutputHtml(row.title, document) : renderFcpHtml(row.title, document);
+      const filename = safeExportFilename(row.title, ticket.format === "html" ? "html" : "pdf", ticket.documentType === "plan-output" ? "plan-output" : "fcp");
 
       if (ticket.format === "html") {
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);

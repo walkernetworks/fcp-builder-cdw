@@ -438,11 +438,16 @@ export const exportPreferencesSchema = z.object({
 });
 export type ExportPreferences = z.infer<typeof exportPreferencesSchema>;
 
+/** Commercial customers also receive the Broadcom Building Blocks workbook with each FCP. */
+export const customerSegmentSchema = z.enum(["unspecified", "commercial", "public-sector"]);
+export type CustomerSegment = z.infer<typeof customerSegmentSchema>;
+
 export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   adoptionCadence: timelineCadenceSchema,
   adoptionDetails: adoptionDetailsSchema,
   exportPreferences: exportPreferencesSchema.default({ includeVcfReadiness: true, includeOperationalTimeline: true }),
   compatibilityTargetRelease: z.enum(HCL_CATALOG_RELEASES).default(HCL_TARGET_RELEASE),
+  customerSegment: customerSegmentSchema.default("unspecified"),
 });
 export type MinimalFields = z.infer<typeof minimalFieldsSchema>;
 
@@ -1046,6 +1051,7 @@ export function createDefaultFields(): MinimalFields {
     adoptionDetails: createDefaultAdoptionDetails(),
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
+    customerSegment: "unspecified",
   };
 }
 
@@ -2549,6 +2555,7 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
     adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise" },
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
+    customerSegment: "unspecified",
   };
 }
 
