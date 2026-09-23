@@ -1,4 +1,4 @@
-import type { EngagementDocument, MinimalFields, Timeline, TimelineBar } from "./fcp";
+import { effectivePlatformEdition, type EngagementDocument, type MinimalFields, type Timeline, type TimelineBar } from "./fcp";
 
 /**
  * Maps a generated FCP onto the Broadcom VCF 9 Building Blocks tool: its categories, blocks, and block statuses.
@@ -38,6 +38,8 @@ export type BuildingBlockDefinition = {
 };
 
 const usesVsan = (fields: MinimalFields) => fields.adoptionDetails.principalStorage === "vsan";
+const isVcf = (fields: MinimalFields) => effectivePlatformEdition(fields) === "vcf";
+const isVvf = (fields: MinimalFields) => effectivePlatformEdition(fields) === "vvf";
 const hasNetworkingFocus = (focus: MinimalFields["adoptionDetails"]["networking"][number]) => (fields: MinimalFields) => fields.adoptionDetails.networking.includes(focus);
 
 const PLATFORM_BUILD = /^bar-(management-domain|converge-management-domain|import-foundation-validation|workload-domain|playbook-execution-(upgrade|delivery)-waves)$/;
@@ -56,28 +58,28 @@ const security = (area: string, rules: BarRule[], keywords?: RegExp): BuildingBl
 export const BUILDING_BLOCKS: BuildingBlockDefinition[] = [
   discovery("Scoping & Environment Assessment", [{ id: /^bar-(platform-plan|playbook-design-requirements)$/ }], /\b(assess(ment)?|discovery|requirements|scoping) workshop\b|\bscoping\b|\benvironment assessment\b/i),
   discovery("Deployment Posture Assessment", [{ id: /^bar-playbook-design-(pathway-decision|target-state|decision-register)$/ }], /\bposture\b|\bpathway decision\b|\bdecision register\b/i),
-  discovery("Site Readiness", [{ id: /^bar-(hcl-(gate|remediation|greenfield|procurement)|in-place-preparation|import-foundation-validation|soft-prerequisite-.+|playbook-design-platform-design)$/ }], /\bsite readiness\b|\bHCL\b/i),
+  discovery("Site Readiness", [{ id: /^bar-(hcl-(gate|remediation|greenfield|procurement)|in-place-preparation|import-foundation-validation|soft-prerequisite-.+|networking-physical-fabric|playbook-design-platform-design)$/ }], /\bsite readiness\b|\bHCL\b/i),
   discovery("Migration Execution Readiness", [{ id: /^bar-playbook-design-(migration-design|integrated-runbook|converge-runbook|implementation-handoff)$/ }], /\bmigration (readiness|design|plan)|\bcutover\b|\brunbook\b/i),
 
   platform("Platform Design & Scope", [{ id: /^bar-playbook-design-(target-state|platform-design|logical-physical-design)$/ }], /\bplatform design\b|\blogical and physical\b/i),
-  platform("VVF Core", [], /\bVVF\b|\bvSphere Foundation\b/i),
-  platform("VCF Management Domain", [{ id: MANAGEMENT_DOMAIN_BUILD }, { id: /^bar-playbook-adoption-.+$/ }], /\bmanagement domain\b/i),
+  platform("VVF Core", [{ id: /^bar-vvf-(foundation|workload-clusters)$/ }, { id: /^bar-(in-place-preparation|playbook-execution-upgrade-waves|playbook-adoption-vvf-operations)$/, when: isVvf }], /\bVVF\b|\bvSphere Foundation\b/i),
+  platform("VCF Management Domain", [{ id: MANAGEMENT_DOMAIN_BUILD, when: isVcf }, { id: /^bar-playbook-adoption-.+$/, when: isVcf }], /\bmanagement domain\b/i),
   platform("VCF Workload Domain", [{ id: /^bar-(workload-domain|import-workload-domain)$/ }], /\bworkload domain\b/i),
-  platform("Identity Broker & Multi-Tenancy", [{ id: /^bar-(security-identity-rbac|operations-identity-certificates|cloud-automation-governance)$/ }], /\bidentity broker\b|\bmulti-?tenan/i),
-  platform("Solution License Management", [{ id: PLATFORM_BUILD }], /\blicens/i),
+  platform("Identity Broker & Multi-Tenancy", [{ id: /^bar-(security-identity-rbac|operations-identity-certificates|cloud-automation-governance)$/, when: isVcf }], /\bidentity broker\b|\bmulti-?tenan/i),
+  platform("Solution License Management", [{ id: PLATFORM_BUILD }, { id: /^bar-platform-licensing$/ }], /\blicens/i),
 
   storage("Storage Design & Scope", [{ id: /^bar-playbook-design-(platform-design|target-state|logical-physical-design)$/, when: usesVsan }], /\b(vSAN|storage)\b.*\b(design|assess)/i),
-  storage("vSAN ESA Implementation", [{ id: PLATFORM_BUILD, when: usesVsan }], /\bvSAN\b/i),
+  storage("vSAN ESA Implementation", [{ id: PLATFORM_BUILD, when: usesVsan }, { id: /^bar-vvf-foundation$/, when: usesVsan }], /\bvSAN\b/i),
   storage("NVMe Memory Tiering", [{ id: /^bar-playbook-component-design-efficiency$/ }], /\bmemory tiering\b/i),
 
   networking("NSX Design & Scope", [{ id: /^bar-playbook-component-design-networking$/ }], /\bNSX\b.*\b(design|assess)/i),
-  networking("NSX Overlay Networking", [{ id: /^bar-(vcf-networking-nsx|two-year-baseline-networking-nsx)$/ }], /\boverlay\b/i),
-  networking("VCF VPC", [], /\bVPC\b|\btransit gateway\b/i),
-  networking("NSX Edge Connectivity", [{ id: /^bar-vcf-networking-nsx$/, when: hasNetworkingFocus("edge-cluster-routing") }], /\bedge\b|\bBGP\b/i),
+  networking("NSX Overlay Networking", [{ id: /^bar-(vcf-networking-nsx|two-year-baseline-networking-nsx|networking-overlay-transport)$/ }], /\boverlay\b/i),
+  networking("VCF VPC", [{ id: /^bar-networking-vpc$/ }], /\bVPC\b|\btransit gateway\b/i),
+  networking("NSX Edge Connectivity", [{ id: /^bar-networking-edge-cluster-routing$/ }, { id: /^bar-vcf-networking-nsx$/, when: hasNetworkingFocus("edge-cluster-routing") }], /\bedge\b|\bBGP\b/i),
 
   observability("Operations Design & Scope", [{ id: /^bar-playbook-component-design-operations$/ }], /\b(VCF )?Operations\b.*\b(design|assess)/i),
   observability("Dashboards & Logs", [{ id: /^bar-operations-(observability|custom-dashboards)$/ }], /\bdashboard/i),
-  observability("Fleet Management", [{ id: /^bar-playbook-adoption-.+$/ }], /\bfleet\b/i),
+  observability("Fleet Management", [{ id: /^bar-playbook-adoption-.+$/, when: isVcf }], /\bfleet\b/i),
   observability("Capacity Management (Forecast & Right-size)", [{ id: /^bar-operations-capacity-cost$/ }], /\bcapacity\b|\bright-?siz/i),
   observability("Lifecycle Management", [{ id: /^bar-(operations-lifecycle|operations-core|two-year-baseline-operating-model)$/ }], /\blifecycle\b|\bpatch/i),
   observability("Certificate & Password Mgmt", [{ id: /^bar-operations-identity-certificates$/ }], /\bcertificate|\bpassword|\bcredential/i),
@@ -92,22 +94,22 @@ export const BUILDING_BLOCKS: BuildingBlockDefinition[] = [
   apps("Self-Service Catalog", [{ id: /^bar-cloud-automation(-(vm-self-service|governance|application-provisioning|day-2-automation))?$/ }], /\bself-service\b|\bcatalog\b/i),
   apps("vSphere Kubernetes Services (VKS)", [{ id: /^bar-cloud-kubernetes(-.+)?$/ }, { id: /^bar-playbook-component-design-kubernetes$/ }], /\bkubernetes\b|\bVKS\b|\bsupervisor\b/i),
   apps("Enterprise Image Registry (Harbor)", [{ id: /^bar-cloud-kubernetes-(developer-experience|platform-operations)$/ }], /\bharbor\b|\bimage registry\b/i),
-  apps("Data Services Manager (DSM)", [], /\bdata services\b|\bDSM\b/i),
+  apps("Data Services Manager (DSM)", [{ id: /^bar-cloud-automation-data-services$/ }], /\bdata services\b|\bDSM\b/i),
   apps("Private AI Services", [{ id: /^bar-cloud-private-ai(-.+)?$/ }, { id: /^bar-playbook-component-design-private-ai$/ }], /\bprivate AI\b|\bGPU\b/i),
-  apps("Avi Load Balancer (App Ingress)", [], /\bavi\b|\bload balanc/i),
+  apps("Avi Load Balancer (App Ingress)", [{ id: /^bar-networking-load-balancing$/ }], /\bavi\b|\bload balanc/i),
 
   resilience("Resilience Design & Scope", [{ id: /^bar-playbook-component-design-resilience$/ }], /\b(recovery|resilience)\b.*\b(design|assess)/i),
   resilience("Site Recovery (SRM or ACC SRM)", [{ id: /^bar-resilience-(recovery-architecture|recovery-exercises|core)$/ }], /\bsite recovery\b|\bSRM\b|\bdisaster recovery\b/i),
   resilience("Cyber Recovery (On Prem)", [{ id: /^bar-resilience-cyber-recovery$/ }], /^(?!.*\bcloud\b).*\bcyber[- ]recovery\b/i),
-  resilience("Cyber Recovery (Cloud)", [], /\bcyber[- ]recovery\b.*\bcloud\b|\bcloud\b.*\bcyber[- ]recovery\b|\bcloud recovery\b/i),
+  resilience("Cyber Recovery (Cloud)", [{ id: /^bar-resilience-cloud-cyber-recovery$/ }], /\bcyber[- ]recovery\b.*\bcloud\b|\bcloud\b.*\bcyber[- ]recovery\b|\bcloud recovery\b/i),
 
   security("Security Design & Scope", [{ id: /^bar-playbook-component-design-security$/ }], /\bsecurity\b.*\b(design|assess)/i),
   security("Distributed Firewall (DFW)", [{ id: /^bar-security-(segmentation|core)$/ }], /\bDFW\b|\bdistributed firewall\b|\bsegmentation\b/i),
-  security("vDefend ATP (Distributed IDS/IPS)", [], /\bIDS\b|\bIPS\b/i),
-  security("vDefend ATP (Malware Prevention & Sandbox)", [], /\bmalware\b|\bsandbox/i),
-  security("vDefend ATP (Identity-Aware Firewall)", [], /\bidentity[- ]aware\b|\bidentity firewall\b/i),
-  security("vDefend ATP (Security Intelligence)", [], /\bsecurity intelligence\b|\btraffic (analytics|visuali[sz]ation)\b/i),
-  security("AVI LB (Layer-7 WAF & Ingress Security)", [], /\bWAF\b/i),
+  security("vDefend ATP (Distributed IDS/IPS)", [{ id: /^bar-security-ids-ips$/ }], /\bIDS\b|\bIPS\b/i),
+  security("vDefend ATP (Malware Prevention & Sandbox)", [{ id: /^bar-security-malware-prevention$/ }], /\bmalware\b|\bsandbox/i),
+  security("vDefend ATP (Identity-Aware Firewall)", [{ id: /^bar-security-identity-firewall$/ }], /\bidentity[- ]aware\b|\bidentity firewall\b/i),
+  security("vDefend ATP (Security Intelligence)", [{ id: /^bar-security-(security-intelligence|services-platform)$/ }], /\bsecurity intelligence\b|\btraffic (analytics|visuali[sz]ation)\b/i),
+  security("AVI LB (Layer-7 WAF & Ingress Security)", [{ id: /^bar-security-waf$/ }], /\bWAF\b/i),
   security("Salt (ACC)", [{ id: /^bar-security-hardening-compliance$/ }], /\bsalt\b|\bconfiguration management\b/i),
 ];
 
@@ -224,7 +226,7 @@ function blockMatches(block: BuildingBlockDefinition, timeline: Timeline, fields
 }
 
 /** Ids produced by the plan generator in shared/fcp.ts; anything else was added in the timeline editor. */
-const GENERATED_BAR_ID = /^bar-(platform-|playbook-|hcl-|operations-|cloud-|security-|resilience-|two-year-baseline-|soft-prerequisite-|management-domain$|converge-management-domain$|import-|in-place-preparation$|workload-domain$|vcf-networking-nsx$)/;
+const GENERATED_BAR_ID = /^bar-(platform-|playbook-|hcl-|operations-|cloud-|security-|resilience-|networking-|vvf-|two-year-baseline-|soft-prerequisite-|management-domain$|converge-management-domain$|import-|in-place-preparation$|workload-domain$|vcf-networking-nsx$)/;
 
 function recognizedBarIds(timeline: Timeline): Set<string> {
   return new Set(timeline.lanes.flatMap(lane => lane.bars).map(bar => bar.id).filter(id => GENERATED_BAR_ID.test(id)));
@@ -270,7 +272,7 @@ export function assessBuildingBlocks(document: EngagementDocument, today: string
       requiredBy: [],
     };
   });
-  return withRequiredDependencies(assessments);
+  return withRequiredDependencies(assessments, isVvf(fields));
 }
 
 /**
@@ -278,13 +280,17 @@ export function assessBuildingBlocks(document: EngagementDocument, today: string
  * is brought in as Planning, with the blocks that need it; this repeats until every requirement is met.
  * For an "either" requirement, the first listed block is brought in.
  */
-function withRequiredDependencies(assessments: BuildingBlockAssessment[]): BuildingBlockAssessment[] {
+function withRequiredDependencies(assessments: BuildingBlockAssessment[], vvf: boolean): BuildingBlockAssessment[] {
   const byArea = new Map(assessments.map(item => [item.area, item]));
+  // On VVF the platform foundation is VVF Core, so it stands in wherever the tool names the VCF management domain.
+  const requirementsFor = (area: string) => (BLOCK_DEPENDENCIES[area] ?? []).map(requirement => vvf
+    ? Array.from(new Set(requirement.map(item => (item === "VCF Management Domain" ? "VVF Core" : item))))
+    : requirement);
   const included = (area: string) => byArea.get(area)?.status !== "Out of Scope";
   const pending = assessments.filter(item => included(item.area)).map(item => item.area);
   while (pending.length) {
     const area = pending.shift()!;
-    for (const requirement of BLOCK_DEPENDENCIES[area] ?? []) {
+    for (const requirement of requirementsFor(area)) {
       const alreadyMet = requirement.find(candidate => included(candidate) && !byArea.get(candidate)!.requiredBy.length);
       if (alreadyMet) continue;
       const dependency = byArea.get(requirement.find(included) ?? requirement[0]);

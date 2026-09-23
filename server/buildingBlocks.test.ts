@@ -84,10 +84,9 @@ describe("building blocks assessment", () => {
         expect(requirement.some(dependency => byArea.get(dependency)?.status !== "Out of Scope"), `${item.area} needs ${requirement.join(" or ")}`).toBe(true);
       }
     }
-    // DFW is planned; the plan has no NSX work, so NSX Overlay, NSX Edge, and NSX Design come in as dependencies.
+    // DFW is planned and the plan deploys NSX for it, but has no Edge work, so NSX Edge comes in as a dependency.
     expect(byArea.get("NSX Edge Connectivity")).toMatchObject({ status: "Planning", projectedDates: "", requiredBy: expect.arrayContaining(["Distributed Firewall (DFW)"]) });
-    expect(byArea.get("NSX Overlay Networking")?.requiredBy).toEqual(expect.arrayContaining(["Distributed Firewall (DFW)", "NSX Edge Connectivity"]));
-    expect(byArea.get("NSX Design & Scope")).toMatchObject({ status: "Planning", requiredBy: ["NSX Overlay Networking"] });
+    expect(byArea.get("NSX Overlay Networking")?.requiredBy).toEqual([]);
     // Blocks the plan covers directly are never marked as pulled in.
     expect(byArea.get("Site Readiness")?.requiredBy).toEqual([]);
   });
@@ -149,7 +148,7 @@ describe("building blocks workbook", () => {
     });
     expect(body.find(row => row.C === "Solution License Management")?.F).toBe("VCF Management Domain or VVF Core");
     expect(body.find(row => row.C === "VCF Management Domain")?.F).toBe("Platform Design & Scope, Site Readiness");
-    expect(body.find(row => row.C === "NSX Design & Scope")?.G).toBe("Included as a dependency of NSX Overlay Networking");
+    expect(body.find(row => row.C === "NSX Edge Connectivity")?.G).toMatch(/^Included as a dependency of .*Distributed Firewall \(DFW\)/);
   });
 
   it("gives every row its category's earliest projected start as an Excel date", () => {
@@ -183,5 +182,20 @@ describe("building blocks workbook", () => {
 
   it("names the download after the engagement", () => {
     expect(buildingBlocksFilename("  ACME / FCP: West  ")).toBe("ACME-FCP-West-Building-Blocks.xlsx");
+  });
+});
+
+describe("building blocks for a VVF plan", () => {
+  it("covers VVF Core instead of the VCF management domain", () => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, { customerName: "Acme", customerSegment: "commercial", plannedProjectStart: "2026-06-01", plannedImplementationStart: "2026-06-01", entitlementStart: "2026-06-01", priorities: ["security"] });
+    Object.assign(document.fields.adoptionDetails, { upgradePath: "greenfield", platformEdition: "vvf", principalStorage: "vsan", security: ["waf"] });
+    const plan = refreshDerivedDocument(document, { forceRebuild: true });
+    const byArea = new Map(assessBuildingBlocks(plan, "2026-09-23").map(item => [item.area, item]));
+    expect(byArea.get("VVF Core")?.status).not.toBe("Out of Scope");
+    expect(byArea.get("VVF Core")?.requiredBy).toEqual([]);
+    expect(byArea.get("VCF Management Domain")?.requiredBy).toEqual([]);
+    expect(byArea.get("AVI LB (Layer-7 WAF & Ingress Security)")?.status).not.toBe("Out of Scope");
+    expect(byArea.get("Avi Load Balancer (App Ingress)")?.status).not.toBe("Out of Scope");
   });
 });
