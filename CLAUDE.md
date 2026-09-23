@@ -10,7 +10,18 @@ Internal CDW web app that turns RVTools exports into Functional Consumption Plan
 - `pnpm catalog:validate`: validates the HCL catalog in `shared/hclCatalog.ts`
 - `pnpm exec drizzle-kit migrate`: apply migrations in `drizzle/`. Avoid `pnpm db:push`, which also runs `drizzle-kit generate` and can create new migration files.
 
-Known failure: `server/rvtools-supplied-verify.test.ts` reads `/home/ubuntu/upload/Franklin_Park.xlsx`, a customer workbook that is not in the repo. Ignore it unless that file is provided.
+`server/rvtools-supplied-verify.test.ts` is skipped unless the customer workbooks it reads exist under `/home/ubuntu/upload/`. They are not in the repo.
+
+## Making changes
+
+`main` is protected: every change goes through a pull request, and the CI check (`pnpm check` and `pnpm test`, in `.github/workflows/ci.yml`) must pass before merging. Direct pushes to `main` are rejected.
+
+1. Start a new branch from an up-to-date `main` for each change: `git switch main && git pull && git switch -c <short-name>`.
+2. Commit, then run `pnpm check` and `pnpm test` locally.
+3. Push the branch with `git push -u origin <short-name>` and open a PR into `main`.
+4. Merge with a merge commit once CI passes, then delete the branch.
+
+Don't add unrelated work to a branch whose PR is already open. Start a new branch from `main` instead.
 
 ## Where things are
 
