@@ -69,13 +69,13 @@ sequenceDiagram
 
 ## Authentication and authorization
 
-In hosted review environments, platform OAuth is used. In CDW self-hosted mode, `FCP_AUTH_MODE=trusted-proxy` activates the corporate identity bridge. The reverse proxy must be the only network path to the container and must strip user-supplied identity headers before injecting validated values.
+The app has no login flow of its own. `FCP_AUTH_MODE=trusted-proxy` activates the corporate identity bridge, and without it no request is authenticated. The reverse proxy must be the only network path to the container and must strip user-supplied identity headers before injecting validated values.
 
 Every engagement query includes the authenticated local `ownerId`. Create, read, update, duplicate, and delete operations cannot access another user’s rows. Every business-data route—engagement CRUD, document preview, HTML export, and PDF export—requires an authenticated user. The only unauthenticated exceptions are the sign-in boundary, OAuth callback/session bootstrap, logout cookie clearing, and the health probe; these return no customer, inventory, timeline, or export data.
 
 ## Secrets handling
 
-Secrets are runtime-only values supplied by the approved platform secret manager. They must not be placed in source control, image layers, compose files, tickets, or browser-visible `VITE_*` variables. Required secrets are `DATABASE_URL` and `JWT_SECRET` in hosted OAuth mode.
+Secrets are runtime-only values supplied by the approved platform secret manager. They must not be placed in source control, image layers, compose files, tickets, or browser-visible `VITE_*` variables. Required secrets are `DATABASE_URL` and `JWT_SECRET`.
 
 ## Network ports and endpoint inventory
 
@@ -83,16 +83,13 @@ Secrets are runtime-only values supplied by the approved platform secret manager
 |---|---:|---|---|
 | Inbound | Platform-assigned `PORT` (container exposes 3000) | HTTPS terminated upstream; HTTP only on the trusted internal path | Application UI and authenticated API. |
 | Outbound | Database-specific, normally 3306 | TLS database protocol | Approved MySQL-compatible database. |
-| Outbound | 443 | HTTPS | Hosted OAuth services only in the hosted review mode; not used by the app in CDW trusted-proxy mode. |
 | Local only | None | Process IPC | Node launches container-local Chromium for PDF generation. |
 
-The CDW trusted-proxy deployment can enforce a database-only application egress allowlist. OIDC traffic occurs at the approved gateway rather than the app. The browser does not call analytics, telemetry, CDNs, remote fonts, compatibility guides, or inventory-analysis services. Chromium renders an in-memory HTML document and does not navigate to external resources.
+The app makes no outbound calls other than to its database, so the deployment can enforce a database-only egress allowlist. OIDC traffic occurs at the approved gateway rather than the app. The browser does not call analytics, telemetry, CDNs, remote fonts, compatibility guides, or inventory-analysis services. Chromium renders an in-memory HTML document and does not navigate to external resources.
 
 | Endpoint category | Configuration source | Called by | Data sent | Required in CDW mode |
 |---|---|---|---|---:|
 | MySQL-compatible database host | `DATABASE_URL` | Server | Users, aggregate engagement JSON, and timestamps | Yes |
-| Hosted OAuth service | `OAUTH_SERVER_URL` | Server | OAuth code exchange and hosted identity | No |
-| Hosted login portal | `VITE_OAUTH_PORTAL_URL` | Browser | OAuth navigation | No |
 | Corporate IdP | Approved gateway configuration | Gateway, not app | OIDC protocol data | Yes at gateway |
 
 ## VCF 9.1 planning-consideration boundary
@@ -108,7 +105,7 @@ The app records creation and update timestamps. The deployment owner should appl
 | Control | Implementation |
 |---|---|
 | Access control | Protected business-data procedures and owner-scoped database predicates. |
-| Password elimination | Corporate OIDC gateway or hosted OAuth; no local password collection. |
+| Password elimination | Corporate OIDC gateway; no local password collection. |
 | Raw inventory minimization | Browser-only XLSX/CSV parsing; no file-upload procedure and no workbook storage. |
 | Input validation | Zod schemas for the versioned engagement document, minimal fields, aggregate inventory, and both adoption views. |
 | Parser limits | File-count, file-size, and extension checks before local parsing. |

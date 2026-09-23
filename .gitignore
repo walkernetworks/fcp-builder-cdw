@@ -7,6 +7,9 @@ dist/
 build/
 *.dist
 
+# Personal Claude Code notes (machine-specific)
+CLAUDE.local.md
+
 # Environment variables
 .env
 .env.local
@@ -109,6 +112,4 @@ temp/
 # Webdev artifacts (checkpoint zips, migrations, etc.)
 .webdev/
 
-# Manus version file (auto-generated, not part of source)
-client/public/__manus__/version.json
 .project-config.json

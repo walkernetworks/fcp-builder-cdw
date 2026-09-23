@@ -22,9 +22,8 @@ The suite contains **thirty-two Vitest assertions across six test files**. It co
 | HTML and PDF downloads | Protected export-ticket issuance and signed binary routes return safe filenames and valid attachment responses; tests verify ownership, MIME types, content-disposition headers, no-store behavior, non-empty bytes, PDF signatures, and malformed or tampered payload rejection. |
 | Business-data authorization | Unauthenticated engagement and export access is rejected. |
 | Timeline pointer gestures | The same pure transition function used by the editor is tested for whole-activity movement, independent start/end edge resizing, grid-bound rejection, and same-workstream overlap rejection; the editor applies the behavior to both month and week columns. |
-| Hosted-preview sign-in | The protected entry exposes the explicit **Sign in with Manus** action. Tests verify the hosted callback URL, preserved local return path, and rejection of absolute or protocol-relative post-login destinations. |
+| Gateway-only sign-in | Identity comes only from the trusted OIDC gateway headers. Without a gateway identity the protected entry shows SSO guidance and no business data. A regression test fails if any third-party hosting-platform integration is reintroduced. |
 | Engagement recovery | The workspace prevents a stale selected ID from reaching the engagement query until the owner-scoped list confirms it is current. Tests prove stale IDs fall back to a valid record or empty state, while a record removed between list and get returns `null` rather than a visible API error. |
-| Session handling | Logout clears the secure session cookie. |
 
 ## Inventory minimization evidence
 
@@ -40,7 +39,7 @@ The assessment function produces evidence-based `good`, `attention`, `info`, or 
 
 ## Authentication boundary evidence
 
-All engagement and preview procedures use the protected API contract. HTML/PDF download tickets are issued only by a protected procedure, and the binary attachment route accepts only short-lived signed tickets bound to the authenticated owner and engagement. The unauthenticated surface is limited to the sign-in boundary, OAuth/session bootstrap, logout cookie clearing, and a non-data health probe. The protected entry calls a pure OAuth URL builder only after the user selects **Sign in with Manus**. Its signed state preserves the current local path through the callback, while `sanitizeOAuthReturnPath` rejects absolute and protocol-relative destinations before the server redirects. The self-hosted deployment additionally places the entire container behind the approved OIDC gateway and blocks direct access.
+All engagement and preview procedures use the protected API contract. HTML/PDF download tickets are issued only by a protected procedure, and the binary attachment route accepts only short-lived signed tickets bound to the authenticated owner and engagement. The unauthenticated surface is limited to the identity probe (`auth.me`) and a non-data health probe. The deployment places the entire container behind the approved OIDC gateway and blocks direct access.
 
 ## Visual and responsive review
 
