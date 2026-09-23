@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export type ExportFormat = "html" | "pdf";
-export type ExportDocumentType = "fcp" | "plan-output";
+export type ExportFormat = "html" | "pdf" | "xlsx";
+export type ExportDocumentType = "fcp" | "plan-output" | "building-blocks";
 
 type ExportTicketPayload = {
   userId: number;
@@ -48,8 +48,10 @@ export function verifyExportTicket(ticket: string): ExportTicketPayload | null {
     const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as Partial<ExportTicketPayload>;
     if (!Number.isInteger(parsed.userId) || Number(parsed.userId) <= 0) return null;
     if (!Number.isInteger(parsed.engagementId) || Number(parsed.engagementId) <= 0) return null;
-    if (parsed.format !== "html" && parsed.format !== "pdf") return null;
-    if (parsed.documentType !== "fcp" && parsed.documentType !== "plan-output") return null;
+    if (parsed.format !== "html" && parsed.format !== "pdf" && parsed.format !== "xlsx") return null;
+    if (parsed.documentType !== "fcp" && parsed.documentType !== "plan-output" && parsed.documentType !== "building-blocks") return null;
+    // The Building Blocks workbook is only ever issued as XLSX, and XLSX only for that workbook.
+    if ((parsed.format === "xlsx") !== (parsed.documentType === "building-blocks")) return null;
     if (typeof parsed.expiresAt !== "number" || parsed.expiresAt < Date.now()) return null;
     return parsed as ExportTicketPayload;
   } catch {

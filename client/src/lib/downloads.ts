@@ -1,4 +1,10 @@
-export type DownloadFormat = "html" | "pdf";
+export type DownloadFormat = "html" | "pdf" | "xlsx";
+
+const EXPECTED_MIME: Record<DownloadFormat, string> = {
+  html: "text/html",
+  pdf: "application/pdf",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
 
 export type DownloadEnvironment = {
   document: Pick<Document, "body" | "createElement">;
@@ -106,7 +112,7 @@ export async function downloadServerAttachment(
   fallbackFilename: string,
   environment?: DownloadEnvironment,
 ) {
-  const expectedMime = format === "pdf" ? "application/pdf" : "text/html";
+  const expectedMime = EXPECTED_MIME[format];
   if (!response.ok) {
     const message = (await response.text().catch(() => "")).trim();
     throw new Error(message || `The ${format.toUpperCase()} export could not be generated (HTTP ${response.status}).`);
@@ -122,6 +128,10 @@ export async function downloadServerAttachment(
   if (format === "pdf") {
     const signature = new TextDecoder().decode(await blob.slice(0, 5).arrayBuffer());
     if (signature !== "%PDF-") throw new Error("The export service did not return a valid PDF document.");
+  }
+  if (format === "xlsx") {
+    const signature = new TextDecoder().decode(await blob.slice(0, 2).arrayBuffer());
+    if (signature !== "PK") throw new Error("The export service did not return a valid Excel workbook.");
   }
 
   const filename = filenameFromContentDisposition(response.headers.get("content-disposition"), fallbackFilename, format);

@@ -66,6 +66,7 @@ sequenceDiagram
 | Corporate password, MFA secret, and IdP access token | Restricted | No | Not handled by the app | Remains with Entra ID / Okta and the approved gateway. |
 | Database credential and session secret | Restricted secret | No | Runtime secret manager | Never sent to the browser or included in exports. |
 | HTML/PDF export bytes | Customer confidential | No server retention | Response memory only | Direct browser download; the temporary Chromium page is closed immediately. |
+| Building Blocks workbook (XLSX) bytes | Customer confidential | No server retention | Response memory only | Commercial customers only. Built in memory from the bundled Broadcom template (`server/templates/`) and the engagement JSON; the signed ticket must name both the `xlsx` format and the `building-blocks` document type. |
 
 ## Authentication and authorization
 
@@ -111,7 +112,7 @@ The app records creation and update timestamps. The deployment owner should appl
 | Parser limits | File-count, file-size, and extension checks before local parsing. |
 | Duplicate control | Stable UUID/ID keys where present, with scoped name-based fallback keys. |
 | Planning transparency | Every planning consideration includes status, observed evidence, and an explicit non-assessable boundary. |
-| Injection resistance | Drizzle parameterized queries and context-escaped HTML export values. |
+| Injection resistance | Drizzle parameterized queries, context-escaped HTML export values, and XML-escaped workbook cell values. |
 | Export integrity | One renderer derives inventory, planning considerations, Adoption Timeline, and Two-Year Notional Adoption Plan from one engagement JSON and removes unresolved tokens. |
 | Data-egress minimization | No analytics, telemetry, CDNs, remote fonts, or public inventory services. |
 | Container minimization | Node 22 slim plus Debian Chromium and CA certificates; one application process. |
