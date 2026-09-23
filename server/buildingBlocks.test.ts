@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
-import { assessBuildingBlocks, barWindow, BLOCK_CATEGORIES, BLOCK_STATUSES, BUILDING_BLOCKS } from "../shared/buildingBlocks";
+import { assessBuildingBlocks, barWindow, BLOCK_CATEGORIES, BLOCK_DEPENDENCIES, BLOCK_STATUSES, BUILDING_BLOCKS } from "../shared/buildingBlocks";
 import { createDefaultDocument, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
 
@@ -63,8 +63,39 @@ describe("building blocks assessment", () => {
     expect(assessment(plan, "Distributed Firewall (DFW)").status).toBe("Planning");
     expect(assessment(plan, "vSAN ESA Implementation").status).not.toBe("Out of Scope");
     expect(assessment(plan, "VCF Workload Domain").status).not.toBe("Out of Scope");
-    expect(assessment(plan, "Private AI Services")).toMatchObject({ status: "Out of Scope", projectedDates: "" });
+    expect(assessment(plan, "Private AI Services")).toMatchObject({ status: "Out of Scope", projectedDates: "", requiredBy: [] });
     expect(assessment(plan, "VVF Core").status).toBe("Out of Scope");
+  });
+
+  it("names only real blocks as dependencies", () => {
+    const areas = new Set(BUILDING_BLOCKS.map(block => block.area));
+    for (const [area, requirements] of Object.entries(BLOCK_DEPENDENCIES)) {
+      expect(areas.has(area), area).toBe(true);
+      for (const dependency of requirements.flat()) expect(areas.has(dependency), `${area} -> ${dependency}`).toBe(true);
+    }
+  });
+
+  it("includes every dependency of a planned block, transitively", () => {
+    const plan = commercialPlan();
+    const assessments = assessBuildingBlocks(plan, "2026-09-23");
+    const byArea = new Map(assessments.map(item => [item.area, item]));
+    for (const item of assessments.filter(candidate => candidate.status !== "Out of Scope")) {
+      for (const requirement of BLOCK_DEPENDENCIES[item.area] ?? []) {
+        expect(requirement.some(dependency => byArea.get(dependency)?.status !== "Out of Scope"), `${item.area} needs ${requirement.join(" or ")}`).toBe(true);
+      }
+    }
+    // DFW is planned; the plan has no NSX work, so NSX Overlay, NSX Edge, and NSX Design come in as dependencies.
+    expect(byArea.get("NSX Edge Connectivity")).toMatchObject({ status: "Planning", projectedDates: "", requiredBy: expect.arrayContaining(["Distributed Firewall (DFW)"]) });
+    expect(byArea.get("NSX Overlay Networking")?.requiredBy).toEqual(expect.arrayContaining(["Distributed Firewall (DFW)", "NSX Edge Connectivity"]));
+    expect(byArea.get("NSX Design & Scope")).toMatchObject({ status: "Planning", requiredBy: ["NSX Overlay Networking"] });
+    // Blocks the plan covers directly are never marked as pulled in.
+    expect(byArea.get("Site Readiness")?.requiredBy).toEqual([]);
+  });
+
+  it("satisfies an either-or dependency with a block the plan already covers", () => {
+    const assessments = assessBuildingBlocks(commercialPlan(), "2026-09-23");
+    expect(assessments.find(item => item.area === "VCF Management Domain")?.requiredBy).toEqual([]);
+    expect(assessments.find(item => item.area === "VVF Core")?.status).toBe("Out of Scope");
   });
 
   it("uses depth-only design work for the Design & Scope blocks", () => {
@@ -110,12 +141,15 @@ describe("building blocks workbook", () => {
     const rows = outputRows(renderBuildingBlocksWorkbook(plan, "2026-09-23"));
     const assessments = assessBuildingBlocks(plan, "2026-09-23");
 
-    expect(rows.get("1")).toEqual({ A: "Category", B: "Category Start Date", C: "Block", D: "Status", E: "Projected Dates" });
+    expect(rows.get("1")).toEqual({ A: "Category", B: "Category Start Date", C: "Block", D: "Status", E: "Projected Dates", F: "Dependencies", G: "Notes" });
     const body = Array.from(rows.entries()).filter(([rowNumber]) => rowNumber !== "1").map(([, row]) => row);
     expect(body).toHaveLength(BUILDING_BLOCKS.length);
     assessments.forEach((item, index) => {
       expect(body[index], item.area).toMatchObject({ A: item.category, C: item.area, D: item.status, E: item.projectedDates });
     });
+    expect(body.find(row => row.C === "Solution License Management")?.F).toBe("VCF Management Domain or VVF Core");
+    expect(body.find(row => row.C === "VCF Management Domain")?.F).toBe("Platform Design & Scope, Site Readiness");
+    expect(body.find(row => row.C === "NSX Design & Scope")?.G).toBe("Included as a dependency of NSX Overlay Networking");
   });
 
   it("gives every row its category's earliest projected start as an Excel date", () => {
@@ -128,12 +162,12 @@ describe("building blocks workbook", () => {
     expect(aiOnly.every(row => row.B === aiOnly[0].B)).toBe(true);
   });
 
-  it("is a single-sheet workbook with a filter across the five columns", () => {
+  it("is a single-sheet workbook with a filter across all columns", () => {
     const files = unzipSync(renderBuildingBlocksWorkbook(commercialPlan()));
     const workbook = strFromU8(files["xl/workbook.xml"]);
     expect(Array.from(workbook.matchAll(/<sheet /g))).toHaveLength(1);
     expect(workbook).toContain('name="Building Blocks"');
-    expect(strFromU8(files["xl/worksheets/sheet1.xml"])).toContain(`<autoFilter ref="A1:E${BUILDING_BLOCKS.length + 1}"/>`);
+    expect(strFromU8(files["xl/worksheets/sheet1.xml"])).toContain(`<autoFilter ref="A1:G${BUILDING_BLOCKS.length + 1}"/>`);
   });
 
   it("names the download after the engagement", () => {
