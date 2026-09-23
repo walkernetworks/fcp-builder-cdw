@@ -66,7 +66,7 @@ sequenceDiagram
 | Corporate password, MFA secret, and IdP access token | Restricted | No | Not handled by the app | Remains with Entra ID / Okta and the approved gateway. |
 | Database credential and session secret | Restricted secret | No | Runtime secret manager | Never sent to the browser or included in exports. |
 | HTML/PDF export bytes | Customer confidential | No server retention | Response memory only | Direct browser download; the temporary Chromium page is closed immediately. |
-| Building Blocks workbook (XLSX) bytes | Customer confidential | No server retention | Response memory only | Commercial customers only. Built in memory as a single six-column sheet (Block, Category, Assessment Area, Capability Rating, Customer Deliverables, Projected Dates); block rows come from the bundled Broadcom template (`server/templates/`) and ratings and dates from the engagement JSON. No other template tabs or columns are copied; the signed ticket must name both the `xlsx` format and the `building-blocks` document type. |
+| Building Blocks workbook (XLSX) bytes | Customer confidential | No server retention | Response memory only | Commercial customers only. Built in memory from the engagement JSON as a single sheet (Category, Category Start Date, Block, Status, Projected Dates) using the block list in `shared/buildingBlocks.ts`; no template file is read; the signed ticket must name both the `xlsx` format and the `building-blocks` document type. |
 
 ## Authentication and authorization
 

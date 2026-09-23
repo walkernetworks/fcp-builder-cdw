@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
-import { assessBuildingBlocks, barWindow, BUILDING_BLOCKS } from "../shared/buildingBlocks";
+import { assessBuildingBlocks, barWindow, BLOCK_CATEGORIES, BLOCK_STATUSES, BUILDING_BLOCKS } from "../shared/buildingBlocks";
 import { createDefaultDocument, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
 
@@ -45,32 +45,54 @@ function outputRows(workbook: Uint8Array): Map<string, Record<string, string>> {
 }
 
 describe("building blocks assessment", () => {
-  it("rates explicitly planned blocks Strongly Agree and unplanned blocks out of scope", () => {
+  it("covers every block the Building Blocks tool lists, in its category order", () => {
+    const assessments = assessBuildingBlocks(commercialPlan(), "2026-09-23");
+    expect(assessments).toHaveLength(48);
+    expect(Array.from(new Set(assessments.map(item => item.category)))).toEqual([...BLOCK_CATEGORIES]);
+    expect(assessments.filter(item => item.category === "Discovery & Assessment").map(item => item.area)).toEqual([
+      "Scoping & Environment Assessment",
+      "Deployment Posture Assessment",
+      "Site Readiness",
+      "Migration Execution Readiness",
+    ]);
+    expect(assessments.every(item => (BLOCK_STATUSES as readonly string[]).includes(item.status))).toBe(true);
+  });
+
+  it("marks planned blocks from their projected window and unplanned blocks Out of Scope", () => {
     const plan = commercialPlan();
-    expect(assessment(plan, "Distributed Firewall (DFW)")).toMatchObject({ rating: "Strongly Agree", deliverable: "Planning/TBD" });
-    expect(assessment(plan, "vSAN ESA Implementation").rating).toBe("Strongly Agree");
-    expect(assessment(plan, "Private AI Services")).toMatchObject({ rating: "*Out of Scope", deliverable: "Out of Scope", projectedDates: "" });
+    expect(assessment(plan, "Distributed Firewall (DFW)").status).toBe("Planning");
+    expect(assessment(plan, "vSAN ESA Implementation").status).not.toBe("Out of Scope");
+    expect(assessment(plan, "VCF Workload Domain").status).not.toBe("Out of Scope");
+    expect(assessment(plan, "Private AI Services")).toMatchObject({ status: "Out of Scope", projectedDates: "" });
+    expect(assessment(plan, "VVF Core").status).toBe("Out of Scope");
   });
 
-  it("rates depth-only design work Mostly Agree", () => {
-    expect(assessment(commercialPlan(), "Assess & Review (VCF Operations)").rating).toBe("Mostly Agree");
+  it("uses depth-only design work for the Design & Scope blocks", () => {
+    expect(assessment(commercialPlan(), "Operations Design & Scope").status).not.toBe("Out of Scope");
   });
 
-  it("rates blocks that only appear in the two-year notional Mostly Disagree", () => {
+  it("falls back to the two-year notional for blocks not in the entitlement timeline", () => {
     const plan = commercialPlan();
     plan.twoYearPlan.lanes[0].bars.push({ id: "bar-1767225600000-abcde", startCol: 18, endCol: 20, color: "blue", label: "Pilot Data Services Manager catalog", milestone: false, deferred: false });
-    expect(assessment(plan, "Data Services Manager (DSM)")).toMatchObject({ rating: "Mostly Disagree", deliverable: "Planning/TBD" });
+    expect(assessment(plan, "Data Services Manager (DSM)")).toMatchObject({ status: "Planning", projectedStart: "2027-11-01" });
   });
 
-  it("derives deliverable status from the projected window and today", () => {
+  it("splits cyber recovery hand-added activities between on-prem and cloud", () => {
     const plan = commercialPlan();
-    const workshop = assessment(plan, "Assess & Review Workshop", "2026-06-15");
-    expect(workshop.deliverable).toBe("In Progress");
-    expect(assessment(plan, "Assess & Review Workshop", "2026-06-01").deliverable).toBe("In Progress");
-    expect(assessment(plan, "Assess & Review Workshop", "2026-05-31").deliverable).toBe("Planning/TBD");
-    expect(assessment(plan, "Assess & Review Workshop", "2030-01-01").deliverable).toBe("Completed");
-    expect(workshop.projectedStart).toBe("2026-06-01");
-    expect(workshop.projectedDates).toMatch(/^Jun 1, 2026 – /);
+    plan.adoptionTimeline.lanes[0].bars.push({ id: "bar-1767225600000-cloud", startCol: 3, endCol: 4, color: "blue", label: "Cyber Recovery to cloud vault", milestone: false, deferred: false });
+    expect(assessment(plan, "Cyber Recovery (Cloud)").status).not.toBe("Out of Scope");
+    expect(assessment(plan, "Cyber Recovery (On Prem)").status).toBe("Out of Scope");
+  });
+
+  it("derives status from the projected window and today", () => {
+    const plan = commercialPlan();
+    const scoping = assessment(plan, "Scoping & Environment Assessment", "2026-06-15");
+    expect(scoping.status).toBe("In Progress");
+    expect(assessment(plan, "Scoping & Environment Assessment", "2026-06-01").status).toBe("In Progress");
+    expect(assessment(plan, "Scoping & Environment Assessment", "2026-05-31").status).toBe("Planning");
+    expect(assessment(plan, "Scoping & Environment Assessment", "2030-01-01").status).toBe("Completed");
+    expect(scoping.projectedStart).toBe("2026-06-01");
+    expect(scoping.projectedDates).toMatch(/^Jun 1, 2026 – /);
   });
 
   it("converts monthly and weekly columns to inclusive dates", () => {
@@ -83,33 +105,35 @@ describe("building blocks assessment", () => {
 });
 
 describe("building blocks workbook", () => {
-  it("outputs only Block, Category, Assessment Area, Capability Rating, Customer Deliverables, and Projected Dates", () => {
+  it("outputs Category, Category Start Date, Block, Status, and Projected Dates for every block", () => {
     const plan = commercialPlan();
     const rows = outputRows(renderBuildingBlocksWorkbook(plan, "2026-09-23"));
     const assessments = assessBuildingBlocks(plan, "2026-09-23");
 
-    expect(rows.get("1")).toEqual({ A: "Block", B: "Category", C: "Assessment Area", D: "Capability Rating", E: "Customer Deliverables", F: "Projected Dates" });
+    expect(rows.get("1")).toEqual({ A: "Category", B: "Category Start Date", C: "Block", D: "Status", E: "Projected Dates" });
     const body = Array.from(rows.entries()).filter(([rowNumber]) => rowNumber !== "1").map(([, row]) => row);
     expect(body).toHaveLength(BUILDING_BLOCKS.length);
-    expect(body.every(row => Object.keys(row).every(column => "ABCDEF".includes(column)))).toBe(true);
-    expect(body.every(row => row.A && row.B && row.C)).toBe(true);
-    expect(body[0]).toMatchObject({ A: "1", B: "Platform Foundation", C: "Assess & Review Workshop" });
-    // Categories are merged in the template; every output row carries its own.
-    expect(body[1]).toMatchObject({ B: "Platform Foundation", C: "Site Readiness Validation" });
-    for (const item of assessments) {
-      const row = body.find(candidate => candidate.C === item.area);
-      expect(row, item.area).toMatchObject({ D: item.rating, E: item.deliverable });
-      expect(row?.F ?? "").toBe(item.projectedDates);
-    }
+    assessments.forEach((item, index) => {
+      expect(body[index], item.area).toMatchObject({ A: item.category, C: item.area, D: item.status, E: item.projectedDates });
+    });
   });
 
-  it("is a single-sheet workbook with a filter across the six columns", () => {
+  it("gives every row its category's earliest projected start as an Excel date", () => {
+    const plan = commercialPlan();
+    const rows = Array.from(outputRows(renderBuildingBlocksWorkbook(plan, "2026-09-23")).values()).slice(1);
+    const discovery = rows.filter(row => row.A === "Discovery & Assessment");
+    // 2026-06-01 is Excel serial 46174.
+    expect(new Set(discovery.map(row => row.B))).toEqual(new Set(["46174"]));
+    const aiOnly = rows.filter(row => row.A === "Apps & Cloud Consumption");
+    expect(aiOnly.every(row => row.B === aiOnly[0].B)).toBe(true);
+  });
+
+  it("is a single-sheet workbook with a filter across the five columns", () => {
     const files = unzipSync(renderBuildingBlocksWorkbook(commercialPlan()));
     const workbook = strFromU8(files["xl/workbook.xml"]);
     expect(Array.from(workbook.matchAll(/<sheet /g))).toHaveLength(1);
     expect(workbook).toContain('name="Building Blocks"');
-    expect(files["xl/sharedStrings.xml"]).toBeUndefined();
-    expect(strFromU8(files["xl/worksheets/sheet1.xml"])).toContain(`<autoFilter ref="A1:F${BUILDING_BLOCKS.length + 1}"/>`);
+    expect(strFromU8(files["xl/worksheets/sheet1.xml"])).toContain(`<autoFilter ref="A1:E${BUILDING_BLOCKS.length + 1}"/>`);
   });
 
   it("names the download after the engagement", () => {
