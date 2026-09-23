@@ -367,6 +367,17 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
     });
     const nestedHostCount = sheet(sheets, "vHost").length - physicalHostRows.length;
     if (nestedHostCount) warnings.push(`Skipped ${nestedHostCount} nested ESXi host${nestedHostCount === 1 ? "" : "s"} with CPU model "VMware Virtual Processor"; ${nestedHostCount === 1 ? "it is" : "they are"} not physical.`);
+    // VMs placed on a nested host are part of that nested environment, not the estate being planned.
+    const nestedVmNames = new Set<string>();
+    const vmInfoRows = sheet(sheets, "vInfo").filter(row => {
+      if (!nestedHostNames.has(norm(first(row, ["Host", "Host Name", "ESX Host"])).toLowerCase())) return true;
+      const name = norm(first(row, ["VM", "VM Name", "Name"]));
+      if (name) nestedVmNames.add(name.toLowerCase());
+      return false;
+    });
+    const nestedVmCount = sheet(sheets, "vInfo").length - vmInfoRows.length;
+    if (nestedVmCount) warnings.push(`Skipped ${nestedVmCount} VM${nestedVmCount === 1 ? "" : "s"} running on nested ESXi hosts.`);
+    const vmSheet = (name: string) => sheet(sheets, name).filter(row => !nestedVmNames.has(norm(first(row, ["VM", "VM Name", "Name"])).toLowerCase()));
     if (!sheet(sheets, "vHost").length) warnings.push("vHost data missing; host and core totals may be incomplete.");
     if (!sheet(sheets, "vInfo").length) warnings.push("vInfo data missing; VM totals may be incomplete.");
     if (!sheet(sheets, "vDatastore").length) warnings.push("vDatastore data missing; storage totals may be incomplete.");
@@ -376,7 +387,7 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
       const identity = norm(first(row, ["UUID", "Object ID"])) || compositeIdentity([first(row, ["Datacenter"]), first(row, ["Cluster"]), first(row, ["Host"])]);
       if (identity) hostRows.set(identity.toLowerCase(), row);
     }
-    for (const row of sheet(sheets, "vInfo")) {
+    for (const row of vmInfoRows) {
       const identity = norm(first(row, ["VM UUID", "UUID", "Object ID"])) || compositeIdentity([first(row, ["Datacenter"]), first(row, ["Cluster"]), first(row, ["VM", "VM Name"])]);
       if (identity) vmRows.set(identity.toLowerCase(), row);
     }
@@ -384,7 +395,7 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
       const identity = norm(first(row, ["Object ID", "UUID"])) || [first(row, ["Datacenter"]), first(row, ["Name"])].map(norm).join("|");
       if (identity) datastoreRows.set(identity.toLowerCase(), row);
     }
-    for (const row of sheet(sheets, "vSnapshot")) {
+    for (const row of vmSheet("vSnapshot")) {
       const identity = [first(row, ["VM UUID", "VM"]), first(row, ["Name", "Snapshot"]), first(row, ["Date", "Created"])].map(norm).join("|");
       if (identity) snapshotRows.set(identity.toLowerCase(), row);
     }
@@ -393,10 +404,10 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
     addRows(clusterRows, sheet(sheets, "vCluster"), (row, index) => norm(first(row, ["Name", "Cluster", "Cluster Name"])) || `cluster-${index}`);
     addRows(distributedSwitchRows, sheet(sheets, "dvSwitch"), (row, index) => norm(first(row, ["Switch", "Name", "Distributed Switch"])) || `dvs-${index}`);
     addRows(vmkernelRows, sheet(sheets, "vSC+VMK"), (row, index) => [first(row, ["Host", "Host Name", "ESX Host"]), first(row, ["Device", "VMkernel", "Name"]), index].map(norm).join("|"));
-    addRows(networkRows, sheet(sheets, "vNetwork"), (row, index) => [first(row, ["VM", "VM Name", "Name"]), first(row, ["Adapter", "Adapter Type", "Type"]), index].map(norm).join("|"));
-    addRows(toolsRows, sheet(sheets, "vTools"), (row, index) => norm(first(row, ["VM", "VM Name", "Name"])) || `tools-${index}`);
-    addRows(cdRows, sheet(sheets, "vCD"), (row, index) => [first(row, ["VM", "VM Name", "Name"]), first(row, ["Device", "CD/DVD", "CDROM"]), index].map(norm).join("|"));
-    addRows(usbRows, sheet(sheets, "vUSB"), (row, index) => [first(row, ["VM", "VM Name", "Name"]), first(row, ["Device", "USB Device"]), index].map(norm).join("|"));
+    addRows(networkRows, vmSheet("vNetwork"), (row, index) => [first(row, ["VM", "VM Name", "Name"]), first(row, ["Adapter", "Adapter Type", "Type"]), index].map(norm).join("|"));
+    addRows(toolsRows, vmSheet("vTools"), (row, index) => norm(first(row, ["VM", "VM Name", "Name"])) || `tools-${index}`);
+    addRows(cdRows, vmSheet("vCD"), (row, index) => [first(row, ["VM", "VM Name", "Name"]), first(row, ["Device", "CD/DVD", "CDROM"]), index].map(norm).join("|"));
+    addRows(usbRows, vmSheet("vUSB"), (row, index) => [first(row, ["VM", "VM Name", "Name"]), first(row, ["Device", "USB Device"]), index].map(norm).join("|"));
   }
 
   const isNestedHostRow = (row: Row) => nestedHostNames.has(norm(first(row, ["Host", "Host Name", "ESX Host"])).toLowerCase());
