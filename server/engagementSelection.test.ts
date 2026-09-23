@@ -4,7 +4,7 @@ vi.mock("./db", () => ({
   getEngagement: vi.fn(),
 }));
 
-import { engagementExists, reconcileSelectedEngagementId, shouldQuerySelectedEngagement } from "../client/src/lib/engagementSelection";
+import { engagementExists, engagementIdFromSearch, reconcileSelectedEngagementId, shouldQuerySelectedEngagement } from "../client/src/lib/engagementSelection";
 import type { TrpcContext } from "./_core/context";
 import * as db from "./db";
 import { appRouter } from "./routers";
@@ -53,6 +53,15 @@ describe("engagement selection recovery", () => {
     expect(shouldQuerySelectedEngagement(1, staleCachedList, true)).toBe(false);
     expect(shouldQuerySelectedEngagement(1, [], false)).toBe(false);
     expect(shouldQuerySelectedEngagement(24, currentList, false)).toBe(true);
+  });
+
+  it("reads a positive integer engagement ID from the URL and ignores anything else", () => {
+    expect(engagementIdFromSearch("?engagement=4")).toBe(4);
+    expect(engagementIdFromSearch("?stage=plan&engagement=12")).toBe(12);
+    expect(engagementIdFromSearch("")).toBeNull();
+    expect(engagementIdFromSearch("?engagement=0")).toBeNull();
+    expect(engagementIdFromSearch("?engagement=-3")).toBeNull();
+    expect(engagementIdFromSearch("?engagement=4abc")).toBeNull();
   });
 
   it("returns null instead of a query error when an owner-scoped engagement no longer exists", async () => {
