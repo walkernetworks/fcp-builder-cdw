@@ -99,9 +99,9 @@ describe("RVTools workbook import", () => {
     expect(result.summary.physicalCores).toBe(24);
   });
 
-  it("skips nested ESXi hosts that report a VMware Virtual Processor CPU", async () => {
-    const workbook = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="vHost" sheetId="1" r:id="rId1"/><sheet name="vNIC" sheetId="2" r:id="rId2"/></sheets></workbook>`;
-    const relationships = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>`;
+  it("skips nested ESXi hosts that report a VMware Virtual Processor CPU, and the VMs placed on them", async () => {
+    const workbook = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="vHost" sheetId="1" r:id="rId1"/><sheet name="vNIC" sheetId="2" r:id="rId2"/><sheet name="vInfo" sheetId="3" r:id="rId3"/><sheet name="vTools" sheetId="4" r:id="rId4"/></sheets></workbook>`;
+    const relationships = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Target="worksheets/sheet3.xml"/><Relationship Id="rId4" Target="worksheets/sheet4.xml"/></Relationships>`;
     const vHost = worksheet([
       ["vHostName", "vHostNumCpuCores", "vHostVendor", "vHostModel", "vHostCpuModel"],
       ["physical-esx-01", "32", "Dell Inc.", "PowerEdge R760", "Intel(R) Xeon(R) Gold 6430"],
@@ -112,11 +112,23 @@ describe("RVTools workbook import", () => {
       ["physical-esx-01", "vmnic0", "i40en"],
       ["nested-esx-01", "vmnic0", "nvmxnet3"],
     ]);
+    const vInfo = worksheet([
+      ["VM", "Host", "Powerstate", "CPUs", "Memory"],
+      ["app-01", "physical-esx-01", "poweredOn", "4", "8192"],
+      ["nested-vm-01", "nested-esx-01", "poweredOn", "2", "4096"],
+    ]);
+    const vTools = worksheet([
+      ["VM", "Tools Status"],
+      ["app-01", "toolsOk"],
+      ["nested-vm-01", "toolsNotInstalled"],
+    ]);
     const file = new File([zipSync({
       "xl/workbook.xml": strToU8(workbook),
       "xl/_rels/workbook.xml.rels": strToU8(relationships),
       "xl/worksheets/sheet1.xml": strToU8(vHost),
       "xl/worksheets/sheet2.xml": strToU8(vNic),
+      "xl/worksheets/sheet3.xml": strToU8(vInfo),
+      "xl/worksheets/sheet4.xml": strToU8(vTools),
     })], "Nested.xlsx");
 
     const result = await parseRvToolsFiles([file]);
@@ -126,6 +138,11 @@ describe("RVTools workbook import", () => {
     expect(result.summary.hostModels.map(model => model.cpuModel)).toEqual(["Intel(R) Xeon(R) Gold 6430"]);
     expect(result.summary.hclEvidence.hosts.map(host => host.name)).toEqual(["physical-esx-01"]);
     expect(result.summary.hclEvidence.nics.map(nic => nic.host)).toEqual(["physical-esx-01"]);
+    expect(result.summary.vmCount).toBe(1);
+    expect(result.summary.vCpu).toBe(4);
+    expect(result.summary.hclEvidence.vmInfo.map(vm => vm.vm)).toEqual(["app-01"]);
+    expect(result.summary.hclEvidence.tools.map(tool => tool.vm)).toEqual(["app-01"]);
     expect(result.sources[0].warnings).toContain('Skipped 1 nested ESXi host with CPU model "VMware Virtual Processor"; it is not physical.');
+    expect(result.sources[0].warnings).toContain("Skipped 1 VM running on nested ESXi hosts.");
   });
 });
