@@ -1,5 +1,5 @@
 import { strToU8, zipSync } from "fflate";
-import { assessBuildingBlocks, type BuildingBlockAssessment } from "../shared/buildingBlocks";
+import { assessBuildingBlocks, dependencyLabel, type BuildingBlockAssessment } from "../shared/buildingBlocks";
 import type { EngagementDocument } from "../shared/fcp";
 
 export const BUILDING_BLOCKS_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -11,6 +11,8 @@ const COLUMNS = [
   { header: "Block", width: 44 },
   { header: "Status", width: 14 },
   { header: "Projected Dates", width: 32 },
+  { header: "Dependencies", width: 44 },
+  { header: "Notes", width: 44 },
 ];
 const LAST_COLUMN = String.fromCharCode(64 + COLUMNS.length);
 
@@ -56,6 +58,8 @@ function worksheetXml(assessments: BuildingBlockAssessment[]): string {
       textCell(`C${row}`, item.area, TEXT_STYLE),
       textCell(`D${row}`, item.status, TEXT_STYLE),
       textCell(`E${row}`, item.projectedDates, TEXT_STYLE),
+      textCell(`F${row}`, dependencyLabel(item.area), TEXT_STYLE),
+      textCell(`G${row}`, item.requiredBy.length ? `Included as a dependency of ${item.requiredBy.join(", ")}` : "", TEXT_STYLE),
     ].join("")}</row>`;
   }).join("");
   const range = `A1:${LAST_COLUMN}${assessments.length + 1}`;
@@ -85,7 +89,8 @@ function workbookPackage(sheetXml: string, rowCount: number): Uint8Array {
 /**
  * Produces the Building Blocks workbook for an engagement: one row per block, in the categories and
  * order the Building Blocks tool uses, with the values the tool takes (category start date and block
- * status) and the projected dates behind them.
+ * status), the projected dates behind them, and each block's dependencies. Dependencies the plan does
+ * not cover are included as Planning and noted.
  */
 export function renderBuildingBlocksWorkbook(document: EngagementDocument, today?: string): Uint8Array {
   const assessments = assessBuildingBlocks(document, today);

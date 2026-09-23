@@ -111,10 +111,69 @@ export const BUILDING_BLOCKS: BuildingBlockDefinition[] = [
   security("Salt (ACC)", [{ id: /^bar-security-hardening-compliance$/ }], /\bsalt\b|\bconfiguration management\b/i),
 ];
 
+/**
+ * Block dependencies as the Building Blocks tool lists them. Each inner list is one requirement that any
+ * of its blocks satisfies ("VCF Management Domain or VVF Core"); every requirement must be met.
+ */
+export const BLOCK_DEPENDENCIES: Record<string, string[][]> = {
+  "Deployment Posture Assessment": [["Scoping & Environment Assessment"]],
+  "Migration Execution Readiness": [["Deployment Posture Assessment"]],
+  "Platform Design & Scope": [["Site Readiness"]],
+  "VVF Core": [["Platform Design & Scope"]],
+  "VCF Management Domain": [["Platform Design & Scope"], ["Site Readiness"]],
+  "VCF Workload Domain": [["Platform Design & Scope"]],
+  "Identity Broker & Multi-Tenancy": [["VCF Management Domain"]],
+  "Solution License Management": [["VCF Management Domain", "VVF Core"]],
+  "Storage Design & Scope": [["Platform Design & Scope"]],
+  "vSAN ESA Implementation": [["Site Readiness"], ["Storage Design & Scope"]],
+  "NVMe Memory Tiering": [["VCF Management Domain"]],
+  "NSX Design & Scope": [["Platform Design & Scope"]],
+  "NSX Overlay Networking": [["Site Readiness"], ["NSX Design & Scope"]],
+  "VCF VPC": [["VCF Management Domain"], ["NSX Overlay Networking"]],
+  "NSX Edge Connectivity": [["NSX Overlay Networking"]],
+  "Operations Design & Scope": [["Platform Design & Scope"]],
+  "Dashboards & Logs": [["VCF Management Domain"], ["Operations Design & Scope"]],
+  "Fleet Management": [["VCF Management Domain"], ["Operations Design & Scope"]],
+  "Capacity Management (Forecast & Right-size)": [["VCF Management Domain"], ["Operations Design & Scope"]],
+  "Lifecycle Management": [["VCF Management Domain"], ["Fleet Management"]],
+  "Certificate & Password Mgmt": [["VCF Management Domain"]],
+  "Compliance Management": [["Dashboards & Logs"], ["Lifecycle Management"]],
+  "Log Management & Analytics": [["Dashboards & Logs"]],
+  "Proactive Support & Diagnostics": [["Fleet Management"], ["Dashboards & Logs"]],
+  "FinOps (Chargeback & Showback)": [["Dashboards & Logs"], ["Capacity Management (Forecast & Right-size)"]],
+  "Hybrid Cloud Mobility (HCX)": [["VCF Management Domain"], ["NSX Overlay Networking"], ["NSX Edge Connectivity"]],
+  "Automation Design & Scope": [["Platform Design & Scope"]],
+  "Infrastructure-as-Code": [["Automation Design & Scope"]],
+  "Self-Service Catalog": [["VCF Management Domain"]],
+  "vSphere Kubernetes Services (VKS)": [["VCF Management Domain"]],
+  "Enterprise Image Registry (Harbor)": [["Self-Service Catalog"], ["vSphere Kubernetes Services (VKS)"]],
+  "Data Services Manager (DSM)": [["Self-Service Catalog"], ["vSphere Kubernetes Services (VKS)"]],
+  "Private AI Services": [["Automation Design & Scope"]],
+  "Resilience Design & Scope": [["Platform Design & Scope"]],
+  "Site Recovery (SRM or ACC SRM)": [["VCF Management Domain"], ["NSX Overlay Networking"], ["Resilience Design & Scope"]],
+  "Cyber Recovery (On Prem)": [["vSAN ESA Implementation"]],
+  "Cyber Recovery (Cloud)": [["Resilience Design & Scope"], ["NSX Overlay Networking"]],
+  "Security Design & Scope": [["Platform Design & Scope"]],
+  "Distributed Firewall (DFW)": [["NSX Overlay Networking"], ["NSX Edge Connectivity"]],
+  "vDefend ATP (Distributed IDS/IPS)": [["Security Design & Scope"]],
+  "vDefend ATP (Malware Prevention & Sandbox)": [["Security Design & Scope"]],
+  "vDefend ATP (Identity-Aware Firewall)": [["Identity Broker & Multi-Tenancy"], ["Security Design & Scope"]],
+  "vDefend ATP (Security Intelligence)": [["Security Design & Scope"]],
+  "AVI LB (Layer-7 WAF & Ingress Security)": [["Security Design & Scope"]],
+  "Salt (ACC)": [["Fleet Management"], ["Compliance Management"]],
+};
+
+/** "A, B" for all-of requirements; "A or B" within one requirement. */
+export function dependencyLabel(area: string): string {
+  return (BLOCK_DEPENDENCIES[area] ?? []).map(requirement => requirement.join(" or ")).join(", ");
+}
+
 export type BuildingBlockAssessment = {
   category: BlockCategory;
   area: string;
   status: BlockStatus;
+  /** Planned blocks that need this one; set only when the plan does not cover the block itself. */
+  requiredBy: string[];
   /** ISO dates (inclusive); empty when the block is not in the plan. */
   projectedStart: string;
   projectedEnd: string;
@@ -189,7 +248,7 @@ export function assessBuildingBlocks(document: EngagementDocument, today: string
   const adoptionIds = recognizedBarIds(adoptionTimeline);
   const twoYearIds = recognizedBarIds(twoYearPlan);
 
-  return BUILDING_BLOCKS.map(block => {
+  const assessments: BuildingBlockAssessment[] = BUILDING_BLOCKS.map(block => {
     const adoptionMatches = blockMatches(block, adoptionTimeline, fields, adoptionIds);
     const committed = adoptionMatches.filter(match => !match.bar.deferred);
     const directional = committed.length ? [] : [...adoptionMatches, ...blockMatches(block, twoYearPlan, fields, twoYearIds)];
@@ -208,8 +267,36 @@ export function assessBuildingBlocks(document: EngagementDocument, today: string
       projectedEnd,
       projectedDates: window ? `${displayDate(window.start)} – ${displayDate(window.end)}` : "",
       activities: Array.from(new Set(matches.map(match => match.bar.label))),
+      requiredBy: [],
     };
   });
+  return withRequiredDependencies(assessments);
+}
+
+/**
+ * The Building Blocks tool needs every dependency of a selected block. A dependency the plan does not cover
+ * is brought in as Planning, with the blocks that need it; this repeats until every requirement is met.
+ * For an "either" requirement, the first listed block is brought in.
+ */
+function withRequiredDependencies(assessments: BuildingBlockAssessment[]): BuildingBlockAssessment[] {
+  const byArea = new Map(assessments.map(item => [item.area, item]));
+  const included = (area: string) => byArea.get(area)?.status !== "Out of Scope";
+  const pending = assessments.filter(item => included(item.area)).map(item => item.area);
+  while (pending.length) {
+    const area = pending.shift()!;
+    for (const requirement of BLOCK_DEPENDENCIES[area] ?? []) {
+      const alreadyMet = requirement.find(candidate => included(candidate) && !byArea.get(candidate)!.requiredBy.length);
+      if (alreadyMet) continue;
+      const dependency = byArea.get(requirement.find(included) ?? requirement[0]);
+      if (!dependency) continue;
+      if (!dependency.requiredBy.includes(area)) dependency.requiredBy.push(area);
+      if (dependency.status === "Out of Scope") {
+        dependency.status = "Planning";
+        pending.push(dependency.area);
+      }
+    }
+  }
+  return assessments;
 }
 
 export function isCommercialCustomer(fields: Pick<MinimalFields, "customerSegment">): boolean {
