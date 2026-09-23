@@ -167,7 +167,18 @@ describe("building blocks workbook", () => {
     const workbook = strFromU8(files["xl/workbook.xml"]);
     expect(Array.from(workbook.matchAll(/<sheet /g))).toHaveLength(1);
     expect(workbook).toContain('name="Building Blocks"');
-    expect(strFromU8(files["xl/worksheets/sheet1.xml"])).toContain(`<autoFilter ref="A1:G${BUILDING_BLOCKS.length + 1}"/>`);
+    expect(strFromU8(files["xl/worksheets/sheet1.xml"])).toContain(`<autoFilter ref="A1:G${BUILDING_BLOCKS.length + 1}">`);
+  });
+
+  it("hides Out of Scope rows by default behind the Status filter", () => {
+    const plan = commercialPlan();
+    const sheet = strFromU8(unzipSync(renderBuildingBlocksWorkbook(plan, "2026-09-23"))["xl/worksheets/sheet1.xml"]);
+    const assessments = assessBuildingBlocks(plan, "2026-09-23");
+    expect(sheet).toContain('<filterColumn colId="3"><customFilters><customFilter operator="notEqual" val="Out of Scope"/></customFilters></filterColumn>');
+    const hiddenRows = Array.from(sheet.matchAll(/<row r="(\d+)" hidden="1">/g), match => Number(match[1]));
+    const outOfScopeRows = assessments.flatMap((item, index) => (item.status === "Out of Scope" ? [index + 2] : []));
+    expect(outOfScopeRows.length).toBeGreaterThan(0);
+    expect(hiddenRows).toEqual(outOfScopeRows);
   });
 
   it("names the download after the engagement", () => {

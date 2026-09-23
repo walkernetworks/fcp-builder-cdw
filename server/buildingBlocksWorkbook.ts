@@ -15,6 +15,7 @@ const COLUMNS = [
   { header: "Notes", width: 44 },
 ];
 const LAST_COLUMN = String.fromCharCode(64 + COLUMNS.length);
+const STATUS_COLUMN = COLUMNS.findIndex(column => column.header === "Status");
 
 const HEADER_STYLE = 1;
 const TEXT_STYLE = 2;
@@ -52,7 +53,9 @@ function worksheetXml(assessments: BuildingBlockAssessment[]): string {
   const header = `<row r="1">${COLUMNS.map((column, index) => textCell(`${String.fromCharCode(65 + index)}1`, column.header, HEADER_STYLE)).join("")}</row>`;
   const body = assessments.map((item, index) => {
     const row = index + 2;
-    return `<row r="${row}">${[
+    // Out of Scope rows start hidden by the Status filter below; clearing the filter shows them.
+    const hidden = item.status === "Out of Scope" ? ` hidden="1"` : "";
+    return `<row r="${row}"${hidden}>${[
       textCell(`A${row}`, item.category, TEXT_STYLE),
       dateCell(`B${row}`, starts.get(item.category) ?? ""),
       textCell(`C${row}`, item.area, TEXT_STYLE),
@@ -65,7 +68,7 @@ function worksheetXml(assessments: BuildingBlockAssessment[]): string {
   const range = `A1:${LAST_COLUMN}${assessments.length + 1}`;
   const cols = COLUMNS.map((column, index) => `<col min="${index + 1}" max="${index + 1}" width="${column.width}" customWidth="1"/>`).join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="${range}"/><sheetViews><sheetView workbookViewId="0" tabSelected="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${cols}</cols><sheetData>${header}${body}</sheetData><autoFilter ref="${range}"/></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="${range}"/><sheetViews><sheetView workbookViewId="0" tabSelected="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${cols}</cols><sheetData>${header}${body}</sheetData><autoFilter ref="${range}"><filterColumn colId="${STATUS_COLUMN}"><customFilters><customFilter operator="notEqual" val="Out of Scope"/></customFilters></filterColumn></autoFilter></worksheet>`;
 }
 
 const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
