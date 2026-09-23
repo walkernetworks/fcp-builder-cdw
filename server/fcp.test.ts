@@ -96,7 +96,7 @@ describe("calendar-month adoption plans", () => {
     expect(staffing.assignments.every(assignment => assignment.startLabel.length > 0 && assignment.endLabel.length > 0)).toBe(true);
   });
 
-  it("time-boxes discovery and then sequences the selected implementation workstreams without adding unselected networking scope", () => {
+  it("time-boxes discovery and then sequences the selected implementation workstreams, adding NSX only as the segmentation prerequisite", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementAmount: 2_500_000,
@@ -147,7 +147,11 @@ describe("calendar-month adoption plans", () => {
       "Validate Handover, Service Acceptance, and Ongoing Lifecycle",
     ]));
     expect(mobilization.endCol).toBeLessThanOrEqual(managementDomain.startCol);
-    expect(activities.some(candidate => candidate.id === "bar-vcf-networking-nsx")).toBe(false);
+    // Segmentation (vDefend distributed firewall) needs NSX host preparation, so NSX is planned for it and nothing more.
+    const nsx = activity("bar-vcf-networking-nsx");
+    expect(nsx.startCol).toBeGreaterThanOrEqual(managementDomain.endCol);
+    expect(activity("bar-security-segmentation").startCol).toBeGreaterThanOrEqual(nsx.endCol);
+    expect(activities.some(candidate => candidate.id.startsWith("bar-networking-"))).toBe(false);
     expect(workloadDomain.startCol).toBeGreaterThanOrEqual(managementDomain.startCol);
     expect(upgrade.startCol).toBeGreaterThanOrEqual(workloadDomain.endCol);
     expect(Math.min(...cloudStarts, ...securityStarts)).toBeGreaterThanOrEqual(workloadDomain.endCol);

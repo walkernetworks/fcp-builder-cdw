@@ -1,5 +1,5 @@
 import type { EngagementDocument, HardwarePlatformAssessment, Timeline, TimelineBar, TimelineLane } from "../shared/fcp";
-import { calculateEntitlementEndDate, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, getHclSchedulePath, getVcfPlaybookPlan, getVcfPlaybookWorkPackageOwnership, summarizeCompatibilityHandoff, summarizeDeliveryStaffing, summarizeVcfCompatibility, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
+import { calculateEntitlementEndDate, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, getHclSchedulePath, effectiveDeliveryPath, getVcfPlaybookWorkPackageOwnership, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, summarizeCompatibilityHandoff, summarizeDeliveryStaffing, summarizeVcfCompatibility, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
 import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings } from "../shared/hcl";
 import { renderCompatibilityHandoffHtml } from "./compatibilityHandoffRenderer";
 
@@ -184,7 +184,7 @@ function renderSequence(timeline: Timeline) {
 }
 
 function renderPlaybookScope(document: EngagementDocument) {
-  const plan = getVcfPlaybookPlan(document.fields.adoptionDetails.upgradePath);
+  const plan = playbookPlanForFields(document.fields);
   const renderRows = (items: typeof plan.designPackages) => items.length
     ? items.map((item, index) => { const ownership = getVcfPlaybookWorkPackageOwnership(plan.path, item); return `<tr><td><strong>${index + 1}. ${esc(item.title)}</strong><br><small>${esc(item.phase)}</small></td><td><strong>${esc(ownership.category)}</strong><br><small>${esc(ownership.workstreamType)}</small></td><td>${esc(item.outcome)}</td><td>${esc(item.dependsOn)}</td><td>${esc(item.acceptance)}</td></tr>`; }).join("")
     : '<tr><td colspan="5">No implementation work is generated until the pathway is selected or execution is explicitly included.</td></tr>';
@@ -318,10 +318,12 @@ function renderObservedInventory(document: EngagementDocument) {
 
 function selectedScopeSummary(document: EngagementDocument) {
   const { priorities, adoptionDetails } = document.fields;
+  const resolved = resolvePlanOutcomes(document.fields);
+  const vvf = resolved.edition === "vvf";
   const scope: string[] = [];
   if (priorities.includes("operations") || adoptionDetails.operations.length) scope.push("operations and lifecycle management");
   if (priorities.includes("automation") || adoptionDetails.automation.length) scope.push("automation and self-service foundations");
-  if (priorities.includes("networking") || adoptionDetails.networking.length) scope.push("the explicitly selected VCF networking and NSX scope");
+  if (priorities.includes("networking") || adoptionDetails.networking.length) scope.push(vvf ? "the explicitly selected networking and load-balancing scope" : "the explicitly selected VCF networking and NSX scope");
   if (priorities.includes("security") || adoptionDetails.security.length) scope.push("security and segmentation controls");
   if (priorities.includes("resilience") || adoptionDetails.resilience.length) scope.push("resilience and recovery planning");
   if (priorities.includes("kubernetes") || adoptionDetails.kubernetes.length) scope.push("Kubernetes and workload-domain enablement");
@@ -337,10 +339,12 @@ function selectedScopeSummary(document: EngagementDocument) {
     hybrid: "a cohort-based combination of approved VCF adoption pathways",
     "design-only": "architecture and implementation-ready design work",
     undecided: "a delivery path still to be confirmed",
-  }[adoptionDetails.upgradePath];
+  }[vvf ? effectiveDeliveryPath(document.fields) : adoptionDetails.upgradePath];
 
   const selected = scope.length ? scope.join(", ").replace(/, ([^,]*)$/, " and $1") : "the selected operational priorities";
-  return `The plan is framed around ${selected}, with ${deliveryPath}.`;
+  const edition = vvf ? " on VMware vSphere Foundation (VVF)" : "";
+  const excluded = resolved.excluded.length ? ` Outcomes that require VCF are not included: ${resolved.excluded.map(key => planOutcomeLabel(key)).join("; ")}.` : "";
+  return `The plan is framed around ${selected}, with ${vvf ? deliveryPath.replace(/VCF/g, "VVF") : deliveryPath}${edition}.${excluded}`;
 }
 
 function renderPlanSummary(document: EngagementDocument, includeOperationalTimeline = document.fields.exportPreferences.includeOperationalTimeline) {
