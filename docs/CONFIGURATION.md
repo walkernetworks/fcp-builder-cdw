@@ -6,15 +6,12 @@ The application reads deployment-specific identity, database, and PDF-rendering 
 |---|---|---|---|
 | `PORT` | Always | Single inbound application port. The container defaults to `3000`. | No |
 | `DATABASE_URL` | Always | TLS connection string for the approved MySQL-compatible database. | Yes |
-| `FCP_AUTH_MODE` | CDW self-hosted mode | Set to `trusted-proxy` when an approved OIDC gateway authenticates users before traffic reaches the app. | No |
-| `FCP_OIDC_ISSUER` | CDW self-hosted mode | Corporate issuer name used to namespace local identities. | No |
-| `FCP_SSO_ID_HEADER` | CDW self-hosted mode | Header containing the immutable corporate user identifier. | No |
-| `FCP_SSO_EMAIL_HEADER` | CDW self-hosted mode | Header containing the authenticated email address. | No |
-| `FCP_SSO_NAME_HEADER` | CDW self-hosted mode | Header containing the authenticated display name. | No |
-| `JWT_SECRET` | Hosted OAuth mode | Signs the hosted-session cookie. | Yes |
-| `VITE_APP_ID` | Hosted OAuth mode | Hosted OAuth application identifier. | No |
-| `OAUTH_SERVER_URL` | Hosted OAuth mode | Hosted OAuth service URL. | No |
-| `VITE_OAUTH_PORTAL_URL` | Hosted OAuth mode | Hosted login portal URL. | No |
+| `FCP_AUTH_MODE` | Always | Must be `trusted-proxy`. An approved OIDC gateway authenticates users before traffic reaches the app; when unset, no request is authenticated. | No |
+| `FCP_OIDC_ISSUER` | Always | Corporate issuer name used to namespace local identities. | No |
+| `FCP_SSO_ID_HEADER` | Optional | Header containing the immutable corporate user identifier. | No |
+| `FCP_SSO_EMAIL_HEADER` | Optional | Header containing the authenticated email address. | No |
+| `FCP_SSO_NAME_HEADER` | Optional | Header containing the authenticated display name. | No |
+| `JWT_SECRET` | Always | Signs short-lived HTML/PDF export download tickets. | Yes |
 | `PUPPETEER_EXECUTABLE_PATH` | PDF export | Chromium executable path; the supplied container uses `/usr/bin/chromium`. | No |
 
 ## Local inventory-processing contract
