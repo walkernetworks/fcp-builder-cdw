@@ -29,16 +29,15 @@ function assessment(document: EngagementDocument, area: string, today = "2026-09
   return result;
 }
 
-function fullVersionRows(workbook: Uint8Array): Map<string, Record<string, string>> {
+function outputRows(workbook: Uint8Array): Map<string, Record<string, string>> {
   const files = unzipSync(workbook);
-  const sheet = strFromU8(files["xl/worksheets/sheet2.xml"]);
-  const shared = Array.from(strFromU8(files["xl/sharedStrings.xml"]).matchAll(/<si>([\s\S]*?)<\/si>/g), match => Array.from(match[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g), text => text[1]).join("").replace(/&amp;/g, "&"));
+  const sheet = strFromU8(files["xl/worksheets/sheet1.xml"]);
   const rows = new Map<string, Record<string, string>>();
   for (const row of sheet.matchAll(/<row r="(\d+)"[^>]*>([\s\S]*?)<\/row>/g)) {
     const values: Record<string, string> = {};
     for (const cell of row[2].matchAll(/<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       const body = cell[3] ?? "";
-      values[cell[1]] = /t="s"/.test(cell[2]) ? shared[Number(body.match(/<v>(\d+)<\/v>/)?.[1])] : (body.match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1] ?? "").replace(/&amp;/g, "&");
+      values[cell[1]] = (body.match(/<t[^>]*>([\s\S]*?)<\/t>/)?.[1] ?? body.match(/<v>([\s\S]*?)<\/v>/)?.[1] ?? "").replace(/&amp;/g, "&");
     }
     rows.set(row[1], values);
   }
@@ -84,25 +83,33 @@ describe("building blocks assessment", () => {
 });
 
 describe("building blocks workbook", () => {
-  it("fills columns D and E and adds projected dates on the Full Version tab", () => {
+  it("outputs only Block, Category, Assessment Area, Capability Rating, Customer Deliverables, and Projected Dates", () => {
     const plan = commercialPlan();
-    const rows = fullVersionRows(renderBuildingBlocksWorkbook(plan, "2026-09-23"));
+    const rows = outputRows(renderBuildingBlocksWorkbook(plan, "2026-09-23"));
     const assessments = assessBuildingBlocks(plan, "2026-09-23");
 
-    expect(rows.get("1")).toMatchObject({ D: "Capability Rating", E: "Customer Deliverables", L: "Projected Dates" });
-    const filled = Array.from(rows.values()).filter(row => row.C && row.D && rows.get("1") !== row);
-    expect(filled).toHaveLength(BUILDING_BLOCKS.length);
+    expect(rows.get("1")).toEqual({ A: "Block", B: "Category", C: "Assessment Area", D: "Capability Rating", E: "Customer Deliverables", F: "Projected Dates" });
+    const body = Array.from(rows.entries()).filter(([rowNumber]) => rowNumber !== "1").map(([, row]) => row);
+    expect(body).toHaveLength(BUILDING_BLOCKS.length);
+    expect(body.every(row => Object.keys(row).every(column => "ABCDEF".includes(column)))).toBe(true);
+    expect(body.every(row => row.A && row.B && row.C)).toBe(true);
+    expect(body[0]).toMatchObject({ A: "1", B: "Platform Foundation", C: "Assess & Review Workshop" });
+    // Categories are merged in the template; every output row carries its own.
+    expect(body[1]).toMatchObject({ B: "Platform Foundation", C: "Site Readiness Validation" });
     for (const item of assessments) {
-      const row = filled.find(candidate => candidate.C.replace(/\s+/g, " ").trim() === item.area);
+      const row = body.find(candidate => candidate.C === item.area);
       expect(row, item.area).toMatchObject({ D: item.rating, E: item.deliverable });
-      expect(row?.L ?? "").toBe(item.projectedDates);
+      expect(row?.F ?? "").toBe(item.projectedDates);
     }
   });
 
-  it("keeps the other template tabs and extends the filter to the new column", () => {
+  it("is a single-sheet workbook with a filter across the six columns", () => {
     const files = unzipSync(renderBuildingBlocksWorkbook(commercialPlan()));
-    expect(strFromU8(files["xl/workbook.xml"])).toContain('name="Lite Version"');
-    expect(strFromU8(files["xl/worksheets/sheet2.xml"])).toContain('<autoFilter ref="A1:L50"');
+    const workbook = strFromU8(files["xl/workbook.xml"]);
+    expect(Array.from(workbook.matchAll(/<sheet /g))).toHaveLength(1);
+    expect(workbook).toContain('name="Building Blocks"');
+    expect(files["xl/sharedStrings.xml"]).toBeUndefined();
+    expect(strFromU8(files["xl/worksheets/sheet1.xml"])).toContain(`<autoFilter ref="A1:F${BUILDING_BLOCKS.length + 1}"/>`);
   });
 
   it("names the download after the engagement", () => {
