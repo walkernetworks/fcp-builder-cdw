@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { applyTimelineGesture, applyWorkstreamPresentation, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, normalizeActivityLabel, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS, type Timeline, type TimelineBar } from "@shared/fcp";
+import { applyTimelineGesture, applyWorkstreamPresentation, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, normalizeActivityLabel, validateTimeline, validateTimelineSequence, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS, type Timeline, type TimelineBar } from "@shared/fcp";
 import { CalendarRange, Flag, Plus, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -64,8 +64,13 @@ export function AdoptionTimelineEditor({
   const [selected, setSelected] = useState<{ laneId: string; barId: string } | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const errors = useMemo(() => validateTimeline(timeline), [timeline]);
+  const sequenceWarnings = useMemo(() => validateTimelineSequence(timeline), [timeline]);
   const selectedLane = timeline.lanes.find(lane => lane.id === selected?.laneId);
   const selectedBar = selectedLane?.bars.find(bar => bar.id === selected?.barId);
+  const selectedPrerequisites = useMemo(() => {
+    const labels = new Map(timeline.lanes.flatMap(lane => lane.bars).map(activity => [activity.id, activity.label]));
+    return (selectedBar?.prerequisites ?? []).flatMap(id => labels.has(id) ? [labels.get(id)!] : []);
+  }, [timeline, selectedBar]);
   const workstreamWidth = 240;
   const columnWidth = timeline.cadence === "week" ? 112 : 88;
   const unitLabel = timeline.cadence === "week" ? "week" : "month";
@@ -178,6 +183,7 @@ export function AdoptionTimelineEditor({
       </div>
 
       {errors.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{errors[0]}</div>}
+      {sequenceWarnings.length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status"><p className="font-semibold">Sequencing to review ({sequenceWarnings.length})</p><ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs leading-5">{sequenceWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
 
       <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label={`${title} ${unitLabel} grid`}>
         <div style={{ width: canvasWidth }}>
@@ -238,6 +244,7 @@ export function AdoptionTimelineEditor({
           <Button variant="ghost" className="text-red-600" onClick={() => { changeLane(selectedLane.id, lane => ({ ...lane, bars: lane.bars.filter(bar => bar.id !== selectedBar.id) })); setSelected(null); }}><Trash2 className="size-4" /> Remove</Button>
           {selectedBar.outcome && <div className="lg:col-span-full rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-950"><span className="font-semibold">Intended outcome:</span> {selectedBar.outcome}</div>}
           {selectedBar.dependsOn && <div className="lg:col-span-full rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950"><span className="font-semibold">Delivery context and sequence:</span> {selectedBar.dependsOn}</div>}
+          {selectedPrerequisites.length > 0 && <div className="lg:col-span-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-800"><span className="font-semibold">Starts after:</span> {selectedPrerequisites.join(" · ")}</div>}
         </div>
       )}
     </section>
