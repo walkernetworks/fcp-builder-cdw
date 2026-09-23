@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { downloadServerAttachment } from "@/lib/downloads";
-import { engagementExists, reconcileSelectedEngagementId, shouldQuerySelectedEngagement } from "@/lib/engagementSelection";
+import { engagementExists, engagementIdFromSearch, reconcileSelectedEngagementId, shouldQuerySelectedEngagement } from "@/lib/engagementSelection";
 import { trpc } from "@/lib/trpc";
 import { isCommercialCustomer } from "@shared/buildingBlocks";
 import { createDefaultDocument, DELIVERY_ROLE_BY_WORKSTREAM, getFollowOnReadinessGuidance, migrateDocument, refreshDerivedDocument, summarizeDeliveryStaffing, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
@@ -27,7 +27,7 @@ type WorkspaceStage = "engagement" | "plan" | "staffing" | "technical" | "packag
 
 export default function Home() {
   const utils = trpc.useUtils();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(() => engagementIdFromSearch(window.location.search));
   const [title, setTitle] = useState(DEFAULT_ENGAGEMENT_TITLE);
   const [newEngagementTitle, setNewEngagementTitle] = useState(DEFAULT_ENGAGEMENT_TITLE);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -72,6 +72,11 @@ export default function Home() {
   const preview = trpc.document.preview.useMutation({ onSuccess: result => setPreviewHtml(result.html) });
   const downloadTicket = trpc.document.downloadTicket.useMutation();
 
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedId === null) url.searchParams.delete("engagement"); else url.searchParams.set("engagement", String(selectedId));
+    if (url.href !== window.location.href) window.history.replaceState({}, "", url);
+  }, [selectedId]);
   useEffect(() => {
     if (!canReconcileSelection) return;
     const nextId = reconcileSelectedEngagementId(selectedId, list.data);
