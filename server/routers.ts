@@ -33,7 +33,8 @@ export const appRouter = router({
   }),
   document: router({
     preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ html: renderFcpHtml(input.title, input.data) })),
-    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf"]), documentType: z.enum(["fcp", "plan-output"]).default("fcp") })).mutation(async ({ ctx, input }) => {
+    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum(["fcp", "plan-output", "building-blocks"]).default("fcp") })).mutation(async ({ ctx, input }) => {
+      if ((input.format === "xlsx") !== (input.documentType === "building-blocks")) throw new TRPCError({ code: "BAD_REQUEST", message: "The Building Blocks workbook is only available as XLSX." });
       requireRow(await db.getEngagement(ctx.user.id, input.id));
       return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, input.documentType)}` };
     }),
