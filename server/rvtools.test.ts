@@ -74,4 +74,58 @@ describe("RVTools workbook import", () => {
     expect(result.summary.hclEvidence.hosts.map(host => host.esxiVersion)).toEqual(["VMware ESXi 8.0.2 build-22380479", "VMware ESXi 8.0.2 build-22380479"]);
     expect(result.summary.hclEvidence.vmInfo.map(vmInfo => vmInfo.vm)).toEqual(["franklin-app-01", "ashburn-app-01"]);
   });
+
+  it("reads workbooks written with namespace-prefixed SpreadsheetML tags", async () => {
+    const prefixed = (xml: string) => xml
+      .replace(/<(\/?)(workbook|sheets|sheet|worksheet|sheetData|row|c|is|t)\b/g, "<$1x:$2")
+      .replace('xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"', 'xmlns:x="http://schemas.openxmlformats.org/spreadsheetml/2006/main"');
+    const workbook = prefixed(`<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="vHost" sheetId="2" r:id="rId2" /></sheets></workbook>`);
+    const relationships = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="/xl/worksheets/sheet1.xml" Id="rId2" /></Relationships>`;
+    const vHost = prefixed(worksheet([
+      ["vHostName", "vHostNumCpuCores", "vHostCpuModel"],
+      ["prefixed-esx-01", "24", "Intel Xeon"],
+    ]));
+    const file = new File([zipSync({
+      "xl/workbook.xml": strToU8(workbook),
+      "xl/_rels/workbook.xml.rels": strToU8(relationships),
+      "xl/worksheets/sheet1.xml": strToU8(vHost),
+    })], "Prefixed.xlsx");
+
+    const result = await parseRvToolsFiles([file]);
+
+    expect(result.sources[0].sheets).toEqual(["vHost"]);
+    expect(result.sources[0].warnings).not.toContain("vHost data missing; host and core totals may be incomplete.");
+    expect(result.summary.hosts).toBe(1);
+    expect(result.summary.physicalCores).toBe(24);
+  });
+
+  it("skips nested ESXi hosts that report a VMware Virtual Processor CPU", async () => {
+    const workbook = `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="vHost" sheetId="1" r:id="rId1"/><sheet name="vNIC" sheetId="2" r:id="rId2"/></sheets></workbook>`;
+    const relationships = `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>`;
+    const vHost = worksheet([
+      ["vHostName", "vHostNumCpuCores", "vHostVendor", "vHostModel", "vHostCpuModel"],
+      ["physical-esx-01", "32", "Dell Inc.", "PowerEdge R760", "Intel(R) Xeon(R) Gold 6430"],
+      ["nested-esx-01", "8", "VMware, Inc.", "VMware7,1", "VMware Virtual Processor"],
+    ]);
+    const vNic = worksheet([
+      ["Host", "Network Device", "Driver"],
+      ["physical-esx-01", "vmnic0", "i40en"],
+      ["nested-esx-01", "vmnic0", "nvmxnet3"],
+    ]);
+    const file = new File([zipSync({
+      "xl/workbook.xml": strToU8(workbook),
+      "xl/_rels/workbook.xml.rels": strToU8(relationships),
+      "xl/worksheets/sheet1.xml": strToU8(vHost),
+      "xl/worksheets/sheet2.xml": strToU8(vNic),
+    })], "Nested.xlsx");
+
+    const result = await parseRvToolsFiles([file]);
+
+    expect(result.summary.hosts).toBe(1);
+    expect(result.summary.physicalCores).toBe(32);
+    expect(result.summary.hostModels.map(model => model.cpuModel)).toEqual(["Intel(R) Xeon(R) Gold 6430"]);
+    expect(result.summary.hclEvidence.hosts.map(host => host.name)).toEqual(["physical-esx-01"]);
+    expect(result.summary.hclEvidence.nics.map(nic => nic.host)).toEqual(["physical-esx-01"]);
+    expect(result.sources[0].warnings).toContain('Skipped 1 nested ESXi host with CPU model "VMware Virtual Processor"; it is not physical.');
+  });
 });

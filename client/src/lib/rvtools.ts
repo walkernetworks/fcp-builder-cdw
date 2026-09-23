@@ -134,14 +134,17 @@ function attribute(markup: string, name: string): string {
   return decodeXml(found?.[1] ?? found?.[2] ?? "");
 }
 
+// Excel writes unprefixed SpreadsheetML tags; OpenXML SDK exporters (including some RVTools builds) write `<x:row>`, `<x:c>`, and so on.
+const XML_PREFIX = "(?:[A-Za-z_][\\w.-]*:)?";
+
 function tagText(markup: string, tag: string): string {
-  const found = markup.match(new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
+  const found = markup.match(new RegExp(`<${XML_PREFIX}${tag}\\b[^>]*>([\\s\\S]*?)</${XML_PREFIX}${tag}>`, "i"));
   return decodeXml(found?.[1] ?? "");
 }
 
 function inlineText(markup: string): string {
   const parts: string[] = [];
-  const matcher = /<t\b[^>]*>([\s\S]*?)<\/t>/gi;
+  const matcher = new RegExp(`<${XML_PREFIX}t\\b[^>]*>([\\s\\S]*?)</${XML_PREFIX}t>`, "gi");
   let match: RegExpExecArray | null;
   while ((match = matcher.exec(markup))) parts.push(decodeXml(match[1]));
   return parts.length ? parts.join("") : decodeXml(markup.replace(/<[^>]*>/g, ""));
@@ -150,7 +153,7 @@ function inlineText(markup: string): string {
 function parseSharedStrings(data: Uint8Array): string[] {
   const text = textDecoder.decode(data);
   const values: string[] = [];
-  const matcher = /<si\b[^>]*>([\s\S]*?)<\/si>/gi;
+  const matcher = new RegExp(`<${XML_PREFIX}si\\b[^>]*>([\\s\\S]*?)</${XML_PREFIX}si>`, "gi");
   let match: RegExpExecArray | null;
   while ((match = matcher.exec(text))) values.push(inlineText(match[1]));
   return values;
@@ -178,13 +181,13 @@ async function parseSheet(data: Uint8Array, sharedStrings: string[]): Promise<Ro
   const records: Row[] = [];
   let headers: string[] | null = null;
   const rows = textDecoder.decode(data);
-  const rowMatcher = /<row\b[^>]*>([\s\S]*?)<\/row>/gi;
+  const rowMatcher = new RegExp(`<${XML_PREFIX}row\\b[^>]*>([\\s\\S]*?)</${XML_PREFIX}row>`, "gi");
   let rowMatch: RegExpExecArray | null;
   let rowIndex = 0;
 
   while ((rowMatch = rowMatcher.exec(rows))) {
     const cells: Cell[] = [];
-    const cellMatcher = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/gi;
+    const cellMatcher = new RegExp(`<${XML_PREFIX}c\\b([^>]*?)(?:/>|>([\\s\\S]*?)</${XML_PREFIX}c>)`, "gi");
     let cellMatch: RegExpExecArray | null;
     while ((cellMatch = cellMatcher.exec(rowMatch[1]))) {
       cells[columnIndex(attribute(cellMatch[1], "r") || "A1")] = cellText(cellMatch[1], cellMatch[2] ?? "", sharedStrings);
@@ -221,7 +224,7 @@ async function parseXlsx(buffer: ArrayBuffer): Promise<SheetMap> {
   if (!workbook || !relationships) throw new Error("This file is not a valid RVTools XLSX workbook.");
 
   const relMap = new Map<string, string>();
-  const relationMatcher = /<Relationship\b([^>]*)\/?>(?:<\/Relationship>)?/gi;
+  const relationMatcher = new RegExp(`<${XML_PREFIX}Relationship\\b([^>]*)/?>`, "gi");
   let relationMatch: RegExpExecArray | null;
   const relationshipsText = textDecoder.decode(relationships);
   while ((relationMatch = relationMatcher.exec(relationshipsText))) {
@@ -231,7 +234,7 @@ async function parseXlsx(buffer: ArrayBuffer): Promise<SheetMap> {
   }
 
   const selectedSheets: Array<{ name: string; path: string }> = [];
-  const sheetMatcher = /<sheet\b([^>]*)\/?>(?:<\/sheet>)?/gi;
+  const sheetMatcher = new RegExp(`<${XML_PREFIX}sheet\\b([^>]*)/?>`, "gi");
   let sheetMatch: RegExpExecArray | null;
   const workbookText = textDecoder.decode(workbook);
   while ((sheetMatch = sheetMatcher.exec(workbookText))) {
@@ -315,6 +318,11 @@ function hclTabKey(name: string): string {
   return hclTabAliases[key(name)] || key(name);
 }
 
+// Nested ESXi hosts (labs, VCF Holodeck, witness appliances) report a virtual CPU. They are VMs, not physical hosts.
+function isNestedEsxiHost(row: Row): boolean {
+  return /vmware virtual processor/i.test(norm(first(row, ["CPU Model"])));
+}
+
 function addRows(target: Map<string, Row>, rows: Row[], identity: (row: Row, index: number) => string): void {
   rows.forEach((row, index) => {
     const id = identity(row, index).trim().toLowerCase();
@@ -342,6 +350,7 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
   const cdRows = new Map<string, Row>();
   const usbRows = new Map<string, Row>();
   const hclTabs: Record<string, boolean> = {};
+  const nestedHostNames = new Set<string>();
 
   for (const file of files) {
     const lower = file.name.toLowerCase();
@@ -350,12 +359,20 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
     const sheetNames = Array.from(sheets.keys());
     Object.keys(hclTabAliases).forEach(tab => { if (hasSheet(sheets, tab)) hclTabs[hclTabKey(tab)] = true; });
     const warnings: string[] = [];
+    const physicalHostRows = sheet(sheets, "vHost").filter(row => {
+      if (!isNestedEsxiHost(row)) return true;
+      const name = norm(first(row, ["Host", "Host Name", "Name"]));
+      if (name) nestedHostNames.add(name.toLowerCase());
+      return false;
+    });
+    const nestedHostCount = sheet(sheets, "vHost").length - physicalHostRows.length;
+    if (nestedHostCount) warnings.push(`Skipped ${nestedHostCount} nested ESXi host${nestedHostCount === 1 ? "" : "s"} with CPU model "VMware Virtual Processor"; ${nestedHostCount === 1 ? "it is" : "they are"} not physical.`);
     if (!sheet(sheets, "vHost").length) warnings.push("vHost data missing; host and core totals may be incomplete.");
     if (!sheet(sheets, "vInfo").length) warnings.push("vInfo data missing; VM totals may be incomplete.");
     if (!sheet(sheets, "vDatastore").length) warnings.push("vDatastore data missing; storage totals may be incomplete.");
     sources.push({ id: crypto.randomUUID(), filename: file.name, byteSize: file.size, sheets: sheetNames, importedAt: new Date().toISOString(), warnings });
 
-    for (const row of sheet(sheets, "vHost")) {
+    for (const row of physicalHostRows) {
       const identity = norm(first(row, ["UUID", "Object ID"])) || compositeIdentity([first(row, ["Datacenter"]), first(row, ["Cluster"]), first(row, ["Host"])]);
       if (identity) hostRows.set(identity.toLowerCase(), row);
     }
@@ -380,6 +397,11 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
     addRows(toolsRows, sheet(sheets, "vTools"), (row, index) => norm(first(row, ["VM", "VM Name", "Name"])) || `tools-${index}`);
     addRows(cdRows, sheet(sheets, "vCD"), (row, index) => [first(row, ["VM", "VM Name", "Name"]), first(row, ["Device", "CD/DVD", "CDROM"]), index].map(norm).join("|"));
     addRows(usbRows, sheet(sheets, "vUSB"), (row, index) => [first(row, ["VM", "VM Name", "Name"]), first(row, ["Device", "USB Device"]), index].map(norm).join("|"));
+  }
+
+  const isNestedHostRow = (row: Row) => nestedHostNames.has(norm(first(row, ["Host", "Host Name", "ESX Host"])).toLowerCase());
+  for (const rows of [nicRows, hbaRows, vmkernelRows]) {
+    Array.from(rows.entries()).forEach(([id, row]) => { if (isNestedHostRow(row)) rows.delete(id); });
   }
 
   const summary = emptyInventory();
