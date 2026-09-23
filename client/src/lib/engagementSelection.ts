@@ -38,3 +38,9 @@ export function shouldQuerySelectedEngagement<T extends EngagementListItem>(
 ): selectedId is number {
   return !isListFetching && engagementExists(selectedId, engagements);
 }
+
+/** Reads the `?engagement=<id>` deep link. Anything but a positive integer is ignored. */
+export function engagementIdFromSearch(search: string): number | null {
+  const value = new URLSearchParams(search).get("engagement");
+  return value && /^[1-9]\d*$/.test(value) ? Number(value) : null;
+}
