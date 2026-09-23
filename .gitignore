@@ -7,6 +7,9 @@ dist/
 build/
 *.dist
 
+# Personal Claude Code notes (machine-specific)
+CLAUDE.local.md
+
 # Environment variables
 .env
 .env.local
