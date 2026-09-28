@@ -67,7 +67,7 @@ describe("signed binary export downloads", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian-FCP-Plan.html"');
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - FCP.html"');
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(content.length).toBeGreaterThan(1_000);
     expect(content).toContain("Functional Consumption Plan");
@@ -81,7 +81,7 @@ describe("signed binary export downloads", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/pdf");
-    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian-FCP-Plan.pdf"');
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - FCP.pdf"');
     expect(content.subarray(0, 5).toString("utf8")).toBe("%PDF-");
     expect(content.length).toBeGreaterThan(20);
     expect(getEngagement).toHaveBeenCalledWith(7, 41);
@@ -94,7 +94,7 @@ describe("signed binary export downloads", () => {
 
     expect(verifyExportTicket(ticket)).toMatchObject({ documentType: "plan-output" });
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian-FCP-Plan-Compatibility-Handoff.html"');
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - Compatibility Handoff.html"');
     expect(content).toContain("VCF Compatibility Delivery Handoff");
     expect(content).toContain("Every observed server and CPU cohort");
     expect(content).toContain("Compatibility action register");
@@ -110,7 +110,7 @@ describe("signed binary export downloads", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian-FCP-Plan-Building-Blocks.xlsx"');
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - Building Blocks.xlsx"');
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(content.subarray(0, 2).toString("utf8")).toBe("PK");
   });
@@ -130,8 +130,8 @@ describe("signed binary export downloads", () => {
   });
 
   it("normalizes unsafe and empty export names", () => {
-    expect(safeExportFilename("  ACME / FCP: West  ", "pdf")).toBe("ACME-FCP-West.pdf");
-    expect(safeExportFilename("  ACME / FCP: West  ", "pdf", "plan-output")).toBe("ACME-FCP-West-Compatibility-Handoff.pdf");
-    expect(safeExportFilename("///", "html")).toBe("FCP.html");
+    expect(safeExportFilename("  ACME / FCP: West  ", "pdf")).toBe("ACME FCP West - FCP.pdf");
+    expect(safeExportFilename("  ACME / FCP: West  ", "pdf", "plan-output")).toBe("ACME FCP West - Compatibility Handoff.pdf");
+    expect(safeExportFilename("///", "html")).toBe("Engagement - FCP.html");
   });
 });

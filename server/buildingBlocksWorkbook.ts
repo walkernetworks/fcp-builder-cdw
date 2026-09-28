@@ -1,4 +1,5 @@
 import { strToU8, zipSync } from "fflate";
+import { exportFilename } from "../shared/exportFilename";
 import { assessBuildingBlocks, dependencyLabel, type BuildingBlockAssessment } from "../shared/buildingBlocks";
 import type { EngagementDocument } from "../shared/fcp";
 
@@ -101,6 +102,5 @@ export function renderBuildingBlocksWorkbook(document: EngagementDocument, today
 }
 
 export function buildingBlocksFilename(title: string): string {
-  const stem = title.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "FCP";
-  return `${stem}-Building-Blocks.xlsx`;
+  return exportFilename(title, "building-blocks", "xlsx");
 }

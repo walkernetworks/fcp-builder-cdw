@@ -96,7 +96,7 @@ describe("calendar-month adoption plans", () => {
     expect(staffing.assignments.every(assignment => assignment.startLabel.length > 0 && assignment.endLabel.length > 0)).toBe(true);
   });
 
-  it("time-boxes discovery and then sequences the selected implementation workstreams without adding unselected networking scope", () => {
+  it("time-boxes discovery and then sequences the selected implementation workstreams, adding NSX only as the segmentation prerequisite", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
       entitlementAmount: 2_500_000,
@@ -116,7 +116,9 @@ describe("calendar-month adoption plans", () => {
     const plans = buildAdoptionPlans(document.fields, document.inventory);
     const labels = [...plans.adoptionTimeline.lanes, ...plans.twoYearPlan.lanes].flatMap(lane => [lane.name, ...lane.bars.map(activity => activity.label)]);
     const activities = plans.adoptionTimeline.lanes.flatMap(lane => lane.bars);
-    const activity = (id: string) => activities.find(candidate => candidate.id === id)!;
+    // Both views are monthly from the same start; work after entitlement end is only in the notional.
+    const notionalActivities = plans.twoYearPlan.lanes.flatMap(lane => lane.bars);
+    const activity = (id: string) => activities.find(candidate => candidate.id === id) ?? notionalActivities.find(candidate => candidate.id === id)!;
     const mobilization = activity("bar-platform-plan");
     const managementDomain = activity("bar-management-domain");
     const workloadDomain = activity("bar-workload-domain");
@@ -143,11 +145,17 @@ describe("calendar-month adoption plans", () => {
       "Month 1: Mobilize and Establish Delivery Baseline",
       "Deploy and Validate the Greenfield VCF Foundation",
       "Create and Validate the Initial VCF Workload Domain",
-      expect.stringContaining("HCL Gate:"),
+      "Hardware Compatibility Confirmed",
       "Validate Handover, Service Acceptance, and Ongoing Lifecycle",
     ]));
     expect(mobilization.endCol).toBeLessThanOrEqual(managementDomain.startCol);
-    expect(activities.some(candidate => candidate.id === "bar-vcf-networking-nsx")).toBe(false);
+    // Segmentation (vDefend distributed firewall) needs NSX host preparation, so NSX is planned for it and nothing more.
+    // Segmentation falls after this entitlement ends, so the order is checked in the Two-Year Notional.
+    const notional = (id: string) => plans.twoYearPlan.lanes.flatMap(lane => lane.bars).find(candidate => candidate.id === id)!;
+    const nsx = notional("bar-vcf-networking-nsx");
+    expect(nsx.startCol).toBeGreaterThanOrEqual(notional("bar-management-domain").endCol);
+    expect(notional("bar-security-segmentation").startCol).toBeGreaterThanOrEqual(nsx.endCol);
+    expect(activities.some(candidate => candidate.id.startsWith("bar-networking-"))).toBe(false);
     expect(workloadDomain.startCol).toBeGreaterThanOrEqual(managementDomain.startCol);
     expect(upgrade.startCol).toBeGreaterThanOrEqual(workloadDomain.endCol);
     expect(Math.min(...cloudStarts, ...securityStarts)).toBeGreaterThanOrEqual(workloadDomain.endCol);
@@ -349,7 +357,7 @@ describe("calendar-month adoption plans", () => {
     expect(JSON.stringify(plans.twoYearPlan)).not.toMatch(/Service Prioritization Decision|Year [12] ·/);
     expect(plans.twoYearPlan.lanes.length).toBeGreaterThanOrEqual(FIXED_GANTT_CATEGORIES.length);
     expect(new Set(plans.twoYearPlan.lanes.map(lane => lane.category))).toEqual(new Set(FIXED_GANTT_CATEGORIES));
-    expect(plans.rationale).toContain("HCL 2.0 evaluation path");
+    expect(plans.rationale).toContain("hardware compatibility check (HCL 2.0) result");
   });
 
   it("recommends compound services only after their detailed prerequisites and estate or hardware signals align", () => {
@@ -373,7 +381,8 @@ describe("calendar-month adoption plans", () => {
     Object.assign(document.inventory, { vmCount: 480, hosts: 12, poweredOnVms: 440 });
 
     const plans = buildAdoptionPlans(document.fields, document.inventory);
-    const activities = plans.adoptionTimeline.lanes.flatMap(lane => lane.bars);
+    // Work after entitlement end is carried in the Two-Year Notional, so check both views.
+    const activities = [...plans.adoptionTimeline.lanes, ...plans.twoYearPlan.lanes].flatMap(lane => lane.bars);
     const labels = activities.map(activity => activity.label);
 
     expect(labels).toEqual(expect.arrayContaining([
@@ -688,7 +697,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Not listed for target release");
     expect(html).toContain("Every observed server and CPU cohort");
     expect(html).toContain("Compatibility action register");
-    expect(html).toContain("Conditions that affect sequence or release gates");
+    expect(html).toContain("Conditions that affect sequencing or build readiness");
     expect(html).toContain("Fewer than two physical NICs");
     expect(html).toContain("2 affected hosts");
     expect(html).toContain("Information required to complete the handoff");
@@ -738,19 +747,22 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(getHclSchedulePath(green.document.inventory)).toBe("green");
     expect(Array.from(new Set(green.plan.lanes.map(lane => lane.category)))).toEqual(FIXED_GANTT_CATEGORIES);
     expect(labels(green.plan).map(activity => activity.label)).not.toContain("Procure Replacement Hardware or Approve Greenfield Path");
-    expect(labels(green.plan).some(activity => activity.label.includes("HCL Gate: Green"))).toBe(true);
+    const hardwareMilestone = (plan: typeof green.plan) => labels(plan).find(activity => activity.id === "bar-hcl-gate");
+    expect(hardwareMilestone(green.plan)).toMatchObject({ label: "Hardware Compatibility Confirmed", milestone: true });
+    expect(hardwareMilestone(green.plan)?.outcome).toContain("Green");
 
     const yellow = planFor("Unknown CPU");
     expect(getHclSchedulePath(yellow.document.inventory)).toBe("yellow");
     expect(labels(yellow.plan).some(activity => activity.label === "Remediate and Verify HCL Exceptions")).toBe(true);
-    expect(labels(yellow.plan).some(activity => activity.label.includes("HCL Gate: Yellow"))).toBe(true);
+    expect(hardwareMilestone(yellow.plan)?.outcome).toContain("Yellow");
+    expect(hardwareMilestone(yellow.plan)?.dependsOn).toBe("Confirmed when the flagged hosts are remediated and verified.");
 
     const red = planFor("Intel(R) Xeon(R) Gold 6230", ["dns-ntp", "ip-pools"]);
     expect(getHclSchedulePath(red.document.inventory)).toBe("red");
     const redBars = labels(red.plan);
     const procurement = redBars.find(activity => activity.label === "Procure Replacement Hardware or Approve Greenfield Path");
     const greenfield = redBars.find(activity => activity.label === "Provision and Validate Greenfield Hardware Baseline");
-    const hclGate = redBars.find(activity => activity.label.includes("HCL Gate: Red"));
+    const hclGate = redBars.find(activity => activity.id === "bar-hcl-gate" && activity.outcome?.includes("Red"));
     const prerequisite = redBars.find(activity => activity.label === "Confirm DNS, NTP, and core services");
     const migration = redBars.find(activity => activity.label === "Execute Approved Workload Migration and Cutover Waves");
     const cloud = redBars.find(activity => activity.label === "Launch a Governed VM Self-Service Catalog");
@@ -759,7 +771,9 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(procurement && greenfield && hclGate && prerequisite && migration && cloud && security && resilience).toBeTruthy();
     expect(prerequisite!.startCol).toBe(procurement!.startCol);
     expect(hclGate!.startCol).toBeGreaterThanOrEqual(greenfield!.endCol);
-    expect(Math.min(cloud!.startCol, security!.startCol, resilience!.startCol)).toBeGreaterThanOrEqual(migration!.endCol);
+    // Capability work starts once the workload domain is accepted and runs alongside the migration waves.
+    const workloadDomain = redBars.find(activity => activity.id === "bar-workload-domain");
+    expect(Math.min(cloud!.startCol, security!.startCol, resilience!.startCol)).toBeGreaterThanOrEqual(workloadDomain!.endCol);
     expect(migration!.dependsOn).toContain("Accepted foundation");
   });
 
@@ -838,7 +852,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(mirroredAssessment?.label).toBe("Month 1: Mobilize and Establish Delivery Baseline");
     expect(plans.adoptionTimeline.lanes.some(lane => lane.id.startsWith("lane-host-platform-"))).toBe(false);
     expect(plans.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"))).toBe(false);
-    expect(plans.rationale).toContain("HCL 2.0 evaluation path");
+    expect(plans.rationale).toContain("hardware compatibility check (HCL 2.0) result");
     expect(validateTimeline(plans.adoptionTimeline)).toEqual([]);
     expect(validateTimeline(plans.twoYearPlan)).toEqual([]);
   });
@@ -1249,11 +1263,13 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("#two-year .notional-year-sheet{height:8.5in;min-height:8.5in");
     expect(html).not.toContain('class="two-year-sequence-sheet"');
     expect(html).toContain('class="operational-print-sheet entitlement-one-sheet cadence-month"');
-    expect(html).toContain("Entitlement Adoption Timeline · 12-month entitlement year");
+    expect(html).toContain("Entitlement Adoption Timeline · entitlement window");
+    // Category labels are pinned to the first column so a short entitlement window cannot push them to the right.
+    expect(html).toContain(".timeline-category-lane{grid-column:1}");
     const operationalWindowCount = (html.match(/class="operational-print-sheet/g) || []).length;
     expect(operationalWindowCount).toBe(1);
     const entitlementSheet = html.match(/class="operational-print-sheet entitlement-one-sheet cadence-month">([\s\S]*?)<\/section>/)?.[1] || "";
-    expect((entitlementSheet.match(/class="timeline-head"/g) || []).length).toBe(12);
+    expect((entitlementSheet.match(/class="timeline-head"/g) || []).length).toBe(Math.min(13, document.adoptionTimeline.columns.length));
     expect(html).toContain("#adoption .operational-print-sheet .timeline-grid{width:100%;min-width:0!important}");
     expect(html).toContain("#adoption .operational-print-sheet.entitlement-one-sheet .timeline-row{min-height:22px!important}");
     expect(html).toContain("#adoption .operational-print-sheet.entitlement-one-sheet .timeline-bar{margin:1px!important;padding:1px 2px!important;min-height:11px!important");

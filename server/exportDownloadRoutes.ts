@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { isCommercialCustomer } from "../shared/buildingBlocks";
-import { engagementDocumentSchema } from "../shared/fcp";
+import { exportFilename } from "../shared/exportFilename";
+import { migrateDocument } from "../shared/fcp";
 import * as db from "./db";
 import { BUILDING_BLOCKS_MIME, buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
 import { verifyExportTicket } from "./exportTickets";
@@ -8,11 +9,7 @@ import { renderFcpHtml, renderHclCompatibilityPlanOutputHtml } from "./fcpRender
 import { renderPdf } from "./pdf";
 
 export function safeExportFilename(title: string, extension: "html" | "pdf", documentType: "fcp" | "plan-output" = "fcp") {
-  const stem = title
-    .replace(/[^a-z0-9-_]+/gi, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80) || "FCP";
-  return `${stem}${documentType === "plan-output" ? "-Compatibility-Handoff" : ""}.${extension}`;
+  return exportFilename(title, documentType, extension);
 }
 
 function deny(res: Response, status: number, message: string) {
@@ -29,7 +26,8 @@ export function registerExportDownloadRoutes(app: Express) {
       const row = await db.getEngagement(ticket.userId, ticket.engagementId);
       if (!row) return deny(res, 404, "Engagement not found.");
 
-      const document = engagementDocumentSchema.parse(row.data);
+      // Same migration the workspace applies on load, so exports reflect current planning rules and wording.
+      const document = migrateDocument(row.data);
 
       res.setHeader("Cache-Control", "private, no-store, max-age=0");
       res.setHeader("Pragma", "no-cache");
