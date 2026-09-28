@@ -145,7 +145,7 @@ describe("calendar-month adoption plans", () => {
       "Month 1: Mobilize and Establish Delivery Baseline",
       "Deploy and Validate the Greenfield VCF Foundation",
       "Create and Validate the Initial VCF Workload Domain",
-      expect.stringContaining("HCL Gate:"),
+      "Hardware Compatibility Confirmed",
       "Validate Handover, Service Acceptance, and Ongoing Lifecycle",
     ]));
     expect(mobilization.endCol).toBeLessThanOrEqual(managementDomain.startCol);
@@ -357,7 +357,7 @@ describe("calendar-month adoption plans", () => {
     expect(JSON.stringify(plans.twoYearPlan)).not.toMatch(/Service Prioritization Decision|Year [12] ·/);
     expect(plans.twoYearPlan.lanes.length).toBeGreaterThanOrEqual(FIXED_GANTT_CATEGORIES.length);
     expect(new Set(plans.twoYearPlan.lanes.map(lane => lane.category))).toEqual(new Set(FIXED_GANTT_CATEGORIES));
-    expect(plans.rationale).toContain("HCL 2.0 evaluation path");
+    expect(plans.rationale).toContain("hardware compatibility check (HCL 2.0) result");
   });
 
   it("recommends compound services only after their detailed prerequisites and estate or hardware signals align", () => {
@@ -697,7 +697,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("Not listed for target release");
     expect(html).toContain("Every observed server and CPU cohort");
     expect(html).toContain("Compatibility action register");
-    expect(html).toContain("Conditions that affect sequence or release gates");
+    expect(html).toContain("Conditions that affect sequencing or build readiness");
     expect(html).toContain("Fewer than two physical NICs");
     expect(html).toContain("2 affected hosts");
     expect(html).toContain("Information required to complete the handoff");
@@ -747,19 +747,22 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(getHclSchedulePath(green.document.inventory)).toBe("green");
     expect(Array.from(new Set(green.plan.lanes.map(lane => lane.category)))).toEqual(FIXED_GANTT_CATEGORIES);
     expect(labels(green.plan).map(activity => activity.label)).not.toContain("Procure Replacement Hardware or Approve Greenfield Path");
-    expect(labels(green.plan).some(activity => activity.label.includes("HCL Gate: Green"))).toBe(true);
+    const hardwareMilestone = (plan: typeof green.plan) => labels(plan).find(activity => activity.id === "bar-hcl-gate");
+    expect(hardwareMilestone(green.plan)).toMatchObject({ label: "Hardware Compatibility Confirmed", milestone: true });
+    expect(hardwareMilestone(green.plan)?.outcome).toContain("Green");
 
     const yellow = planFor("Unknown CPU");
     expect(getHclSchedulePath(yellow.document.inventory)).toBe("yellow");
     expect(labels(yellow.plan).some(activity => activity.label === "Remediate and Verify HCL Exceptions")).toBe(true);
-    expect(labels(yellow.plan).some(activity => activity.label.includes("HCL Gate: Yellow"))).toBe(true);
+    expect(hardwareMilestone(yellow.plan)?.outcome).toContain("Yellow");
+    expect(hardwareMilestone(yellow.plan)?.dependsOn).toBe("Confirmed when the flagged hosts are remediated and verified.");
 
     const red = planFor("Intel(R) Xeon(R) Gold 6230", ["dns-ntp", "ip-pools"]);
     expect(getHclSchedulePath(red.document.inventory)).toBe("red");
     const redBars = labels(red.plan);
     const procurement = redBars.find(activity => activity.label === "Procure Replacement Hardware or Approve Greenfield Path");
     const greenfield = redBars.find(activity => activity.label === "Provision and Validate Greenfield Hardware Baseline");
-    const hclGate = redBars.find(activity => activity.label.includes("HCL Gate: Red"));
+    const hclGate = redBars.find(activity => activity.id === "bar-hcl-gate" && activity.outcome?.includes("Red"));
     const prerequisite = redBars.find(activity => activity.label === "Confirm DNS, NTP, and core services");
     const migration = redBars.find(activity => activity.label === "Execute Approved Workload Migration and Cutover Waves");
     const cloud = redBars.find(activity => activity.label === "Launch a Governed VM Self-Service Catalog");
@@ -849,7 +852,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(mirroredAssessment?.label).toBe("Month 1: Mobilize and Establish Delivery Baseline");
     expect(plans.adoptionTimeline.lanes.some(lane => lane.id.startsWith("lane-host-platform-"))).toBe(false);
     expect(plans.twoYearPlan.lanes.some(lane => lane.id.startsWith("lane-two-year-year-one-lane-host-platform-"))).toBe(false);
-    expect(plans.rationale).toContain("HCL 2.0 evaluation path");
+    expect(plans.rationale).toContain("hardware compatibility check (HCL 2.0) result");
     expect(validateTimeline(plans.adoptionTimeline)).toEqual([]);
     expect(validateTimeline(plans.twoYearPlan)).toEqual([]);
   });

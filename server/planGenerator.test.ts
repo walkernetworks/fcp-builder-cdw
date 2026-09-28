@@ -95,7 +95,7 @@ describe("outcome prerequisites", () => {
     expect(malware.startCol).toBeGreaterThanOrEqual(Math.max(segmentation.endCol, ssp.endCol));
     expect(malware.prerequisites).toEqual(expect.arrayContaining(["bar-security-segmentation", "bar-security-services-platform"]));
     expect(segmentation.outcome).toContain("Included as a prerequisite for: Enable vDefend Malware Prevention and Sandboxing");
-    expect(malware.dependsOn).toContain("vDefend Firewall with ATP add-on");
+    expect(malware.dependsOn).toMatch(/^Starts after: Create and Validate the Initial VCF Workload Domain; Implement Segmentation and Security Policy; Deploy the vDefend Security Services Platform\. Requires the vDefend Firewall with ATP add-on/);
     expect(document.rationale).toContain("Prerequisites were added so selected outcomes can be delivered");
     expect(validateTimelineSequence(timeline)).toEqual([]);
   });

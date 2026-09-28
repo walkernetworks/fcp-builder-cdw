@@ -819,7 +819,7 @@ function compatibilityDecision(hcl: HclPlatformAssessment): Pick<VcfCompatibilit
     return {
       decision: "validation-required",
       decisionLabel: "Identity confirmation required",
-      reason: "The imported vendor or model identity has a candidate match but is not deterministic enough to release the platform gate.",
+      reason: "The imported vendor or model identity has a candidate match but is not specific enough to confirm compatibility before platform build.",
     };
   }
   return {
@@ -932,8 +932,8 @@ export function summarizeCompatibilityHandoff(platforms: HardwarePlatformAssessm
       title: cohort.nextAction,
       affectedHosts: cohort.hosts,
       gateCondition: cohort.decision === "eligible"
-        ? `Complete configuration-level evidence before the ${cohort.catalog.releaseScope.at(-1) || cohort.catalog.id} platform gate.`
-        : `Resolve this evidence state before the ${cohort.catalog.releaseScope.at(-1) || cohort.catalog.id} platform gate is released.`,
+        ? `Complete configuration-level evidence before the ${cohort.catalog.releaseScope.at(-1) || cohort.catalog.id} platform build.`
+        : `Resolve this evidence before the ${cohort.catalog.releaseScope.at(-1) || cohort.catalog.id} platform build.`,
       evidenceRequired: cohort.requiredEvidence,
       cohortIds: [cohort.id],
     });
@@ -1978,7 +1978,7 @@ function fixedGanttLane(id: string, category: TimelineCategory, workstreamType: 
 }
 
 function hclPathLabel(path: HclSchedulePath): string {
-  return { green: "Green — baseline alignment", yellow: "Yellow — remediation and verification", red: "Red — procurement or greenfield provisioning", unresolved: "Unresolved — evidence collection and decision" }[path];
+  return { green: "Green — hosts are listed for the target release", yellow: "Yellow — some hosts need remediation or verification", red: "Red — replacement hardware or an approved exception is needed", unresolved: "Unresolved — host details are missing" }[path];
 }
 
 function softPrerequisiteLabel(key: AdoptionDetails["softPrerequisites"][number]): string {
@@ -2125,13 +2125,16 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   ];
   const infrastructureBars: TimelineBar[] = [...designBars.infrastructureBuild];
   let hclBufferEnd = mobilizationEnd;
-  let hclDependency = `${HCL_EVALUATION_VERSION} HCL path classified as ${hclPathLabel(path)} after the mobilisation baseline.`;
+  // One milestone: platform build starts only once hardware compatibility is confirmed.
+  let hclDependency = "The imported hosts are listed for the target release; confirmed at the end of mobilization.";
 
   if (path === "yellow" || path === "unresolved") {
     const [remediationStart, remediationEnd] = range(mobilizationEnd, remediationDuration);
     infrastructureBars.push(bar("bar-hcl-remediation", remediationStart, remediationEnd, "amber", path === "yellow" ? "Remediate and Verify HCL Exceptions" : "Collect Missing HCL Evidence and Confirm Path", false, false, appendDeliveryContext("Resolve server, CPU, firmware, or identity evidence before releasing the platform build."), path === "yellow" ? "Close the reported HCL exception path and retain verification evidence." : "Collect missing vHost identity and configuration evidence before committing the platform path."));
     hclBufferEnd = remediationEnd;
-    hclDependency = `${HCL_EVALUATION_VERSION} ${hclPathLabel(path)} gate closes only after remediation or evidence review is accepted.`;
+    hclDependency = path === "yellow"
+      ? "Confirmed when the flagged hosts are remediated and verified."
+      : "Confirmed when the missing host details are collected and each host's compatibility is checked.";
   }
 
   if (path === "red") {
@@ -2142,7 +2145,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       bar("bar-hcl-greenfield", greenfieldStart, greenfieldEnd, "red", "Provision and Validate Greenfield Hardware Baseline", false, false, "Start after procurement, hardware delivery, and rack-and-stack acceptance.", "Validate the newly provisioned hardware baseline before releasing VCF deployment work."),
     );
     hclBufferEnd = greenfieldEnd;
-    hclDependency = `${HCL_EVALUATION_VERSION} Red gate closes after procurement or greenfield provisioning is accepted.`;
+    hclDependency = "Confirmed when replacement hardware is procured and provisioned, or an exception is approved.";
   }
 
   // Site-readiness prerequisites run alongside the HCL buffer and must close before platform build starts.
@@ -2172,7 +2175,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   }
 
   const [hclGateStart, hclGateEnd] = range(hclBufferEnd, 1);
-  programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", `HCL Gate: ${hclPathLabel(path)}`, true, false, hclDependency, "Authorize foundation work only after the required HCL path evidence is recorded."));
+  programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", "Hardware Compatibility Confirmed", true, false, hclDependency, `Platform build starts only after this milestone. Compatibility check result: ${hclPathLabel(path)}.`));
 
   const pathwayDesignEnd = playbookPlan.designPackages.length ? pathwayDesignCursor : hclGateEnd;
   const infrastructureDesignEnd = Math.max(pathwayDesignEnd, componentDesignCursors.infrastructureBuild, componentDesignCursors.infrastructureWaves);
@@ -2196,7 +2199,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const nsxScheduledWithFoundation = networkingInScope && (playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid");
 
   if (playbookPlan.path === "in-place") {
-    foundationEnd = addInfrastructurePackage("bar-in-place-preparation", vvf ? "Prepare Supported Estate for the VVF Upgrade" : "Prepare Supported Estate for In-Place Upgrade", deliveryStart, managementDuration, "Begin after the HCL gate and approved upgrade runbook; close platform, backup, firmware, driver, lifecycle, and management prerequisites.", "Release only the supported host and management cohorts into the approved upgrade waves.", buildPrerequisites);
+    foundationEnd = addInfrastructurePackage("bar-in-place-preparation", vvf ? "Prepare Supported Estate for the VVF Upgrade" : "Prepare Supported Estate for In-Place Upgrade", deliveryStart, managementDuration, "Starts after hardware compatibility is confirmed and the upgrade runbook is approved; close platform, backup, firmware, driver, lifecycle, and management prerequisites.", "Release only the supported host and management cohorts into the approved upgrade waves.", buildPrerequisites);
     foundationId = "bar-in-place-preparation";
     workloadEnd = foundationEnd;
   } else if (playbookPlan.path === "converge") {
@@ -2311,18 +2314,15 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     return `bar-${capability}-${focus}`;
   };
   const platformName = vvf ? "VVF" : "VCF";
-  const laneContext = (key: PlanOutcomeKey): { dependsOn: string; outcome: string } => {
-    const capability = key.split(":")[0];
+  const laneOutcome = (key: PlanOutcomeKey): string => {
     switch (outcomeLane(key)) {
-      case "infrastructure": return { dependsOn: "Begin after the platform foundation is accepted.", outcome: "Deliver the selected networking capability on the accepted foundation." };
-      case "operations": return { dependsOn: "Begin after workload-domain readiness and the HCL gate.", outcome: "Implement the selected operating capability with accountable ownership and measurable service outcomes." };
-      case "cloud": return {
-        dependsOn: capability === "kubernetes" ? "Begin after pathway execution; coordinate network and security controls." : capability === "private-ai" ? "Begin after pathway execution and confirmed GPU, data-governance, and security controls." : "Begin after pathway execution and platform acceptance.",
-        outcome: `Enable the confirmed cloud capability on the accepted ${platformName} foundation.`,
-      };
-      default: return { dependsOn: "Begin after the HCL gate; this work does not wait for cloud module enablement.", outcome: "Implement the selected resilience and security capability with controlled evidence and ownership." };
+      case "infrastructure": return "Deliver the selected networking capability on the accepted foundation.";
+      case "operations": return "Implement the selected operating capability with accountable ownership and measurable service outcomes.";
+      case "cloud": return `Enable the confirmed cloud capability on the accepted ${platformName} foundation.`;
+      default: return "Implement the selected resilience and security capability with controlled evidence and ownership.";
     }
   };
+  const labelById = (id: string) => [...programBars, ...infrastructureBars, ...migrationBars, ...operationsBars, ...cloudBars, ...securityBars].find(activity => activity.id === id)?.label;
 
   if (implementationApproved) {
     for (const outcome of resolvedOutcomes.outcomes) {
@@ -2337,15 +2337,15 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
         Math.max(slots[slot], ...prerequisiteIds.map(prerequisiteId => endById.get(prerequisiteId)!)),
         outcome.key === "platform:nsx" ? networkingDuration : lane === "security" ? securityDuration : moduleDuration,
       );
-      const context = laneContext(outcome.key);
-      const prerequisiteLabels = outcome.prerequisites.map(key => planOutcomeLabel(key, edition));
-      const dependsOn = [context.dependsOn, prerequisiteLabels.length ? `Starts after: ${prerequisiteLabels.join("; ")}.` : "", PLAN_OUTCOME_NOTES[outcome.key] ?? ""].filter(Boolean).join(" ");
+      const anchorId = lane === "infrastructure" && nsxScheduledWithFoundation ? "bar-vcf-networking-nsx" : platformReadyId;
+      const startsAfter = Array.from(new Set([labelById(anchorId), ...prerequisiteIds.map(labelById)].filter((label): label is string => Boolean(label))));
+      const dependsOn = [`Starts after: ${startsAfter.join("; ")}.`, PLAN_OUTCOME_NOTES[outcome.key] ?? ""].filter(Boolean).join(" ");
       const outcomeText = outcome.requiredBy.length
-        ? `${context.outcome} Included as a prerequisite for: ${outcome.requiredBy.map(key => planOutcomeLabel(key, edition)).join("; ")}.`
-        : context.outcome;
+        ? `${laneOutcome(outcome.key)} Included as a prerequisite for: ${outcome.requiredBy.map(key => planOutcomeLabel(key, edition)).join("; ")}.`
+        : laneOutcome(outcome.key);
       laneBars[lane].push({
         ...bar(id, taskStart, taskEnd, colorForWorkstreamType(lane === "infrastructure" ? "Infrastructure Build" : lane === "operations" ? "Operating Model / Platform" : lane === "cloud" ? "Consume / Handover" : "Security & Resiliency"), planOutcomeLabel(outcome.key, edition), false, false, dependsOn, outcomeText),
-        prerequisites: Array.from(new Set([lane === "infrastructure" && nsxScheduledWithFoundation ? "bar-vcf-networking-nsx" : platformReadyId, ...prerequisiteIds])),
+        prerequisites: Array.from(new Set([anchorId, ...prerequisiteIds])),
       });
       endById.set(id, taskEnd);
       slots[slot] = taskEnd;
@@ -2726,11 +2726,11 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
     ? `Confirmed timeline notes are applied as execution conditions: “${planningContext.timelineNotes}”.`
     : "No additional timeline exceptions or sequencing conditions were recorded.";
   const industryContext = `The ${planningContext.template.label} industry discovery lens focuses mobilisation discussions on ${planningContext.industryThemes}; it informs the planning narrative only and does not add scope, priorities, or delivery activities.`;
-  const hclContext = `The HCL 2.0 evaluation path is ${hclPathLabel(hclPath)} and is used as planning evidence for the required buffer and gate; it remains an offline precheck, not official certification.`;
+  const hclContext = `The hardware compatibility check (HCL 2.0) result is ${hclPathLabel(hclPath)}; it sets the time allowed before platform build and is an offline precheck, not official certification.`;
   const designPackageSummary = playbookPlan.designPackages.map(item => item.title).join(", ");
   const implementationPackageSummary = playbookPlan.implementationPackages.map(item => item.title).join(", ");
   const migrationGateContext = playbookPlan.implementationPackages.length
-    ? `Implementation begins only after the playbook design package and HCL gate are accepted. The approved execution sequence is ${implementationPackageSummary}. Selected component adoption begins after platform acceptance and may overlap later approved upgrade or migration waves where the workstreams are independent.`
+    ? `Implementation begins only after the design package is accepted and hardware compatibility is confirmed. The approved execution sequence is ${implementationPackageSummary}. Selected component adoption begins after platform acceptance and may overlap later approved upgrade or migration waves where the workstreams are independent.`
     : "No implementation or migration work is generated until an execution pathway is approved; the current plan remains focused on design decisions and implementation-ready artifacts, followed by an execution decision, continuing design authority, and operating readiness through entitlement end.";
   const customer = fields.customerName || "The customer";
   const resolvedOutcomes = resolvePlanOutcomes(fields);
