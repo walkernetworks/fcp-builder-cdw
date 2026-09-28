@@ -3216,6 +3216,42 @@ function inferredPlanAuthority(value: unknown, document: EngagementDocument, gen
     : "manual";
 }
 
+const LEGACY_HARDWARE_MILESTONE_LABEL = /^HCL Gate: /;
+
+/**
+ * Brings a hand-edited plan's generated wording up to date without touching the planner's work: positions,
+ * renamed labels, and added or removed activities stay as they are. Only the start conditions, outcomes, and
+ * prerequisite links of activities the generator still produces are refreshed, plus the old HCL gate name.
+ */
+function withRefreshedActivityDetails(timeline: Timeline, sources: Timeline[], withinEntitlement: boolean): Timeline {
+  const details = new Map<string, TimelineBar>();
+  for (const source of sources) for (const activity of source.lanes.flatMap(lane => lane.bars)) if (!details.has(activity.id)) details.set(activity.id, activity);
+  const entitlementNotes = [CONTINUES_AFTER_ENTITLEMENT, SCHEDULED_AFTER_ENTITLEMENT];
+  const text = (value: string | undefined) => withinEntitlement && value
+    ? entitlementNotes.reduce((current, note) => current.replace(note, ""), value).trim() || undefined
+    : value;
+  return {
+    ...timeline,
+    lanes: timeline.lanes.map(lane => ({
+      ...lane,
+      bars: lane.bars.map(activity => {
+        const label = LEGACY_HARDWARE_MILESTONE_LABEL.test(activity.label) ? "Hardware Compatibility Confirmed" : activity.label;
+        const source = details.get(activity.id);
+        if (!source) return label === activity.label ? activity : { ...activity, label };
+        const dependsOn = text(source.dependsOn);
+        const outcome = text(source.outcome);
+        return {
+          ...activity,
+          label,
+          ...(dependsOn ? { dependsOn } : {}),
+          ...(outcome ? { outcome } : {}),
+          ...(source.prerequisites ? { prerequisites: source.prerequisites } : {}),
+        };
+      }),
+    })),
+  };
+}
+
 export function migrateDocument(value: unknown): EngagementDocument {
   const normalizedValue = normalizeRawTimelineTaxonomy(value);
   const current = engagementDocumentV11Schema.safeParse(normalizedValue);
@@ -3239,14 +3275,27 @@ export function migrateDocument(value: unknown): EngagementDocument {
       };
     }
 
-    const adoptionTimeline = withoutUnselectedGeneratedNetworking(
+    // A plan nobody has edited is always regenerated, so it reflects the current planning rules.
+    if (planAuthority === "generated") {
+      return {
+        ...current.data,
+        planAuthority,
+        fields,
+        readiness: assessReadiness(fields, current.data.inventory, current.data.inventorySources.flatMap(source => source.warnings)),
+        adoptionTimeline: generated.adoptionTimeline,
+        twoYearPlan: generated.twoYearPlan,
+        rationale: generated.rationale,
+      };
+    }
+
+    const adoptionTimeline = withRefreshedActivityDetails(withoutUnselectedGeneratedNetworking(
       normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory)),
       fields,
-    );
-    const candidateTwoYearPlan = withoutUnselectedGeneratedNetworking(
+    ), [generated.adoptionTimeline, generated.twoYearPlan], true);
+    const candidateTwoYearPlan = withRefreshedActivityDetails(withoutUnselectedGeneratedNetworking(
       normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan)),
       fields,
-    );
+    ), [generated.twoYearPlan, generated.adoptionTimeline], false);
     const twoYearPlan = planAuthority === "manual" || hasEntitlementAlignedNotional(candidateTwoYearPlan, fields)
       ? candidateTwoYearPlan
       : generated.twoYearPlan;

@@ -299,3 +299,32 @@ describe("entitlement sheet in the FCP document", () => {
     expect(governance.endCol).toBeLessThanOrEqual(4);
   });
 });
+
+describe("loading saved plans", () => {
+  it("regenerates a plan nobody edited", async () => {
+    const { migrateDocument } = await import("../shared/fcp");
+    const document = plan({ upgradePath: "greenfield" });
+    const stale = { ...document, adoptionTimeline: { ...document.adoptionTimeline, columns: [...document.adoptionTimeline.columns, "Jul 27", "Aug 27"] } };
+    expect(migrateDocument(stale).adoptionTimeline.columns).toEqual(document.adoptionTimeline.columns);
+  });
+
+  it("keeps a hand-edited plan's positions and labels while refreshing generated wording", async () => {
+    const { migrateDocument } = await import("../shared/fcp");
+    const document = plan({ upgradePath: "greenfield", operations: ["lifecycle"] }, { priorities: ["operations"] });
+    const edited = structuredClone(document);
+    edited.planAuthority = "manual";
+    const bars = edited.adoptionTimeline.lanes.flatMap(lane => lane.bars);
+    const lifecycle = bars.find(item => item.id === "bar-operations-lifecycle")!;
+    Object.assign(lifecycle, { startCol: lifecycle.startCol + 1, endCol: lifecycle.endCol + 1, label: "Our Lifecycle Rollout", dependsOn: "Begin after workload-domain readiness and the HCL gate." });
+    Object.assign(bars.find(item => item.id === "bar-hcl-gate")!, { label: "HCL Gate: Unresolved — evidence collection and decision" });
+    edited.adoptionTimeline.lanes[0].bars.push({ id: "bar-1767225600000-mine", startCol: 2, endCol: 3, color: "green", label: "Customer steering committee", milestone: false, deferred: false });
+
+    const migrated = migrateDocument(edited);
+    const after = activities(migrated.adoptionTimeline);
+    expect(migrated.planAuthority).toBe("manual");
+    expect(after.find(item => item.id === "bar-operations-lifecycle")).toMatchObject({ startCol: lifecycle.startCol, endCol: lifecycle.endCol, label: "Our Lifecycle Rollout" });
+    expect(after.find(item => item.id === "bar-operations-lifecycle")?.dependsOn).toMatch(/^Starts after: /);
+    expect(after.find(item => item.id === "bar-hcl-gate")?.label).toBe("Hardware Compatibility Confirmed");
+    expect(after.find(item => item.id === "bar-1767225600000-mine")?.label).toBe("Customer steering committee");
+  });
+});
