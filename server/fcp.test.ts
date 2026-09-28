@@ -116,7 +116,9 @@ describe("calendar-month adoption plans", () => {
     const plans = buildAdoptionPlans(document.fields, document.inventory);
     const labels = [...plans.adoptionTimeline.lanes, ...plans.twoYearPlan.lanes].flatMap(lane => [lane.name, ...lane.bars.map(activity => activity.label)]);
     const activities = plans.adoptionTimeline.lanes.flatMap(lane => lane.bars);
-    const activity = (id: string) => activities.find(candidate => candidate.id === id)!;
+    // Both views are monthly from the same start; work after entitlement end is only in the notional.
+    const notionalActivities = plans.twoYearPlan.lanes.flatMap(lane => lane.bars);
+    const activity = (id: string) => activities.find(candidate => candidate.id === id) ?? notionalActivities.find(candidate => candidate.id === id)!;
     const mobilization = activity("bar-platform-plan");
     const managementDomain = activity("bar-management-domain");
     const workloadDomain = activity("bar-workload-domain");
@@ -148,9 +150,11 @@ describe("calendar-month adoption plans", () => {
     ]));
     expect(mobilization.endCol).toBeLessThanOrEqual(managementDomain.startCol);
     // Segmentation (vDefend distributed firewall) needs NSX host preparation, so NSX is planned for it and nothing more.
-    const nsx = activity("bar-vcf-networking-nsx");
-    expect(nsx.startCol).toBeGreaterThanOrEqual(managementDomain.endCol);
-    expect(activity("bar-security-segmentation").startCol).toBeGreaterThanOrEqual(nsx.endCol);
+    // Segmentation falls after this entitlement ends, so the order is checked in the Two-Year Notional.
+    const notional = (id: string) => plans.twoYearPlan.lanes.flatMap(lane => lane.bars).find(candidate => candidate.id === id)!;
+    const nsx = notional("bar-vcf-networking-nsx");
+    expect(nsx.startCol).toBeGreaterThanOrEqual(notional("bar-management-domain").endCol);
+    expect(notional("bar-security-segmentation").startCol).toBeGreaterThanOrEqual(nsx.endCol);
     expect(activities.some(candidate => candidate.id.startsWith("bar-networking-"))).toBe(false);
     expect(workloadDomain.startCol).toBeGreaterThanOrEqual(managementDomain.startCol);
     expect(upgrade.startCol).toBeGreaterThanOrEqual(workloadDomain.endCol);
@@ -377,7 +381,8 @@ describe("calendar-month adoption plans", () => {
     Object.assign(document.inventory, { vmCount: 480, hosts: 12, poweredOnVms: 440 });
 
     const plans = buildAdoptionPlans(document.fields, document.inventory);
-    const activities = plans.adoptionTimeline.lanes.flatMap(lane => lane.bars);
+    // Work after entitlement end is carried in the Two-Year Notional, so check both views.
+    const activities = [...plans.adoptionTimeline.lanes, ...plans.twoYearPlan.lanes].flatMap(lane => lane.bars);
     const labels = activities.map(activity => activity.label);
 
     expect(labels).toEqual(expect.arrayContaining([
@@ -1253,11 +1258,13 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("#two-year .notional-year-sheet{height:8.5in;min-height:8.5in");
     expect(html).not.toContain('class="two-year-sequence-sheet"');
     expect(html).toContain('class="operational-print-sheet entitlement-one-sheet cadence-month"');
-    expect(html).toContain("Entitlement Adoption Timeline · 12-month entitlement year");
+    expect(html).toContain("Entitlement Adoption Timeline · entitlement window");
+    // Category labels are pinned to the first column so a short entitlement window cannot push them to the right.
+    expect(html).toContain(".timeline-category-lane{grid-column:1}");
     const operationalWindowCount = (html.match(/class="operational-print-sheet/g) || []).length;
     expect(operationalWindowCount).toBe(1);
     const entitlementSheet = html.match(/class="operational-print-sheet entitlement-one-sheet cadence-month">([\s\S]*?)<\/section>/)?.[1] || "";
-    expect((entitlementSheet.match(/class="timeline-head"/g) || []).length).toBe(12);
+    expect((entitlementSheet.match(/class="timeline-head"/g) || []).length).toBe(Math.min(13, document.adoptionTimeline.columns.length));
     expect(html).toContain("#adoption .operational-print-sheet .timeline-grid{width:100%;min-width:0!important}");
     expect(html).toContain("#adoption .operational-print-sheet.entitlement-one-sheet .timeline-row{min-height:22px!important}");
     expect(html).toContain("#adoption .operational-print-sheet.entitlement-one-sheet .timeline-bar{margin:1px!important;padding:1px 2px!important;min-height:11px!important");

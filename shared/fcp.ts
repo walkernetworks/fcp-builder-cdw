@@ -1298,6 +1298,38 @@ function entitlementNotionalEndDate(fields: MinimalFields): string {
   return calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd;
 }
 
+/** The entitlement end the adoption timeline stops at, or "" when no entitlement end is known. */
+function entitlementLimitDate(fields: MinimalFields): string {
+  const end = entitlementNotionalEndDate(fields);
+  return parseIsoDate(end) && end >= timelineStartDate(fields) ? end : "";
+}
+
+const CONTINUES_AFTER_ENTITLEMENT = "Continues after the entitlement ends; the remainder is carried in Year 2 of the Two-Year Notional.";
+const SCHEDULED_AFTER_ENTITLEMENT = "Scheduled after the entitlement ends; carried in Year 2 of the Two-Year Notional and needs a renewed or additional entitlement.";
+
+/**
+ * The Entitlement Adoption Timeline covers only the entitlement window. Activities that start after entitlement
+ * end are left to the Two-Year Notional; activities that run past it are cut at entitlement end.
+ */
+function limitToEntitlement(fields: MinimalFields, schedule: Timeline): Timeline {
+  if (!entitlementLimitDate(fields)) return schedule;
+  const columns = primaryColumns(fields);
+  const count = columns.length;
+  if (schedule.columns.length <= count) return schedule;
+  return {
+    ...schedule,
+    columns,
+    lanes: schedule.lanes.map(lane => ({
+      ...lane,
+      bars: lane.bars.flatMap(activity => {
+        if (activity.startCol > count) return [];
+        if (activity.endCol <= count + 1) return [activity];
+        return [{ ...activity, endCol: count + 1, outcome: [activity.outcome, CONTINUES_AFTER_ENTITLEMENT].filter(Boolean).join(" ") }];
+      }),
+    })),
+  };
+}
+
 function primaryColumns(fields: MinimalFields): string[] {
   const start = timelineStartDate(fields);
   const entitlementEnd = entitlementNotionalEndDate(fields);
@@ -2514,14 +2546,19 @@ function followOnActivities(fields: MinimalFields, inventory: InventorySummary, 
   });
 }
 
+/** Months from the first timeline month through the month the entitlement ends, or 0 when no entitlement end is known. */
+function entitlementMonthCount(fields: MinimalFields): number {
+  const end = parseIsoDate(entitlementLimitDate(fields));
+  const start = parseIsoDate(timelineStartDate(fields));
+  return end && start ? monthDifference(start, end) + 1 : 0;
+}
+
 function mirrorEntitlementLanes(adoptionTimeline: Timeline, columnCount: number): TimelineLane[] {
-  const weeklyImplementationUnits = Math.min(52, adoptionTimeline.columns.length);
-  const normalizeStart = (value: number) => adoptionTimeline.cadence === "week"
-    ? Math.max(1, Math.floor(((value - 1) / weeklyImplementationUnits) * 12) + 1)
-    : value;
-  const normalizeEnd = (value: number) => adoptionTimeline.cadence === "week"
-    ? Math.max(2, Math.ceil(((value - 1) / weeklyImplementationUnits) * 12) + 1)
-    : value;
+  // Weekly columns map to the calendar month each week falls in, so carried-over work keeps its real month.
+  const firstWeek = parseIsoDate(adoptionTimeline.startDate);
+  const monthOfWeek = (column: number) => firstWeek ? monthDifference(firstWeek, addUtcDays(firstWeek, (column - 1) * 7)) + 1 : column;
+  const normalizeStart = (value: number) => adoptionTimeline.cadence === "week" ? Math.max(1, monthOfWeek(value)) : value;
+  const normalizeEnd = (value: number) => adoptionTimeline.cadence === "week" ? Math.max(2, monthOfWeek(value - 1) + 1) : value;
 
   return adoptionTimeline.lanes.map(lane => ({
     id: lane.id,
@@ -2611,10 +2648,16 @@ function hasEntitlementAlignedNotional(timeline: Timeline, fields: MinimalFields
   return timeline.lanes.flatMap(lane => lane.bars).some(activity => activity.id === "bar-platform-plan");
 }
 
-function buildTwoYearPlan(fields: MinimalFields, _inventory: InventorySummary, adoptionTimeline: Timeline): Timeline {
+function buildTwoYearPlan(fields: MinimalFields, _inventory: InventorySummary, schedule: Timeline): Timeline {
   const startDate = entitlementNotionalStartDate(fields);
   const columns = buildTwoYearNotionalColumns(startDate);
-  const lanes: TimelineLane[] = mirrorEntitlementLanes(adoptionTimeline, columns.length);
+  const lastEntitlementMonth = entitlementMonthCount(fields);
+  const lanes: TimelineLane[] = mirrorEntitlementLanes(schedule, columns.length).map(lane => ({
+    ...lane,
+    bars: lane.bars.map(activity => lastEntitlementMonth && activity.startCol > lastEntitlementMonth && !activity.outcome?.includes(SCHEDULED_AFTER_ENTITLEMENT)
+      ? { ...activity, outcome: [activity.outcome, SCHEDULED_AFTER_ENTITLEMENT].filter(Boolean).join(" ") }
+      : activity),
+  }));
   const implementationEnd = Math.max(1, ...lanes.flatMap(lane => lane.bars.map(activity => activity.endCol)));
   const continuationStart = Math.min(columns.length + 1, implementationEnd);
 
@@ -2632,8 +2675,11 @@ function buildTwoYearPlan(fields: MinimalFields, _inventory: InventorySummary, a
 export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary, providedHclPath?: HclSchedulePath): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
   const hclPath = providedHclPath ?? getHclSchedulePath(inventory);
   const playbookPlan = playbookPlanForFields(fields);
-  const adoptionTimeline = buildPrimaryTimeline(fields, inventory, hclPath);
-  const twoYearPlan = buildTwoYearPlan(fields, inventory, adoptionTimeline);
+  // Schedule everything first, then cap the entitlement view; the Two-Year Notional carries what falls after it.
+  const schedule = buildPrimaryTimeline(fields, inventory, hclPath);
+  const adoptionTimeline = limitToEntitlement(fields, schedule);
+  const twoYearPlan = buildTwoYearPlan(fields, inventory, schedule);
+  const carriedToYearTwo = schedule.lanes.flatMap(lane => lane.bars).filter(activity => activity.startCol > adoptionTimeline.columns.length).length;
   const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
   const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
   const plannedProjectStart = timelineStartDate(fields);
@@ -2673,13 +2719,16 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
     ? `The platform edition is VMware vSphere Foundation (VVF 9): vCenter, VCF Operations, VKS, and vSAN without NSX, VCF Automation, HCX, or Private AI Services.${resolvedOutcomes.excluded.length ? ` Selected outcomes that require VCF are left out of this plan: ${resolvedOutcomes.excluded.map(key => planOutcomeLabel(key)).join("; ")}.` : ""}`
     : "";
   const pulledIn = resolvedOutcomes.outcomes.filter(outcome => outcome.requiredBy.length);
+  const yearTwoContext = carriedToYearTwo
+    ? `${carriedToYearTwo} scheduled ${carriedToYearTwo === 1 ? "activity falls" : "activities fall"} after the entitlement ends and ${carriedToYearTwo === 1 ? "is" : "are"} carried in Year 2 of the Two-Year Notional.`
+    : "";
   const prerequisiteContext = pulledIn.length
     ? `Prerequisites were added so selected outcomes can be delivered: ${pulledIn.map(outcome => `${planOutcomeLabel(outcome.key, edition)} (for ${outcome.requiredBy.map(key => planOutcomeLabel(key, edition)).join(", ")})`).join("; ")}.`
     : "";
   const deliveryTiming = implementationIsDeferred
     ? `Design and delivery-baseline work starts at the planned project start (${plannedProjectStart}), while implementation, upgrade, and migration services are planned to begin on ${implementationStart}. The gap is intentional and represents design, decision, dependency, procurement, and change-window preparation rather than idle delivery.`
     : `Design, delivery baseline, and implementation services are currently planned to begin at the planned project start (${plannedProjectStart}); change the implementation-services start when the customer is still in design or planning.`;
-  const rationale = `${customer} is planning a ${editionName} adoption around ${estate}, ${cadence}, and ${details}. Delivery posture: ${deliveryTiming} The selected ${editionName} pathway is ${playbookPlan.label}. The generated design package is ${designPackageSummary}. ${playbookPlan.description} ${editionContext ? `${editionContext} ` : ""}${prerequisiteContext ? `${prerequisiteContext} ` : ""}${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The Entitlement Adoption Timeline begins at the planned project start (${entitlementNotionalStart}) and sequences the planned drawdown through entitlement end (${entitlementEnd || "TBD"}) against ${amount}. The separate Two-Year Notional extends the directional adoption roadmap through month 24 and is not a commitment that all work is funded by the current entitlement; ${followOnSummary}. Multiple independently typed workstreams can coexist within the same fixed category, and every lane and activity can be renamed, moved, resized, added, or removed.`;
+  const rationale = `${customer} is planning a ${editionName} adoption around ${estate}, ${cadence}, and ${details}. Delivery posture: ${deliveryTiming} The selected ${editionName} pathway is ${playbookPlan.label}. The generated design package is ${designPackageSummary}. ${playbookPlan.description} ${editionContext ? `${editionContext} ` : ""}${prerequisiteContext ? `${prerequisiteContext} ` : ""}${yearTwoContext ? `${yearTwoContext} ` : ""}${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The Entitlement Adoption Timeline begins at the planned project start (${entitlementNotionalStart}) and sequences the planned drawdown through entitlement end (${entitlementEnd || "TBD"}) against ${amount}. The separate Two-Year Notional extends the directional adoption roadmap through month 24 and is not a commitment that all work is funded by the current entitlement; ${followOnSummary}. Multiple independently typed workstreams can coexist within the same fixed category, and every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
 }
 
@@ -3406,7 +3455,14 @@ export function synchronizeEntitlementNotionalFromOperational(document: Engageme
   const lanesById = new Map(document.twoYearPlan.lanes.map(lane => [lane.id, { ...lane, bars: lane.bars.filter(item => !synchronizedBarIds.has(item.id)) }]));
   const orderedLaneIds = document.twoYearPlan.lanes.map(lane => lane.id);
 
+  // An activity cut at entitlement end keeps the Year 2 remainder it already had in the notional.
+  const priorNotionalEnds = new Map(document.twoYearPlan.lanes.flatMap(lane => lane.bars.map(item => [item.id, item.endCol] as const)));
+  const lastEntitlementMonth = entitlementMonthCount(document.fields);
   mirroredLanes.forEach(mirroredLane => {
+    mirroredLane.bars = mirroredLane.bars.map(item => {
+      const priorEnd = priorNotionalEnds.get(item.id);
+      return lastEntitlementMonth && item.endCol >= lastEntitlementMonth + 1 && priorEnd && priorEnd > item.endCol ? { ...item, endCol: priorEnd } : item;
+    });
     const existing = lanesById.get(mirroredLane.id);
     if (existing) {
       existing.name = mirroredLane.name;

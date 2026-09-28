@@ -82,9 +82,10 @@ describe("plans without an approved execution pathway", () => {
 });
 
 describe("outcome prerequisites", () => {
+  // Capability work often falls after a 12-month entitlement, so ordering is checked on the full schedule in the notional.
   it("adds and sequences the vDefend chain for malware prevention", () => {
     const document = plan({ upgradePath: "greenfield", security: ["malware-prevention"] }, { priorities: ["security"] });
-    const timeline = document.adoptionTimeline;
+    const timeline = document.twoYearPlan;
     const nsx = activity(timeline, "bar-vcf-networking-nsx");
     const segmentation = activity(timeline, "bar-security-segmentation");
     const ssp = activity(timeline, "bar-security-services-platform");
@@ -100,7 +101,7 @@ describe("outcome prerequisites", () => {
   });
 
   it("builds VPCs on overlay, Edge routing, and the physical fabric", () => {
-    const timeline = plan({ upgradePath: "converge", networking: ["vpc"] }, { priorities: ["networking"] }).adoptionTimeline;
+    const timeline = plan({ upgradePath: "converge", networking: ["vpc"] }, { priorities: ["networking"] }).twoYearPlan;
     const fabric = activity(timeline, "bar-networking-physical-fabric");
     const nsx = activity(timeline, "bar-vcf-networking-nsx");
     const edge = activity(timeline, "bar-networking-edge-cluster-routing");
@@ -112,7 +113,7 @@ describe("outcome prerequisites", () => {
   });
 
   it("places WAF after Avi, and DSM after VCF Automation and the Supervisor", () => {
-    const timeline = plan({ upgradePath: "greenfield", security: ["waf"], automation: ["data-services"] }, { priorities: ["security", "automation"] }).adoptionTimeline;
+    const timeline = plan({ upgradePath: "greenfield", security: ["waf"], automation: ["data-services"] }, { priorities: ["security", "automation"] }).twoYearPlan;
     expect(activity(timeline, "bar-security-waf").startCol).toBeGreaterThanOrEqual(activity(timeline, "bar-networking-load-balancing").endCol);
     const dsm = activity(timeline, "bar-cloud-automation-data-services");
     expect(dsm.startCol).toBeGreaterThanOrEqual(activity(timeline, "bar-cloud-automation-vm-self-service").endCol);
@@ -122,7 +123,7 @@ describe("outcome prerequisites", () => {
   });
 
   it("takes the Private AI pilot through GPU capacity, guardrails, the Supervisor, and VCF Automation", () => {
-    const timeline = plan({ upgradePath: "greenfield", privateAi: ["pilot-onboarding"] }, { priorities: ["private-ai"] }).adoptionTimeline;
+    const timeline = plan({ upgradePath: "greenfield", privateAi: ["pilot-onboarding"] }, { priorities: ["private-ai"] }).twoYearPlan;
     const pilot = activity(timeline, "bar-cloud-private-ai-pilot-onboarding");
     for (const id of ["bar-cloud-private-ai-ai-guardrails", "bar-cloud-automation-vm-self-service"]) expect(pilot.startCol).toBeGreaterThanOrEqual(activity(timeline, id).endCol);
     expect(activity(timeline, "bar-cloud-private-ai-gpu-capacity").startCol).toBeGreaterThanOrEqual(activity(timeline, "bar-cloud-kubernetes-workload-domains").endCol);
@@ -141,21 +142,48 @@ describe("platform licensing", () => {
   });
 });
 
-describe("timeline horizon", () => {
-  it("extends the grid past entitlement end instead of squeezing work into the last column", () => {
-    const document = plan({
-      upgradePath: "greenfield",
-      operations: ["lifecycle", "observability", "capacity-cost"],
-      security: ["malware-prevention", "ids-ips", "waf"],
-      resilience: ["recovery-exercises"],
-    }, { priorities: ["operations", "security", "resilience"] });
-    const timeline = document.adoptionTimeline;
-    const byLane = timeline.lanes.find(lane => lane.id === "lane-security-resilience")!.bars.filter(item => !item.id.startsWith("bar-playbook-component-design-"));
-    // Sequential security work never shares a start column.
-    expect(new Set(byLane.map(item => item.startCol)).size).toBe(byLane.length);
-    expect(timeline.columns.length).toBeGreaterThan(13);
+describe("entitlement horizon", () => {
+  const heavyPlan = () => plan({
+    upgradePath: "greenfield",
+    operations: ["lifecycle", "observability", "capacity-cost"],
+    security: ["malware-prevention", "ids-ips", "waf"],
+    resilience: ["recovery-exercises"],
+  }, { priorities: ["operations", "security", "resilience"] });
+
+  it("stops the Entitlement Adoption Timeline at entitlement end", () => {
+    const timeline = heavyPlan().adoptionTimeline;
+    // 2026-06-01 through the calculated entitlement end of 2027-06-01.
+    expect(timeline.columns).toHaveLength(13);
+    expect(timeline.columns.at(-1)).toBe("Jun 27");
+    expect(activities(timeline).every(item => item.endCol <= timeline.columns.length + 1)).toBe(true);
     expect(validateTimeline(timeline)).toEqual([]);
     expect(validateTimelineSequence(timeline)).toEqual([]);
+  });
+
+  it("carries work that falls after entitlement end into Year 2 of the Two-Year Notional", () => {
+    const document = heavyPlan();
+    const entitlementIds = new Set(activities(document.adoptionTimeline).map(item => item.id));
+    const carried = activities(document.twoYearPlan).filter(item => !entitlementIds.has(item.id) && !item.id.startsWith("bar-two-year-baseline-"));
+    expect(carried.length).toBeGreaterThan(0);
+    expect(carried.every(item => item.startCol > 13)).toBe(true);
+    expect(carried.every(item => item.outcome?.includes("needs a renewed or additional entitlement"))).toBe(true);
+    // Sequential security work keeps its own months rather than being squeezed together.
+    const security = activities(document.twoYearPlan).filter(item => /^bar-(security|resilience)-/.test(item.id));
+    expect(new Set(security.map(item => item.startCol)).size).toBe(security.length);
+    expect(document.rationale).toMatch(/activities fall after the entitlement ends and are carried in Year 2 of the Two-Year Notional/);
+    expect(validateTimelineSequence(document.twoYearPlan)).toEqual([]);
+  });
+
+  it("marks an activity that runs past entitlement end as continuing in Year 2", () => {
+    const document = heavyPlan();
+    const lastColumn = document.adoptionTimeline.columns.length + 1;
+    const cut = activities(document.adoptionTimeline).filter(item => item.endCol === lastColumn && item.outcome?.includes("Continues after the entitlement ends"));
+    for (const item of cut) expect(activity(document.twoYearPlan, item.id).endCol).toBeGreaterThan(13 + 1);
+  });
+
+  it("keeps the whole schedule in the entitlement timeline when no entitlement end is known", () => {
+    const document = plan({ upgradePath: "greenfield", security: ["waf"] }, { priorities: ["security"], entitlementStart: "" });
+    expect(activities(document.adoptionTimeline).some(item => item.id === "bar-security-waf")).toBe(true);
   });
 });
 
@@ -175,7 +203,7 @@ describe("VMware vSphere Foundation plans", () => {
       { upgradePath: "greenfield", security: ["segmentation", "waf"], automation: ["vm-self-service"], kubernetes: ["workload-domains"] },
       { priorities: ["security", "automation", "kubernetes"] },
     );
-    const timeline = document.adoptionTimeline;
+    const timeline = document.twoYearPlan;
     const ids = activities(timeline).map(item => item.id);
     expect(activity(timeline, "bar-vvf-foundation").label).toBe("Deploy and Validate the Greenfield VVF Foundation");
     expect(ids).toContain("bar-vvf-workload-clusters");
