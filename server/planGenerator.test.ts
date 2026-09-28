@@ -143,17 +143,18 @@ describe("platform licensing", () => {
 });
 
 describe("entitlement horizon", () => {
+  // Delivery starts six months into the entitlement, leaving a seven-month runway to the 2027-06-01 entitlement end.
   const heavyPlan = () => plan({
     upgradePath: "greenfield",
     operations: ["lifecycle", "observability", "capacity-cost"],
     security: ["malware-prevention", "ids-ips", "waf"],
     resilience: ["recovery-exercises"],
-  }, { priorities: ["operations", "security", "resilience"] });
+  }, { priorities: ["operations", "security", "resilience"], plannedProjectStart: "2026-12-01", plannedImplementationStart: "2026-12-01" });
 
   it("stops the Entitlement Adoption Timeline at entitlement end", () => {
     const timeline = heavyPlan().adoptionTimeline;
-    // 2026-06-01 through the calculated entitlement end of 2027-06-01.
-    expect(timeline.columns).toHaveLength(13);
+    expect(timeline.columns).toHaveLength(7);
+    expect(timeline.columns[0]).toBe("Dec 26");
     expect(timeline.columns.at(-1)).toBe("Jun 27");
     expect(activities(timeline).every(item => item.endCol <= timeline.columns.length + 1)).toBe(true);
     expect(validateTimeline(timeline)).toEqual([]);
@@ -165,11 +166,11 @@ describe("entitlement horizon", () => {
     const entitlementIds = new Set(activities(document.adoptionTimeline).map(item => item.id));
     const carried = activities(document.twoYearPlan).filter(item => !entitlementIds.has(item.id) && !item.id.startsWith("bar-two-year-baseline-"));
     expect(carried.length).toBeGreaterThan(0);
-    expect(carried.every(item => item.startCol > 13)).toBe(true);
+    expect(carried.every(item => item.startCol > 7)).toBe(true);
     expect(carried.every(item => item.outcome?.includes("needs a renewed or additional entitlement"))).toBe(true);
-    // Sequential security work keeps its own months rather than being squeezed together.
+    // Security work keeps at most two activities running at once rather than being squeezed together.
     const security = activities(document.twoYearPlan).filter(item => /^bar-(security|resilience)-/.test(item.id));
-    expect(new Set(security.map(item => item.startCol)).size).toBe(security.length);
+    for (const item of security) expect(security.filter(other => other.startCol === item.startCol).length).toBeLessThanOrEqual(2);
     expect(document.rationale).toMatch(/activities fall after the entitlement ends and are carried in Year 2 of the Two-Year Notional/);
     expect(validateTimelineSequence(document.twoYearPlan)).toEqual([]);
   });
@@ -178,12 +179,42 @@ describe("entitlement horizon", () => {
     const document = heavyPlan();
     const lastColumn = document.adoptionTimeline.columns.length + 1;
     const cut = activities(document.adoptionTimeline).filter(item => item.endCol === lastColumn && item.outcome?.includes("Continues after the entitlement ends"));
-    for (const item of cut) expect(activity(document.twoYearPlan, item.id).endCol).toBeGreaterThan(13 + 1);
+    for (const item of cut) expect(activity(document.twoYearPlan, item.id).endCol).toBeGreaterThan(7 + 1);
   });
 
   it("keeps the whole schedule in the entitlement timeline when no entitlement end is known", () => {
     const document = plan({ upgradePath: "greenfield", security: ["waf"] }, { priorities: ["security"], entitlementStart: "" });
     expect(activities(document.adoptionTimeline).some(item => item.id === "bar-security-waf")).toBe(true);
+  });
+});
+
+describe("greenfield delivery length", () => {
+  const scopes = {
+    typical: [{ operations: ["lifecycle", "observability"], security: ["segmentation"], resilience: ["recovery-architecture"], automation: ["vm-self-service"], kubernetes: ["workload-domains"], softPrerequisites: ["dns-ntp"] }, ["operations", "security", "resilience", "automation", "kubernetes"]],
+    broad: [{ operations: ["lifecycle", "observability", "capacity-cost", "custom-dashboards"], security: ["malware-prevention", "ids-ips", "waf", "identity-firewall"], resilience: ["recovery-exercises", "cloud-cyber-recovery"], networking: ["vpc", "load-balancing"], automation: ["data-services"], privateAi: ["pilot-onboarding"] }, ["operations", "security", "resilience", "networking", "automation", "private-ai"]],
+  } as const;
+  for (const cadence of ["month", "week"] as const) {
+    for (const [name, [details, priorities]] of Object.entries(scopes)) {
+      it(`fits a ${name} ${cadence}ly greenfield plan inside a 12-month entitlement`, () => {
+        const document = plan({ upgradePath: "greenfield", ...(details as AdoptionDetailsPatch) }, { adoptionCadence: cadence, priorities: [...priorities] });
+        const entitlementIds = new Set(activities(document.adoptionTimeline).map(item => item.id));
+        const carried = activities(document.twoYearPlan).filter(item => !entitlementIds.has(item.id) && !item.id.startsWith("bar-two-year-baseline-"));
+        expect(carried).toEqual([]);
+        const handover = activity(document.adoptionTimeline, "bar-platform-handover");
+        expect(handover.endCol).toBeLessThanOrEqual(document.adoptionTimeline.columns.length + 1);
+        expect(activities(document.adoptionTimeline).some(item => item.outcome?.includes("Continues after the entitlement ends"))).toBe(false);
+      });
+    }
+  }
+
+  it("runs capability work alongside the migration waves once the workload domain is ready", () => {
+    const timeline = plan({ upgradePath: "greenfield", operations: ["lifecycle"] }, { priorities: ["operations"] }).adoptionTimeline;
+    const workloadDomain = activity(timeline, "bar-workload-domain");
+    const waves = activity(timeline, "bar-playbook-execution-migration-waves");
+    const lifecycle = activity(timeline, "bar-operations-lifecycle");
+    expect(lifecycle.startCol).toBe(workloadDomain.endCol);
+    expect(lifecycle.startCol).toBeLessThan(waves.endCol);
+    expect(activity(timeline, "bar-platform-handover").startCol).toBeGreaterThanOrEqual(waves.endCol);
   });
 });
 

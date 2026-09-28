@@ -1511,13 +1511,13 @@ function upgradePathNarrative(path: UpgradePath): string {
 function upgradePathMigrationDuration(path: UpgradePath, cadence: TimelineCadence, baseDuration: number): number {
   const canonicalPath = canonicalVcfDeliveryPath(path);
   if (canonicalPath === "design-only" || canonicalPath === "undecided" || canonicalPath === "converge" || canonicalPath === "import-workload-domain") return 0;
-  const adjustment: Record<"in-place" | "greenfield" | "hybrid", number> = {
-    "in-place": -1,
-    greenfield: 2,
-    hybrid: 2,
+  // Greenfield and multi-path waves run about a quarter; in-place upgrade waves are shorter.
+  const duration: Record<"in-place" | "greenfield" | "hybrid", number> = {
+    "in-place": cadence === "week" ? 3 : 1,
+    greenfield: cadence === "week" ? 12 : 3,
+    hybrid: cadence === "week" ? 12 : 3,
   };
-  const maximum = cadence === "week" ? 12 : 6;
-  return Math.max(1, Math.min(maximum, baseDuration + adjustment[canonicalPath]));
+  return Math.max(1, Math.min(baseDuration * 3, duration[canonicalPath]));
 }
 
 function compactPlanningText(value: string, maximum = 420): string {
@@ -1995,13 +1995,14 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const remediationDuration = scheduleUnits(cadence, 3, 1);
   const procurementDuration = scheduleUnits(cadence, 8, 2);
   const greenfieldDuration = scheduleUnits(cadence, 4, 1);
-  const managementDuration = scheduleUnits(cadence, 4, 2);
+  // The VCF Installer brings a validated design up in days; a month covers deployment and validation.
+  const managementDuration = scheduleUnits(cadence, 3, 1);
   const edition = effectivePlatformEdition(fields);
   const resolvedOutcomes = resolvePlanOutcomes(fields);
   const outcomeKeys = new Set(resolvedOutcomes.outcomes.map(outcome => outcome.key));
   const networkingInScope = outcomeKeys.has("platform:nsx");
-  const networkingDuration = networkingInScope ? scheduleUnits(cadence, 5, 2) : 0;
-  const workloadDuration = scheduleUnits(cadence, 5, 2);
+  const networkingDuration = networkingInScope ? scheduleUnits(cadence, 3, 1) : 0;
+  const workloadDuration = scheduleUnits(cadence, 2, 1);
   const moduleDuration = scheduleUnits(cadence, 3, 1);
   const securityDuration = scheduleUnits(cadence, 3, 1);
   const handoverDuration = scheduleUnits(cadence, 3, 1);
@@ -2051,6 +2052,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     return "operations";
   };
   let pathwayDesignCursor = 1;
+  let firstDesignPackageEnd: number | undefined;
   playbookPlan.designPackages.forEach((workPackage, index) => {
     const duration = index === 0 ? scheduleUnits(cadence, 2, 1) : scheduleUnits(cadence, 3, 1);
     const [taskStart, taskEnd] = range(pathwayDesignCursor, duration);
@@ -2067,14 +2069,17 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       `${workPackage.outcome} Acceptance: ${workPackage.acceptance}`,
     ));
     pathwayDesignCursor = taskEnd;
+    firstDesignPackageEnd ??= taskEnd;
   });
+  // Component designs start once requirements are confirmed and run alongside the rest of the pathway design.
+  const requirementsEnd = firstDesignPackageEnd ?? pathwayDesignCursor;
   const componentDesignCursors: Record<DesignLaneKey, number> = {
-    program: pathwayDesignCursor,
-    infrastructureBuild: pathwayDesignCursor,
-    infrastructureWaves: pathwayDesignCursor,
-    operations: pathwayDesignCursor,
-    cloud: pathwayDesignCursor,
-    security: pathwayDesignCursor,
+    program: requirementsEnd,
+    infrastructureBuild: requirementsEnd,
+    infrastructureWaves: requirementsEnd,
+    operations: requirementsEnd,
+    cloud: requirementsEnd,
+    security: requirementsEnd,
   };
   const designedCapabilities = capabilitySchema.options.filter(capability =>
     (fields.priorities.includes(capability) && isPlanOutcomeAvailable(`${capability}:core`, edition) && (capability !== "networking" || edition === "vcf"))
@@ -2244,7 +2249,12 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     platformReadyId = executionId;
   }
 
-  const platformReadyEnd = migrationEnd;
+  // Capability work starts once the platform is accepted. On greenfield and multi-path plans that is the workload
+  // domain, so it runs alongside the migration waves; elsewhere the pathway execution itself readies the platform.
+  const migratesOntoNewPlatform = playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid";
+  const deliveryCompleteId = platformReadyId;
+  const platformReadyEnd = migratesOntoNewPlatform ? workloadEnd : migrationEnd;
+  if (migratesOntoNewPlatform) platformReadyId = vvf ? "bar-vvf-workload-clusters" : "bar-workload-domain";
   const implementationApproved = playbookPlan.path !== "undecided" && playbookPlan.path !== "design-only";
   const operationsBars: TimelineBar[] = [...designBars.operations];
   const cloudBars: TimelineBar[] = [...designBars.cloud];
@@ -2257,6 +2267,13 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     security: Math.max(componentDesignCursors.security, platformReadyEnd),
   };
   const laneBars = { infrastructure: infrastructureBars, operations: operationsBars, cloud: cloudBars, security: securityBars };
+  /** Each lane runs up to two independent activities at once; an activity still waits for its prerequisites. */
+  const laneSlots: Record<keyof typeof cursors, number[]> = {
+    infrastructure: [cursors.infrastructure, cursors.infrastructure],
+    operations: [cursors.operations, cursors.operations],
+    cloud: [cursors.cloud, cursors.cloud],
+    security: [cursors.security, cursors.security],
+  };
 
   if (implementationApproved && playbookPlan.path === "in-place" && playbookPlan.implementationPackages[1]) {
     const managementPackage = playbookPlan.implementationPackages[1];
@@ -2265,6 +2282,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     operationsBars.push({ ...bar(id, taskStart, taskEnd, colorForWorkstreamType("Operating Model / Platform"), managementPackage.title, false, false, managementPackage.dependsOn, `${managementPackage.outcome} Acceptance: ${managementPackage.acceptance}`), prerequisites: [platformReadyId] });
     endById.set(id, taskEnd);
     cursors.operations = taskEnd;
+    laneSlots.operations = [taskEnd, taskEnd];
   }
   if (implementationApproved && playbookPlan.path !== "import-workload-domain") {
     // The platform runs on a 90-day evaluation until subscription licensing is activated.
@@ -2313,8 +2331,10 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       const id = outcomeBarId(outcome.key);
       const lane = outcomeLane(outcome.key);
       const prerequisiteIds = outcome.prerequisites.map(outcomeBarId).filter(prerequisiteId => endById.has(prerequisiteId));
+      const slots = laneSlots[lane];
+      const slot = slots.indexOf(Math.min(...slots));
       const [taskStart, taskEnd] = range(
-        Math.max(cursors[lane], ...prerequisiteIds.map(prerequisiteId => endById.get(prerequisiteId)!)),
+        Math.max(slots[slot], ...prerequisiteIds.map(prerequisiteId => endById.get(prerequisiteId)!)),
         outcome.key === "platform:nsx" ? networkingDuration : lane === "security" ? securityDuration : moduleDuration,
       );
       const context = laneContext(outcome.key);
@@ -2328,7 +2348,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
         prerequisites: Array.from(new Set([lane === "infrastructure" && nsxScheduledWithFoundation ? "bar-vcf-networking-nsx" : platformReadyId, ...prerequisiteIds])),
       });
       endById.set(id, taskEnd);
-      cursors[lane] = taskEnd;
+      slots[slot] = taskEnd;
+      cursors[lane] = Math.max(cursors[lane], taskEnd);
     }
   }
   const operationsCursor = cursors.operations;
@@ -2361,7 +2382,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   if (implementationApproved) {
     const [handoverStart, handoverEnd] = range(Math.max(migrationEnd, operationsCursor, cloudEnd, securityEnd, networkingEnd), handoverDuration);
-    operationsBars.push({ ...bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Validate Handover, Service Acceptance, and Ongoing Lifecycle", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm operational readiness, evidence, ownership, and the continuing lifecycle cadence."), prerequisites: [platformReadyId] });
+    operationsBars.push({ ...bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Validate Handover, Service Acceptance, and Ongoing Lifecycle", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm operational readiness, evidence, ownership, and the continuing lifecycle cadence."), prerequisites: [deliveryCompleteId] });
   }
 
   const lanes: TimelineLane[] = [
