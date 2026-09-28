@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { isCommercialCustomer } from "../shared/buildingBlocks";
-import { engagementDocumentSchema } from "../shared/fcp";
+import { migrateDocument } from "../shared/fcp";
 import * as db from "./db";
 import { BUILDING_BLOCKS_MIME, buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
 import { verifyExportTicket } from "./exportTickets";
@@ -29,7 +29,8 @@ export function registerExportDownloadRoutes(app: Express) {
       const row = await db.getEngagement(ticket.userId, ticket.engagementId);
       if (!row) return deny(res, 404, "Engagement not found.");
 
-      const document = engagementDocumentSchema.parse(row.data);
+      // Same migration the workspace applies on load, so exports reflect current planning rules and wording.
+      const document = migrateDocument(row.data);
 
       res.setHeader("Cache-Control", "private, no-store, max-age=0");
       res.setHeader("Pragma", "no-cache");
