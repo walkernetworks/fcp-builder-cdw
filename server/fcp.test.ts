@@ -768,7 +768,9 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(procurement && greenfield && hclGate && prerequisite && migration && cloud && security && resilience).toBeTruthy();
     expect(prerequisite!.startCol).toBe(procurement!.startCol);
     expect(hclGate!.startCol).toBeGreaterThanOrEqual(greenfield!.endCol);
-    expect(Math.min(cloud!.startCol, security!.startCol, resilience!.startCol)).toBeGreaterThanOrEqual(migration!.endCol);
+    // Capability work starts once the workload domain is accepted and runs alongside the migration waves.
+    const workloadDomain = redBars.find(activity => activity.id === "bar-workload-domain");
+    expect(Math.min(cloud!.startCol, security!.startCol, resilience!.startCol)).toBeGreaterThanOrEqual(workloadDomain!.endCol);
     expect(migration!.dependsOn).toContain("Accepted foundation");
   });
 
