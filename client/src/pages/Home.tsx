@@ -12,17 +12,16 @@ import { downloadServerAttachment } from "@/lib/downloads";
 import { engagementExists, engagementIdFromSearch, reconcileSelectedEngagementId, shouldQuerySelectedEngagement } from "@/lib/engagementSelection";
 import { trpc } from "@/lib/trpc";
 import { isCommercialCustomer } from "@shared/buildingBlocks";
+import { exportFilename, type ExportDocumentType } from "@shared/exportFilename";
 import { createDefaultDocument, DELIVERY_ROLE_BY_WORKSTREAM, getFollowOnReadinessGuidance, migrateDocument, refreshDerivedDocument, summarizeDeliveryStaffing, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
 import { ArrowRight, BriefcaseBusiness, CalendarRange, ClipboardCheck, Coins, Copy, Download, FileCheck2, FileSpreadsheet, Layers3, Loader2, MoreHorizontal, PackageCheck, Plus, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const DEFAULT_ENGAGEMENT_TITLE = "New FCP Engagement";
-type ExportDocumentType = "fcp" | "plan-output" | "building-blocks";
 type ExportFormat = "html" | "pdf" | "xlsx";
 type ActiveExport = { format: ExportFormat; documentType: ExportDocumentType } | null;
 const EXPORT_DOCUMENT_LABELS: Record<ExportDocumentType, string> = { fcp: "FCP", "plan-output": "Compatibility handoff", "building-blocks": "Building Blocks workbook" };
-const EXPORT_FILENAME_SUFFIXES: Record<ExportDocumentType, string> = { fcp: "", "plan-output": "-Compatibility-Handoff", "building-blocks": "-Building-Blocks" };
 type WorkspaceStage = "engagement" | "plan" | "staffing" | "technical" | "package";
 
 export default function Home() {
@@ -153,7 +152,7 @@ export default function Home() {
       await update.mutateAsync({ id: selectedId, title, data: fcpDocument });
       const result = await downloadTicket.mutateAsync({ id: selectedId, format, documentType });
       const response = await fetch(result.url, { credentials: "same-origin" });
-      const fallbackName = `${title || "FCP"}${EXPORT_FILENAME_SUFFIXES[documentType]}.${format}`;
+      const fallbackName = exportFilename(title, documentType, format);
       await downloadServerAttachment(response, format, fallbackName);
       toast.success(`${EXPORT_DOCUMENT_LABELS[documentType]} ${format.toUpperCase()} download started`);
     } catch (error) {
