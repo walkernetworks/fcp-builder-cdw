@@ -2362,18 +2362,20 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     // Without an approved execution pathway the plan still runs to entitlement end: the design is taken to an
     // execution decision, then governed and prepared for implementation rather than leaving the window empty.
     const designEnd = Math.max(pathwayDesignEnd, hclGateEnd, ...Object.values(componentDesignCursors));
+    // These run through entitlement end, not to the end of the scheduling grid.
+    const windowEnd = entitlementLimitDate(fields) ? Math.min(count, primaryColumns(fields).length) : count;
     const lastDesignPackage = playbookPlan.designPackages.at(-1);
     const [decisionStart, decisionEnd] = range(designEnd, 1);
     programBars.push({
       ...bar("bar-platform-execution-decision", decisionStart, decisionEnd, colorForWorkstreamType("Governance"), playbookPlan.path === "design-only" ? "Approve Implementation Funding and Delivery Window" : "Approve the VCF Adoption Pathway and Execution Funding", true, false, "Begin after the design package is accepted by the architecture and funding owners.", "Record the approved execution pathway, funding, delivery window, and implementation partner so implementation can be planned."),
       ...(lastDesignPackage ? { prerequisites: [`bar-playbook-design-${lastDesignPackage.id}`] } : {}),
     });
-    const [governanceStart, governanceEnd] = range(decisionEnd, count + 1 - decisionEnd);
+    const [governanceStart, governanceEnd] = range(decisionEnd, windowEnd + 1 - decisionEnd);
     programBars.push({
       ...bar("bar-platform-design-authority", governanceStart, governanceEnd, colorForWorkstreamType("Governance"), "Maintain Design Authority and Entitlement Governance", false, false, "Continue after the execution decision through entitlement end.", "Keep the decision register, design baseline, risks, and entitlement drawdown current until implementation is contracted."),
       prerequisites: ["bar-platform-execution-decision"],
     });
-    const [readinessStart, readinessEnd] = range(designEnd, count + 1 - designEnd);
+    const [readinessStart, readinessEnd] = range(designEnd, windowEnd + 1 - designEnd);
     operationsBars.push({
       ...bar("bar-platform-operating-readiness", readinessStart, readinessEnd, colorForWorkstreamType("Operating Model / Platform"), "Prepare Operating Model, Skills, and Runbooks for Implementation", false, false, "Begin after the design package is accepted.", "Prepare platform ownership, skills, support model, and operational runbooks so implementation can start without delay once approved."),
       ...(lastDesignPackage ? { prerequisites: [`bar-playbook-design-${lastDesignPackage.id}`] } : {}),

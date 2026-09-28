@@ -283,3 +283,19 @@ describe("generated plans across pathways and editions", () => {
     }
   }
 });
+
+describe("entitlement sheet in the FCP document", () => {
+  it("names the window by project start and entitlement end and spreads a short window across the sheet", async () => {
+    const { renderFcpHtml } = await import("./fcpRenderer");
+    const document = plan({ upgradePath: "design-only" }, { adoptionCadence: "week", plannedProjectStart: "2026-10-07", plannedImplementationStart: "2026-10-07", entitlementStart: "2025-12-30", priorities: ["operations"] });
+    const html = renderFcpHtml("Short Window", document);
+    const sheet = html.match(/class="operational-print-sheet entitlement-one-sheet cadence-month">([\s\S]*?)<\/section>/)?.[1] ?? "";
+    expect(sheet).toContain("<h3>Oct 7, 2026 through Dec 30, 2026</h3>");
+    expect((sheet.match(/class="timeline-head"/g) || []).length).toBe(3);
+    expect(sheet).toContain("--timeline-slots:3;");
+    expect(sheet).toContain("--months:3;");
+    // Design-only follow-on work ends with the entitlement, not later in the notional.
+    const governance = activity(document.twoYearPlan, "bar-platform-design-authority");
+    expect(governance.endCol).toBeLessThanOrEqual(4);
+  });
+});
