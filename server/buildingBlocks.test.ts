@@ -181,7 +181,7 @@ describe("building blocks workbook", () => {
   });
 
   it("names the download after the engagement", () => {
-    expect(buildingBlocksFilename("  ACME / FCP: West  ")).toBe("ACME-FCP-West-Building-Blocks.xlsx");
+    expect(buildingBlocksFilename("  ACME / FCP: West  ")).toBe("ACME FCP West - Building Blocks.xlsx");
   });
 });
 

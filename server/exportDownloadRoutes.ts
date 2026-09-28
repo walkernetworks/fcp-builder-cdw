@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { isCommercialCustomer } from "../shared/buildingBlocks";
+import { exportFilename } from "../shared/exportFilename";
 import { migrateDocument } from "../shared/fcp";
 import * as db from "./db";
 import { BUILDING_BLOCKS_MIME, buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
@@ -8,11 +9,7 @@ import { renderFcpHtml, renderHclCompatibilityPlanOutputHtml } from "./fcpRender
 import { renderPdf } from "./pdf";
 
 export function safeExportFilename(title: string, extension: "html" | "pdf", documentType: "fcp" | "plan-output" = "fcp") {
-  const stem = title
-    .replace(/[^a-z0-9-_]+/gi, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80) || "FCP";
-  return `${stem}${documentType === "plan-output" ? "-Compatibility-Handoff" : ""}.${extension}`;
+  return exportFilename(title, documentType, extension);
 }
 
 function deny(res: Response, status: number, message: string) {
