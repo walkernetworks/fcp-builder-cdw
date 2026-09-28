@@ -1,5 +1,5 @@
 import { strToU8, zipSync } from "fflate";
-import { assessBuildingBlocks, type BuildingBlockAssessment } from "../shared/buildingBlocks";
+import { assessBuildingBlocks, dependencyLabel, type BuildingBlockAssessment } from "../shared/buildingBlocks";
 import type { EngagementDocument } from "../shared/fcp";
 
 export const BUILDING_BLOCKS_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -11,8 +11,11 @@ const COLUMNS = [
   { header: "Block", width: 44 },
   { header: "Status", width: 14 },
   { header: "Projected Dates", width: 32 },
+  { header: "Dependencies", width: 44 },
+  { header: "Notes", width: 44 },
 ];
 const LAST_COLUMN = String.fromCharCode(64 + COLUMNS.length);
+const STATUS_COLUMN = COLUMNS.findIndex(column => column.header === "Status");
 
 const HEADER_STYLE = 1;
 const TEXT_STYLE = 2;
@@ -50,18 +53,22 @@ function worksheetXml(assessments: BuildingBlockAssessment[]): string {
   const header = `<row r="1">${COLUMNS.map((column, index) => textCell(`${String.fromCharCode(65 + index)}1`, column.header, HEADER_STYLE)).join("")}</row>`;
   const body = assessments.map((item, index) => {
     const row = index + 2;
-    return `<row r="${row}">${[
+    // Out of Scope rows start hidden by the Status filter below; clearing the filter shows them.
+    const hidden = item.status === "Out of Scope" ? ` hidden="1"` : "";
+    return `<row r="${row}"${hidden}>${[
       textCell(`A${row}`, item.category, TEXT_STYLE),
       dateCell(`B${row}`, starts.get(item.category) ?? ""),
       textCell(`C${row}`, item.area, TEXT_STYLE),
       textCell(`D${row}`, item.status, TEXT_STYLE),
       textCell(`E${row}`, item.projectedDates, TEXT_STYLE),
+      textCell(`F${row}`, dependencyLabel(item.area), TEXT_STYLE),
+      textCell(`G${row}`, item.requiredBy.length ? `Included as a dependency of ${item.requiredBy.join(", ")}` : "", TEXT_STYLE),
     ].join("")}</row>`;
   }).join("");
   const range = `A1:${LAST_COLUMN}${assessments.length + 1}`;
   const cols = COLUMNS.map((column, index) => `<col min="${index + 1}" max="${index + 1}" width="${column.width}" customWidth="1"/>`).join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="${range}"/><sheetViews><sheetView workbookViewId="0" tabSelected="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${cols}</cols><sheetData>${header}${body}</sheetData><autoFilter ref="${range}"/></worksheet>`;
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="${range}"/><sheetViews><sheetView workbookViewId="0" tabSelected="1"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${cols}</cols><sheetData>${header}${body}</sheetData><autoFilter ref="${range}"><filterColumn colId="${STATUS_COLUMN}"><customFilters><customFilter operator="notEqual" val="Out of Scope"/></customFilters></filterColumn></autoFilter></worksheet>`;
 }
 
 const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -85,7 +92,8 @@ function workbookPackage(sheetXml: string, rowCount: number): Uint8Array {
 /**
  * Produces the Building Blocks workbook for an engagement: one row per block, in the categories and
  * order the Building Blocks tool uses, with the values the tool takes (category start date and block
- * status) and the projected dates behind them.
+ * status), the projected dates behind them, and each block's dependencies. Dependencies the plan does
+ * not cover are included as Planning and noted.
  */
 export function renderBuildingBlocksWorkbook(document: EngagementDocument, today?: string): Uint8Array {
   const assessments = assessBuildingBlocks(document, today);
