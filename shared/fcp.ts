@@ -378,6 +378,12 @@ export function getVcfPlaybookPlan(path: UpgradePath, edition: PlatformEdition =
   return { path: canonical, ...PLAYBOOK_PATHS[canonical] };
 }
 
+/** Sets the platform edition; a VCF-only pathway becomes a pathway decision when switching to VVF. */
+export function withPlatformEdition(details: AdoptionDetails, platformEdition: PlatformEdition): AdoptionDetails {
+  const path = canonicalVcfDeliveryPath(details.upgradePath);
+  return { ...details, platformEdition, ...(platformEdition === "vvf" && !VVF_DELIVERY_PATHS.includes(path) ? { upgradePath: "undecided" as const } : {}) };
+}
+
 /** The playbook plan for an engagement's fields, honoring the platform edition. */
 export function playbookPlanForFields(fields: EditionFields): VcfPlaybookPlan {
   return getVcfPlaybookPlan(fields.adoptionDetails.upgradePath, effectivePlatformEdition(fields));
