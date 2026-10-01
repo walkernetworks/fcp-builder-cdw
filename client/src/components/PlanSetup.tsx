@@ -8,7 +8,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { CompatibilityHandoffPanel } from "@/components/CompatibilityHandoffPanel";
-import { CustomerBriefImport } from "@/components/CustomerBriefImport";
 import { parseRvToolsFiles } from "@/lib/rvtools";
 import { applyScheduleFieldPatch, assessReadiness, calculateEntitlementEndDate, effectivePlatformEdition, emptyInventory, isPlanOutcomeAvailable, withPlatformEdition, type PlatformEdition, getHclSchedulePath, refreshDerivedDocument, summarizeVcfCompatibility, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
 import { HCL_CATALOG_RELEASES, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings, type HclFinding } from "@shared/hcl";
@@ -110,7 +109,6 @@ export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPla
             {document.inventorySources.length > 0 && <div className="mt-5 grid gap-3 md:grid-cols-2">{document.inventorySources.map(source => <article key={source.id} className="rounded-xl border border-slate-200 p-4"><div className="flex items-start gap-3"><FileSpreadsheet className="mt-0.5 size-5 text-emerald-700" /><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{source.filename}</p><p className="mt-1 text-xs text-slate-500">{(source.byteSize / 1024 / 1024).toFixed(1)} MB · {source.sheets.length} sheets</p>{source.warnings.map(warning => <p key={warning} className="mt-2 text-xs leading-5 text-amber-700">{warning}</p>)}</div></div></article>)}</div>}
           </section>
           <InventoryCards document={document} />
-          <CustomerBriefImport document={document} onChange={onChange} />
         </TabsContent>
 
         <TabsContent value="customer">

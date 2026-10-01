@@ -125,6 +125,7 @@ One file per customer, produced by Copilot. Every field is optional except `sche
 - **New or existing engagement.** Import creates an engagement or updates the selected one.
 - **Field mapping.** `discovery` answers map to existing fields: `plannedPath` → pathway, `consolidatedDomain` → topology, `storage` → principal storage, `addOnsConsidered` → priorities and outcomes, `notInterested` → recorded as declined (drives "No work in scope — declined" in empty categories). The injector's coercion (`scripts/inject-fields.mts`) moves into a shared module so "vSAN", "IaC", "Tier 2" and similar phrasing map to allowed values.
 - **Narrative fields** are stored in a new `report` block on the engagement document, versioned, with defaults so older engagements still load.
+- **Manual entry.** Every report field has a form on the **FCP Report Content** workspace step, so the report can be completed entirely by hand; the brief only pre-fills it. A section the brief leaves empty keeps what was entered by hand.
 - **Preview before applying.** The import screen lists what will change, what was coerced, what was dropped, and which required items are missing (they become Open Items).
 - **Never overwrites** RVTools inventory or a hand-edited timeline (see the `plan-generator-changes` skill).
 

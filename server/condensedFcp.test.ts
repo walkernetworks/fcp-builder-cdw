@@ -112,3 +112,18 @@ describe("Condensed FCP gates", () => {
     expect(exportFilename("Acme Health", "condensed-fcp", "pdf")).toBe("Acme Health - Condensed - FCP.pdf");
   });
 });
+
+describe("hand-entered report content", () => {
+  it("saves half-filled rows and leaves them out of the document", async () => {
+    const { engagementDocumentSchema } = await import("../shared/fcp");
+    const document = engagement();
+    document.report.milestonesToDate.push({ date: "", event: "Kickoff still being scheduled", detail: "" });
+    document.report.customerOwnedWork.push({ label: "Wave 4", start: "2027-05", end: "" });
+    document.report.whatWeHeard.push({ component: "", customerPosition: "", whereItLands: "" });
+    expect(engagementDocumentSchema.safeParse(document).success).toBe(true);
+    const html = render(document);
+    expect(check(html, document)).toEqual([]);
+    expect(text(html)).not.toContain("Kickoff still being scheduled");
+    expect(text(html)).not.toContain("Wave 4");
+  });
+});

@@ -8,6 +8,9 @@ import { z } from "zod";
 const text = z.string().max(4000);
 const optionalText = z.string().max(4000).nullable().default(null);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+/** A date that may still be blank while the planner is filling the row in; blank rows are left out of the report. */
+const dateOrBlank = z.union([isoDate, z.literal("")]).default("");
+const monthOrBlank = z.union([z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/), z.literal("")]).default("");
 const optionalDate = isoDate.nullable().default(null);
 const hours = z.number().min(0).max(100_000);
 const optionalNumber = z.number().min(0).max(1_000_000_000).nullable().default(null);
@@ -61,10 +64,10 @@ const rowSchemas = {
   question: z.object({ question: text, whyNow: z.string().max(4000).default("") }),
   technicalItem: z.object({ item: text, reference: z.string().max(1000).default("") }),
   constraint: z.object({ constraint: text, imposedBy: z.string().max(200).default(""), effect: z.string().max(4000).default("") }),
-  customerWork: z.object({ label: text, start: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/), end: z.string().regex(/^\d{4}-\d{2}(-\d{2})?$/) }),
+  customerWork: z.object({ label: text, start: monthOrBlank, end: monthOrBlank }),
   openItem: z.object({ item: text, gates: z.string().max(1000).default(""), owner: z.string().max(400).default("") }),
   personnel: z.object({ workstream: text, cdw: z.array(z.string().max(300)).default([]), broadcom: z.array(z.string().max(300)).default([]), customer: z.array(z.string().max(300)).default([]) }),
-  milestone: z.object({ date: isoDate, event: text, detail: z.string().max(4000).default("") }),
+  milestone: z.object({ date: dateOrBlank, event: text, detail: z.string().max(4000).default("") }),
   assignment: z.object({ workstream: text, architect: hours.default(0), srConsultant: hours.default(0), projectManager: hours.default(0) }),
   source: z.object({ title: text, date: optionalDate }),
 };
@@ -157,4 +160,33 @@ export function canonicalAddOn(value: string): string | null {
   const key = value.trim().toLowerCase().replace(/[\s_/&+.,()]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
   if (ADD_ON_OUTCOMES[key]) return key;
   return ADD_ON_ALIASES[key] ?? null;
+}
+
+const filled = (value: string | null | undefined) => Boolean(value && value.trim());
+
+/** The report with rows the planner has not finished left out; used for the document and calculations. */
+export function completedReport(report: ReportContent): ReportContent {
+  return {
+    ...report,
+    declined: report.declined.filter(filled),
+    situation: report.situation.filter(filled),
+    contacts: {
+      customer: report.contacts.customer.filter(item => filled(item.name)),
+      cdw: report.contacts.cdw.filter(item => filled(item.name)),
+      broadcom: report.contacts.broadcom.filter(item => filled(item.name)),
+    },
+    designElements: report.designElements.filter(item => filled(item.component) && (filled(item.requirement) || filled(item.recommendation))),
+    whatWeHeard: report.whatWeHeard.filter(item => filled(item.component)),
+    problems: report.problems.filter(item => filled(item.problem)),
+    openQuestions: report.openQuestions.filter(item => filled(item.question)),
+    technicalItems: report.technicalItems.filter(item => filled(item.item)),
+    constraints: report.constraints.filter(item => filled(item.constraint)),
+    customerAsks: report.customerAsks.filter(filled),
+    customerOwnedWork: report.customerOwnedWork.filter(item => filled(item.label) && filled(item.start) && filled(item.end)),
+    openItems: report.openItems.filter(item => filled(item.item)),
+    personnel: report.personnel.filter(item => filled(item.workstream)),
+    milestonesToDate: report.milestonesToDate.filter(item => filled(item.date) && filled(item.event)),
+    resourceAssignments: report.resourceAssignments.filter(item => filled(item.workstream) && item.architect + item.srConsultant + item.projectManager > 0),
+    sources: report.sources.filter(item => filled(item.title)),
+  };
 }

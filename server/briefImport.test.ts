@@ -106,3 +106,18 @@ describe("Copilot prompt", () => {
     expect(COPILOT_BRIEF_PROMPT).toContain("Do NOT use the words \"readiness\", \"workshop\" or \"TRW\"");
   });
 });
+
+describe("brief import with hand-entered content", () => {
+  it("keeps sections the brief leaves empty and replaces sections it fills", () => {
+    const document = createDefaultDocument();
+    document.report.situation = ["Typed by hand"];
+    document.report.openItems = [{ item: "Hand-entered item", gates: "Build", owner: "Planner" }];
+    const brief = example();
+    brief.situation = [];
+    delete brief.openItems;
+    const { report } = applyCustomerBrief(document, brief).document;
+    expect(report.situation).toEqual(["Typed by hand"]);
+    expect(report.openItems).toEqual([{ item: "Hand-entered item", gates: "Build", owner: "Planner" }]);
+    expect(report.whatWeHeard).toHaveLength(2);
+  });
+});

@@ -1,6 +1,6 @@
 # Copilot prompt for the customer brief
 
-Paste this into Microsoft Copilot together with the customer's meeting notes, transcripts and questionnaire answers (or ask Copilot to find them). Save the JSON it returns as a `.json` file and import it on the **Upload** step under **Customer brief**. The same text is available from the app's **Copy Copilot prompt** button; the source is `shared/briefPrompt.ts`.
+Paste this into Microsoft Copilot together with the customer's meeting notes, transcripts and questionnaire answers (or ask Copilot to find them). Save the JSON it returns as a `.json` file and import it on the **FCP Report Content** step (**Import the Copilot customer brief**). Every field can also be filled or corrected by hand on that step. The same text is available from the app's **Copy Copilot prompt** button; the source is `shared/briefPrompt.ts`.
 
 ```text
 You are preparing a customer brief for a CDW VMware Cloud Foundation (VCF) engagement. Read the meeting notes, transcripts, emails and questionnaire answers I give you (or that you can find for this customer) and return ONE JSON object in exactly the shape below. Return only the JSON, with no commentary before or after it.

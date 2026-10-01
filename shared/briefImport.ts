@@ -177,6 +177,8 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   const designProfile = reportShape.designProfile.unwrap().safeParse({ ...prior.designProfile, ...(isPlainObject(brief.designProfile) ? brief.designProfile : {}) });
   if (!designProfile.success) warnings.push("designProfile: values must be text; kept the previous profile");
 
+  // A section the brief leaves empty keeps what the planner already entered by hand.
+  const keep = <T,>(next: T[], previous: T[]): T[] => (next.length ? next : previous);
   const report: ReportContent = {
     briefVersion: CUSTOMER_BRIEF_VERSION,
     importedAt: new Date().toISOString(),
@@ -184,9 +186,9 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
     deliveryModel: typeof brief.deliveryModel === "string" ? brief.deliveryModel : prior.deliveryModel,
     headline: typeof brief.headline === "string" ? brief.headline : prior.headline,
     contacts: {
-      customer: parseRows(contacts.customer, person, "contacts.customer", warnings),
-      cdw: parseRows(contacts.cdw, person, "contacts.cdw", warnings),
-      broadcom: parseRows(contacts.broadcom, person, "contacts.broadcom", warnings),
+      customer: keep(parseRows(contacts.customer, person, "contacts.customer", warnings), prior.contacts.customer),
+      cdw: keep(parseRows(contacts.cdw, person, "contacts.cdw", warnings), prior.contacts.cdw),
+      broadcom: keep(parseRows(contacts.broadcom, person, "contacts.broadcom", warnings), prior.contacts.broadcom),
     },
     entitlement: reportShape.entitlement.unwrap().parse({
       hours: typeof entitlement.hours === "number" ? entitlement.hours : prior.entitlement.hours,
@@ -198,22 +200,22 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
       extensionApprovedBy: null,
     }),
     discovery: discoveryCheck.success ? discoveryCheck.data : prior.discovery,
-    declined,
-    situation: textList(brief.situation, "situation", warnings),
+    declined: keep(declined, prior.declined),
+    situation: keep(textList(brief.situation, "situation", warnings), prior.situation),
     designProfile: designProfile.success ? designProfile.data : prior.designProfile,
-    designElements: parseRows(brief.designElements, element(reportShape.designElements), "designElements", warnings),
-    whatWeHeard: parseRows(brief.whatWeHeard, element(reportShape.whatWeHeard), "whatWeHeard", warnings),
-    problems: parseRows(brief.problems, element(reportShape.problems), "problems", warnings),
-    openQuestions: parseRows(brief.openQuestions, element(reportShape.openQuestions), "openQuestions", warnings),
-    technicalItems: parseRows(brief.technicalItems, element(reportShape.technicalItems), "technicalItems", warnings),
-    constraints: parseRows(brief.constraints, element(reportShape.constraints), "constraints", warnings),
-    customerAsks: textList(brief.customerAsks, "customerAsks", warnings),
-    customerOwnedWork: parseRows(brief.customerOwnedWork, element(reportShape.customerOwnedWork), "customerOwnedWork", warnings),
-    openItems: parseRows(brief.openItems, element(reportShape.openItems), "openItems", warnings),
-    personnel: parseRows(brief.personnel, element(reportShape.personnel), "personnel", warnings),
-    milestonesToDate: parseRows(brief.milestonesToDate, element(reportShape.milestonesToDate), "milestonesToDate", warnings),
-    resourceAssignments: brief.resourceAssignments === undefined ? prior.resourceAssignments : parseRows(brief.resourceAssignments, element(reportShape.resourceAssignments), "resourceAssignments", warnings),
-    sources: parseRows(brief.sources, element(reportShape.sources), "sources", warnings),
+    designElements: keep(parseRows(brief.designElements, element(reportShape.designElements), "designElements", warnings), prior.designElements),
+    whatWeHeard: keep(parseRows(brief.whatWeHeard, element(reportShape.whatWeHeard), "whatWeHeard", warnings), prior.whatWeHeard),
+    problems: keep(parseRows(brief.problems, element(reportShape.problems), "problems", warnings), prior.problems),
+    openQuestions: keep(parseRows(brief.openQuestions, element(reportShape.openQuestions), "openQuestions", warnings), prior.openQuestions),
+    technicalItems: keep(parseRows(brief.technicalItems, element(reportShape.technicalItems), "technicalItems", warnings), prior.technicalItems),
+    constraints: keep(parseRows(brief.constraints, element(reportShape.constraints), "constraints", warnings), prior.constraints),
+    customerAsks: keep(textList(brief.customerAsks, "customerAsks", warnings), prior.customerAsks),
+    customerOwnedWork: keep(parseRows(brief.customerOwnedWork, element(reportShape.customerOwnedWork), "customerOwnedWork", warnings), prior.customerOwnedWork),
+    openItems: keep(parseRows(brief.openItems, element(reportShape.openItems), "openItems", warnings), prior.openItems),
+    personnel: keep(parseRows(brief.personnel, element(reportShape.personnel), "personnel", warnings), prior.personnel),
+    milestonesToDate: keep(parseRows(brief.milestonesToDate, element(reportShape.milestonesToDate), "milestonesToDate", warnings), prior.milestonesToDate),
+    resourceAssignments: keep(parseRows(brief.resourceAssignments, element(reportShape.resourceAssignments), "resourceAssignments", warnings), prior.resourceAssignments),
+    sources: keep(parseRows(brief.sources, element(reportShape.sources), "sources", warnings), prior.sources),
     revision: typeof brief.revision === "string" ? brief.revision : prior.revision,
   };
 
