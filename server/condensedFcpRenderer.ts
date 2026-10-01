@@ -1,6 +1,7 @@
 import { barWindow } from "../shared/buildingBlocks";
 import { buildBurndown, buildCustomerEffort, formatWindow, type Burndown, type ScopedEffort } from "../shared/effort";
 import { calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
+import { completedReport } from "../shared/report";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 
 /**
@@ -328,7 +329,9 @@ tr{break-inside:avoid}
 
 export type CondensedFcpOptions = { today?: string; effort: ScopedEffort };
 
-export function renderCondensedFcpHtml(title: string, document: EngagementDocument, options: CondensedFcpOptions): string {
+export function renderCondensedFcpHtml(title: string, source: EngagementDocument, options: CondensedFcpOptions): string {
+  // Rows the planner has not finished are left out of the document.
+  const document: EngagementDocument = { ...source, report: completedReport(source.report) };
   const { fields, report } = document;
   const today = options.today ?? new Date().toISOString().slice(0, 10);
   const asOf = report.asOf || today;

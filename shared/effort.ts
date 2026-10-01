@@ -1,4 +1,5 @@
 import { barWindow } from "./buildingBlocks";
+import { completedReport } from "./report";
 import { calculateEntitlementEndDate, effectiveDeliveryPath, effectivePlatformEdition, resolvePlanOutcomes, type EngagementDocument, type TimelineBar } from "./fcp";
 
 /**
@@ -263,7 +264,7 @@ export function buildScopedEffort(document: EngagementDocument, options: { envel
   const envelopeSource = entitled !== null ? "entitled hours" : envelopeHours !== null ? options.envelopeSource ?? "entitlement value" : "none";
   const fitted = fitToEnvelope(scopedEffortLines(document), envelopeHours);
   const calculatedRows = rowsFromLines(fitted.lines);
-  const assignments = document.report.resourceAssignments.map(item => ({
+  const assignments = completedReport(document.report).resourceAssignments.map(item => ({
     workstream: item.workstream,
     architect: item.architect,
     srConsultant: item.srConsultant,
@@ -347,7 +348,7 @@ export function buildCustomerEffort(document: EngagementDocument): { phases: Cus
     windows.set(key, current ? { start: window.start < current.start ? window.start : current.start, end: window.end > current.end ? window.end : current.end } : window);
   }
   // Customer-run waves extend the migration phase.
-  for (const work of document.report.customerOwnedWork) {
+  for (const work of completedReport(document.report).customerOwnedWork) {
     const start = work.start.length === 7 ? `${work.start}-01` : work.start;
     const end = work.end.length === 7 ? `${work.end}-28` : work.end;
     const current = windows.get("migration");
