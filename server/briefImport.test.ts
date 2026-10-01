@@ -85,3 +85,24 @@ describe("customer brief import", () => {
     expect(migrateDocument(JSON.parse(JSON.stringify({ ...createDefaultDocument(), report: undefined }))).report.briefVersion).toBeNull();
   });
 });
+
+describe("Copilot prompt", () => {
+  it("returns a template that imports cleanly when Copilot leaves it unfilled", async () => {
+    const { COPILOT_BRIEF_PROMPT } = await import("../shared/briefPrompt");
+    const template = COPILOT_BRIEF_PROMPT.slice(COPILOT_BRIEF_PROMPT.indexOf("{\n  \"schemaVersion\""), COPILOT_BRIEF_PROMPT.lastIndexOf("}") + 1);
+    const parsed = JSON.parse(template);
+    parsed.customer.name = "Acme Health";
+    const result = applyCustomerBrief(createDefaultDocument(), parsed);
+    expect(result.ok).toBe(true);
+    const { report } = result.document;
+    expect([report.whatWeHeard, report.designElements, report.openItems, report.personnel, report.milestonesToDate, report.customerOwnedWork, report.sources].every(list => list.length === 0)).toBe(true);
+  });
+
+  it("asks for every top-level brief field the importer reads", async () => {
+    const { COPILOT_BRIEF_PROMPT } = await import("../shared/briefPrompt");
+    for (const key of ["entitlement", "discovery", "designProfile", "designElements", "whatWeHeard", "problems", "openQuestions", "technicalItems", "constraints", "customerAsks", "customerOwnedWork", "openItems", "personnel", "milestonesToDate", "resourceAssignments", "sources", "headline", "revision"]) {
+      expect(COPILOT_BRIEF_PROMPT, key).toContain(`"${key}"`);
+    }
+    expect(COPILOT_BRIEF_PROMPT).toContain("Do NOT use the words \"readiness\", \"workshop\" or \"TRW\"");
+  });
+});
