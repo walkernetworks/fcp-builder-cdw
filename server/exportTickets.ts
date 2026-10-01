@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export type ExportFormat = "html" | "pdf" | "xlsx";
-export type ExportDocumentType = "fcp" | "plan-output" | "building-blocks";
+export type ExportDocumentType = "fcp" | "condensed-fcp" | "plan-output" | "building-blocks";
 
 type ExportTicketPayload = {
   userId: number;
@@ -49,7 +49,7 @@ export function verifyExportTicket(ticket: string): ExportTicketPayload | null {
     if (!Number.isInteger(parsed.userId) || Number(parsed.userId) <= 0) return null;
     if (!Number.isInteger(parsed.engagementId) || Number(parsed.engagementId) <= 0) return null;
     if (parsed.format !== "html" && parsed.format !== "pdf" && parsed.format !== "xlsx") return null;
-    if (parsed.documentType !== "fcp" && parsed.documentType !== "plan-output" && parsed.documentType !== "building-blocks") return null;
+    if (parsed.documentType !== "fcp" && parsed.documentType !== "condensed-fcp" && parsed.documentType !== "plan-output" && parsed.documentType !== "building-blocks") return null;
     // The Building Blocks workbook is only ever issued as XLSX, and XLSX only for that workbook.
     if ((parsed.format === "xlsx") !== (parsed.documentType === "building-blocks")) return null;
     if (typeof parsed.expiresAt !== "number" || parsed.expiresAt < Date.now()) return null;

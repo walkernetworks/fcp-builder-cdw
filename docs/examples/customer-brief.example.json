@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-09-30",
+  "customer": { "name": "Acme Health", "location": "Reno, NV", "segment": "Commercial" },
+  "contacts": {
+    "customer": [{ "name": "Pat Rivera", "role": "Platform lead" }, { "name": "Sam Lee", "role": "Network" }],
+    "cdw": [{ "name": "Jordan Blake", "role": "Architect" }, { "name": "Casey Morgan", "role": "Sr. Consultant" }],
+    "broadcom": [{ "name": "Alex Kim", "role": "PM" }]
+  },
+  "entitlement": {
+    "value": "$79,403",
+    "hours": 262,
+    "termStart": "2026-04-29",
+    "termEnd": "2027-04-28",
+    "hoursConsumed": 39,
+    "consumedAsOf": "2026-09-03",
+    "extension": { "to": null, "approvedBy": null }
+  },
+  "deliveryModel": "CDW + Broadcom",
+  "headline": "Amazing happens when two people run a platform that runs itself and recovers on cue.",
+  "discovery": {
+    "assessmentCompleted": "yes",
+    "coreCount": 992,
+    "vcfLicensed": true,
+    "currentPlatform": "vSphere 8.0.3",
+    "enhancedLinkedMode": "no",
+    "networking": "vDS, VLAN-backed",
+    "vcenters": 1,
+    "datacenters": 2,
+    "esxHosts": 14,
+    "vcfInstances": 1,
+    "storage": "Fibre Channel",
+    "serverVendor": "Cisco UCS",
+    "drSolution": "SnapMirror",
+    "plannedPath": "Greenfield",
+    "consolidatedDomain": true,
+    "newHostsPurchased": { "management": 0, "workload": 8 },
+    "addOnsConsidered": ["VCF Operations", "VMware Live Recovery"],
+    "notInterested": ["Kubernetes", "Private AI", "HCX"]
+  },
+  "situation": ["DR site being built: 8 new hosts and a NetApp array fed by SnapMirror; recovery time objective and orchestration not yet defined"],
+  "designProfile": {
+    "consumption": "VCF 9.1 with VCF Operations as the daily front door; vCenter consumption unchanged for the team; automation evaluated later.",
+    "physicalSite": "Primary data center and a new DR site.",
+    "availability": "Converged management domain: management components and production workloads share the primary cluster; HA and fully automated DRS retained.",
+    "isolation": "NSX deployed with VCF, VLAN-backed at first; no network redesign on day one.",
+    "recoverability": "DR site as a separate workload domain in the same fleet; replication with an orchestration tool to be chosen.",
+    "expansion": "Evacuated hosts rebuilt into VCF wave by wave; the DR workload domain added once the site is online."
+  },
+  "designElements": [
+    { "component": "Principal storage", "requirement": "VMFS on Fibre Channel is a supported management-domain storage type.", "recommendation": "Keep the existing array over Fibre Channel; no vSAN needed.", "gate": null },
+    { "component": "DR", "requirement": "Recovery orchestration and a defined recovery time objective.", "recommendation": "Choose the orchestration tool in the recovery design; test DR capacity on the new site.", "gate": "DR recovery time objective set" }
+  ],
+  "whatWeHeard": [
+    { "component": "Goal", "customerPosition": "\"Make our lives easier\"; use features already paid for", "whereItLands": "Operations and logs enablement; a runbook the team repeats" },
+    { "component": "Storage", "customerPosition": "Keep the existing array", "whereItLands": "Fibre Channel stays principal storage" }
+  ],
+  "problems": [{ "problem": "Manual recovery of 330 powered-on VMs", "addressedBy": "the recovery design picks orchestration so DR is executable under pressure" }],
+  "openQuestions": [{ "question": "Can a current RVTools export be sent before the first design session?", "whyNow": "The export on record predates the hardware refresh" }],
+  "technicalItems": [{ "item": "The VCF Installer deploys vCenter, NSX and VCF Operations with the management domain", "reference": "VCF 9.1 documentation > Overview > VCF Installer Overview" }],
+  "constraints": [{ "constraint": "DR site online before DR build and testing", "imposedBy": "calendar", "effect": "Recovery design now; DR build follows the site" }],
+  "customerAsks": ["Decisions by November: hosts for the build, DR policy direction, wave ownership"],
+  "customerOwnedWork": [{ "label": "Customer migration waves and legacy cluster retirement", "start": "2027-02", "end": "2027-04" }],
+  "openItems": [{ "item": "Current RVTools export", "gates": "Design sign-off and sizing", "owner": "Pat Rivera" }],
+  "personnel": [{ "workstream": "Design discovery, architecture and design", "cdw": ["Jordan Blake (Architect)"], "broadcom": [], "customer": ["Pat Rivera", "Sam Lee"] }],
+  "milestonesToDate": [
+    { "date": "2026-04-29", "event": "Entitlement effective", "detail": "262-hour services entitlement opened." },
+    { "date": "2026-07-21", "event": "Discovery session", "detail": "Environment, DR site and priorities reviewed." }
+  ],
+  "resourceAssignments": null,
+  "sources": [{ "title": "Acme Health VCF 9.1 Compatibility Assessment", "date": "2026-09-30" }],
+  "revision": "Built from the VCF 9.1 assessment and the scoping questionnaire of 30 Sep 2026."
+}

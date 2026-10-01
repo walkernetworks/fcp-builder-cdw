@@ -26,7 +26,7 @@ The file can be a bare fields object or `{ "fields": { ... } }`.
 ## What it does
 
 1. **Loads** the engagement the way the browser does: `engagement.get`, then `migrateDocument()` (`client/src/pages/Home.tsx`).
-2. **Coerces** common phrasings to the exact allowed value. Examples: `"new hardware"`→`new`, `"monthly"`→`month`, `"vSAN"`→`vsan`, `"VCF 9.1"`→`ESXi 9.1`, `"IaC"`→`infrastructure-as-code`, `"Tier 2"`→`tier-2`, `"$1,250,000"`→`1250000`, `"12 weeks"`→`12`, `"yes"`→`true`. A value is only ever replaced by one of the schema's own options. If it can't be mapped, it's left unchanged and a warning names the field and value.
+2. **Coerces** common phrasings to the exact allowed value, using the shared coercion in `shared/fieldCoercion.ts` (the same rules the Customer brief import uses). Examples: `"new hardware"`→`new`, `"monthly"`→`month`, `"vSAN"`→`vsan`, `"VCF 9.1"`→`ESXi 9.1`, `"IaC"`→`infrastructure-as-code`, `"Tier 2"`→`tier-2`, `"$1,250,000"`→`1250000`, `"12 weeks"`→`12`, `"yes"`→`true`. A value is only ever replaced by one of the schema's own options. If it can't be mapped, it's left unchanged and a warning names the field and value.
 3. **Deep-merges** the JSON into `data.fields`. Values present in the JSON win, and anything absent keeps the engagement's current value.
 4. **Recomputes** the plan. It sets `planAuthority: "generated"` and forces a rebuild, the same as the workspace's "Rebuild Generated Plan" button. Setting `planAuthority` alone would not regenerate the timelines, because `migrateDocument` keeps the existing ones.
 5. **Validates** the merged fields with `minimalFieldsSchema` and the whole document with `engagementDocumentSchema`. If either check fails, it prints the zod errors, posts nothing and exits with code 1.
@@ -61,14 +61,15 @@ These values were read from the live schemas. The injector also reads them from 
 | `customerSegment` | `unspecified` \| `commercial` \| `public-sector` |
 | `priorities[]` | `operations` \| `automation` \| `networking` \| `security` \| `resilience` \| `kubernetes` \| `private-ai` |
 | `adoptionDetails.upgradePath` | `undecided` \| `in-place` \| `converge` \| `import-workload-domain` \| `greenfield` \| `hybrid` \| `design-only` \| `new-build` \| `migration-waves` (the last two are older values the builder converts) |
+| `adoptionDetails.platformEdition` | `vcf` \| `vvf` (VVF applies only when `customerSegment` is `commercial`) |
 | `adoptionDetails.domainTopology` | `undecided` \| `consolidated` \| `standard` |
 | `adoptionDetails.principalStorage` | `undecided` \| `vsan` \| `nfs-v3` \| `vmfs-fc` \| `other-existing` |
 | `adoptionDetails.industryTemplate` | `general-enterprise` \| `healthcare-life-sciences` \| `financial-services-insurance` \| `manufacturing-retail-distributed` \| `public-sector-education` \| `digital-products-technology` |
 | `adoptionDetails.operations[]` (max 6) | `lifecycle` \| `observability` \| `capacity-cost` \| `custom-dashboards` \| `identity-certificates` \| `event-integration` |
-| `adoptionDetails.automation[]` (max 5) | `vm-self-service` \| `infrastructure-as-code` \| `day-2-automation` \| `governance` \| `application-provisioning` |
-| `adoptionDetails.networking[]` (max 4) | `physical-fabric` \| `edge-cluster-routing` \| `overlay-transport` \| `network-operations` |
-| `adoptionDetails.security[]` (max 3) | `segmentation` \| `identity-rbac` \| `hardening-compliance` |
-| `adoptionDetails.resilience[]` (max 3) | `recovery-architecture` \| `recovery-exercises` \| `cyber-recovery` |
+| `adoptionDetails.automation[]` (max 6) | `vm-self-service` \| `infrastructure-as-code` \| `day-2-automation` \| `governance` \| `application-provisioning` \| `data-services` |
+| `adoptionDetails.networking[]` (max 6) | `physical-fabric` \| `edge-cluster-routing` \| `overlay-transport` \| `vpc` \| `load-balancing` \| `network-operations` |
+| `adoptionDetails.security[]` (max 8) | `segmentation` \| `identity-rbac` \| `hardening-compliance` \| `ids-ips` \| `malware-prevention` \| `identity-firewall` \| `security-intelligence` \| `waf` |
+| `adoptionDetails.resilience[]` (max 4) | `recovery-architecture` \| `recovery-exercises` \| `cyber-recovery` \| `cloud-cyber-recovery` |
 | `adoptionDetails.kubernetes[]` (max 3) | `workload-domains` \| `platform-operations` \| `developer-experience` |
 | `adoptionDetails.privateAi[]` (max 3) | `gpu-capacity` \| `ai-guardrails` \| `pilot-onboarding` |
 | `adoptionDetails.softPrerequisites[]` (max 3) | `dns-ntp` \| `ip-pools` \| `tor-switch-design` |
