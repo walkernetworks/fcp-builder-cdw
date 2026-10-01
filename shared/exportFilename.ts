@@ -1,7 +1,8 @@
-export type ExportDocumentType = "fcp" | "plan-output" | "building-blocks";
+export type ExportDocumentType = "fcp" | "condensed-fcp" | "plan-output" | "building-blocks";
 
 const DOCUMENT_SUFFIX: Record<ExportDocumentType, string> = {
   fcp: "FCP",
+  "condensed-fcp": "Condensed - FCP",
   "plan-output": "Compatibility Handoff",
   "building-blocks": "Building Blocks",
 };
