@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { applyCustomerBrief, type BriefImportResult } from "@shared/briefImport";
+import { COPILOT_BRIEF_PROMPT } from "@shared/briefPrompt";
 import type { EngagementDocument } from "@shared/fcp";
-import { FileJson, Upload } from "lucide-react";
+import { ClipboardCopy, FileJson, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -40,6 +41,15 @@ export function CustomerBriefImport({ document, onChange }: Props) {
     }
   };
 
+  const copyPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(COPILOT_BRIEF_PROMPT);
+      toast.success("Copilot prompt copied. Paste it into Copilot with the customer's notes, then save the JSON it returns and choose it here.");
+    } catch {
+      toast.error("The prompt could not be copied; copy it from docs/COPILOT-BRIEF-PROMPT.md instead.");
+    }
+  };
+
   const apply = () => {
     if (!preview?.result.ok) return;
     onChange(preview.result.document);
@@ -55,7 +65,10 @@ export function CustomerBriefImport({ document, onChange }: Props) {
           <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Import the Copilot customer brief</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">A JSON file of call notes and questionnaire answers. Planning answers fill the plan inputs; what we heard, open questions, personnel and milestones fill the Condensed FCP. Read in this browser; nothing is applied until you confirm.</p>
         </div>
-        <Button variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-4" /> Choose brief JSON</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void copyPrompt()}><ClipboardCopy className="size-4" /> Copy Copilot prompt</Button>
+          <Button variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-4" /> Choose brief JSON</Button>
+        </div>
       </div>
       <input ref={inputRef} type="file" accept=".json,application/json" className="hidden" onChange={event => void readFile(event.target.files?.[0])} />
       {report.briefVersion !== null && (

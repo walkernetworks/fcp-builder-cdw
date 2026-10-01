@@ -32,6 +32,8 @@ function withoutNulls(value: unknown): unknown {
     }
     return out;
   }
+  // Template hints Copilot left in place ("commercial | public-sector | null", "YYYY-MM-DD") are not values.
+  if (typeof value === "string" && (/^Y{4}-M{2}(-D{2})?$/.test(value.trim()) || / \| /.test(value))) return undefined;
   return value === null ? undefined : value;
 }
 
@@ -64,7 +66,9 @@ function looseScalars(value: unknown, key = ""): unknown {
 function parseRows<T>(rows: unknown, schema: z.ZodType<T>, label: string, warnings: string[]): T[] {
   if (rows === undefined) return [];
   if (!Array.isArray(rows)) { warnings.push(`${label}: expected a list; ignored`); return []; }
-  return rows.flatMap((row, index) => {
+  // Template rows Copilot left empty carry no content; skip them quietly.
+  const hasContent = (value: unknown): boolean => typeof value === "string" ? value.trim() !== "" && !/^Y{4}-M{2}(-D{2})?$/.test(value) : Array.isArray(value) ? value.some(hasContent) : isPlainObject(value) ? Object.values(value).some(hasContent) : typeof value === "number";
+  return rows.filter(hasContent).flatMap((row, index) => {
     const parsed = schema.safeParse(row);
     if (parsed.success) return [parsed.data];
     warnings.push(`${label}[${index}]: ${parsed.error.issues.map(issue => `${issue.path.join(".") || "row"} ${issue.message}`).join("; ")}; row dropped`);
