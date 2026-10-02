@@ -74,11 +74,22 @@ describe("Condensed FCP", () => {
     expect(visible).not.toContain("Hours Remaining");
   });
 
-  it("lists the scoped work streams with names to be filled in when nobody is named", () => {
-    const document = engagement(raw => { raw.personnel = []; });
-    const visible = text(render(document));
-    expect(visible).toContain("Target Personnel by Work Stream");
-    expect(visible).toMatch(/Management domain build to be named — to be named/);
+  it("leaves out sections nobody has filled in instead of printing placeholders", () => {
+    const document = engagement(raw => { raw.personnel = []; raw.whatWeHeard = []; raw.problems = []; raw.openQuestions = []; raw.milestonesToDate = []; });
+    document.report.milestonesToDate = [];
+    document.report.hiddenGenerated = ["milestonesToDate:entitlement effective"];
+    const html = render(document);
+    expect(check(html, document)).toEqual([]);
+    const visible = text(html);
+    for (const heading of ["Target Personnel by Work Stream", "What we heard", "The problems worth solving first", "The open questions", "Engagement Milestones to Date"]) expect(visible, heading).not.toContain(heading);
+    expect(visible).not.toMatch(/to be named|to be recorded|to be confirmed\b(?! —)/);
+  });
+
+  it("draws the entitlement timeline and the two-year notional with the full FCP's category Gantt", () => {
+    const html = render(engagement());
+    const visible = text(html);
+    for (const heading of ["Private Cloud Adoption Timeline", "Two-Year Notional · Months 1–12", "Year 1 Adoption Outlook", "Delivery workstream key", "What CDW Delivers"]) expect(visible, heading).toContain(heading);
+    expect(html.match(/class="timeline-grid"/g)!.length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -104,8 +115,8 @@ describe("Condensed FCP gates", () => {
   });
 
   it("blocks a missing category or mandatory section", () => {
-    expect(check(html.replace(`<div class="lname">Modernize Cloud</div>`, ""), document).join(" ")).toContain("Category missing");
-    expect(check(html.replaceAll("Why the order is not negotiable", "Order"), document).join(" ")).toContain("Mandatory section missing");
+    expect(check(html.replaceAll(`<strong>Modernize Cloud</strong>`, ""), document).join(" ")).toContain("Category missing");
+    expect(check(html.replaceAll("The short version", "Summary"), document).join(" ")).toContain("Mandatory section missing");
   });
 
   it("names the download with the FCP suffix", () => {

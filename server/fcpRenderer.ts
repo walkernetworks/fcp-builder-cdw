@@ -1,18 +1,8 @@
-import type { EngagementDocument, HardwarePlatformAssessment, Timeline, TimelineBar, TimelineLane } from "../shared/fcp";
-import { calculateEntitlementEndDate, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, getHclSchedulePath, effectiveDeliveryPath, getVcfPlaybookWorkPackageOwnership, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, summarizeCompatibilityHandoff, summarizeDeliveryStaffing, summarizeVcfCompatibility, validateTimeline, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
+import type { EngagementDocument, HardwarePlatformAssessment, Timeline } from "../shared/fcp";
+import { calculateEntitlementEndDate, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, getHclSchedulePath, effectiveDeliveryPath, getVcfPlaybookWorkPackageOwnership, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, summarizeCompatibilityHandoff, summarizeDeliveryStaffing, summarizeVcfCompatibility, validateTimeline } from "../shared/fcp";
 import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings } from "../shared/hcl";
 import { renderCompatibilityHandoffHtml } from "./compatibilityHandoffRenderer";
-
-const palette: Record<string, { bg: string; fg: string; border: string }> = {
-  slate: { bg: "#334155", fg: "#ffffff", border: "#1e293b" },
-  blue: { bg: "#315b8a", fg: "#ffffff", border: "#25476d" },
-  teal: { bg: "#2f736e", fg: "#ffffff", border: "#235752" },
-  amber: { bg: "#d99a1f", fg: "#172033", border: "#b87912" },
-  red: { bg: "#b42339", fg: "#ffffff", border: "#8f1b2c" },
-  green: { bg: "#2d6a4f", fg: "#ffffff", border: "#21503b" },
-  gate: { bg: "#6b4f8a", fg: "#ffffff", border: "#513a6c" },
-  deferred: { bg: "#e5e7eb", fg: "#475569", border: "#94a3b8" },
-};
+import { groupTimelineLanes, palette, projectOperationalTimelineToMonths, renderTimeline, sliceTimeline } from "./timelineHtml";
 
 function esc(value: unknown) {
   return String(value ?? "")
@@ -22,7 +12,6 @@ function esc(value: unknown) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-
 
 function value(input: unknown, fallback = "Not Yet Confirmed") {
   const text = String(input ?? "").trim();
@@ -48,102 +37,6 @@ function timelineWindow(timeline: Timeline, column: number, boundary = false) {
   return timeline.columns[index] || "Plan End";
 }
 
-function renderBar(activity: TimelineBar, totalColumns: number, workstreamType: TimelineLane["workstreamType"], track = 0) {
-  const color = palette[colorForWorkstreamType(workstreamType)] || palette.slate;
-  const start = Math.max(1, Math.min(totalColumns, activity.startCol));
-  const end = Math.max(start + 1, Math.min(totalColumns + 1, activity.endCol));
-  return `<div class="timeline-bar ${activity.deferred ? "deferred" : ""}" style="grid-column:${start}/${end};grid-row:${track + 1};align-self:center;background:${color.bg};color:${color.fg};border-color:${color.border}" title="${esc(workstreamType)}: ${esc(activity.label)}&#10;Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[workstreamType])}${activity.outcome ? `&#10;Intended outcome: ${esc(activity.outcome)}` : ""}${activity.dependsOn ? `&#10;${esc(activity.dependsOn)}` : ""}">${activity.milestone ? "◆ " : ""}${esc(activity.label)}</div>`;
-}
-
-function renderWorkstreamLegend() {
-  return `<div class="timeline-legend"><span>Delivery workstream key</span>${WORKSTREAM_TYPES.map(type => { const color = palette[WORKSTREAM_TYPE_COLORS[type]] || palette.slate; return `<span class="timeline-legend-item" title="Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[type])}" style="border-color:${color.border};background:${color.bg};color:${color.fg}"><i></i>${esc(type)}</span>`; }).join("")}</div>`;
-}
-
-function groupTimelineLanes(lanes: TimelineLane[]) {
-  const groups = new Map<TimelineLane["category"], TimelineLane[]>();
-  lanes.forEach(lane => {
-    const existing = groups.get(lane.category);
-    if (existing) existing.push(lane);
-    else groups.set(lane.category, [lane]);
-  });
-  return FIXED_GANTT_CATEGORIES.map(category => ({ category, lanes: groups.get(category) || [] }));
-}
-
-type CategoryActivity = { lane: TimelineLane; activity: TimelineBar; track: number };
-
-function layoutCategoryActivities(lanes: TimelineLane[]): CategoryActivity[] {
-  const trackEnds: number[] = [];
-  return lanes
-    .flatMap(lane => lane.bars.map(activity => ({ lane, activity })))
-    .sort((left, right) => left.activity.startCol - right.activity.startCol || left.activity.endCol - right.activity.endCol || left.activity.label.localeCompare(right.activity.label))
-    .map(item => {
-      const availableTrack = trackEnds.findIndex(endCol => endCol <= item.activity.startCol);
-      const track = availableTrack === -1 ? trackEnds.length : availableTrack;
-      trackEnds[track] = item.activity.endCol;
-      return { ...item, track };
-    });
-}
-
-function renderTimeline(timeline: Timeline, emptyMessage = "No activities have been scheduled for this portion of the plan.", compactColumnWidth?: number) {
-  if (!timeline.lanes.length) return `<div class="timeline-empty">${esc(emptyMessage)}</div>`;
-  const columnWidth = compactColumnWidth || (timeline.cadence === "week" ? 112 : 92);
-  const minimumWidth = 180 + timeline.columns.length * columnWidth;
-  const categoryGroups = groupTimelineLanes(timeline.lanes);
-  return `${renderWorkstreamLegend()}<div class="timeline-wrap"><div class="timeline-grid" style="--timeline-slots:${timeline.columns.length};min-width:${minimumWidth}px;grid-template-columns:180px repeat(${timeline.columns.length},minmax(${columnWidth}px,1fr))"><div class="timeline-corner">Delivery Category</div>${timeline.columns.map(window => `<div class="timeline-head">${esc(window)}</div>`).join("")}${categoryGroups.map(group => {
-    const activities = layoutCategoryActivities(group.lanes);
-    const trackCount = Math.max(1, ...activities.map(item => item.track + 1));
-    return `<div class="timeline-lane timeline-category-lane"><strong>${esc(group.category)}</strong></div><div class="timeline-row timeline-category-row" style="--months:${timeline.columns.length};grid-column:2/${timeline.columns.length + 2};grid-template-columns:repeat(${timeline.columns.length},1fr);grid-template-rows:repeat(${trackCount},minmax(42px,1fr));min-height:${Math.max(64, trackCount * 50 + 10)}px">${activities.map(({ lane, activity, track }) => renderBar(activity, timeline.columns.length, lane.workstreamType, track)).join("")}</div>`;
-  }).join("")}</div></div>`;
-}
-
-function sliceTimeline(timeline: Timeline, startColumn: number, endColumn: number): Timeline {
-  return {
-    ...timeline,
-    columns: timeline.columns.slice(startColumn - 1, endColumn),
-    lanes: timeline.lanes.map(lane => ({
-      ...lane,
-      bars: lane.bars.flatMap(activity => {
-        const start = Math.max(activity.startCol, startColumn);
-        const end = Math.min(activity.endCol, endColumn + 1);
-        if (end <= start) return [];
-        const label = `${activity.startCol < startColumn ? "← " : ""}${activity.label}${activity.endCol > endColumn + 1 ? " →" : ""}`;
-        return [{ ...activity, label, startCol: start - startColumn + 1, endCol: end - startColumn + 1 }];
-      }),
-    })).filter(lane => lane.bars.length > 0),
-  };
-}
-
-function operationalMonthLabel(window: string) {
-  const month = window.match(/^([A-Za-z]{3,9})\s+\d+/)?.[1];
-  const year = window.match(/,\s*(\d{2,4})$/)?.[1];
-  return month && year ? `${month} ${year}` : window;
-}
-
-function projectOperationalTimelineToMonths(timeline: Timeline): Timeline {
-  if (timeline.cadence !== "week") return timeline;
-  const windows: Array<{ label: string; start: number; end: number; key: string }> = [];
-  timeline.columns.forEach((window, index) => {
-    const key = operationalMonthLabel(window);
-    const previous = windows[windows.length - 1];
-    if (previous && previous.key === key) previous.end = index + 1;
-    else windows.push({ label: key, start: index + 1, end: index + 1, key });
-  });
-  return {
-    ...timeline,
-    cadence: "month",
-    columns: windows.map(window => window.label),
-    lanes: timeline.lanes.map(lane => ({
-      ...lane,
-      bars: lane.bars.flatMap(activity => {
-        const covered = windows.filter(window => activity.startCol <= window.end && activity.endCol > window.start);
-        if (!covered.length) return [];
-        const start = windows.indexOf(covered[0]) + 1;
-        const end = windows.indexOf(covered[covered.length - 1]) + 2;
-        return [{ ...activity, startCol: start, endCol: Math.max(start + 1, end) }];
-      }),
-    })).filter(lane => lane.bars.length > 0),
-  };
-}
 
 function renderTwoYearNotional(document: EngagementDocument) {
   const timeline = document.twoYearPlan;
@@ -326,7 +219,7 @@ function renderObservedInventory(document: EngagementDocument) {
   return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Current estate and offline HCL evidence</span><h3>Observed host inventory</h3></div><p>Consolidated RVTools host, software, cluster, and memory fields, with a local ESXi 9.1 server-and-CPU snapshot precheck.</p></div><div class="hardware-snapshot"><div><span>${esc(HCL_EVALUATION_VERSION)} delivery path</span><strong>${esc(path.toUpperCase())}</strong><small>${esc(pathDetail)}</small></div><div><span>Observed ESXi hosts</span><strong>${number(inventory.hosts)}</strong></div><div><span>Host groups</span><strong>${number(groups.size, "0")}</strong></div><div><span>Reported ESXi releases</span><strong>${number(inventory.esxiVersions.length, "0")}</strong></div></div><div class="hardware-tables"><div class="hardware-table-panel"><div class="table-heading"><h4>Reported ESXi Versions</h4><p>Imported from RVTools</p></div><table class="compact-table esxi-table"><thead><tr><th>Reported Version</th><th>Hosts</th></tr></thead><tbody>${esxiRows}</tbody></table></div><div class="hardware-table-panel"><div class="table-heading"><h4>VCF 9.1 Delivery Inventory</h4><p>Consolidated host groups with offline HCL server-and-CPU evidence</p></div><table class="compact-table hardware-table"><thead><tr><th>Observed Host Group</th><th>Estate</th><th>Reported ESXi</th><th>Cluster / Memory</th><th>HCL Server + CPU Evidence</th><th>Delivery Context</th></tr></thead><tbody>${platformRows}</tbody></table><p style="margin:12px 0 0;font-size:10px;line-height:1.5;color:#475569">Offline HCL limitation: ${esc(HCL_OFFLINE_LIMITATION)}</p></div></div>${renderHclEstateEvidence(document)}</section>`;
 }
 
-function selectedScopeSummary(document: EngagementDocument) {
+export function selectedScopeSummary(document: EngagementDocument) {
   const { priorities, adoptionDetails } = document.fields;
   const resolved = resolvePlanOutcomes(document.fields);
   const vvf = resolved.edition === "vvf";

@@ -200,9 +200,9 @@ export function ReportContentEditor({ document, onChange }: Props) {
     <section className="border border-slate-200 bg-white p-5">
       <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#c8102e]">Condensed FCP content</p>
       <h3 className="mt-1 text-lg font-semibold text-slate-950">Report content</h3>
-      <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">Fill this in by hand, or import a Copilot brief above to pre-fill it. Grey rows marked “From the plan” are generated and print as shown; override or hide any of them. Changes save automatically, and incomplete rows are not printed.</p>
+      <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">Fill this in by hand, or import a Copilot brief above to pre-fill it. Grey rows marked “From the plan” are generated and print as shown; override or hide any of them. A section with nothing in it is left out of the report, never printed as a placeholder. Changes save automatically.</p>
       <div className={`mt-4 rounded-xl border p-3 text-xs ${missing.length ? "border-amber-200 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
-        {missing.length ? <><b>Still needed from the customer:</b> {missing.join(" · ")}</> : <b>Everything the report needs from the customer is filled in.</b>}
+        {missing.length ? <><b>Not captured yet, so left out of the report:</b> {missing.join(" · ")}</> : <b>Everything the report needs from the customer is filled in.</b>}
       </div>
 
       <Group title="From the customer" description="What only a conversation with the customer can provide.">
@@ -227,7 +227,7 @@ export function ReportContentEditor({ document, onChange }: Props) {
             <RowTable rows={report.openQuestions} columns={[{ key: "question", label: "Question", type: "longtext" }, { key: "whyNow", label: "Why it matters now", type: "longtext" }]} blank={{ question: "", whyNow: "" }} addLabel="Add question" onChange={rows => set("openQuestions", rows)} />
           </Section>
 
-          <Section value="people" title="People by work stream" heading="Target Personnel by Work Stream" filled={report.personnel.some(item => item.cdw.length || item.customer.length)} hint="The work streams come from the scoped hours. Override a row to add names (comma separated); unnamed people print as “to be named”.">
+          <Section value="people" title="People by work stream" heading="Target Personnel by Work Stream" filled={report.personnel.some(item => item.cdw.length || item.customer.length)} hint="The work streams come from the scoped hours. Override a row to add names (comma separated). Work streams with nobody named are left out, and the section is left out until someone is named.">
             <RowTable rows={report.personnel} columns={[{ key: "workstream", label: "Work stream", width: "28%" }, { key: "cdw", label: "CDW", type: "list" }, { key: "broadcom", label: "Broadcom", type: "list" }, { key: "customer", label: "Customer", type: "list" }]} blank={{ workstream: "", cdw: [], broadcom: [], customer: [] }} addLabel="Add work stream" onChange={rows => set("personnel", rows)} generated={generatedFor("personnel")} />
           </Section>
 
