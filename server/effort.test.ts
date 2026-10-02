@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { buildBurndown, buildCustomerEffort, buildScopedEffort, fitToEnvelope, scopedEffortLines, splitRoles, ROLE_LOADING, type EffortLine } from "../shared/effort";
-import { createDefaultDocument, migrateDocument, type EngagementDocument } from "../shared/fcp";
+import { createDefaultDocument, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { fundedHoursFromValue, scopedEffortForDocument } from "./rateCard";
 
 const exampleBrief = () => JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../docs/examples/customer-brief.example.json"), "utf8"));
@@ -85,6 +85,32 @@ describe("hours model", () => {
     expect(codes(document)).toContain("X8");
     expect(codes(document)).not.toContain("X9");
     expect(scopedEffortLines(document).find(item => item.code === "X4")?.base).toBe(35);
+  });
+
+  it("gives governance packages project management only, and splits design by content", () => {
+    for (const path of ["in-place", "design-only", "greenfield"] as const) {
+      const document = engagement(document => {
+        document.fields.adoptionDetails.upgradePath = path;
+        document.report.discovery.assessmentCompleted = false;
+        document.report.entitlement.hours = null;
+      });
+      document.adoptionTimeline = refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline;
+      const effort = buildScopedEffort(document);
+      const row = (id: string) => effort.workPackages.find(item => item.id === id);
+      const governance = effort.workPackages.filter(item => /^bar-platform-(plan|execution-decision|design-authority)$/.test(item.id));
+      expect(governance.length, path).toBeGreaterThan(0);
+      for (const item of governance) expect({ architect: item.architect, srConsultant: item.srConsultant }, `${path} ${item.id}`).toEqual({ architect: 0, srConsultant: 0 });
+      expect(governance.some(item => item.projectManager > 0), path).toBe(true);
+      // Discovery sits on the requirements package; the architecture line on the other design packages.
+      const requirements = row("bar-playbook-design-requirements")!;
+      const design = effort.workPackages.filter(item => /^bar-playbook-design-(?!requirements)/.test(item.id));
+      expect(requirements.srConsultant, path).toBeGreaterThan(requirements.architect);
+      for (const item of design) expect(item.architect, `${path} ${item.id}`).toBeGreaterThan(item.srConsultant);
+      // Role totals are unchanged by where the hours sit.
+      for (const role of ["architect", "srConsultant", "projectManager"] as const) {
+        expect(effort.workPackages.filter(item => !item.deferred).reduce((sum, item) => sum + item[role], 0), `${path} ${role}`).toBe(effort.totals[role]);
+      }
+    }
   });
 
   it("adds 8 architect hours to discovery for each capability area of interest", () => {

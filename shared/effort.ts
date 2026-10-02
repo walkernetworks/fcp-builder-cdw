@@ -44,7 +44,7 @@ export type CatalogCode = keyof typeof CATALOG;
 /** Base hours for a wave line with no envelope to solve against, and for a proving run. */
 const DEFAULT_WAVE_BASE = { migration: 60, inPlace: 40 };
 const PROVING_RUN_BASE = 28;
-/** Share of an add-on's base hours that is its design work, when scope must be reduced to fit. */
+/** Share of an add-on's base hours that is its design work: what remains when scope must be reduced to fit, and what its component design package carries. */
 const ADD_ON_DESIGN_SHARE = 0.25;
 
 export type EffortLine = {
@@ -347,7 +347,12 @@ export function entitlementTermEnd(document: EngagementDocument): string | null 
 // Hours by timeline work package
 // ---------------------------------------------------------------------------------------------
 
-const DESIGN_BARS = /^bar-(platform-plan|playbook-design-|playbook-component-design-|platform-execution-decision|platform-design-authority|platform-operating-readiness)/;
+/** Program management and steering: these carry the plan's project-manager hours, not technical hours. */
+const GOVERNANCE_BARS = /^bar-(platform-plan|platform-execution-decision|platform-design-authority)$/;
+/** Requirements and discovery packages carry the discovery line; the other design packages carry architecture and design. */
+const DISCOVERY_BARS = /^bar-playbook-design-requirements$/;
+const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$)/;
+const COMPONENT_DESIGN_BARS = /^bar-playbook-component-design-/;
 const BUILD_BARS = /^bar-(management-domain|workload-domain|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover)/;
 /** Work packages each catalog line pays for: the implementation bars, or the component design bar when the line is design only. */
 const ADD_ON_BARS: Partial<Record<CatalogCode, { bars: RegExp; design: string }>> = {
@@ -369,7 +374,8 @@ const ADD_ON_BARS: Partial<Record<CatalogCode, { bars: RegExp; design: string }>
 };
 
 function barsForLine(item: EffortLine): (id: string) => boolean {
-  if (/^(A\d|DD\d|DX)$/.test(item.code)) return id => DESIGN_BARS.test(id);
+  if (/^A\d$/.test(item.code)) return id => CORE_DESIGN_BARS.test(id) && !DISCOVERY_BARS.test(id);
+  if (/^(DD\d|DX)$/.test(item.code)) return id => DISCOVERY_BARS.test(id);
   if (/^D\d/.test(item.code)) return id => BUILD_BARS.test(id);
   if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain)$/.test(id);
   if (item.code === "FILL") return id => /^bar-playbook-execution-/.test(id);
@@ -393,8 +399,10 @@ function footedColumn(values: number[], target: number): number[] {
 
 /**
  * Spreads each catalog line over the timeline work packages that deliver it, weighted by each package's
- * length, so the hours sit in the windows and under the lead roles the timeline already shows. A line
- * whose work packages were removed from the timeline keeps its hours on a row of its own.
+ * length, so the hours sit in the windows the timeline already shows. Discovery sits on the requirements
+ * package and architecture on the other design packages; an add-on's design share sits on its component
+ * design package. Governance packages carry only the design phase's project management. A line whose work
+ * packages were removed from the timeline keeps its hours on a row of its own.
  *
  * Work the entitlement cannot carry keeps its hours as follow-on scope in the Two-Year Notional: an
  * add-on's build when only its design fits, anything starting after the entitlement ends, and anything
@@ -442,12 +450,38 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     const weightTotal = weights.reduce((sum, value) => sum + value, 0);
     matches.forEach(({ bar }, index) => { if (keep(bar.id)) add(target, bar.id, bar.label, roles, weights[index] / weightTotal); });
   };
+  const scale = (roles: RoleHours, share: number): RoleHours => ({ architect: roles.architect * share, srConsultant: roles.srConsultant * share, projectManager: roles.projectManager * share });
+  // Packages whose share of a line is counted in the entitlement baseline, including work planned for later.
+  const inEntitlement = (id: string) => !deferred.has(id) || deferred.get(id) === "planned for later";
+  const live = (test: (id: string) => boolean) => bars.filter(({ bar }) => test(bar.id) && activityOwner(bar) !== "checkpoint" && inEntitlement(bar.id));
+  // Governance packages (mobilization, decisions, steering) carry no technical hours. The design lines' project
+  // management is pooled and placed after the lines are spread.
+  const governance = live(id => GOVERNANCE_BARS.test(id));
+  let designPm = 0;
   for (const item of lines) {
-    const roles = rolesOf(item);
+    let roles = rolesOf(item);
+    if (/^(A\d|DD\d|DX)$/.test(item.code) && governance.length) {
+      designPm += roles.projectManager;
+      roles = { ...roles, projectManager: 0 };
+    }
     // Customer-owned packages keep their share of the line, which then drops out of CDW's hours.
-    const matches = bars.filter(({ bar }) => barsForLine(item)(bar.id) && activityOwner(bar) !== "checkpoint");
+    let matches = bars.filter(({ bar }) => barsForLine(item)(bar.id) && activityOwner(bar) !== "checkpoint");
+    // Architecture and discovery fall back to the other design packages, then to any design package, when theirs are not on the plan.
+    if (/^(A\d|DD\d|DX)$/.test(item.code) && !matches.some(({ bar }) => inEntitlement(bar.id))) {
+      const core = live(id => CORE_DESIGN_BARS.test(id));
+      matches = core.length ? core : live(id => COMPONENT_DESIGN_BARS.test(id));
+    }
+    // A fully scoped add-on designs its component on the component design package and builds on the rest.
+    const addOnDesign = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
+    if (addOnDesign && item.reduction !== "design only") {
+      const design = live(id => id === `bar-playbook-component-design-${addOnDesign.design}`);
+      if (design.length && matches.some(({ bar }) => inEntitlement(bar.id))) {
+        spread(design, scale(roles, ADD_ON_DESIGN_SHARE), () => true, inWindow);
+        roles = scale(roles, 1 - ADD_ON_DESIGN_SHARE);
+      }
+    }
     // Work the planner placed in the notional keeps its share of the line and takes it out of the entitlement.
-    const current = matches.filter(({ bar }) => !deferred.has(bar.id) || deferred.get(bar.id) === "planned for later");
+    const current = matches.filter(({ bar }) => inEntitlement(bar.id));
     if (current.length) spread(current, roles, () => true, inWindow);
     else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     // Deferred packages of the line get their share as a follow-on estimate.
@@ -461,6 +495,19 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
         spread(build, rolesOf(item, item.fullBase - item.base), id => !deferred.has(id), pinned);
       }
     }
+  }
+
+  // Governance takes the design-phase project management for its share of the design phase's windows; the
+  // design packages take the rest in proportion to their technical hours.
+  if (designPm) {
+    const design = live(id => CORE_DESIGN_BARS.test(id) || COMPONENT_DESIGN_BARS.test(id)).filter(({ bar }) => inWindow.has(bar.id));
+    const weight = ({ bar }: (typeof bars)[number]) => Math.min(cap, Math.max(1, bar.endCol - bar.startCol));
+    const governanceWeight = governance.reduce((sum, item) => sum + weight(item), 0);
+    const governancePm = design.length ? designPm * governanceWeight / (governanceWeight + design.reduce((sum, item) => sum + weight(item), 0)) : designPm;
+    spread(governance, { architect: 0, srConsultant: 0, projectManager: governancePm }, () => true, inWindow);
+    const technical = (id: string) => { const row = inWindow.get(id)!; return row.architect + row.srConsultant; };
+    const technicalTotal = design.reduce((sum, { bar }) => sum + technical(bar.id), 0);
+    for (const { bar } of design) add(inWindow, bar.id, bar.label, { architect: 0, srConsultant: 0, projectManager: designPm - governancePm }, technicalTotal ? technical(bar.id) / technicalTotal : 1 / design.length);
   }
 
   const footed = (source: Map<string, Accumulated>, target: (key: keyof RoleHours, values: number[]) => number) => {
@@ -511,7 +558,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
 }
 
 /** Work packages that are design work; the budget limit never moves them out of the entitlement. */
-export const isDesignWorkPackage = (id: string) => DESIGN_BARS.test(id);
+export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || CORE_DESIGN_BARS.test(id) || COMPONENT_DESIGN_BARS.test(id);
 
 /** Moves work packages out of the entitlement into follow-on scope and recalculates the entitlement totals. */
 export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, DeferralReason>): ScopedEffort {
