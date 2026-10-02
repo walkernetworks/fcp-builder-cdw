@@ -2041,7 +2041,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const migrationDuration = upgradePathMigrationDuration(effectiveDeliveryPath(fields), cadence, scheduleUnits(cadence, 4, 2));
   const selectedTaskCount = (capability: "automation" | "kubernetes" | "private-ai" | "security" | "resilience" | "networking") =>
     resolvedOutcomes.outcomes.filter(outcome => outcome.key.startsWith(`${capability}:`)).length;
-  const hclBufferDuration = path === "red" ? procurementDuration + greenfieldDuration : path === "yellow" || path === "unresolved" ? remediationDuration : 0;
+  // HCL evidence work runs alongside mobilization; only the part that outlasts it delays the build.
+  const hclBufferDuration = path === "red" ? procurementDuration + greenfieldDuration : path === "yellow" || path === "unresolved" ? Math.max(0, remediationDuration - mobilizationDuration) : 0;
   const cloudDuration = (selectedTaskCount("automation") + selectedTaskCount("kubernetes") + selectedTaskCount("private-ai")) * moduleDuration;
   const securityPathDuration = (selectedTaskCount("security") + selectedTaskCount("resilience") + (outcomeKeys.has("platform:ssp") ? 1 : 0)) * securityDuration + selectedTaskCount("networking") * moduleDuration;
   const estimatedHandoverStart = 1 + mobilizationDuration + hclBufferDuration + 1 + Math.max(managementDuration + networkingDuration + workloadDuration + cloudDuration, securityPathDuration) + migrationDuration;
@@ -2161,9 +2162,10 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   let hclDependency = "The imported hosts are listed for the target release; confirmed at the end of mobilization.";
 
   if (path === "yellow" || path === "unresolved") {
-    const [remediationStart, remediationEnd] = range(mobilizationEnd, remediationDuration);
-    infrastructureBars.push(bar("bar-hcl-remediation", remediationStart, remediationEnd, "amber", path === "yellow" ? "Remediate and Verify HCL Exceptions" : "Collect Missing HCL Evidence and Confirm Path", false, false, appendDeliveryContext("Resolve server, CPU, firmware, or identity evidence before releasing the platform build."), path === "yellow" ? "Close the reported HCL exception path and retain verification evidence." : "Collect missing vHost identity and configuration evidence before committing the platform path."));
-    hclBufferEnd = remediationEnd;
+    // The offline HCL check has already run on the imported hosts, so closing its gaps starts with mobilization.
+    const [remediationStart, remediationEnd] = range(mobilizationStart, remediationDuration);
+    infrastructureBars.push(bar("bar-hcl-remediation", remediationStart, remediationEnd, "amber", path === "yellow" ? "Remediate and Verify HCL Exceptions" : "Collect Missing HCL Evidence and Confirm Path", false, false, appendDeliveryContext("Runs alongside mobilization. Resolve server, CPU, firmware, or identity evidence before releasing the platform build."), path === "yellow" ? "Close the reported HCL exception path and retain verification evidence." : "Collect missing vHost identity and configuration evidence before committing the platform path."));
+    hclBufferEnd = Math.max(mobilizationEnd, remediationEnd);
     hclDependency = path === "yellow"
       ? "Confirmed when the flagged hosts are remediated and verified."
       : "Confirmed when the missing host details are collected and each host's compatibility is checked.";

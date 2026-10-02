@@ -64,6 +64,19 @@ describe("site readiness prerequisites", () => {
   });
 });
 
+describe("hardware compatibility evidence", () => {
+  it("runs alongside mobilization, so the gate does not wait a window after it", () => {
+    for (const adoptionCadence of ["month", "week"] as const) {
+      const timeline = plan({}, { adoptionCadence }).adoptionTimeline;
+      const mobilize = activity(timeline, "bar-platform-plan");
+      const evidence = activity(timeline, "bar-hcl-remediation");
+      const gate = activity(timeline, "bar-hcl-gate");
+      expect(evidence.startCol, adoptionCadence).toBe(mobilize.startCol);
+      expect(gate.endCol, adoptionCadence).toBe(Math.max(mobilize.endCol, evidence.endCol));
+    }
+  });
+});
+
 describe("plans without an approved execution pathway", () => {
   for (const upgradePath of ["design-only", "undecided"] as const) {
     it(`carries a ${upgradePath} plan through entitlement end`, () => {
