@@ -408,8 +408,9 @@ const ADD_ON_BARS: Partial<Record<CatalogCode, { bars: RegExp; design: string }>
 /** The component design package(s) an add-on's design work sits on. */
 const componentDesign = (addOn: { design: string }) => (id: string) => new RegExp(`^bar-playbook-component-design-(${addOn.design})$`).test(id);
 
-function barsForLine(item: EffortLine): (id: string) => boolean {
-  if (/^A\d$/.test(item.code)) return id => CORE_DESIGN_BARS.test(id) && !DISCOVERY_BARS.test(id);
+function barsForLine(item: EffortLine, discoveryInScope = true): (id: string) => boolean {
+  // With a prior assessment there is no discovery line, and the architecture line covers requirements too.
+  if (/^A\d$/.test(item.code)) return id => CORE_DESIGN_BARS.test(id) && !(discoveryInScope && DISCOVERY_BARS.test(id));
   if (/^(DD\d|DX)$/.test(item.code)) return id => DISCOVERY_BARS.test(id);
   if (/^(D\d|U\d)$/.test(item.code)) return id => BUILD_BARS.test(id);
   if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain|platform-handover)$/.test(id);
@@ -494,6 +495,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   // management is pooled and placed after the lines are spread.
   const governance = live(id => GOVERNANCE_BARS.test(id));
   let designPm = 0;
+  const discoveryInScope = lines.some(item => /^(DD\d|DX)$/.test(item.code));
   for (const item of lines) {
     let roles = rolesOf(item);
     if (/^(A\d|DD\d|DX)$/.test(item.code) && governance.length) {
@@ -501,7 +503,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       roles = { ...roles, projectManager: 0 };
     }
     // Customer-owned packages keep their share of the line, which then drops out of CDW's hours.
-    let matches = bars.filter(({ bar }) => barsForLine(item)(bar.id) && activityOwner(bar) !== "checkpoint");
+    let matches = bars.filter(({ bar }) => barsForLine(item, discoveryInScope)(bar.id) && activityOwner(bar) !== "checkpoint");
     // Architecture and discovery fall back to the other design packages, then to any design package, when theirs are not on the plan.
     if (/^(A\d|DD\d|DX)$/.test(item.code) && !matches.some(({ bar }) => inEntitlement(bar.id))) {
       const core = live(id => CORE_DESIGN_BARS.test(id));
@@ -596,7 +598,8 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
 }
 
 /** Work packages that are design work; the budget limit never moves them out of the entitlement. */
-export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || CORE_DESIGN_BARS.test(id) || COMPONENT_DESIGN_BARS.test(id);
+/** Design and governance work stays in the entitlement; operating readiness for a later implementation can move. */
+export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || /^bar-playbook-(component-)?design-/.test(id);
 
 /** Moves work packages out of the entitlement into follow-on scope and recalculates the entitlement totals. */
 export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, DeferralReason>): ScopedEffort {
