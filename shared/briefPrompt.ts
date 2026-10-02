@@ -16,7 +16,8 @@ Rules
 - Write to the customer, not about them ("Keep the existing array", not "the customer refuses to change storage").
 
 What each section is for
-- customer, contacts: who the customer is and who is involved (customer, CDW, Broadcom), with roles.
+- customer, contacts: who the customer is and who is involved (customer, CDW, Broadcom), with roles. primaryContact is the customer's main contact as "Name, role"; accountId is the CDW account number when it appears in the sources.
+- schedule: dates the customer named. projectStart is when they want the engagement to start, implementationStart when build work can begin, targetComplete their target finish. hardwareLeadWeeks is the lead time for new hardware in weeks. calendarConstraints is one or two sentences on freezes, site dates, fiscal deadlines or other limits on timing.
 - entitlement: the services entitlement. value is the entitlement dollar value (the only dollar figure the report may show). hours is the entitled hours from the signed resource assignments. hoursConsumed and consumedAsOf come from the latest consumption record. extension only when an extension is APPROVED: give both the new date and who approved it, otherwise leave both null.
 - discovery: answers to the discovery questionnaire (RVTools export, licensing and core counts, current versions, Enhanced Linked Mode, networking, vCenters, data centers, edge sites, ESX hosts, storage, hardware vendor, container platform, network details, jumbo frames, security tooling, DR, backup, hyperscalers, new hardware purchased, planned path, consolidated domain, add-ons considered or not wanted).
   - plannedPath: one of greenfield, in-place, converge, import-workload-domain, hybrid, design-only, undecided.
@@ -24,6 +25,11 @@ What each section is for
   - storage: vsan, nfs-v3, vmfs-fc, other-existing, or undecided.
   - consolidatedDomain: true for one consolidated management and workload domain (usually 10 hosts or fewer).
   - assessmentCompleted: true when a VCF assessment or compatibility assessment has already been delivered.
+  - sitePrerequisitesOpen: site work the customer still has to finish before the build, using these names: dns-ntp, ip-pools, tor-switch-design. Leave [] when they are ready or nobody said.
+  - componentDepth: how far the customer wants each component taken, for operations, automation, networkingSecurity, kubernetesAi and efficiency: tier-1 (deployed), tier-2 (operationalized: run day to day with processes and ownership), tier-3 (business consumption: offered to the business as a service). null when not discussed.
+  - industry: one of general-enterprise, healthcare-life-sciences, financial-services-insurance, manufacturing-retail-distributed, public-sector-education, digital-products-technology.
+  - targetRelease: the ESXi release the platform should land on, "ESXi 9.0" or "ESXi 9.1", when stated.
+  - planningNotes: anything else that shapes the plan and has no other field, in one to three sentences.
   - addOnsConsidered and notInterested use these names: vcf-operations, chargeback, vcf-automation, vcf-networks, nsx, vpc, vdefend, atp, acc, vks, private-ai, live-recovery, cloud-cyber-recovery, dsm, avi, hcx, memory-tiering.
 - situation: short factual bullets about the estate and context that RVTools cannot show (new sites being built, hardware refreshes, deadlines).
 - designProfile: one sentence each on the decided or proposed design for consumption, physical site configuration, availability, isolation (networking), recoverability, and expansion.
@@ -47,9 +53,10 @@ JSON shape (fill every key; keep the structure exactly)
 {
   "schemaVersion": 1,
   "asOf": "YYYY-MM-DD",
-  "customer": { "name": null, "location": null, "segment": "commercial | public-sector | null" },
+  "customer": { "name": null, "location": null, "segment": "commercial | public-sector | null", "accountId": null, "primaryContact": null },
   "contacts": { "customer": [{ "name": "", "role": "" }], "cdw": [], "broadcom": [] },
   "entitlement": { "value": null, "hours": null, "termStart": null, "termEnd": null, "hoursConsumed": null, "consumedAsOf": null, "extension": { "to": null, "approvedBy": null } },
+  "schedule": { "projectStart": null, "implementationStart": null, "targetComplete": null, "hardwareLeadWeeks": null, "calendarConstraints": null },
   "deliveryModel": "CDW + Broadcom",
   "headline": null,
   "discovery": {
@@ -59,7 +66,9 @@ JSON shape (fill every key; keep the structure exactly)
     "securityTooling": null, "drSolution": null, "backup": null, "hyperscalers": [],
     "newHostsPurchased": { "management": null, "workload": null },
     "plannedPath": null, "platformEdition": null, "consolidatedDomain": null,
-    "addOnsConsidered": [], "notInterested": []
+    "addOnsConsidered": [], "notInterested": [],
+    "sitePrerequisitesOpen": [], "componentDepth": { "operations": null, "automation": null, "networkingSecurity": null, "kubernetesAi": null, "efficiency": null },
+    "industry": null, "targetRelease": null, "planningNotes": null
   },
   "situation": [],
   "designProfile": { "consumption": null, "physicalSite": null, "availability": null, "isolation": null, "recoverability": null, "expansion": null },

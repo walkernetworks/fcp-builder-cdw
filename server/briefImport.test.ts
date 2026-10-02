@@ -154,3 +154,30 @@ describe("reading Copilot's reply", () => {
     expect(copilotBriefPrompt({ ...document, fields: { ...document.fields, customerName: "Acme Health, Inc." } })).toContain("downloadable file named Acme-Health-Inc-brief.json");
   });
 });
+
+describe("plan inputs from the brief", () => {
+  it("fills schedule, contact, site prerequisites, component depth, industry and release, mapping loose wording", () => {
+    const base = createDefaultDocument();
+    const result = applyCustomerBrief({ ...base, fields: { ...base.fields, primaryContact: "" } }, {
+      schemaVersion: 1,
+      customer: { name: "Acme Health", accountId: 12345 },
+      contacts: { customer: [{ name: "Pat Rivera", role: "Infrastructure Manager" }] },
+      schedule: { projectStart: "2026-11-02", implementationStart: "2027-01-04", targetComplete: "next spring", hardwareLeadWeeks: "10 weeks", calendarConstraints: "Change freeze Dec 15 to Jan 2." },
+      discovery: { sitePrerequisitesOpen: ["DNS", "top of rack"], componentDepth: { operations: "Operationalized", automation: "tier 1", networkingSecurity: null }, industry: "Healthcare", targetRelease: "9.1", planningNotes: "Two sites share one change board." },
+    });
+    expect(result.ok).toBe(true);
+    const { fields } = result.document;
+    expect(fields).toMatchObject({ accountId: "12345", primaryContact: "Pat Rivera, Infrastructure Manager", plannedProjectStart: "2026-11-02", plannedImplementationStart: "2027-01-04", hardwareLeadWeeks: 10, timelineNotes: "Change freeze Dec 15 to Jan 2.", compatibilityTargetRelease: "ESXi 9.1" });
+    expect(fields.adoptionDetails).toMatchObject({ softPrerequisites: ["dns-ntp", "tor-switch-design"], industryTemplate: "healthcare-life-sciences", notes: "Two sites share one change board." });
+    expect(fields.adoptionDetails.componentDepths).toMatchObject({ operations: "tier-2", automation: "tier-1", networkingSecurity: base.fields.adoptionDetails.componentDepths.networkingSecurity });
+    expect(result.warnings.join(" ")).toContain("schedule.targetComplete");
+    expect(fields.targetComplete).toBe(base.fields.targetComplete);
+  });
+
+  it("keeps a primary contact the planner already entered unless the brief names one", () => {
+    const base = createDefaultDocument();
+    const document = { ...base, fields: { ...base.fields, primaryContact: "Set by hand" } };
+    expect(applyCustomerBrief(document, { schemaVersion: 1, contacts: { customer: [{ name: "Pat Rivera", role: "" }] } }).document.fields.primaryContact).toBe("Set by hand");
+    expect(applyCustomerBrief(document, { schemaVersion: 1, customer: { primaryContact: "Sam Lee, CIO" } }).document.fields.primaryContact).toBe("Sam Lee, CIO");
+  });
+});
