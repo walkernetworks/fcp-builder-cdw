@@ -1,7 +1,7 @@
 import { barWindow } from "../shared/buildingBlocks";
 import { buildBurndown, buildCustomerEffort, formatWindow, type Burndown, type ScopedEffort } from "../shared/effort";
 import { calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
-import { completedReport } from "../shared/report";
+import { effectiveReport, platformName } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 
 /**
@@ -74,8 +74,6 @@ function planItems(document: EngagementDocument, customer: string): PlanItem[] {
 
   const design = span(all.filter(({ bar }) => DESIGN_ID.test(bar.id)));
   if (design) items.push({ category: "Modernize Infrastructure", label: "Design discovery, architecture and design", ...design, swatch: "infrastructure", milestone: true, outcome: "Design signed off; hosts, storage, network and change windows agreed.", dependsOn: [] });
-  const site = span(all.filter(({ bar }) => SITE_ID.test(bar.id)));
-  if (site) items.push({ category: "Modernize Infrastructure", label: "Site prerequisites and hardware evidence", ...site, swatch: "muted", milestone: false, outcome: "Hardware, network and core services confirmed for the build.", dependsOn: [], customerOwned: true });
 
   for (const { lane, bar, window } of all) {
     if (!window || DESIGN_ID.test(bar.id) || SITE_ID.test(bar.id) || bar.id === "bar-platform-plan") continue;
@@ -117,105 +115,10 @@ function deadlines(document: EngagementDocument, termEnd: string | null): PlanIt
 // Generated content
 // ---------------------------------------------------------------------------------------------
 
-function platformName(document: EngagementDocument): string {
-  const release = document.fields.compatibilityTargetRelease.replace(/^ESXi\s*/, "");
-  return `${effectivePlatformEdition(document.fields) === "vvf" ? "VVF" : "VCF"} ${release}`;
-}
-
-function situationBullets(document: EngagementDocument): string[] {
-  const { inventory } = document;
-  const bullets: string[] = [];
-  if (inventory.hosts) {
-    const vcenters = document.report.discovery.vcenters;
-    bullets.push(`<b>${inventory.hosts} ESXi hosts · ${inventory.vmCount.toLocaleString("en-US")} VMs (${inventory.poweredOnVms.toLocaleString("en-US")} powered on)</b>${vcenters ? ` across ${vcenters} vCenter${vcenters === 1 ? "" : "s"}` : ""}${inventory.clusters ? ` and ${inventory.clusters} cluster${inventory.clusters === 1 ? "" : "s"}` : ""}`);
-    const models = inventory.hostModels.slice(0, 3).map(model => `<b>${model.hosts} ${esc(`${model.vendor} ${model.model}`.trim())}</b>`);
-    if (models.length) bullets.push(`Host platforms: ${models.join("; ")}`);
-    const versions = inventory.esxiVersions.slice(0, 3).map(item => `${esc(item.version)} (${item.hosts})`);
-    if (versions.length) bullets.push(`ESXi versions in use: ${versions.join(", ")}`);
-    if (inventory.datastoreCount) bullets.push(`${inventory.datastoreCount} datastores, ${inventory.datastoreCapacityTiB.toLocaleString("en-US")} TiB capacity`);
-    const oldHardware = inventory.hclEvidence.vmInfo.filter(vm => { const version = Number(/(\d+)/.exec(vm.hardwareVersion)?.[1]); return version > 0 && version < 19; }).length;
-    if (oldHardware) bullets.push(`<b>${oldHardware.toLocaleString("en-US")} VMs</b> below VM hardware version 19`);
-    if (inventory.esxiVersions.some(item => /\b8\.\d/.test(item.version))) bullets.push("vSphere 8 reaches end of general support on <b>11 October 2027</b>");
-  }
-  return [...bullets, ...document.report.situation.map(esc)];
-}
-
-function requiredCores(document: EngagementDocument): number | null {
-  const hosts = document.inventory.hclEvidence.hosts.filter(host => host.socketCount > 0 && host.coresPerSocket > 0);
-  if (!hosts.length) return null;
-  // VCF and VVF license at least 16 cores per CPU.
-  return hosts.reduce((total, host) => total + host.socketCount * Math.max(16, host.coresPerSocket), 0);
-}
-
-type Row = { component: string; requirement: string; recommendation: string; gate: string | null };
-
-function designElements(document: EngagementDocument): Row[] {
-  const { fields, report, inventory } = document;
-  const generated: Row[] = [];
-  if (!inventory.hosts) generated.push({ component: "Inventory", requirement: "Sizing needs the current estate.", recommendation: "Provide an RVTools export of every in-scope vCenter.", gate: "a current RVTools export" });
-  const storage = fields.adoptionDetails.principalStorage;
-  if (storage !== "undecided") {
-    const text: Record<string, [string, string]> = {
-      vsan: ["vSAN is the principal storage for the management domain and new clusters.", "Size vSAN ESA from the estate and validate ReadyNode configurations."],
-      "nfs-v3": ["NFS v3 is a supported principal storage type; the datastore must exist and be mounted on all hosts first.", "Keep the existing NFS storage; confirm the export and host access before the build."],
-      "vmfs-fc": ["VMFS on Fibre Channel is a supported management-domain storage type; the datastore must be created and mounted on all hosts first.", "Keep the existing array over Fibre Channel; no vSAN needed."],
-      "other-existing": ["Existing storage must be validated against the supported principal storage types.", "Confirm the storage workflow in design."],
-    };
-    generated.push({ component: "Principal storage", requirement: text[storage][0], recommendation: text[storage][1], gate: null });
-  }
-  const outcomes = new Set(resolvePlanOutcomes(fields).outcomes.map(item => item.key));
-  if (effectivePlatformEdition(fields) === "vcf") {
-    generated.push(outcomes.has("networking:overlay-transport") || outcomes.has("networking:vpc")
-      ? { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: "Confirm MTU end to end and the transport VLANs before the overlay is enabled.", gate: "MTU confirmed" }
-      : { component: "Networking", requirement: "NSX is deployed with VCF; workloads can stay VLAN-backed.", recommendation: "Start VLAN-backed; consider overlay networking in a later phase.", gate: null });
-  }
-  const required = requiredCores(document);
-  const licensed = report.discovery.licensedCores ?? report.discovery.coreCount;
-  if (required) {
-    generated.push({ component: "Licensing", requirement: "16-core-per-CPU minimum per licensed core.", recommendation: licensed ? `${licensed.toLocaleString("en-US")} licensed cores on record against ${required.toLocaleString("en-US")} required for the ${inventory.hosts} hosts (${licensed >= required ? `${(licensed - required).toLocaleString("en-US")} spare` : `${(required - licensed).toLocaleString("en-US")} short`}).` : `${required.toLocaleString("en-US")} cores required for the ${inventory.hosts} hosts; licensed core count to be confirmed.`, gate: licensed ? null : "licensed core count confirmed" });
-  }
-  const oldHardware = inventory.hclEvidence.vmInfo.filter(vm => { const version = Number(/(\d+)/.exec(vm.hardwareVersion)?.[1]); return version > 0 && version < 19; }).length;
-  if (oldHardware) generated.push({ component: "Workloads", requirement: "Supported guest operating systems and VM hardware.", recommendation: `Remediate ${oldHardware.toLocaleString("en-US")} VMs below hardware version 19 ahead of their migration waves.`, gate: null });
-  const fromBrief = report.designElements.map(item => ({ component: item.component, requirement: item.requirement, recommendation: item.recommendation, gate: item.gate }));
-  const named = new Set(fromBrief.map(item => item.component.toLowerCase()));
-  return [...fromBrief, ...generated.filter(item => !named.has(item.component.toLowerCase()))];
-}
-
 const PROFILE_CATEGORIES: Array<[keyof EngagementDocument["report"]["designProfile"], string]> = [
   ["consumption", "Consumption"], ["physicalSite", "Physical Site Configuration"], ["availability", "Availability"],
   ["isolation", "Isolation"], ["recoverability", "Recoverability"], ["expansion", "Expansion"],
 ];
-
-function designProfileDefault(document: EngagementDocument, key: string): string {
-  const { fields, inventory, report } = document;
-  const outcomes = new Set(resolvePlanOutcomes(fields).outcomes.map(item => item.key));
-  const vvf = effectivePlatformEdition(fields) === "vvf";
-  const sites = inventory.datacenters || report.discovery.datacenters || 0;
-  switch (key) {
-    case "consumption": return `${platformName(document)} with VCF Operations as the daily operations console${Array.from(outcomes).some(item => item.startsWith("automation:")) ? "; self-service through VCF Automation" : "; automation evaluated later"}.`;
-    case "physicalSite": return sites ? `${sites} site${sites === 1 ? "" : "s"}${inventory.hosts ? `, ${inventory.hosts} hosts in the current estate` : ""}.` : "Sites to be confirmed in design.";
-    case "availability": return fields.adoptionDetails.domainTopology === "consolidated" ? "Consolidated management domain: management components and workloads share the cluster; HA and fully automated DRS retained." : fields.adoptionDetails.domainTopology === "standard" ? "Standard architecture: a dedicated management domain and separate workload domains." : "Management domain topology to be decided in design.";
-    case "isolation": return vvf ? "vSphere Distributed Switch networking; no NSX overlay in VVF." : outcomes.has("networking:overlay-transport") || outcomes.has("networking:vpc") ? "NSX deployed with VCF, with overlay networking in scope." : "NSX deployed with VCF, VLAN-backed at first; no network redesign on day one.";
-    case "recoverability": return Array.from(outcomes).some(item => item.startsWith("resilience:")) ? "Recovery design with VMware Live Recovery; recovery objectives set in design." : "Recovery approach to be confirmed in design.";
-    default: return "Capacity added wave by wave as hosts are evacuated and rebuilt into the platform.";
-  }
-}
-
-function platformConstraints(document: EngagementDocument, termEnd: string | null, handoverMonth: string | null, customer: string) {
-  const rows: Array<{ constraint: string; imposedBy: string; effect: string }> = [
-    { constraint: "Design and a current inventory before the build", imposedBy: "Sizing", effect: "Build starts after design sign-off" },
-  ];
-  const path = playbookPlanForFields(document.fields).path;
-  if (path === "greenfield" || path === "hybrid") rows.push({ constraint: "Management domain before any workload moves", imposedBy: "Platform", effect: "Proving wave follows the build" });
-  if (document.inventory.hclEvidence.vmInfo.length) rows.push({ constraint: "Guest OS and VM hardware remediation before each wave", imposedBy: "Platform", effect: `${customer} remediates ahead of its waves` });
-  for (const outcome of resolvePlanOutcomes(document.fields).outcomes.filter(item => item.requiredBy.length).slice(0, 3)) {
-    rows.push({ constraint: `${planOutcomeLabel(outcome.key)} before ${outcome.requiredBy.map(key => planOutcomeLabel(key)).join(" and ")}`, imposedBy: "Platform", effect: "Sequenced as a prerequisite" });
-  }
-  const capitalized = (value: string) => value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
-  for (const item of document.report.constraints) rows.push({ constraint: item.constraint, imposedBy: capitalized(item.imposedBy) || "Calendar", effect: item.effect });
-  if (termEnd) rows.push({ constraint: `Entitlement expiry ${shortDate(termEnd)}`, imposedBy: "Entitlement term", effect: handoverMonth ? `Handover completes in ${handoverMonth}` : "All hours consumed before expiry" });
-  return rows;
-}
 
 // ---------------------------------------------------------------------------------------------
 // HTML building blocks
@@ -330,8 +233,8 @@ tr{break-inside:avoid}
 export type CondensedFcpOptions = { today?: string; effort: ScopedEffort };
 
 export function renderCondensedFcpHtml(title: string, source: EngagementDocument, options: CondensedFcpOptions): string {
-  // Rows the planner has not finished are left out of the document.
-  const document: EngagementDocument = { ...source, report: completedReport(source.report) };
+  // The report as it prints: generated rows the planner kept plus the planner's completed rows.
+  const document: EngagementDocument = { ...source, report: effectiveReport(source) };
   const { fields, report } = document;
   const today = options.today ?? new Date().toISOString().slice(0, 10);
   const asOf = report.asOf || today;
@@ -342,10 +245,8 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const termEnd = burndown?.termEnd || report.entitlement.termEnd || calculateEntitlementEndDate(fields.entitlementStart) || null;
   const termStart = burndown?.termStart || report.entitlement.termStart || fields.entitlementStart || null;
   const effort = options.effort;
-  const customerEffort = buildCustomerEffort(document);
+  const customerEffort = buildCustomerEffort(source);
   const items = [...planItems(document, customer), ...deadlines(document, termEnd)].sort((left, right) => left.start.localeCompare(right.start));
-  const handover = items.find(item => /handover/i.test(item.label) && !item.customerOwned);
-  const handoverMonth = handover ? monthLabel(parseIso(handover.end)!) : null;
   const platform = platformName(document);
   const deliveryModel = report.deliveryModel || "CDW";
   const outcomes = resolvePlanOutcomes(fields).outcomes;
@@ -360,7 +261,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     : `${valueTile}<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">${effort.source === "assignments" ? "Signed resource assignments" : "Estimated from the plan"}</div></div><div class="kpi"><div class="v">${termEnd ? esc(shortDate(termEnd)) : "To be confirmed"}</div><div class="l">Delivery Window Ends</div><div class="sub">No consumption data yet</div></div><div class="kpi"><div class="v">${esc(platform)}</div><div class="l">Target Platform</div><div class="sub">${esc(plan.label)}</div></div>`;
 
   // ---- Executive summary
-  const situation = situationBullets(document);
+  const situation = report.situation.map(esc);
   const planOnPage = FIXED_GANTT_CATEGORIES.map(category => {
     const work = items.filter(item => item.category === category && !item.customerOwned && item.swatch !== "muted").map(item => item.label);
     const text = work.length ? esc(Array.from(new Set(work)).slice(0, 4).join("; ")) : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`;
@@ -390,8 +291,8 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const personnel = `<h3>Target Personnel by Work Stream</h3>${table(["Work Stream", "CDW", "Broadcom", customer], personnelRows)}`;
 
   // ---- Design
-  const profileRows = PROFILE_CATEGORIES.map(([key, label]) => [esc(label), esc(report.designProfile[key] || designProfileDefault(document, key))]);
-  const elementRows = designElements(document).map(item => [esc(item.component), esc(item.requirement), `${esc(item.recommendation)}${item.gate ? ` <b>Gate:</b> ${esc(item.gate)}.` : ""}`]);
+  const profileRows = PROFILE_CATEGORIES.map(([key, label]) => [esc(label), esc(report.designProfile[key] ?? "")]);
+  const elementRows = report.designElements.map(item => [esc(item.component), esc(item.requirement), `${esc(item.recommendation)}${item.gate ? ` <b>Gate:</b> ${esc(item.gate)}.` : ""}`]);
 
   // ---- Sequence, timeline, milestones, forward plan
   const sequenceRows = FIXED_GANTT_CATEGORIES.flatMap(category => {
@@ -414,23 +315,12 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const heardRows = report.whatWeHeard.length ? report.whatWeHeard.map(item => [esc(item.component), esc(item.customerPosition), esc(item.whereItLands)]) : [[placeholder("to be confirmed"), placeholder("customer position to be recorded"), "—"]];
   const problems = report.problems.length ? `<ul>${report.problems.map(item => `<li><b>${esc(item.problem)}</b>${item.addressedBy ? ` — ${esc(item.addressedBy)}` : ""}</li>`).join("")}</ul>` : `<p>${placeholder("Problems to be recorded")}</p>`;
   const questions = report.openQuestions.length ? table(["Question", "Why we are asking now"], report.openQuestions.map(item => [esc(item.question), esc(item.whyNow)])) : `<p>${placeholder("Open questions to be recorded")}</p>`;
-  const technical = [
-    ...report.technicalItems.map(item => `<li>${esc(item.item)}${item.reference ? ` — ${esc(item.reference)}` : ""}</li>`),
-    ...(document.inventory.esxiVersions.some(item => /\b8\.\d/.test(item.version)) && !report.technicalItems.some(item => /vSphere 8/i.test(item.item)) ? ["<li>vSphere 8 end of general support 11 October 2027 — Broadcom Product Lifecycle</li>"] : []),
-  ];
-  const constraints = platformConstraints(document, termEnd, handoverMonth, customer);
-  const minEffort = customerEffort.phases.length ? Math.min(...customerEffort.phases.map(phase => phase.total)) : 0;
-  const asks = [
-    ...(peak ? [`<b>Effort:</b> ${minEffort}–${peak.total} hours per week, peaking at ${peak.fte} FTE during ${esc(peak.phase.toLowerCase())}`] : []),
-    ...report.customerAsks.map(esc),
-    ...(!document.inventory.hosts ? ["<b>Inventory:</b> a current RVTools export"] : []),
-  ];
-  const namedItems = new Set(report.openItems.map(item => item.item.trim().toLowerCase()));
-  const openItems = [
-    ...report.openItems.map(item => [esc(item.item), esc(item.gates), item.owner ? esc(item.owner) : placeholder("to be named")]),
-    ...(!report.personnel.length && !namedItems.has("named personnel by work stream") ? [["Named personnel by work stream", "Target personnel", placeholder("to be named")]] : []),
-    ...(!document.inventory.hosts && !namedItems.has("current rvtools export") ? [["Current RVTools export", "Design sign-off and sizing", placeholder("to be named")]] : []),
-  ];
+  const technical = report.technicalItems.map(item => `<li>${esc(item.item)}${item.reference ? ` — ${esc(item.reference)}` : ""}</li>`);
+  const capitalized = (value: string) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : value);
+  const constraints = report.constraints.map(item => ({ ...item, imposedBy: capitalized(item.imposedBy) || "Calendar" }));
+  // A leading "Label:" is set in bold, as in the template.
+  const asks = report.customerAsks.map(item => esc(item).replace(/^([A-Z][^:]{0,40}):\s/, "<b>$1:</b> "));
+  const openItems = report.openItems.map(item => [esc(item.item), esc(item.gates), item.owner ? esc(item.owner) : placeholder("to be named")]);
   const pulledIn = outcomes.filter(item => item.requiredBy.length);
 
   const sources = report.sources.length ? report.sources.map(item => `${esc(item.title)}${item.date ? ` (${esc(shortDate(item.date))})` : ""}`).join("; ") : "Engagement plan and RVTools estate data";

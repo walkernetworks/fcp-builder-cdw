@@ -74,11 +74,11 @@ describe("Condensed FCP", () => {
     expect(visible).not.toContain("Hours Remaining");
   });
 
-  it("lists placeholders for missing content as open items", () => {
+  it("lists the scoped work streams with names to be filled in when nobody is named", () => {
     const document = engagement(raw => { raw.personnel = []; });
     const visible = text(render(document));
-    expect(visible).toContain("Named personnel by work stream");
-    expect(visible).toContain("to be named");
+    expect(visible).toContain("Target Personnel by Work Stream");
+    expect(visible).toMatch(/Management domain build to be named — to be named/);
   });
 });
 
@@ -125,5 +125,33 @@ describe("hand-entered report content", () => {
     expect(check(html, document)).toEqual([]);
     expect(text(html)).not.toContain("Kickoff still being scheduled");
     expect(text(html)).not.toContain("Wave 4");
+  });
+});
+
+describe("generated report content", () => {
+  it("prints generated rows until the planner hides or overrides them", async () => {
+    const { generateReport, effectiveReport } = await import("../shared/reportView");
+    const document = engagement(raw => { raw.personnel = []; });
+    const generated = generateReport(document);
+    const [first, second] = generated.personnel;
+    expect(first && second).toBeTruthy();
+    expect(effectiveReport(document).personnel.map(row => row.workstream)).toContain(first!.row.workstream);
+
+    document.report.hiddenGenerated = [first!.key];
+    document.report.personnel = [{ ...second!.row, cdw: ["Lead architect"] }];
+    const personnel = effectiveReport(document).personnel;
+    expect(personnel.map(row => row.workstream)).not.toContain(first!.row.workstream);
+    expect(personnel.filter(row => row.workstream === second!.row.workstream)).toEqual([{ ...second!.row, cdw: ["Lead architect"] }]);
+  });
+
+  it("uses the planner's headline and design profile over the generated text", async () => {
+    const { effectiveReport, generateReport } = await import("../shared/reportView");
+    const document = engagement();
+    document.report.headline = null;
+    document.report.designProfile.availability = null;
+    expect(effectiveReport(document).headline).toBe(generateReport(document).headline);
+    expect(effectiveReport(document).designProfile.availability).toBe(generateReport(document).designProfile.availability);
+    document.report.designProfile.availability = "Single site with vSphere HA";
+    expect(effectiveReport(document).designProfile.availability).toBe("Single site with vSphere HA");
   });
 });
