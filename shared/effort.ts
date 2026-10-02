@@ -354,6 +354,21 @@ const DISCOVERY_BARS = /^bar-playbook-design-requirements$/;
 const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$)/;
 const COMPONENT_DESIGN_BARS = /^bar-playbook-component-design-/;
 const BUILD_BARS = /^bar-(management-domain|workload-domain|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover)/;
+/**
+ * Relative effort of each build package, used to split the deploy line instead of window length. Sized from the
+ * VCF 9.1 Planning and Preparation Workbook: deploying and configuring the management domain with its fleet
+ * services is the largest body of work, a workload domain about 0.8 of it, a cluster about 0.4. Validation and
+ * preparation are lighter, handover lighter still, and licensing activation is a few hours.
+ */
+const BUILD_WEIGHTS: Array<[RegExp, number]> = [
+  [/^bar-(management-domain|converge-management-domain|vvf-foundation)$/, 1],
+  [/^bar-workload-domain$/, 0.8],
+  [/^bar-vvf-workload-clusters$/, 0.4],
+  [/^bar-(import-foundation-validation|in-place-preparation)$/, 0.4],
+  [/^bar-platform-handover$/, 0.2],
+  [/^bar-platform-licensing$/, 0.1],
+];
+const buildWeight = (id: string) => BUILD_WEIGHTS.find(([pattern]) => pattern.test(id))?.[1] ?? 0.4;
 /** Work packages each catalog line pays for: the implementation bars, or the component design bar when the line is design only. */
 const ADD_ON_BARS: Partial<Record<CatalogCode, { bars: RegExp; design: string }>> = {
   X2: { bars: /^bar-(cloud-)?automation(-(?!data-services).*)?$/, design: "automation" },
@@ -445,8 +460,9 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   };
   // Weighted by length, capped so a long-running oversight package does not take most of a line's hours.
   const cap = timeline.cadence === "week" ? 8 : 2;
-  const spread = (matches: typeof bars, roles: RoleHours, keep: (id: string) => boolean, target: Map<string, Accumulated>) => {
-    const weights = matches.map(({ bar }) => Math.min(cap, Math.max(1, bar.endCol - bar.startCol)));
+  const lengthWeight = (bar: TimelineBar) => Math.min(cap, Math.max(1, bar.endCol - bar.startCol));
+  const spread = (matches: typeof bars, roles: RoleHours, keep: (id: string) => boolean, target: Map<string, Accumulated>, weightOf: (bar: TimelineBar) => number = lengthWeight) => {
+    const weights = matches.map(({ bar }) => weightOf(bar));
     const weightTotal = weights.reduce((sum, value) => sum + value, 0);
     matches.forEach(({ bar }, index) => { if (keep(bar.id)) add(target, bar.id, bar.label, roles, weights[index] / weightTotal); });
   };
@@ -482,10 +498,12 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     }
     // Work the planner placed in the notional keeps its share of the line and takes it out of the entitlement.
     const current = matches.filter(({ bar }) => inEntitlement(bar.id));
-    if (current.length) spread(current, roles, () => true, inWindow);
+    // The deploy line is split by how much work each build package is, not by how long its window is.
+    const weightOf = /^D\d/.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : lengthWeight;
+    if (current.length) spread(current, roles, () => true, inWindow, weightOf);
     else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     // Deferred packages of the line get their share as a follow-on estimate.
-    spread(matches, roles, id => deferred.has(id) && deferred.get(id) !== "planned for later", followOn);
+    spread(matches, roles, id => deferred.has(id) && deferred.get(id) !== "planned for later", followOn, weightOf);
     // An add-on cut to its design keeps the rest of its hours on its build packages, as follow-on scope.
     const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
     if (addOn && item.reduction === "design only" && item.fullBase > item.base) {
@@ -501,7 +519,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   // design packages take the rest in proportion to their technical hours.
   if (designPm) {
     const design = live(id => CORE_DESIGN_BARS.test(id) || COMPONENT_DESIGN_BARS.test(id)).filter(({ bar }) => inWindow.has(bar.id));
-    const weight = ({ bar }: (typeof bars)[number]) => Math.min(cap, Math.max(1, bar.endCol - bar.startCol));
+    const weight = ({ bar }: (typeof bars)[number]) => lengthWeight(bar);
     const governanceWeight = governance.reduce((sum, item) => sum + weight(item), 0);
     const governancePm = design.length ? designPm * governanceWeight / (governanceWeight + design.reduce((sum, item) => sum + weight(item), 0)) : designPm;
     spread(governance, { architect: 0, srConsultant: 0, projectManager: governancePm }, () => true, inWindow);
