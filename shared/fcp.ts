@@ -307,9 +307,9 @@ const PLAYBOOK_PATHS: Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, "path">> = {
     decisions: ["Requirements and constraints", "Target pathway", "Topology and components", "Physical prerequisites", "Future execution windows"],
     designPackages: [
       { id: "requirements", phase: "Design", title: "Confirm VCF Requirements and Constraints", outcome: "Issue the requirements and constraints register with customer priorities, boundaries, and unresolved evidence.", dependsOn: "Estate evidence and customer discovery.", acceptance: "Named owners approve requirements and constraints." },
-      { id: "decision-register", phase: "Design", title: "Issue the VCF Decision Register", outcome: "Record pathway, topology, storage, networking, component, and adoption-depth decisions with rationale.", dependsOn: "Requirements, evidence, and stakeholder decisions.", acceptance: "Architecture owners approve the decision register." },
-      { id: "logical-physical-design", phase: "Design", title: "Issue Logical and Physical VCF Design", outcome: "Deliver domain, cluster, component placement, host, network, storage, IP, DNS, NTP, and sizing designs.", dependsOn: "Approved decision register.", acceptance: "Infrastructure owners accept the logical and physical design." },
-      { id: "implementation-handoff", phase: "Handoff", title: "Issue Implementation Runbook and Acceptance Plan", outcome: "Deliver the future execution sequence, rollback approach, change-window plan, validation criteria, runbooks, RACI, and escalation model.", dependsOn: "Accepted logical and physical design.", acceptance: "Delivery leadership confirms the package is implementation ready." },
+      { id: "decision-register", phase: "Design", title: "Design VCF Target State and Record Decisions", outcome: "Record pathway, topology, storage, networking, component, and adoption-depth decisions with rationale.", dependsOn: "Requirements, evidence, and stakeholder decisions.", acceptance: "Architecture owners approve the decision register." },
+      { id: "logical-physical-design", phase: "Design", title: "Design Logical and Physical VCF Architecture", outcome: "Deliver domain, cluster, component placement, host, network, storage, IP, DNS, NTP, and sizing designs.", dependsOn: "Approved decision register.", acceptance: "Infrastructure owners accept the logical and physical design." },
+      { id: "implementation-handoff", phase: "Handoff", title: "Design Implementation Runbook and Acceptance Plan", outcome: "Deliver the future execution sequence, rollback approach, change-window plan, validation criteria, runbooks, RACI, and escalation model.", dependsOn: "Accepted logical and physical design.", acceptance: "Delivery leadership confirms the package is implementation ready." },
     ],
     implementationPackages: [],
   },
@@ -380,9 +380,9 @@ const VVF_PLAYBOOK_PATHS: Partial<Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, 
     decisions: ["Requirements and constraints", "Target pathway", "Topology and components", "Physical prerequisites", "Future execution windows"],
     designPackages: [
       { id: "requirements", phase: "Design", title: "Confirm VVF Requirements and Constraints", outcome: "Issue the requirements and constraints register with customer priorities, boundaries, and unresolved evidence.", dependsOn: "Estate evidence and customer discovery.", acceptance: "Named owners approve requirements and constraints." },
-      { id: "decision-register", phase: "Design", title: "Issue the VVF Decision Register", outcome: "Record pathway, topology, storage, networking, component, and adoption-depth decisions with rationale.", dependsOn: "Requirements, evidence, and stakeholder decisions.", acceptance: "Architecture owners approve the decision register." },
-      { id: "logical-physical-design", phase: "Design", title: "Issue Logical and Physical VVF Design", outcome: "Deliver vCenter, cluster, component placement, host, network, storage, IP, DNS, NTP, and sizing designs.", dependsOn: "Approved decision register.", acceptance: "Infrastructure owners accept the logical and physical design." },
-      { id: "implementation-handoff", phase: "Handoff", title: "Issue Implementation Runbook and Acceptance Plan", outcome: "Deliver the future execution sequence, rollback approach, change-window plan, validation criteria, runbooks, RACI, and escalation model.", dependsOn: "Accepted logical and physical design.", acceptance: "Delivery leadership confirms the package is implementation ready." },
+      { id: "decision-register", phase: "Design", title: "Design VVF Target State and Record Decisions", outcome: "Record pathway, topology, storage, networking, component, and adoption-depth decisions with rationale.", dependsOn: "Requirements, evidence, and stakeholder decisions.", acceptance: "Architecture owners approve the decision register." },
+      { id: "logical-physical-design", phase: "Design", title: "Design Logical and Physical VVF Architecture", outcome: "Deliver vCenter, cluster, component placement, host, network, storage, IP, DNS, NTP, and sizing designs.", dependsOn: "Approved decision register.", acceptance: "Infrastructure owners accept the logical and physical design." },
+      { id: "implementation-handoff", phase: "Handoff", title: "Design Implementation Runbook and Acceptance Plan", outcome: "Deliver the future execution sequence, rollback approach, change-window plan, validation criteria, runbooks, RACI, and escalation model.", dependsOn: "Accepted logical and physical design.", acceptance: "Delivery leadership confirms the package is implementation ready." },
     ],
     implementationPackages: [],
   },
@@ -468,7 +468,7 @@ export function getVcfPlaybookWorkPackageOwnership(path: UpgradePath, workPackag
     },
     "design-only": {
       requirements: GOVERNANCE_OWNERSHIP,
-      "decision-register": GOVERNANCE_OWNERSHIP,
+      "decision-register": INFRASTRUCTURE_DESIGN_OWNERSHIP,
       "logical-physical-design": INFRASTRUCTURE_DESIGN_OWNERSHIP,
       "implementation-handoff": INFRASTRUCTURE_WAVE_OWNERSHIP,
     },
@@ -3255,6 +3255,12 @@ function inferredPlanAuthority(value: unknown, document: EngagementDocument, gen
 const LEGACY_GENERATED_LABELS: Array<[RegExp, string]> = [
   [/^HCL Gate: /, "Hardware Compatibility Confirmed"],
   [/^Finalize ToR switch design and port readiness$/, "Finalize ToR switch design and port configuration"],
+  // Design-only packages are named as design work.
+  [/^Issue the VCF Decision Register$/, "Design VCF Target State and Record Decisions"],
+  [/^Issue the VVF Decision Register$/, "Design VVF Target State and Record Decisions"],
+  [/^Issue Logical and Physical VCF Design$/, "Design Logical and Physical VCF Architecture"],
+  [/^Issue Logical and Physical VVF Design$/, "Design Logical and Physical VVF Architecture"],
+  [/^Issue Implementation Runbook and Acceptance Plan$/, "Design Implementation Runbook and Acceptance Plan"],
 ];
 
 /**

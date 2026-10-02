@@ -321,6 +321,25 @@ describe("loading saved plans", () => {
     expect(migrateDocument(stale).adoptionTimeline.columns).toEqual(document.adoptionTimeline.columns);
   });
 
+  it("names design-only packages as design work, renaming only untouched generated labels on saved plans", async () => {
+    const { migrateDocument } = await import("../shared/fcp");
+    const document = plan({ upgradePath: "design-only" });
+    const labels = activities(document.adoptionTimeline).map(item => item.label);
+    expect(labels).toEqual(expect.arrayContaining(["Design VCF Target State and Record Decisions", "Design Logical and Physical VCF Architecture", "Design Implementation Runbook and Acceptance Plan"]));
+    expect(labels.some(label => label.startsWith("Issue "))).toBe(false);
+    // The decision register is design work, not governance.
+    expect(document.adoptionTimeline.lanes.find(lane => lane.bars.some(item => item.id === "bar-playbook-design-decision-register"))?.category).toBe("Modernize Infrastructure");
+
+    const edited = structuredClone(document);
+    edited.planAuthority = "manual";
+    const find = (id: string) => activities(edited.adoptionTimeline).find(item => item.id === id)!;
+    find("bar-playbook-design-decision-register").label = "Issue the VCF Decision Register";
+    find("bar-playbook-design-logical-physical-design").label = "Our Own Design Name";
+    const migrated = activities(migrateDocument(edited).adoptionTimeline);
+    expect(migrated.find(item => item.id === "bar-playbook-design-decision-register")?.label).toBe("Design VCF Target State and Record Decisions");
+    expect(migrated.find(item => item.id === "bar-playbook-design-logical-physical-design")?.label).toBe("Our Own Design Name");
+  });
+
   it("keeps a hand-edited plan's positions and labels while refreshing generated wording", async () => {
     const { migrateDocument } = await import("../shared/fcp");
     const document = plan({ upgradePath: "greenfield", operations: ["lifecycle"] }, { priorities: ["operations"] });
