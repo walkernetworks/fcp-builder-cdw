@@ -1,14 +1,14 @@
 import { barWindow } from "./buildingBlocks";
-import { completedReport } from "./report";
+import { canonicalAddOn, completedReport } from "./report";
 import type { Timeline } from "./fcp";
 import { activityOwner, calculateEntitlementEndDate, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
 /**
  * Hours model for the Condensed FCP, after the fcp-builder skill's fcp_hours.py.
  *
- * Scoped effort is priced from the services catalog: the smallest bracket that fits the estate, never
- * per-host constants. Each line's base hours are split by role (lead 100%, support 15%, project manager
- * 25% of the two). Migration and in-place waves have no bracket and are solved to the envelope.
+ * Scoped effort is priced from the services catalog (the ROM estimator's Required Hours table): the smallest
+ * bracket that fits the estate, never per-host constants. Each line's base hours are split by role (lead 100%,
+ * support 15%, project manager 25% of the two) unless the catalog entry sets its own support or PM share. Migration and in-place waves have no bracket and are solved to the envelope.
  * Signed Resource Assignments replace the calculated table on the page when they are entered.
  *
  * This module holds no rates. The envelope is the entitled hours when known; the server may supply an
@@ -20,18 +20,25 @@ export const ROLE_LOADING = 1.4375;
 type Lead = "architect" | "srConsultant";
 type LineKind = "core" | "repeatable" | "addon" | "fill";
 
-/** Catalog brackets: base hours and lead role. Codes stay internal. */
+/** Catalog brackets: base hours, lead role, and any support or PM share that differs from the default. Codes stay internal. */
 const CATALOG = {
   A1: { base: 75, lead: "architect" }, A2: { base: 100, lead: "architect" }, A3: { base: 165, lead: "architect" }, A4: { base: 230, lead: "architect" },
   // Design discovery, sized like the former discovery brackets; consultant-led.
   DD1: { base: 34, lead: "srConsultant" }, DD2: { base: 85, lead: "srConsultant" }, DD3: { base: 200, lead: "srConsultant" },
   D1: { base: 90, lead: "srConsultant" }, D2: { base: 135, lead: "srConsultant" }, D3: { base: 195, lead: "srConsultant" }, D4: { base: 210, lead: "srConsultant" },
   D5: { base: 210, lead: "srConsultant" }, D6: { base: 225, lead: "srConsultant" }, D7: { base: 300, lead: "srConsultant" }, D8: { base: 410, lead: "srConsultant" },
-  X1: { base: 75, lead: "srConsultant" }, X2: { base: 80, lead: "srConsultant" }, X3: { base: 80, lead: "srConsultant" }, X4: { base: 80, lead: "srConsultant" },
-  X5: { base: 80, lead: "srConsultant" }, X6: { base: 100, lead: "architect" }, X7: { base: 20, lead: "architect" }, X8: { base: 80, lead: "srConsultant" },
+  // Discovery: 8 architect hours for each capability area the customer is interested in, with no support or PM.
+  DX: { base: 8, lead: "architect", support: 0, pm: 0 },
+  X1: { base: 70, lead: "srConsultant" }, X2: { base: 70, lead: "srConsultant" }, X3: { base: 70, lead: "srConsultant" }, X4: { base: 35, lead: "srConsultant" },
+  // X5 (VCF Network) is not in the Required Hours table; it keeps the earlier catalog size.
+  X5: { base: 80, lead: "srConsultant" }, X6: { base: 100, lead: "architect" }, X7: { base: 20, lead: "architect" },
+  // Private AI includes Supervisor and VKS.
+  X8: { base: 95, lead: "srConsultant" },
   X9: { base: 40, lead: "srConsultant" }, X10: { base: 70, lead: "srConsultant" }, X11: { base: 36, lead: "architect" }, X12: { base: 68, lead: "architect" },
   X13: { base: 40, lead: "srConsultant" }, X14: { base: 40, lead: "srConsultant" }, X15: { base: 40, lead: "srConsultant" },
-} as const satisfies Record<string, { base: number; lead: Lead }>;
+  // VCF Networking with VPCs (1 domain): 100 architect, 20 consultant.
+  X16: { base: 100, lead: "architect", support: 0.2 },
+} as const satisfies Record<string, { base: number; lead: Lead; support?: number; pm?: number }>;
 export type CatalogCode = keyof typeof CATALOG;
 
 /** Base hours for a wave line with no envelope to solve against, and for a proving run. */
@@ -118,14 +125,23 @@ export type ScopedEffort = {
   };
 };
 
-export function splitRoles(base: number, lead: Lead): RoleHours {
-  const support = 0.15 * base;
+export function splitRoles(base: number, lead: Lead, supportShare = 0.15, pmShare = 0.25): RoleHours {
+  const support = supportShare * base;
   const architect = lead === "architect" ? base : support;
   const srConsultant = lead === "architect" ? support : base;
-  return { architect, srConsultant, projectManager: 0.25 * (architect + srConsultant) };
+  return { architect, srConsultant, projectManager: pmShare * (architect + srConsultant) };
 }
 
-const loaded = (line: Pick<EffortLine, "base">) => line.base * ROLE_LOADING;
+/** A line's hours by role, with its catalog entry's support and PM shares; `base` defaults to the line's current size. */
+function rolesOf(item: Pick<EffortLine, "code" | "base" | "lead">, base = item.base): RoleHours {
+  const entry: { support?: number; pm?: number } = item.code === "FILL" ? {} : CATALOG[item.code] as { support?: number; pm?: number };
+  return splitRoles(base, item.lead, entry.support, entry.pm);
+}
+
+const loaded = (item: Pick<EffortLine, "code" | "base" | "lead">) => {
+  const roles = rolesOf(item);
+  return roles.architect + roles.srConsultant + roles.projectManager;
+};
 
 function line(workstream: string, code: CatalogCode, kind: LineKind): EffortLine {
   const entry = CATALOG[code];
@@ -188,7 +204,21 @@ export function scopedEffortLines(document: EngagementDocument): EffortLine[] {
   // Design is always in scope; discovery is added only when no prior assessment exists.
   const design = "Design discovery, architecture and design";
   lines.push(line(design, designBracket(sites, servers), "core"));
-  if (report.discovery.assessmentCompleted !== true) lines.push(line(design, discoveryBracket(sites, servers), "core"));
+  if (report.discovery.assessmentCompleted !== true) {
+    lines.push(line(design, discoveryBracket(sites, servers), "core"));
+    const addOns = new Set(report.discovery.addOnsPurchased.map(canonicalAddOn));
+    const areas = [
+      hasAny("operations") || hasAny("automation"),
+      Array.from(outcomes).some(key => key.startsWith("networking:") && key !== "networking:physical-fabric"),
+      hasAny("security"),
+      has("resilience:core", "resilience:recovery-architecture", "resilience:recovery-exercises"),
+      addOns.has("hcx"),
+      hasAny("kubernetes"),
+      has("resilience:cyber-recovery", "resilience:cloud-cyber-recovery") || addOns.has("acc"),
+      hasAny("private-ai"),
+    ].filter(Boolean).length;
+    if (areas) lines.push({ ...line(design, "DX", "core"), fullBase: 8 * areas, base: 8 * areas });
+  }
 
   // Platform build by pathway.
   if (path === "greenfield" || path === "hybrid" || path === "converge") {
@@ -208,14 +238,15 @@ export function scopedEffortLines(document: EngagementDocument): EffortLine[] {
   const designOnly = path === "design-only" || path === "undecided";
   const firstAddOn = lines.length;
   {
-    if (!vvf && has("networking:edge-cluster-routing", "networking:vpc")) lines.push(line("NSX networking, Edge and VPC", "X6", "addon"));
+    if (!vvf && has("networking:vpc")) lines.push(line("NSX networking, Edge and VPC", "X16", "addon"));
+    else if (!vvf && has("networking:edge-cluster-routing")) lines.push(line("NSX networking and Edge", "X6", "addon"));
     else if (!vvf && has("networking:overlay-transport", "networking:network-operations")) lines.push(line("NSX networking", "X5", "addon"));
     if (vvf && has("networking:physical-fabric")) lines.push(line("VDS networking", "X7", "addon"));
     if (has("automation:vm-self-service", "automation:day-2-automation", "automation:core", "automation:infrastructure-as-code", "automation:governance", "automation:application-provisioning")) {
       lines.push(line("Automation and self-service", has("automation:infrastructure-as-code", "automation:governance", "automation:application-provisioning") ? "X3" : "X2", "addon"));
     }
     if (has("operations:observability", "operations:custom-dashboards", "operations:capacity-cost", "operations:event-integration", "operations:core")) lines.push(line("VCF Operations, dashboards and logs", "X4", "addon"));
-    if (hasAny("kubernetes")) lines.push(line("Supervisor and VKS", "X9", "addon"));
+    if (hasAny("kubernetes") && !hasAny("private-ai")) lines.push(line("Supervisor and VKS", "X9", "addon"));
     if (hasAny("private-ai")) lines.push(line("Private AI Services", "X8", "addon"));
     if (has("automation:data-services")) lines.push(line("Data Services Manager", "X13", "addon"));
     if (has("security:ids-ips", "security:malware-prevention", "security:security-intelligence", "security:identity-firewall")) lines.push(line("vDefend firewall and threat prevention", "X12", "addon"));
@@ -232,7 +263,7 @@ export function scopedEffortLines(document: EngagementDocument): EffortLine[] {
 function rowsFromLines(lines: EffortLine[]): EffortRow[] {
   const byWorkstream = new Map<string, RoleHours & { notes: Set<string> }>();
   for (const item of lines) {
-    const roles = splitRoles(item.base, item.lead);
+    const roles = rolesOf(item);
     const row = byWorkstream.get(item.workstream) ?? { architect: 0, srConsultant: 0, projectManager: 0, notes: new Set<string>() };
     row.architect += roles.architect;
     row.srConsultant += roles.srConsultant;
@@ -325,6 +356,7 @@ const ADD_ON_BARS: Partial<Record<CatalogCode, { bars: RegExp; design: string }>
   X4: { bars: /^bar-(cloud-)?operations(-.*)?$|^bar-playbook-adoption-/, design: "operations" },
   X5: { bars: /^bar-(cloud-)?networking-(?!physical-fabric|load-balancing)|^bar-vcf-networking-nsx$/, design: "networking" },
   X6: { bars: /^bar-(cloud-)?networking-(?!physical-fabric|load-balancing)|^bar-vcf-networking-nsx$/, design: "networking" },
+  X16: { bars: /^bar-(cloud-)?networking-(?!physical-fabric|load-balancing)|^bar-vcf-networking-nsx$/, design: "networking" },
   X7: { bars: /^bar-networking-physical-fabric$/, design: "networking" },
   X8: { bars: /^bar-(cloud-)?private-ai/, design: "private-ai" },
   X9: { bars: /^bar-(cloud-)?kubernetes/, design: "kubernetes" },
@@ -337,7 +369,7 @@ const ADD_ON_BARS: Partial<Record<CatalogCode, { bars: RegExp; design: string }>
 };
 
 function barsForLine(item: EffortLine): (id: string) => boolean {
-  if (/^(A|DD)\d/.test(item.code)) return id => DESIGN_BARS.test(id);
+  if (/^(A\d|DD\d|DX)$/.test(item.code)) return id => DESIGN_BARS.test(id);
   if (/^D\d/.test(item.code)) return id => BUILD_BARS.test(id);
   if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain)$/.test(id);
   if (item.code === "FILL") return id => /^bar-playbook-execution-/.test(id);
@@ -411,7 +443,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     matches.forEach(({ bar }, index) => { if (keep(bar.id)) add(target, bar.id, bar.label, roles, weights[index] / weightTotal); });
   };
   for (const item of lines) {
-    const roles = splitRoles(item.base, item.lead);
+    const roles = rolesOf(item);
     // Customer-owned packages keep their share of the line, which then drops out of CDW's hours.
     const matches = bars.filter(({ bar }) => barsForLine(item)(bar.id) && activityOwner(bar) !== "checkpoint");
     // Work the planner placed in the notional keeps its share of the line and takes it out of the entitlement.
@@ -425,8 +457,8 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     if (addOn && item.reduction === "design only" && item.fullBase > item.base) {
       const build = bars.filter(({ bar }) => addOn.bars.test(bar.id) && cdw(bar.id));
       if (build.length) {
-        spread(build, splitRoles(item.fullBase - item.base, item.lead), id => deferred.has(id), followOn);
-        spread(build, splitRoles(item.fullBase - item.base, item.lead), id => !deferred.has(id), pinned);
+        spread(build, rolesOf(item, item.fullBase - item.base), id => deferred.has(id), followOn);
+        spread(build, rolesOf(item, item.fullBase - item.base), id => !deferred.has(id), pinned);
       }
     }
   }

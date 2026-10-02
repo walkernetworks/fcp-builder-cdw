@@ -67,8 +67,39 @@ describe("hours model", () => {
       Object.assign(document.fields.adoptionDetails, { security: ["malware-prevention"], automation: ["data-services"], networking: ["vpc"], kubernetes: ["workload-domains"] });
       document.fields.priorities = ["security", "automation", "networking", "kubernetes"];
     });
-    expect(codes(document)).toEqual(expect.arrayContaining(["X12", "X13", "X6", "X9", "X2"]));
+    expect(codes(document)).toEqual(expect.arrayContaining(["X12", "X13", "X16", "X9", "X2"]));
     expect(codes(document)).not.toContain("X11");
+    expect(codes(document)).not.toContain("X6");
+  });
+
+  it("prices lines from the Required Hours table", () => {
+    const document = engagement(document => {
+      Object.assign(document.fields.adoptionDetails, { networking: ["vpc"], privateAi: ["gpu-capacity"], kubernetes: ["workload-domains"] });
+      document.fields.priorities = ["networking", "private-ai", "kubernetes", "operations"];
+    });
+    // Full scope, with no envelope to reduce it.
+    const rows = buildScopedEffort({ ...document, report: { ...document.report, entitlement: { ...document.report.entitlement, hours: null } } }).internal.calculatedRows;
+    // VPC networking: 100 architect, 20 consultant, 30 PM.
+    expect(rows.find(row => row.workstream === "NSX networking, Edge and VPC")).toMatchObject({ architect: 100, srConsultant: 20, projectManager: 30, total: 150 });
+    // Private AI includes Supervisor and VKS, so VKS is not priced again.
+    expect(codes(document)).toContain("X8");
+    expect(codes(document)).not.toContain("X9");
+    expect(scopedEffortLines(document).find(item => item.code === "X4")?.base).toBe(35);
+  });
+
+  it("adds 8 architect hours to discovery for each capability area of interest", () => {
+    const document = engagement(document => {
+      document.report.discovery.assessmentCompleted = false;
+      document.report.discovery.addOnsPurchased = ["HCX"];
+    });
+    // Example brief: operations and recovery, plus HCX.
+    const extra = scopedEffortLines(document).find(item => item.code === "DX");
+    expect(extra).toMatchObject({ lead: "architect", base: 24 });
+    const design = buildScopedEffort(document).internal.calculatedRows.find(row => row.workstream.startsWith("Design"));
+    const withoutAreas = buildScopedEffort(engagement(document => { document.report.discovery.assessmentCompleted = false; document.fields.priorities = []; Object.assign(document.fields.adoptionDetails, { operations: [], resilience: [] }); }));
+    expect(design!.architect).toBeGreaterThan(withoutAreas.internal.calculatedRows.find(row => row.workstream.startsWith("Design"))!.architect);
+    // No discovery line, no discovery areas.
+    expect(codes(engagement())).not.toContain("DX");
   });
 });
 
