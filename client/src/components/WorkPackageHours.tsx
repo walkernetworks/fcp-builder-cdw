@@ -40,20 +40,22 @@ const COST_STYLE: Record<PlanCost["status"], { bar: string; box: string; text: s
 };
 
 /** INTERNAL: the plan's cost at the rate card against the entitlement value. Never printed in a document. */
-export function CostMeter({ cost, hours }: { cost: PlanCost; hours: number }) {
+export function CostMeter({ cost, hours, assignments = false }: { cost: PlanCost; hours: number; assignments?: boolean }) {
   const style = COST_STYLE[cost.status];
   const percent = cost.ratio === null ? 0 : Math.round(cost.ratio * 100);
   return (
     <div className={`rounded-xl border p-3 text-xs ${style.box}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-[10px] font-black uppercase tracking-[.14em]">Plan cost · internal, not in the report</span>
+        <span className="text-[10px] font-black uppercase tracking-[.14em]">{assignments ? "Signed assignments cost" : "Plan cost"} · internal, not in the report</span>
         <span className="font-semibold">{style.text}</span>
       </div>
       <p className="mt-1 text-sm font-bold">
         {dollars(cost.planCost)} for {hours.toLocaleString("en-US")} hours
         {cost.entitlementValue > 0 && <> of {dollars(cost.entitlementValue)} ({percent}%){cost.status === "over" ? ` · over by ${dollars(cost.planCost - cost.entitlementValue)}` : ` · ${dollars(cost.entitlementValue - cost.planCost)} left`}</>}
       </p>
-      {cost.status === "over" && <p className="mt-1 font-semibold">The entitlement window cannot go over the entitlement value, and the Condensed FCP will not export. Only design and work pinned to the entitlement are left to cut: reduce their hours or move work to the Two-Year Notional.</p>}
+      {cost.status === "over" && <p className="mt-1 font-semibold">{assignments
+        ? "The signed resource assignments cost more than the entitlement value, and the Condensed FCP will not export. Replace them with the plan or correct them in the report content."
+        : "The entitlement window cannot go over the entitlement value, and the Condensed FCP will not export. Only design and work pinned to the entitlement are left to cut: reduce their hours or move work to the Two-Year Notional."}</p>}
       {cost.followOnCost > 0 && <p className="mt-1">Follow-on scope in the Two-Year Notional: {dollars(cost.followOnCost)} (no limit; not drawn from the entitlement).</p>}
       {cost.entitlementValue > 0 && (
         <div className="relative mt-2 h-2 rounded-full bg-white/70">
@@ -111,7 +113,31 @@ export function RoleHoursEditor({ document, effort, barId, onChange }: { documen
         </div>
         {row.deferred && <p className="mt-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[11px] leading-4 text-slate-600">{placementNote[row.deferred]}</p>}
       </div>
-      {cost && <CostMeter cost={cost} hours={effort.totals.total} />}
+      <div className="space-y-2">
+        <AssignmentsInForce document={document} effort={effort} onChange={onChange} />
+        {cost && <CostMeter cost={cost} hours={effort.totals.total} assignments={effort.source === "assignments"} />}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Signed resource assignments replace the calculated plan in the report and the cost check, so edits on the
+ * timeline do not change either until the assignments are replaced or cleared.
+ */
+export function AssignmentsInForce({ document, effort, onChange }: { document: EngagementDocument; effort: ScopedEffort; onChange: (document: EngagementDocument) => void }) {
+  if (effort.source !== "assignments") return null;
+  const plan = effort.workPackages.filter(row => row.total > 0 && !row.deferred);
+  const planHours = plan.reduce((sum, row) => sum + row.total, 0);
+  const replace = () => onChange({ ...document, report: { ...document.report, resourceAssignments: plan.map(row => ({ workstream: row.label, architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager })) } });
+  const clear = () => onChange({ ...document, report: { ...document.report, resourceAssignments: [] } });
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-950">
+      <p><b>Signed resource assignments are in force ({effort.totals.total.toLocaleString("en-US")} hours).</b> They replace this plan in the report and in the cost check, so changing hours or moving work here does not change either. This plan is {planHours.toLocaleString("en-US")} hours in the entitlement.</p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <Button type="button" size="sm" className="h-7 text-xs" onClick={replace}>Replace assignments with this plan</Button>
+        <Button type="button" size="sm" variant="outline" className="h-7 bg-white text-xs" onClick={clear}>Clear assignments</Button>
+      </div>
     </div>
   );
 }
@@ -139,9 +165,9 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
         <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Hours by work package</p>
         <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-600">
           Baseline hours come from the services catalog for this plan, placed on the work packages that deliver them; adjusted rows are marked. The entitlement window is held to the entitlement value; work beyond it moves to the Two-Year Notional as follow-on scope. The Condensed FCP and the Delivery Package show this same table.
-          {effort?.source === "assignments" && <b className="text-slate-800"> Signed resource assignments are entered ({effort.totals.total.toLocaleString("en-US")} hours), so the report shows those instead.</b>}
         </p>
-        {effort?.internal.cost && effort.source === "calculated" && <div className="mt-3"><CostMeter cost={effort.internal.cost} hours={effort.totals.total} /></div>}
+        {effort && <div className="mt-3"><AssignmentsInForce document={document} effort={effort} onChange={onChange} /></div>}
+        {effort?.internal.cost && <div className="mt-3"><CostMeter cost={effort.internal.cost} hours={effort.totals.total} assignments={effort.source === "assignments"} /></div>}
         {effort ? <div className="mt-4"><WorkPackageTable effort={effort} /></div> : <p className="mt-4 text-xs text-slate-500">Calculating…</p>}
       </section>
     </div>
