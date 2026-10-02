@@ -13,7 +13,8 @@ const SCRUB = [
 ];
 // Design-led framing: never a readiness exercise.
 const VOCABULARY = /\b(readiness|workshops?|TRW)\b/i;
-const REQUIRED = ["Adoption Plan &amp; Recommendation", "The short version", "What we heard", "Why the order is not negotiable"];
+// Sections with no captured content are left out, so only the sections the app always writes are mandatory.
+const REQUIRED = ["Executive Summary", "Scoped Effort", "Adoption Plan &amp; Recommendation", "The short version"];
 const INTERNAL_PATHS = ["/Users/", "/home/", "drive_1", "sharepoint", "localhost", "127.0.0.1"];
 
 function visibleText(html: string): string {
@@ -69,7 +70,7 @@ export function checkCondensedFcp(html: string, context: { customerName: string;
   }
 
   for (const category of FIXED_GANTT_CATEGORIES) {
-    if (!html.includes(`<div class="lname">${category.replace(/&/g, "&amp;")}</div>`)) failures.push(`Category missing from the timeline: ${category}.`);
+    if (!html.includes(`<div class="timeline-lane timeline-category-lane"><strong>${category.replace(/&/g, "&amp;")}</strong></div>`)) failures.push(`Category missing from the timeline: ${category}.`);
   }
   for (const heading of REQUIRED) if (!html.includes(heading)) failures.push(`Mandatory section missing: ${heading.replace("&amp;", "&")}.`);
   if (!/For customer review · /.test(text)) failures.push("Missing the \"For customer review\" stamp.");
