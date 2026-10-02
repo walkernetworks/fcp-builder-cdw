@@ -61,7 +61,7 @@ This adds a second export, the **Condensed FCP**, in the FCP 2.0 "Make Amazing H
 | — The problems worth solving first | Brief `problems` |
 | — The open questions | Brief `openQuestions` |
 | — The technical items to confirm early | Brief `technicalItems` plus **generated** items from prerequisites and research notes |
-| — Why the order is not negotiable | **Generated** from prerequisites (platform-imposed) plus brief `constraints` (calendar-imposed) |
+| — Sequencing Constraints | **Generated** from prerequisites (platform-imposed) plus brief `constraints` (calendar-imposed) |
 | — What this asks of the customer's team | **Calculated** customer effort peak, plus brief `customerAsks` |
 | Open Items (item, what it gates, owner) | Brief `openItems`, plus every unfilled required field |
 | Revision note, sources footer | Brief `revision`, `sources` |

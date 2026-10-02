@@ -29,7 +29,7 @@ describe("Condensed FCP", () => {
     const html = render(document);
     expect(check(html, document)).toEqual([]);
     const visible = text(html);
-    for (const heading of ["Executive Summary", "Situation", "Plan on a Page", "Entitlement Burndown", "Scoped Effort", "Customer Effort by Week & Work Stream", "Target Personnel by Work Stream", "VCF Design Profile", "Design Elements — Requirements & Recommendations", "Adoption Sequence & Dependencies", "Private Cloud Adoption Timeline", "Engagement Milestones to Date", "Forward Delivery Plan", "Adoption Plan & Recommendation", "The short version", "What we heard, and what we have built to", "The problems worth solving first", "The open questions", "The technical items to confirm early", "Why the order is not negotiable", "What this asks of Acme Health's team", "Open Items"]) {
+    for (const heading of ["Executive Summary", "Situation", "Plan on a Page", "Entitlement Burndown", "Scoped Effort", "Customer Effort by Week & Work Stream", "Target Personnel by Work Stream", "VCF Design Profile", "Design Elements — Requirements & Recommendations", "Adoption Sequence & Dependencies", "Private Cloud Adoption Timeline", "Engagement Milestones to Date", "Forward Delivery Plan", "Adoption Plan & Recommendation", "The short version", "What we heard, and what we have built to", "The problems worth solving first", "The open questions", "The technical items to confirm early", "Sequencing Constraints", "What this asks of Acme Health's team", "Open Items"]) {
       expect(visible, heading).toContain(heading);
     }
     for (const category of FIXED_GANTT_CATEGORIES) expect(visible).toContain(category);

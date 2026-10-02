@@ -415,7 +415,7 @@ ${problems}
 ${questions}
 ${technical.length ? `<h3>The technical items to confirm early</h3><ul>${technical.join("")}</ul>` : ""}
 ${pulledIn.length ? `<p class="lead">Prerequisites included so selected outcomes can be delivered: ${esc(pulledIn.map(item => `${planOutcomeLabel(item.key)} (for ${item.requiredBy.map(key => planOutcomeLabel(key)).join(", ")})`).join("; "))}.</p>` : ""}
-${constraints.length ? `<h3>Why the order is not negotiable</h3>
+${constraints.length ? `<h3>Sequencing Constraints</h3>
 ${table(["Constraint", "Imposed By", "Effect on the Sequence"], constraints.map(item => [esc(item.constraint), esc(item.imposedBy), esc(item.effect)]))}` : ""}
 ${asks.length ? `<h3>What this asks of ${esc(customer)}'s team</h3><ul>${asks.map(item => `<li>${item}</li>`).join("")}</ul>` : ""}
 ${openItems}
