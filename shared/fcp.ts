@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getIndustryDiscoveryTemplate, industryDiscoveryPromptBlock } from "./industryDiscovery";
+import { emptyReport, reportSchema } from "./report";
 import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, hclAssessmentSchema, hclFindingSchedulePath, hclInventoryEvidenceSchema, hclSchedulePath, HCL_CATALOG_METADATA, HCL_CATALOG_RELEASES, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, HCL_TARGET_RELEASE, type HclCatalogRelease, type HclSchedulePath } from "./hcl";
 
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
@@ -93,6 +94,8 @@ export const timelineBarSchema = z.object({
   outcome: z.string().min(1).optional(),
   milestone: z.boolean().default(false),
   deferred: z.boolean().default(false),
+  /** Who carries the work, stamped for display from the planner's choice (see withOwnership); not saved on the bar. */
+  owner: z.enum(["cdw", "customer", "checkpoint"]).optional(),
 });
 
 export const timelineLaneSchema = z.object({
@@ -135,6 +138,33 @@ export type DeliveryStaffingPlan = {
   workPackageCount: number;
   peakConcurrentPackages: number;
 };
+
+export type ActivityOwner = "cdw" | "customer" | "checkpoint";
+
+/** Work the customer carries by default: hardware evidence and remediation, site prerequisites, and the physical fabric. */
+const DEFAULT_CUSTOMER_OWNED = /^bar-(hcl-(remediation|procurement|greenfield)|soft-prerequisite-|networking-physical-fabric)/;
+
+/** Who carries a work package: the planner's choice when stamped on the bar, otherwise the defaults. */
+export function activityOwner(bar: Pick<TimelineBar, "id" | "color" | "owner">): ActivityOwner {
+  if (bar.owner) return bar.owner;
+  if (bar.color === "gate" || bar.id === "bar-hcl-gate") return "checkpoint";
+  return DEFAULT_CUSTOMER_OWNED.test(bar.id) ? "customer" : "cdw";
+}
+
+/** A gate is a checkpoint, not work: drawn as a marker and never given hours. */
+export function isGateActivity(bar: Pick<TimelineBar, "id" | "color" | "owner">): boolean {
+  return activityOwner(bar) === "checkpoint";
+}
+
+/** Stamps each bar with who carries it, from the planner's choices by bar id (missing ids keep the defaults). */
+export function stampActivityOwners(timeline: Timeline, owners: Map<string, ActivityOwner>): Timeline {
+  return { ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, owner: owners.get(bar.id) ?? activityOwner({ ...bar, owner: undefined }) })) })) };
+}
+
+/** Removes display-only owner stamps before a timeline is saved. */
+export function unstampActivityOwners(timeline: Timeline): Timeline {
+  return { ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(({ owner: _owner, ...bar }) => bar) })) };
+}
 
 export const DELIVERY_ROLE_BY_WORKSTREAM: Record<WorkstreamType, string> = {
   Governance: "Engagement Manager / Project Manager",
@@ -1081,6 +1111,8 @@ export const engagementDocumentV11Schema = z.object({
   adoptionTimeline: timelineSchema,
   twoYearPlan: timelineSchema,
   rationale: z.string(),
+  /** Condensed FCP content from the customer brief; empty until a brief is imported. */
+  report: reportSchema.default(emptyReport),
 });
 export type EngagementDocument = z.infer<typeof engagementDocumentV11Schema>;
 
@@ -1985,7 +2017,7 @@ function softPrerequisiteLabel(key: AdoptionDetails["softPrerequisites"][number]
   return {
     "dns-ntp": "Confirm DNS, NTP, and core services",
     "ip-pools": "Allocate management and workload IP pools",
-    "tor-switch-design": "Finalize ToR switch design and port readiness",
+    "tor-switch-design": "Finalize ToR switch design and port configuration",
   }[key];
 }
 
@@ -2156,7 +2188,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     if (executionPathway && outcomeKeys.has("networking:physical-fabric")) {
       const [fabricStart, fabricEnd] = range(mobilizationEnd, scheduleUnits(cadence, 3, 1));
       infrastructureBars.push({
-        ...bar("bar-networking-physical-fabric", fabricStart, fabricEnd, colorForWorkstreamType("Infrastructure Build"), planOutcomeLabel("networking:physical-fabric", edition), false, false, "Runs with the site-readiness work and closes before platform build begins.", "Deliver transport VLANs, MTU, and routing handoffs the platform and network services depend on."),
+        ...bar("bar-networking-physical-fabric", fabricStart, fabricEnd, colorForWorkstreamType("Infrastructure Build"), planOutcomeLabel("networking:physical-fabric", edition), false, false, "Runs with the site prerequisite work and closes before platform build begins.", "Deliver transport VLANs, MTU, and routing handoffs the platform and network services depend on."),
         prerequisites: ["bar-platform-plan"],
       });
       sitePrerequisiteIds.push("bar-networking-physical-fabric");
@@ -2166,7 +2198,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       const [softStart, softEnd] = range(mobilizationEnd, scheduleUnits(cadence, 3, 1));
       const id = `bar-soft-prerequisite-${prerequisite}`;
       infrastructureBars.push({
-        ...bar(id, softStart, softEnd, "teal", softPrerequisiteLabel(prerequisite), false, false, path === "red" ? "This site-readiness prerequisite may run in parallel with Red-path procurement and greenfield provisioning." : "This site-readiness prerequisite runs in parallel with the HCL evidence review and closes before platform build begins.", path === "red" ? "Remove an infrastructure dependency without delaying the hardware procurement buffer." : "Remove an infrastructure dependency before the platform build window opens."),
+        ...bar(id, softStart, softEnd, "teal", softPrerequisiteLabel(prerequisite), false, false, path === "red" ? "This site prerequisite may run in parallel with Red-path procurement and greenfield provisioning." : "This site prerequisite runs in parallel with the HCL evidence review and closes before platform build begins.", path === "red" ? "Remove an infrastructure dependency without delaying the hardware procurement buffer." : "Remove an infrastructure dependency before the platform build window opens."),
         prerequisites: ["bar-platform-plan"],
       });
       sitePrerequisiteIds.push(id);
@@ -2174,7 +2206,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     });
   }
 
-  const [hclGateStart, hclGateEnd] = range(hclBufferEnd, 1);
+  // A gate is a checkpoint, not work: it sits in the last window of the evidence work and adds no time of its own.
+  const [hclGateStart, hclGateEnd] = range(Math.max(1, hclBufferEnd - 1), 1);
   programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", "Hardware Compatibility Confirmed", true, false, hclDependency, `Platform build starts only after this milestone. Compatibility check result: ${hclPathLabel(path)}.`));
 
   const pathwayDesignEnd = playbookPlan.designPackages.length ? pathwayDesignCursor : hclGateEnd;
@@ -2384,7 +2417,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   if (implementationApproved) {
     const [handoverStart, handoverEnd] = range(Math.max(migrationEnd, operationsCursor, cloudEnd, securityEnd, networkingEnd), handoverDuration);
-    operationsBars.push({ ...bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Validate Handover, Service Acceptance, and Ongoing Lifecycle", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm operational readiness, evidence, ownership, and the continuing lifecycle cadence."), prerequisites: [deliveryCompleteId] });
+    operationsBars.push({ ...bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Validate Handover, Service Acceptance, and Ongoing Lifecycle", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm the operating model, evidence, ownership, and the continuing lifecycle cadence."), prerequisites: [deliveryCompleteId] });
   }
 
   const lanes: TimelineLane[] = [
@@ -2733,7 +2766,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const implementationPackageSummary = playbookPlan.implementationPackages.map(item => item.title).join(", ");
   const migrationGateContext = playbookPlan.implementationPackages.length
     ? `Implementation begins only after the design package is accepted and hardware compatibility is confirmed. The approved execution sequence is ${implementationPackageSummary}. Selected component adoption begins after platform acceptance and may overlap later approved upgrade or migration waves where the workstreams are independent.`
-    : "No implementation or migration work is generated until an execution pathway is approved; the current plan remains focused on design decisions and implementation-ready artifacts, followed by an execution decision, continuing design authority, and operating readiness through entitlement end.";
+    : "No implementation or migration work is generated until an execution pathway is approved; the current plan remains focused on design decisions and implementation-ready artifacts, followed by an execution decision, continuing design authority, and operating model preparation through entitlement end.";
   const customer = fields.customerName || "The customer";
   const resolvedOutcomes = resolvePlanOutcomes(fields);
   const edition = resolvedOutcomes.edition;
@@ -3061,7 +3094,7 @@ export function createDefaultDocument(): EngagementDocument {
   const inventory = emptyInventory();
   const readiness = assessReadiness(fields, inventory);
   const plans = buildAdoptionPlans(fields, inventory);
-  return { version: 11, planAuthority: "generated", fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
+  return { version: 11, planAuthority: "generated", fields, inventorySources: [], inventory, readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale, report: emptyReport() };
 }
 
 function stringValue(value: unknown): string {
@@ -3216,7 +3249,11 @@ function inferredPlanAuthority(value: unknown, document: EngagementDocument, gen
     : "manual";
 }
 
-const LEGACY_HARDWARE_MILESTONE_LABEL = /^HCL Gate: /;
+/** Old generated labels and their current wording; a label the planner typed is never matched. */
+const LEGACY_GENERATED_LABELS: Array<[RegExp, string]> = [
+  [/^HCL Gate: /, "Hardware Compatibility Confirmed"],
+  [/^Finalize ToR switch design and port readiness$/, "Finalize ToR switch design and port configuration"],
+];
 
 /**
  * Brings a hand-edited plan's generated wording up to date without touching the planner's work: positions,
@@ -3235,7 +3272,7 @@ function withRefreshedActivityDetails(timeline: Timeline, sources: Timeline[], w
     lanes: timeline.lanes.map(lane => ({
       ...lane,
       bars: lane.bars.map(activity => {
-        const label = LEGACY_HARDWARE_MILESTONE_LABEL.test(activity.label) ? "Hardware Compatibility Confirmed" : activity.label;
+        const label = LEGACY_GENERATED_LABELS.find(([pattern]) => pattern.test(activity.label))?.[1] ?? activity.label;
         const source = details.get(activity.id);
         if (!source) return label === activity.label ? activity : { ...activity, label };
         const dependsOn = text(source.dependsOn);
@@ -3328,6 +3365,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
+      report: emptyReport(),
     };
   }
 
@@ -3345,6 +3383,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
+      report: emptyReport(),
     };
   }
 
@@ -3362,6 +3401,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
+      report: emptyReport(),
     };
   }
 
@@ -3379,6 +3419,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
+      report: emptyReport(),
     };
   }
 
@@ -3396,6 +3437,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
+      report: emptyReport(),
     };
   }
 
@@ -3413,6 +3455,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
+      report: emptyReport(),
     };
   }
 
@@ -3432,6 +3475,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
+      report: emptyReport(),
     };
   }
 
@@ -3451,6 +3495,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
       adoptionTimeline: plans.adoptionTimeline,
       twoYearPlan: plans.twoYearPlan,
       rationale: plans.rationale,
+      report: emptyReport(),
     };
   }
 
@@ -3496,6 +3541,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
     adoptionTimeline: plans.adoptionTimeline,
     twoYearPlan: plans.twoYearPlan,
     rationale: plans.rationale,
+    report: emptyReport(),
   };
 }
 

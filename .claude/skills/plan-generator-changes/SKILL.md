@@ -10,13 +10,13 @@ Saved engagements store their generated timelines. Users must never need **Rebui
 ## How saved plans are kept current
 
 - `planAuthority: "generated"` (nobody edited the plan): `migrateDocument` returns the freshly generated `adoptionTimeline`, `twoYearPlan`, and `rationale`. Both timeline editors set `planAuthority: "manual"` on any edit, so this is safe.
-- `planAuthority: "manual"` (hand-edited): `withRefreshedActivityDetails` keeps every position, label, and added or removed activity. It refreshes only `dependsOn`, `outcome`, and `prerequisites` on activities whose id the generator still produces, and renames legacy generated labels (`LEGACY_HARDWARE_MILESTONE_LABEL`).
+- `planAuthority: "manual"` (hand-edited): `withRefreshedActivityDetails` keeps every position, label, and added or removed activity. It refreshes only `dependsOn`, `outcome`, and `prerequisites` on activities whose id the generator still produces, and renames legacy generated labels (`LEGACY_GENERATED_LABELS`).
 - The `rationale` is always regenerated.
 
 ## Rules for a generator change
 
 1. **Keep bar ids stable.** Refresh and the Building Blocks mapping match by id. If an id must change, map the old id to the new one in `migrateDocument` so manual plans keep their refresh, and update `shared/buildingBlocks.ts` rules and `GENERATED_BAR_ID`.
-2. **Renaming a generated label?** Labels on manual plans are never overwritten, because users rename activities. Add the old label pattern to the legacy-label handling in `withRefreshedActivityDetails` (like `LEGACY_HARDWARE_MILESTONE_LABEL`) so only the untouched generated wording is replaced.
+2. **Renaming a generated label?** Labels on manual plans are never overwritten, because users rename activities. Add the old label and its new wording to `LEGACY_GENERATED_LABELS` in `shared/fcp.ts` so only the untouched generated wording is replaced.
 3. **Changing wording** (`dependsOn`, `outcome`, notes): no migration needed. It reaches manual plans through the refresh, and generated plans through regeneration.
 4. **Changing positions or durations**: it reaches generated plans only. Never move activities in a manual plan.
 5. **New fields** on the document or `adoptionDetails`: add a zod `.default(...)` and a value in `createDefaultAdoptionDetails` / `createDefaultFields` so older saved documents still parse.

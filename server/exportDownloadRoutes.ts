@@ -7,8 +7,11 @@ import { BUILDING_BLOCKS_MIME, buildingBlocksFilename, renderBuildingBlocksWorkb
 import { verifyExportTicket } from "./exportTickets";
 import { renderFcpHtml, renderHclCompatibilityPlanOutputHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
+import { checkCondensedFcp } from "./condensedFcpChecks";
+import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
+import { scopedEffortForDocument } from "./rateCard";
 
-export function safeExportFilename(title: string, extension: "html" | "pdf", documentType: "fcp" | "plan-output" = "fcp") {
+export function safeExportFilename(title: string, extension: "html" | "pdf", documentType: "fcp" | "condensed-fcp" | "plan-output" = "fcp") {
   return exportFilename(title, documentType, extension);
 }
 
@@ -40,8 +43,19 @@ export function registerExportDownloadRoutes(app: Express) {
         return res.status(200).type(BUILDING_BLOCKS_MIME).send(Buffer.from(workbook));
       }
 
-      const html = ticket.documentType === "plan-output" ? renderHclCompatibilityPlanOutputHtml(row.title, document) : renderFcpHtml(row.title, document);
-      const filename = safeExportFilename(row.title, ticket.format === "html" ? "html" : "pdf", ticket.documentType === "plan-output" ? "plan-output" : "fcp");
+      let html: string;
+      if (ticket.documentType === "condensed-fcp") {
+        const effort = scopedEffortForDocument(document);
+        html = renderCondensedFcpHtml(row.title, document, { effort });
+        // The condensed FCP goes to the customer as-is, so every content gate must pass first.
+        const failures = checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount });
+        // The entitlement window never goes over the entitlement value; only design and pinned work can keep it over.
+        if (effort.internal.cost?.status === "over") failures.push("The entitlement window costs more than the entitlement value. Reduce hours or move work to the Two-Year Notional on the Entitlement Adoption Timeline step.");
+        if (failures.length) return deny(res, 409, `The Condensed FCP was not exported because it failed these checks:\n- ${failures.join("\n- ")}`);
+      } else {
+        html = ticket.documentType === "plan-output" ? renderHclCompatibilityPlanOutputHtml(row.title, document) : renderFcpHtml(row.title, document);
+      }
+      const filename = safeExportFilename(row.title, ticket.format === "html" ? "html" : "pdf", ticket.documentType === "plan-output" || ticket.documentType === "condensed-fcp" ? ticket.documentType : "fcp");
 
       if (ticket.format === "html") {
         res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
