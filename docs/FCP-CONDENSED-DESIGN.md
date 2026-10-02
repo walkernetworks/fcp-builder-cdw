@@ -41,13 +41,15 @@ This adds a second export, the **Condensed FCP**, in the FCP 2.0 "Make Amazing H
 | Executive Summary: Situation | **Calculated** from RVTools and HCL (hosts, VMs, storage, old guest OSes, VM hardware, vSphere 8 end of support), plus brief `situation` bullets |
 | Plan on a Page (five categories) | **Generated** from the plan |
 | Entitlement Burndown and time-sensitive note | **Calculated** |
-| Scoped Effort (workstream × role, hours) | **Calculated** by the hours model, or Resource Assignments when entered |
+| Scoped Effort (work package × role, hours, with window and lead delivery role) | **Calculated** by the hours model and spread over the adoption timeline work packages that deliver each line (`workPackageEffort` in `shared/effort.ts`), or Resource Assignments when entered. Stage 03 shows the same table |
 | Customer Effort by Week & Work Stream | **Calculated** from defaults per phase |
 | Target Personnel by Work Stream | Brief `personnel` |
 | VCF Design Profile (six categories) | Brief `designProfile`, with **generated defaults** from pathway, edition, storage, topology and outcomes |
 | Design Elements (component, requirement, recommendation, gate) | Brief `designElements` plus **generated** items (storage, networking MTU, licensing cores, workloads, management domain) |
 | Adoption Sequence & Dependencies | **Generated** from the timeline and prerequisites |
-| Private Cloud Adoption Timeline (swimlane) | **Generated** timeline; customer-owned lanes from the brief are drawn grey |
+| Private Cloud Adoption Timeline and Two-Year Notional | **Generated** timelines, drawn with the full FCP's category Gantt (`server/timelineHtml.ts`). Gates are checkpoints drawn as markers and take no schedule time. Customer-owned work and deadlines are listed in the sequence table |
+| Discovery answers | Used only where the plan makes them matter (design elements, constraints, open items; `shared/reportView.ts`). All answers on record go to the delivery team in the Technical Handoff (`shared/deliveryBriefing.ts`) |
+| Empty sections | Left out of the report; nothing prints as a placeholder |
 | Engagement Milestones to Date | Brief `milestonesToDate` |
 | Forward Delivery Plan | **Generated** from the timeline |
 | Adoption Plan & Recommendation (mandatory) | Mixed (below) |

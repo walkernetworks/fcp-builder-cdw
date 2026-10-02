@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { buildBurndown, buildCustomerEffort, buildScopedEffort, fitToEnvelope, scopedEffortLines, splitRoles, ROLE_LOADING, type EffortLine } from "../shared/effort";
-import { createDefaultDocument, type EngagementDocument } from "../shared/fcp";
+import { createDefaultDocument, migrateDocument, type EngagementDocument } from "../shared/fcp";
 import { fundedHoursFromValue, scopedEffortForDocument } from "./rateCard";
 
 const exampleBrief = () => JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../docs/examples/customer-brief.example.json"), "utf8"));
@@ -40,9 +40,26 @@ describe("hours model", () => {
     expect(scopedEffortLines(vvf).find(item => item.kind === "core" && item.code.startsWith("D"))).toMatchObject({ code: "D1", workstream: "VVF foundation build" });
   });
 
-  it("prices only design for a design-only plan", () => {
+  it("prices a design-only plan as design, with each selected component designed but not built", () => {
     const document = engagement(document => { document.fields.adoptionDetails.upgradePath = "design-only"; });
-    expect(codes(document)).toEqual(["A3"]);
+    const lines = scopedEffortLines(document);
+    expect(lines.map(item => item.code)).toEqual(["A3", "X4", "X10"]);
+    expect(lines.filter(item => item.kind === "addon").every(item => item.reduction === "design only" && item.base < item.fullBase)).toBe(true);
+  });
+
+  it("spreads the hours over the timeline work packages and foots to the scoped totals", () => {
+    for (const route of ["greenfield", "design-only", "undecided"] as const) {
+      const document = migrateDocument(engagement(document => {
+        Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated" });
+        document.fields.adoptionDetails.upgradePath = route;
+      }));
+      const effort = buildScopedEffort(document);
+      const funded = effort.workPackages.filter(row => row.total > 0);
+      expect(funded.length, route).toBeGreaterThan(3);
+      for (const role of ["architect", "srConsultant", "projectManager", "total"] as const) expect(funded.reduce((sum, row) => sum + row[role], 0), `${route} ${role}`).toBe(effort.internal.calculatedRows.reduce((sum, row) => sum + row[role], 0));
+      expect(funded.every(row => row.start && row.end && row.leadRole), route).toBe(true);
+      expect(effort.workPackages.find(row => row.id === "bar-hcl-gate")?.note).toBe("checkpoint");
+    }
   });
 
   it("maps add-on outcomes to their catalog lines", () => {

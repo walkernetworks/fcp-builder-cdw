@@ -1,5 +1,5 @@
 import type { Timeline, TimelineBar, TimelineLane } from "../shared/fcp";
-import { colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
+import { colorForWorkstreamType, isGateActivity, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
 
 /** The category Gantt shared by the FCP and the Condensed FCP: workstream-coloured bars stacked under the five fixed categories. */
 
@@ -25,9 +25,12 @@ function esc(value: unknown) {
 
 export function renderBar(activity: TimelineBar, totalColumns: number, workstreamType: TimelineLane["workstreamType"], track = 0) {
   const color = palette[colorForWorkstreamType(workstreamType)] || palette.slate;
-  const start = Math.max(1, Math.min(totalColumns, activity.startCol));
-  const end = Math.max(start + 1, Math.min(totalColumns + 1, activity.endCol));
-  return `<div class="timeline-bar ${activity.deferred ? "deferred" : ""}" style="grid-column:${start}/${end};grid-row:${track + 1};align-self:center;background:${color.bg};color:${color.fg};border-color:${color.border}" title="${esc(workstreamType)}: ${esc(activity.label)}&#10;Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[workstreamType])}${activity.outcome ? `&#10;Intended outcome: ${esc(activity.outcome)}` : ""}${activity.dependsOn ? `&#10;${esc(activity.dependsOn)}` : ""}">${activity.milestone ? "◆ " : ""}${esc(activity.label)}</div>`;
+  // A gate is a checkpoint, not a duration: it is drawn as a marker at the end of its last window.
+  const gate = isGateActivity(activity);
+  const lastEnd = Math.max(2, Math.min(totalColumns + 1, activity.endCol));
+  const start = gate ? lastEnd - 1 : Math.max(1, Math.min(totalColumns, activity.startCol));
+  const end = gate ? lastEnd : Math.max(start + 1, Math.min(totalColumns + 1, activity.endCol));
+  return `<div class="timeline-bar ${activity.deferred ? "deferred" : ""}" style="grid-column:${start}/${end};grid-row:${track + 1};align-self:center;${gate ? "justify-self:end;border-radius:999px;" : ""}background:${color.bg};color:${color.fg};border-color:${color.border}" title="${esc(workstreamType)}: ${esc(activity.label)}&#10;Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[workstreamType])}${activity.outcome ? `&#10;Intended outcome: ${esc(activity.outcome)}` : ""}${activity.dependsOn ? `&#10;${esc(activity.dependsOn)}` : ""}">${activity.milestone ? "◆ " : ""}${esc(activity.label)}</div>`;
 }
 
 export function renderWorkstreamLegend() {

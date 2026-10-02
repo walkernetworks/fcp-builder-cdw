@@ -281,15 +281,41 @@ export function ReportContentEditor({ document, onChange }: Props) {
         </Accordion>
       </Group>
 
-      <Group title="Sizing and details" description="Optional. Used for the hours estimate when RVTools is not loaded, and for the document's revision and sources.">
+      <Group title="Estate, discovery and details" description="Optional. Each answer is used only where this plan makes it matter: in the design elements, constraints and open items of the report, and in the Technical Handoff for the delivery team.">
         <Accordion type="multiple" className="border-t border-slate-200">
-          <Section value="sizing" title="Sizing inputs" hint="Blank values fall back to RVTools.">
+          <Section value="sizing" title="Sizing inputs" hint="Used for the hours estimate. Blank values fall back to RVTools.">
             <div className="grid gap-3 md:grid-cols-3">
               <Field label="Prior VCF assessment delivered" hint="Yes leaves design discovery out of the hours."><YesNo value={report.discovery.assessmentCompleted} onChange={value => setDiscovery({ assessmentCompleted: value })} /></Field>
               <Field label="ESX hosts">{numberInput(report.discovery.esxHosts, value => setDiscovery({ esxHosts: value }), document.inventory.hosts ? `${document.inventory.hosts} from RVTools` : "")}</Field>
               <Field label="Data centers">{numberInput(report.discovery.datacenters, value => setDiscovery({ datacenters: value }), document.inventory.datacenters ? `${document.inventory.datacenters} from RVTools` : "")}</Field>
+              <Field label="vCenters" hint="Import paths scope one import per vCenter.">{numberInput(report.discovery.vcenters, value => setDiscovery({ vcenters: value }))}</Field>
               <Field label="VCF instances to deploy">{numberInput(report.discovery.vcfInstances, value => setDiscovery({ vcfInstances: value }), "1")}</Field>
-              <Field label="Licensed VCF cores" hint="Compared with the cores the hosts require.">{numberInput(report.discovery.licensedCores, value => setDiscovery({ licensedCores: value }))}</Field>
+              <Field label="Edge sites" hint="Adds an edge-site design element.">{numberInput(report.discovery.edgeSites, value => setDiscovery({ edgeSites: value }))}</Field>
+            </div>
+          </Section>
+
+          <Section value="environment" title="Current environment" hint="What is running today. Feeds design elements where the plan touches it, and the delivery briefing in the Technical Handoff.">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Field label="Current platform">{textInput(report.discovery.currentPlatform, value => setDiscovery({ currentPlatform: value }), "vSphere 7.0 U3, vCenter 7")}</Field>
+              <Field label="Enhanced Linked Mode" hint="On a convergence path, adds the split as a constraint."><YesNo value={report.discovery.enhancedLinkedMode} onChange={value => setDiscovery({ enhancedLinkedMode: value })} /></Field>
+              <Field label="Server vendor" hint="Sets the vLCM vendor add-on when the plan builds.">{textInput(report.discovery.serverVendor, value => setDiscovery({ serverVendor: value }), "Dell")}</Field>
+              <Field label="Storage">{textInput(report.discovery.storage, value => setDiscovery({ storage: value }), "Pure FlashArray over FC")}</Field>
+              <Field label="Networking">{textInput(report.discovery.networking, value => setDiscovery({ networking: value }), "Cisco Nexus, VLAN-backed")}</Field>
+              <Field label="Jumbo frames" hint="With overlay networking in scope, changes the MTU gate."><YesNo value={report.discovery.jumboFrames} onChange={value => setDiscovery({ jumboFrames: value })} /></Field>
+              <Field label="Backup" hint="When workloads move, adds a backup support gate.">{textInput(report.discovery.backup, value => setDiscovery({ backup: value }), "Veeam")}</Field>
+              <Field label="Disaster recovery" hint="With resilience in scope, adds a DR design element.">{textInput(report.discovery.drSolution, value => setDiscovery({ drSolution: value }), "Zerto")}</Field>
+              <Field label="Security tooling" hint="With security in scope, adds a design element.">{textInput(report.discovery.securityTooling, value => setDiscovery({ securityTooling: value }), "CrowdStrike, Palo Alto")}</Field>
+              <Field label="Container platform" hint="With Kubernetes in scope, adds a design element.">{textInput(report.discovery.containerPlatform, value => setDiscovery({ containerPlatform: value }), "OpenShift")}</Field>
+              <Field label="Public cloud (comma separated)"><Input className="bg-white" value={listToText(report.discovery.hyperscalers)} onChange={event => setDiscovery({ hyperscalers: textToList(event.target.value) })} /></Field>
+            </div>
+          </Section>
+
+          <Section value="licensing" title="Licensing" hint="Licensed cores are compared with what the hosts require; a renewal date becomes a sequencing constraint; purchased add-ons outside the plan become open items.">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Field label="VCF licensed"><YesNo value={report.discovery.vcfLicensed} onChange={value => setDiscovery({ vcfLicensed: value })} /></Field>
+              <Field label="Licensed VCF cores">{numberInput(report.discovery.licensedCores, value => setDiscovery({ licensedCores: value }))}</Field>
+              <Field label="Subscription renewal">{dateInput(report.discovery.renewalDate, value => setDiscovery({ renewalDate: value }))}</Field>
+              <Field label="Add-ons purchased (comma separated)"><Input className="bg-white" value={listToText(report.discovery.addOnsPurchased)} placeholder="VCF Operations for networks, vDefend" onChange={event => setDiscovery({ addOnsPurchased: textToList(event.target.value) })} /></Field>
               <Field label="Not requested (comma separated)" hint="Shown where a category has no work, e.g. Kubernetes, Private AI."><Input className="bg-white" value={listToText(report.declined)} onChange={event => set("declined", textToList(event.target.value))} /></Field>
             </div>
           </Section>

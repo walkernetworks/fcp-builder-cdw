@@ -94,6 +94,8 @@ function planItems(document: EngagementDocument, customer: string): PlanItem[] {
 function deadlines(document: EngagementDocument, termEnd: string | null): PlanItem[] {
   const out: PlanItem[] = [];
   if (termEnd) out.push({ category: "Program Management & Governance", label: `Expiry ${shortDate(termEnd).replace(/ \d{4}$/, "")}`, start: termEnd, end: termEnd, swatch: "muted", milestone: true, outcome: "Unconsumed hours are not refunded.", dependsOn: [] });
+  const renewal = document.report.discovery.renewalDate;
+  if (renewal) out.push({ category: "Program Management & Governance", label: `Subscription renewal ${shortDate(renewal).replace(/ \d{4}$/, "")}`, start: renewal, end: renewal, swatch: "muted", milestone: true, outcome: "Licensing activated and the renewal sized before this date.", dependsOn: [] });
   const onVsphere8 = document.inventory.esxiVersions.some(item => /\b8\.\d/.test(item.version));
   if (onVsphere8) out.push({ category: "Program Management & Governance", label: "vSphere 8 end of support", start: "2027-10-11", end: "2027-10-11", swatch: "muted", milestone: true, outcome: "vSphere 8 reaches end of general support on 11 October 2027.", dependsOn: [] });
   return out;
@@ -185,6 +187,7 @@ th{background:#eef0f3;color:var(--slate);font-size:8.5px;font-weight:800;text-tr
 td{padding:6px 8px;border-bottom:1px solid var(--hair);vertical-align:top;color:var(--slate)}
 td:first-child{font-weight:700;color:var(--ink)}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+tr.cat td{background:#f3f4f6;color:var(--ink);font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:5px 8px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 tr.total td{font-weight:800;color:var(--ink);border-top:2px solid #1A1D21}
 tr{break-inside:avoid}
 .note{background:#FFF7E6;border-left:4px solid #d97706;padding:9px 13px;margin:10px 0;font-size:11.5px;color:#4b3410;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -269,8 +272,22 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     : `<div class="note">No consumption data exists yet for this engagement; the burndown appears once entitled and consumed hours are recorded.</div>`;
 
   // ---- Scoped effort (hours only)
-  const effortRows = effort.rows.map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), hours(row.architect), hours(row.srConsultant), hours(row.projectManager), hours(row.total)]);
-  const scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by workstream and role${effort.source === "assignments" ? ", from the signed resource assignments for this entitlement" : ", estimated from this plan; the signed resource assignments replace these figures"}.</p>${table(["Workstream", "Architect", "Sr. Consultant", "Sr. Project Manager", "Total Hours"], effortRows, { numeric: [1, 2, 3, 4], foot: true, total: ["Total CDW-delivered hours", hours(effort.totals.architect), hours(effort.totals.srConsultant), hours(effort.totals.projectManager), hours(effort.totals.total)] })}`;
+  const effortTotal = ["Total CDW-delivered hours", hours(effort.totals.architect), hours(effort.totals.srConsultant), hours(effort.totals.projectManager), hours(effort.totals.total)];
+  const fundedPackages = effort.workPackages.filter(row => row.total > 0);
+  let scopedEffort: string;
+  if (effort.source === "assignments" || !fundedPackages.length) {
+    const effortRows = effort.rows.map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), hours(row.architect), hours(row.srConsultant), hours(row.projectManager), hours(row.total)]);
+    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by workstream and role${effort.source === "assignments" ? ", from the signed resource assignments for this entitlement" : ", estimated from this plan; the signed resource assignments replace these figures"}.</p>${table(["Workstream", "Architect", "Sr. Consultant", "Sr. Project Manager", "Total Hours"], effortRows, { numeric: [1, 2, 3, 4], foot: true, total: effortTotal })}`;
+  } else {
+    // Hours by work package, in the windows and under the lead roles the adoption timeline shows.
+    const numeric = (value: number) => `<td class="num">${hours(value)}</td>`;
+    const body = FIXED_GANTT_CATEGORIES.flatMap(category => {
+      const rows = fundedPackages.filter(row => row.category === category);
+      return rows.length ? [`<tr class="cat"><td colspan="7">${esc(category)}</td></tr>`, ...rows.map(row => `<tr><td>${esc(row.label.replace(UNDECIDED_DEPTH, ""))}</td><td>${row.start && row.end ? esc(formatWindow(row.start, row.end)) : ""}</td><td>${esc(row.leadRole)}</td>${numeric(row.architect)}${numeric(row.srConsultant)}${numeric(row.projectManager)}${numeric(row.total)}</tr>`)] : [];
+    });
+    const other = fundedPackages.filter(row => !row.category).map(row => `<tr><td>${esc(row.label)}</td><td></td><td></td>${numeric(row.architect)}${numeric(row.srConsultant)}${numeric(row.projectManager)}${numeric(row.total)}</tr>`);
+    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by work package and role, in the windows of the adoption timeline. Estimated from this plan; the signed resource assignments replace these figures.</p><table data-foot="sum"><thead><tr><th>Work Package</th><th>Window</th><th>Lead Delivery Role</th><th class="num">Architect</th><th class="num">Sr. Consultant</th><th class="num">Sr. Project Manager</th><th class="num">Total Hours</th></tr></thead><tbody>${body.join("")}${other.join("")}<tr class="total"><td>${effortTotal[0]}</td><td></td><td></td>${effortTotal.slice(1).map(value => `<td class="num">${value}</td>`).join("")}</tr></tbody></table>`;
+  }
 
   // ---- Customer effort
   const peak = customerEffort.peak;
