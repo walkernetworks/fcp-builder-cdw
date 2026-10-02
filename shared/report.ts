@@ -110,6 +110,8 @@ export const reportSchema = z.object({
   resourceAssignments: z.array(rowSchemas.assignment).default([]),
   sources: z.array(rowSchemas.source).default([]),
   revision: optionalText,
+  /** Keys of generated rows the planner removed from the report (see shared/reportView.ts). */
+  hiddenGenerated: z.array(z.string().max(500)).default([]),
 });
 export type ReportContent = z.infer<typeof reportSchema>;
 export type ResourceAssignment = ReportContent["resourceAssignments"][number];
