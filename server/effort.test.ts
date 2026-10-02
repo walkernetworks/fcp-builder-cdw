@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { buildBurndown, buildCustomerEffort, buildScopedEffort, fitToEnvelope, scopedEffortLines, splitRoles, ROLE_LOADING, type EffortLine } from "../shared/effort";
-import { createDefaultDocument, migrateDocument, type EngagementDocument } from "../shared/fcp";
+import { createDefaultDocument, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { fundedHoursFromValue, scopedEffortForDocument } from "./rateCard";
 
 const exampleBrief = () => JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../docs/examples/customer-brief.example.json"), "utf8"));
@@ -67,8 +67,65 @@ describe("hours model", () => {
       Object.assign(document.fields.adoptionDetails, { security: ["malware-prevention"], automation: ["data-services"], networking: ["vpc"], kubernetes: ["workload-domains"] });
       document.fields.priorities = ["security", "automation", "networking", "kubernetes"];
     });
-    expect(codes(document)).toEqual(expect.arrayContaining(["X12", "X13", "X6", "X9", "X2"]));
+    expect(codes(document)).toEqual(expect.arrayContaining(["X12", "X13", "X16", "X9", "X2"]));
     expect(codes(document)).not.toContain("X11");
+    expect(codes(document)).not.toContain("X6");
+  });
+
+  it("prices lines from the Required Hours table", () => {
+    const document = engagement(document => {
+      Object.assign(document.fields.adoptionDetails, { networking: ["vpc"], privateAi: ["gpu-capacity"], kubernetes: ["workload-domains"] });
+      document.fields.priorities = ["networking", "private-ai", "kubernetes", "operations"];
+    });
+    // Full scope, with no envelope to reduce it.
+    const rows = buildScopedEffort({ ...document, report: { ...document.report, entitlement: { ...document.report.entitlement, hours: null } } }).internal.calculatedRows;
+    // VPC networking: 100 architect, 20 consultant, 30 PM.
+    expect(rows.find(row => row.workstream === "NSX networking, Edge and VPC")).toMatchObject({ architect: 100, srConsultant: 20, projectManager: 30, total: 150 });
+    // Private AI includes Supervisor and VKS, so VKS is not priced again.
+    expect(codes(document)).toContain("X8");
+    expect(codes(document)).not.toContain("X9");
+    expect(scopedEffortLines(document).find(item => item.code === "X4")?.base).toBe(35);
+  });
+
+  it("gives governance packages project management only, and splits design by content", () => {
+    for (const path of ["in-place", "design-only", "greenfield"] as const) {
+      const document = engagement(document => {
+        document.fields.adoptionDetails.upgradePath = path;
+        document.report.discovery.assessmentCompleted = false;
+        document.report.entitlement.hours = null;
+      });
+      document.adoptionTimeline = refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline;
+      const effort = buildScopedEffort(document);
+      const row = (id: string) => effort.workPackages.find(item => item.id === id);
+      const governance = effort.workPackages.filter(item => /^bar-platform-(plan|execution-decision|design-authority)$/.test(item.id));
+      expect(governance.length, path).toBeGreaterThan(0);
+      for (const item of governance) expect({ architect: item.architect, srConsultant: item.srConsultant }, `${path} ${item.id}`).toEqual({ architect: 0, srConsultant: 0 });
+      expect(governance.some(item => item.projectManager > 0), path).toBe(true);
+      // Discovery sits on the requirements package; the architecture line on the other design packages.
+      const requirements = row("bar-playbook-design-requirements")!;
+      const design = effort.workPackages.filter(item => /^bar-playbook-design-(?!requirements)/.test(item.id));
+      expect(requirements.srConsultant, path).toBeGreaterThan(requirements.architect);
+      for (const item of design) expect(item.architect, `${path} ${item.id}`).toBeGreaterThan(item.srConsultant);
+      // Role totals are unchanged by where the hours sit.
+      for (const role of ["architect", "srConsultant", "projectManager"] as const) {
+        expect(effort.workPackages.filter(item => !item.deferred).reduce((sum, item) => sum + item[role], 0), `${path} ${role}`).toBe(effort.totals[role]);
+      }
+    }
+  });
+
+  it("adds 8 architect hours to discovery for each capability area of interest", () => {
+    const document = engagement(document => {
+      document.report.discovery.assessmentCompleted = false;
+      document.report.discovery.addOnsPurchased = ["HCX"];
+    });
+    // Example brief: operations and recovery, plus HCX.
+    const extra = scopedEffortLines(document).find(item => item.code === "DX");
+    expect(extra).toMatchObject({ lead: "architect", base: 24 });
+    const design = buildScopedEffort(document).internal.calculatedRows.find(row => row.workstream.startsWith("Design"));
+    const withoutAreas = buildScopedEffort(engagement(document => { document.report.discovery.assessmentCompleted = false; document.fields.priorities = []; Object.assign(document.fields.adoptionDetails, { operations: [], resilience: [] }); }));
+    expect(design!.architect).toBeGreaterThan(withoutAreas.internal.calculatedRows.find(row => row.workstream.startsWith("Design"))!.architect);
+    // No discovery line, no discovery areas.
+    expect(codes(engagement())).not.toContain("DX");
   });
 });
 
