@@ -219,11 +219,11 @@ export function ReportContentEditor({ document, onChange }: Props) {
             <RowTable rows={report.whatWeHeard} columns={[{ key: "component", label: "Area", width: "16%", placeholder: "Storage" }, { key: "customerPosition", label: "What the customer said", type: "longtext", placeholder: "Keep the existing array" }, { key: "whereItLands", label: "How the plan responds", type: "longtext", placeholder: "Fibre Channel stays principal storage" }]} blank={{ component: "", customerPosition: "", whereItLands: "" }} addLabel="Add position" onChange={rows => set("whatWeHeard", rows)} />
           </Section>
 
-          <Section value="problems" title="Customer problems" heading="The problems worth solving first" filled={report.problems.length > 0} hint="The operational problems the customer named, each with what in the plan solves it.">
+          <Section value="problems" title="Customer problems" heading="Customer Problems" filled={report.problems.length > 0} hint="The operational problems the customer named, each with what in the plan solves it.">
             <RowTable rows={report.problems} columns={[{ key: "problem", label: "Problem", type: "longtext" }, { key: "addressedBy", label: "Solved by", type: "longtext" }]} blank={{ problem: "", addressedBy: "" }} addLabel="Add problem" onChange={rows => set("problems", rows)} />
           </Section>
 
-          <Section value="questions" title="Open questions" heading="The open questions" filled={report.openQuestions.length > 0} hint="Scope decisions still open, and why the answer is needed now.">
+          <Section value="questions" title="Open questions" heading="Open Questions" filled={report.openQuestions.length > 0} hint="Scope decisions still open, and why the answer is needed now.">
             <RowTable rows={report.openQuestions} columns={[{ key: "question", label: "Question", type: "longtext" }, { key: "whyNow", label: "Why it matters now", type: "longtext" }]} blank={{ question: "", whyNow: "" }} addLabel="Add question" onChange={rows => set("openQuestions", rows)} />
           </Section>
 
@@ -271,7 +271,7 @@ export function ReportContentEditor({ document, onChange }: Props) {
             <RowTable rows={report.constraints} columns={[{ key: "constraint", label: "Constraint", type: "longtext" }, { key: "imposedBy", label: "Imposed by", width: "18%" }, { key: "effect", label: "Effect on the order", type: "longtext" }]} blank={{ constraint: "", imposedBy: "", effect: "" }} addLabel="Add constraint" onChange={rows => set("constraints", rows)} generated={generatedFor("constraints")} />
           </Section>
 
-          <Section value="asks" title="Asks of the customer's team" heading="What this asks of the customer's team" hint="The effort range comes from the customer effort estimate; add decisions, access and remediation the customer owns.">
+          <Section value="asks" title="Asks of the customer's team" heading="Customer Team Commitments" hint="The effort range comes from the customer effort estimate; add decisions, access and remediation the customer owns.">
             <TextList items={report.customerAsks} onChange={items => set("customerAsks", items)} placeholder="Decisions by November: hosts for the build, DR policy direction" generated={generatedFor("customerAsks")} />
           </Section>
 
