@@ -13,8 +13,7 @@
     "termStart": "2026-04-29",
     "termEnd": "2027-04-28",
     "hoursConsumed": 39,
-    "consumedAsOf": "2026-09-03",
-    "extension": { "to": null, "approvedBy": null }
+    "consumedAsOf": "2026-09-03"
   },
   "schedule": { "projectStart": null, "implementationStart": null, "targetComplete": null, "hardwareLeadWeeks": null, "calendarConstraints": null },
   "deliveryModel": "CDW + Broadcom",

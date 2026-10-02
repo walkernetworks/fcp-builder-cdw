@@ -210,7 +210,6 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   const prior = document.report;
   const discoveryCheck = discoveryAnswersSchema.safeParse({ ...prior.discovery, ...Object.fromEntries(Object.entries(discovery).filter(([key]) => key in discoveryAnswersSchema.shape)) });
   if (!discoveryCheck.success) warnings.push(...discoveryCheck.error.issues.map(issue => `discovery.${issue.path.join(".")}: ${issue.message}; kept the previous value`));
-  const extension = isPlainObject(entitlement.extension) ? entitlement.extension : {};
   const contacts = isPlainObject(brief.contacts) ? brief.contacts : {};
   const person = element(reportShape.contacts.unwrap().shape.customer);
   const designProfile = reportShape.designProfile.unwrap().safeParse({ ...prior.designProfile, ...(isPlainObject(brief.designProfile) ? brief.designProfile : {}) });
@@ -235,8 +234,6 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
       termEnd: typeof entitlement.termEnd === "string" ? entitlement.termEnd : prior.entitlement.termEnd,
       hoursConsumed: typeof entitlement.hoursConsumed === "number" ? entitlement.hoursConsumed : prior.entitlement.hoursConsumed,
       consumedAsOf: typeof entitlement.consumedAsOf === "string" ? entitlement.consumedAsOf : prior.entitlement.consumedAsOf,
-      extensionTo: null,
-      extensionApprovedBy: null,
     }),
     discovery: discoveryCheck.success ? discoveryCheck.data : prior.discovery,
     declined: keep(declined, prior.declined),
@@ -259,13 +256,6 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
     hiddenGenerated: prior.hiddenGenerated,
     workPackageHours: prior.workPackageHours,
   };
-
-  // An expiry moves only when both the new date and the approver are recorded.
-  if (typeof extension.to === "string" && typeof extension.approvedBy === "string") {
-    report.entitlement = { ...report.entitlement, extensionTo: extension.to, extensionApprovedBy: extension.approvedBy };
-  } else if (extension.to || extension.approvedBy) {
-    warnings.push("entitlement.extension: an extension needs both the new date and who approved it; the original expiry stands");
-  }
 
   const reportCount = (label: string, count: number) => { if (count) changes.push(`report.${label}: ${count} item${count === 1 ? "" : "s"}`); };
   reportCount("situation", report.situation.length);

@@ -242,3 +242,11 @@ describe("follow-on scope", () => {
     expect(visible).toMatch(/Total follow-on hours/);
   });
 });
+
+describe("entitlement expiry", () => {
+  it("states the expiry date without any extension wording", () => {
+    const visible = text(render(engagement()));
+    expect(visible).toContain("Expires 28 Apr 2027");
+    expect(visible).not.toMatch(/extension/i);
+  });
+});

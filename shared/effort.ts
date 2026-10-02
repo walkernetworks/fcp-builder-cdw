@@ -336,10 +336,9 @@ export function fitToEnvelope(lines: EffortLine[], envelopeHours: number | null)
   return { lines: working, fullScopeHours, status: "short" as FitStatus, shortfallHours: afterReduction - envelopeHours, headroomHours: 0 };
 }
 
-/** The entitlement end: an approved extension, the recorded term, or one year from the entitlement start. */
+/** The entitlement end: the recorded term, or one year from the entitlement start. */
 export function entitlementTermEnd(document: EngagementDocument): string | null {
   const { report, fields } = document;
-  if (report.entitlement.extensionTo && report.entitlement.extensionApprovedBy) return report.entitlement.extensionTo;
   return report.entitlement.termEnd || calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd || null;
 }
 
@@ -756,7 +755,6 @@ export type Burndown = {
   /** Customer-facing: hours per week to consume the entitlement before it lapses. */
   expiryPace: number;
   expiryPaceFte: number;
-  extended: boolean;
   /** INTERNAL: PMBOK sign, negative is behind. Never rendered. */
   gapPoints: number;
   /** INTERNAL: never rendered. */
@@ -772,8 +770,7 @@ export function buildBurndown(document: EngagementDocument, today = new Date().t
   if (!entitled) return null;
   const consumed = report.entitlement.hoursConsumed ?? 0;
   const termStart = report.entitlement.termStart || fields.entitlementStart;
-  const extended = Boolean(report.entitlement.extensionTo && report.entitlement.extensionApprovedBy);
-  const termEnd = (extended ? report.entitlement.extensionTo : null) || report.entitlement.termEnd || calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd;
+  const termEnd = report.entitlement.termEnd || calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd;
   if (!termStart || !termEnd || toTime(termEnd) <= toTime(termStart)) return null;
   const asOf = report.asOf || today;
   const elapsed = Math.min(1, Math.max(0, (toTime(asOf) - toTime(termStart)) / (toTime(termEnd) - toTime(termStart))));
@@ -796,7 +793,6 @@ export function buildBurndown(document: EngagementDocument, today = new Date().t
     daysToExpiry,
     expiryPace: Math.round(expiryPace * 10) / 10,
     expiryPaceFte: Math.round((expiryPace / 40) * 100) / 100,
-    extended,
     gapPoints,
     band: absolute >= 24 ? "AT RISK" : absolute >= 11 ? "WATCH" : "ON TRACK",
   };

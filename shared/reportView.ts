@@ -50,10 +50,9 @@ export function platformName(document: EngagementDocument): string {
   return `${effectivePlatformEdition(document.fields) === "vvf" ? "VVF" : "VCF"} ${release}`;
 }
 
-/** The entitlement end the report works to: an approved extension, the stated term end, or start + 12 months. */
+/** The entitlement end the report works to: the stated term end, or start + 12 months. */
 export function reportTermEnd(document: EngagementDocument): string | null {
   const { entitlement } = document.report;
-  if (entitlement.extensionTo && entitlement.extensionApprovedBy) return entitlement.extensionTo;
   return entitlement.termEnd || calculateEntitlementEndDate(document.fields.entitlementStart) || null;
 }
 
