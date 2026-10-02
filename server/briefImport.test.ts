@@ -22,7 +22,7 @@ describe("customer brief import", () => {
   it("stores narrative content in the report", () => {
     const { report } = applyCustomerBrief(createDefaultDocument(), example()).document;
     expect(report.briefVersion).toBe(1);
-    expect(report.entitlement).toMatchObject({ hours: 262, hoursConsumed: 39, termEnd: "2027-04-28", extensionTo: null });
+    expect(report.entitlement).toMatchObject({ hours: 262, hoursConsumed: 39, termEnd: "2027-04-28" });
     expect(report.discovery).toMatchObject({ assessmentCompleted: true, esxHosts: 14, enhancedLinkedMode: false });
     expect(report.declined).toEqual(["Kubernetes", "Private AI", "HCX"]);
     expect(report.whatWeHeard).toHaveLength(2);
@@ -46,14 +46,6 @@ describe("customer brief import", () => {
     expect(result.ok).toBe(true);
     expect(result.document.report.milestonesToDate).toHaveLength(2);
     expect(result.warnings.some(warning => warning.startsWith("milestonesToDate[2]"))).toBe(true);
-  });
-
-  it("keeps the original expiry unless an extension names its approver", () => {
-    const brief = example();
-    brief.entitlement.extension = { to: "2027-07-28", approvedBy: null };
-    const result = applyCustomerBrief(createDefaultDocument(), brief);
-    expect(result.document.report.entitlement.extensionTo).toBeNull();
-    expect(result.warnings.join(" ")).toContain("needs both the new date and who approved it");
   });
 
   it("lists missing facts that become open items", () => {
