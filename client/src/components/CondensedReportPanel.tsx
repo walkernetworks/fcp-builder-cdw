@@ -1,4 +1,4 @@
-import { WorkPackageTable } from "@/components/WorkPackageHours";
+import { CostMeter, WorkPackageTable } from "@/components/WorkPackageHours";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -85,6 +85,7 @@ export function CondensedReportPanel({ document, onChange }: Props) {
               </table>
             </> : <>
               <p className="mb-1 text-xs font-semibold text-slate-600">Calculated from the plan, by work package: the same table as stage 03 and the report, until assignments are entered</p>
+              {data.internal.cost && <div className="mb-3"><CostMeter cost={data.internal.cost} hours={data.totals.total} /></div>}
               <WorkPackageTable effort={data} />
             </>}
           </div>

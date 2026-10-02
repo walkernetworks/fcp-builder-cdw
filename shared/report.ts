@@ -68,6 +68,8 @@ const rowSchemas = {
   openItem: z.object({ item: text, gates: z.string().max(1000).default(""), owner: z.string().max(400).default("") }),
   personnel: z.object({ workstream: text, cdw: z.array(z.string().max(300)).default([]), broadcom: z.array(z.string().max(300)).default([]), customer: z.array(z.string().max(300)).default([]) }),
   milestone: z.object({ date: dateOrBlank, event: text, detail: z.string().max(4000).default("") }),
+  /** Planner-adjusted hours for one timeline work package; a null role keeps the calculated baseline. */
+  workPackageHours: z.object({ id: z.string().max(300), architect: hours.nullable().default(null), srConsultant: hours.nullable().default(null), projectManager: hours.nullable().default(null) }),
   assignment: z.object({ workstream: text, architect: hours.default(0), srConsultant: hours.default(0), projectManager: hours.default(0) }),
   source: z.object({ title: text, date: optionalDate }),
 };
@@ -110,6 +112,8 @@ export const reportSchema = z.object({
   resourceAssignments: z.array(rowSchemas.assignment).default([]),
   sources: z.array(rowSchemas.source).default([]),
   revision: optionalText,
+  /** Hours per role the planner set on timeline work packages, by bar id, replacing the calculated baseline. */
+  workPackageHours: z.array(rowSchemas.workPackageHours).default([]),
   /** Keys of generated rows the planner removed from the report (see shared/reportView.ts). */
   hiddenGenerated: z.array(z.string().max(500)).default([]),
 });

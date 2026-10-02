@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { applyTimelineGesture, applyWorkstreamPresentation, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, isGateActivity, normalizeActivityLabel, validateTimeline, validateTimelineSequence, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS, type Timeline, type TimelineBar } from "@shared/fcp";
 import { CalendarRange, Flag, Plus, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
 const colorClasses: Record<string, string> = {
@@ -29,6 +29,8 @@ type Props = {
   onChange: (timeline: Timeline) => void;
   title?: string;
   description?: string;
+  /** Extra detail for the selected work package, such as its hours. */
+  selectionDetail?: (barId: string) => ReactNode;
 };
 
 type TimelineLane = Timeline["lanes"][number];
@@ -60,6 +62,7 @@ export function AdoptionTimelineEditor({
   onChange,
   title = "Adoption Timeline",
   description = "Use the five delivery categories to coordinate scoped work packages. Each workstream carries a lead delivery role, and packages may overlap when delivery can proceed concurrently. Drag a package to move it and drag either edge to resize its delivery window.",
+  selectionDetail,
 }: Props) {
   const [selected, setSelected] = useState<{ laneId: string; barId: string } | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -245,6 +248,7 @@ export function AdoptionTimelineEditor({
           <Button variant="ghost" className="text-red-600" onClick={() => { changeLane(selectedLane.id, lane => ({ ...lane, bars: lane.bars.filter(bar => bar.id !== selectedBar.id) })); setSelected(null); }}><Trash2 className="size-4" /> Remove</Button>
           {selectedBar.outcome && <div className="lg:col-span-full rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-950"><span className="font-semibold">Intended outcome:</span> {selectedBar.outcome}</div>}
           {selectedBar.dependsOn && <div className="lg:col-span-full rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-950"><span className="font-semibold">Delivery context and sequence:</span> {selectedBar.dependsOn}</div>}
+          {selectionDetail && <div className="lg:col-span-full">{selectionDetail(selectedBar.id)}</div>}
           {selectedPrerequisites.length > 0 && <div className="lg:col-span-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-800"><span className="font-semibold">Starts after:</span> {selectedPrerequisites.join(" · ")}</div>}
         </div>
       )}
