@@ -408,11 +408,12 @@ export function workPackageEffort(document: EngagementDocument, lines: EffortLin
   for (const item of lines) {
     const roles = splitRoles(item.base, item.lead);
     const matches = bars.filter(({ bar }) => barsForLine(item)(bar.id));
-    const current = matches.filter(({ bar }) => !deferred.has(bar.id));
+    // Work the planner placed in the notional keeps its share of the line and takes it out of the entitlement.
+    const current = matches.filter(({ bar }) => !deferred.has(bar.id) || deferred.get(bar.id) === "planned for later");
     if (current.length) spread(current, roles, () => true, inWindow);
     else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     // Deferred packages of the line get their share as a follow-on estimate.
-    spread(matches, roles, id => deferred.has(id), followOn);
+    spread(matches, roles, id => deferred.has(id) && deferred.get(id) !== "planned for later", followOn);
     // An add-on cut to its design keeps the rest of its hours on its build packages, as follow-on scope.
     const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
     if (addOn && item.reduction === "design only" && item.fullBase > item.base) {
@@ -517,6 +518,18 @@ export function timelinesWithDeferrals(document: EngagementDocument, deferredIds
       })),
     },
   };
+}
+
+/** The timeline without the given work packages, for display. */
+export function withoutBars(timeline: Timeline, ids: Set<string>): Timeline {
+  return ids.size ? { ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !ids.has(bar.id)) })) } : timeline;
+}
+
+/** Puts the hidden work packages back into an edited view, so editing the entitlement view never drops them. */
+export function withHiddenBars(edited: Timeline, original: Timeline, ids: Set<string>): Timeline {
+  if (!ids.size) return edited;
+  const hidden = new Map(original.lanes.map(lane => [lane.id, lane.bars.filter(bar => ids.has(bar.id))]));
+  return { ...edited, lanes: edited.lanes.map(lane => ({ ...lane, bars: [...lane.bars, ...(hidden.get(lane.id) ?? [])] })) };
 }
 
 const CUSTOMER_OWNED_BARS = /^bar-(hcl-|soft-prerequisite-|networking-physical-fabric)/;
