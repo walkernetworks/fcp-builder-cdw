@@ -770,7 +770,8 @@ describe("planning considerations, exports, and access boundary", () => {
     const resilience = redBars.find(activity => activity.label === "Implement Recovery Architecture");
     expect(procurement && greenfield && hclGate && prerequisite && migration && cloud && security && resilience).toBeTruthy();
     expect(prerequisite!.startCol).toBe(procurement!.startCol);
-    expect(hclGate!.startCol).toBeGreaterThanOrEqual(greenfield!.endCol);
+    // The gate is a checkpoint in the last window of the evidence work; it adds no schedule time of its own.
+    expect(hclGate!.endCol).toBe(greenfield!.endCol);
     // Capability work starts once the workload domain is accepted and runs alongside the migration waves.
     const workloadDomain = redBars.find(activity => activity.id === "bar-workload-domain");
     expect(Math.min(cloud!.startCol, security!.startCol, resilience!.startCol)).toBeGreaterThanOrEqual(workloadDomain!.endCol);

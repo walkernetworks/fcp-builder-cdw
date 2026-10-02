@@ -135,3 +135,41 @@ describe("signed binary export downloads", () => {
     expect(safeExportFilename("///", "html")).toBe("Engagement - FCP.html");
   });
 });
+
+describe("condensed FCP downloads", () => {
+  it("streams the Condensed FCP when its content gates pass", async () => {
+    const { applyCustomerBrief } = await import("../shared/briefImport");
+    const { readFileSync } = await import("node:fs");
+    const brief = JSON.parse(readFileSync(new URL("../docs/examples/customer-brief.example.json", import.meta.url), "utf8"));
+    const row = await getEngagement.getMockImplementation()!(7, 41);
+    // An entitlement large enough for the design work, so the window fits the value.
+    brief.entitlement.value = 250000;
+    getEngagement.mockResolvedValue({ ...row!, data: applyCustomerBrief(createDefaultDocument(), brief).document });
+    const response = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 41, "html", "condensed-fcp")}`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - Condensed - FCP.html"');
+    expect(await response.text()).toContain("Adoption Plan &amp; Recommendation");
+  });
+
+  it("refuses the Condensed FCP when the entitlement window costs more than the entitlement value", async () => {
+    const { applyCustomerBrief } = await import("../shared/briefImport");
+    const { readFileSync } = await import("node:fs");
+    const brief = JSON.parse(readFileSync(new URL("../docs/examples/customer-brief.example.json", import.meta.url), "utf8"));
+    const row = await getEngagement.getMockImplementation()!(7, 41);
+    getEngagement.mockResolvedValue({ ...row!, data: applyCustomerBrief(createDefaultDocument(), brief).document });
+    const response = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 41, "html", "condensed-fcp")}`);
+    expect(response.status).toBe(409);
+    expect(await response.text()).toContain("costs more than the entitlement value");
+  });
+
+  it("refuses the Condensed FCP and lists the failed checks", async () => {
+    const { applyCustomerBrief } = await import("../shared/briefImport");
+    const row = await getEngagement.getMockImplementation()!(7, 41);
+    const document = applyCustomerBrief(createDefaultDocument(), { schemaVersion: 1, customer: { name: "Meridian Health" }, headline: "Amazing happens after the readiness workshop." }).document;
+    getEngagement.mockResolvedValue({ ...row!, data: document });
+    const response = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 41, "pdf", "condensed-fcp")}`);
+    expect(response.status).toBe(409);
+    expect(response.headers.get("content-disposition")).toBeNull();
+    expect(await response.text()).toContain("Banned framing");
+  });
+});

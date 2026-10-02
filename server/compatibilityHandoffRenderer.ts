@@ -1,4 +1,5 @@
 import { summarizeCompatibilityHandoff, type EngagementDocument, type VcfCompatibilityCohort } from "../shared/fcp";
+import { deliveryBriefing } from "../shared/deliveryBriefing";
 import { HCL_ESTATE_LIMITATION, hclFindingSeverityLabel, summarizeHclFindings } from "../shared/hcl";
 
 function esc(value: unknown): string {
@@ -41,6 +42,7 @@ export function renderCompatibilityHandoffHtml(title: string, document: Engageme
   const findings = summarizeHclFindings(document.readiness.hcl.findings);
   const coverageGaps = document.readiness.hcl.coverageGaps;
   const customer = document.fields.customerName || title;
+  const briefing = deliveryBriefing(document);
   const blockingFindings = findings.filter(finding => finding.severity === "BLOCKER" || finding.severity === "WARNING");
   const advisoryFindings = findings.filter(finding => finding.severity === "ADVISORY" || finding.severity === "INFO");
 
@@ -83,6 +85,7 @@ export function renderCompatibilityHandoffHtml(title: string, document: Engageme
   <section class="sheet findings-sheet"><div class="section-head"><div><span class="number">05 · Delivery blockers and warnings</span><h2>Conditions that affect sequencing or build readiness</h2></div><p>Repeated host observations are consolidated by check and remediation. Address blockers before warnings; preserve evidence of closure in the delivery baseline.</p></div><div class="finding-list">${renderFindings(blockingFindings, "No blocker or warning finding rows were derived from the imported evidence.")}</div></section>
   <section class="sheet advisory-sheet"><div class="section-head"><div><span class="number">06 · Advisories and information</span><h2>Non-blocking implementation considerations</h2></div><p>These items do not block platform build by themselves, but they shape implementation quality, operations, and follow-on evidence collection.</p></div><div class="finding-list">${renderFindings(advisoryFindings, "No advisory or informational finding rows were derived from the imported evidence.")}</div></section>
   <section class="sheet coverage-sheet"><div class="section-head"><div><span class="number">07 · Evidence coverage</span><h2>Information required to complete the handoff</h2></div><p>A gap is not a pass. Close each item with the customer evidence owner before the related platform build or implementation step.</p></div><table><thead><tr><th>Gap type</th><th>Evidence area</th><th>Delivery impact</th><th>Owner</th></tr></thead><tbody>${coverageRows}</tbody></table><div class="boundary-note"><strong>Handoff boundary:</strong> Server-and-CPU support is one check. Delivery must still confirm NICs, HBAs/controllers, firmware, drivers, OEM image or add-on, boot devices, storage, vSAN/ReadyNode where applicable, cluster topology, backup/recovery controls, and the customer-approved change path.</div></section>
+  ${briefing.length ? `<section class="sheet coverage-sheet"><div class="section-head"><div><span class="number">08 · Customer environment</span><h2>What delivery needs to know</h2></div><p>The discovery answers on record and what each means for the work in this plan. Confirm anything that has changed at kickoff.</p></div><table><thead><tr><th>Topic</th><th>On record</th><th>What it means for delivery</th></tr></thead><tbody>${briefing.map(item => `<tr><td><strong>${esc(item.topic)}</strong></td><td>${esc(item.detail)}</td><td>${esc(item.why)}</td></tr>`).join("")}</tbody></table></section>` : ""}
   </main><footer class="foot"><span>CDW · VCF Compatibility Delivery Handoff</span><span>${esc(document.fields.accountId || "Customer")}</span></footer></body></html>`;
   return source.replaceAll(/\[\[[^\]]+\]\]/g, "Not Yet Confirmed");
 }
