@@ -14,7 +14,7 @@ const SCRUB = [
 // Design-led framing: never a readiness exercise.
 const VOCABULARY = /\b(readiness|workshops?|TRW)\b/i;
 // Sections with no captured content are left out, so only the sections the app always writes are mandatory.
-const REQUIRED = ["Executive Summary", "Scoped Effort", "Adoption Plan &amp; Recommendation", "The short version"];
+const REQUIRED = ["Executive Summary", "Scoped Effort", "Adoption Plan &amp; Recommendation", ">Summary</h3>"];
 const INTERNAL_PATHS = ["/Users/", "/home/", "drive_1", "sharepoint", "localhost", "127.0.0.1"];
 
 function visibleText(html: string): string {
@@ -72,7 +72,7 @@ export function checkCondensedFcp(html: string, context: { customerName: string;
   for (const category of FIXED_GANTT_CATEGORIES) {
     if (!html.includes(`<div class="timeline-lane timeline-category-lane"><strong>${category.replace(/&/g, "&amp;")}</strong></div>`)) failures.push(`Category missing from the timeline: ${category}.`);
   }
-  for (const heading of REQUIRED) if (!html.includes(heading)) failures.push(`Mandatory section missing: ${heading.replace("&amp;", "&")}.`);
+  for (const heading of REQUIRED) if (!html.includes(heading)) failures.push(`Mandatory section missing: ${heading.replace("&amp;", "&").replace(/<[^>]*>|^>/g, "")}.`);
   if (!/For customer review · /.test(text)) failures.push("Missing the \"For customer review\" stamp.");
   if ((html.match(/Print \/ Save as PDF/g) || []).length !== 1) failures.push("The document must have exactly one Print / Save as PDF button.");
   if (context.customerName && !text.includes(context.customerName)) failures.push("The customer name does not appear on the page.");

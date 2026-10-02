@@ -29,7 +29,7 @@ describe("Condensed FCP", () => {
     const html = render(document);
     expect(check(html, document)).toEqual([]);
     const visible = text(html);
-    for (const heading of ["Executive Summary", "Situation", "Plan on a Page", "Entitlement Burndown", "Scoped Effort", "Customer Effort by Week & Work Stream", "Target Personnel by Work Stream", "VCF Design Profile", "Design Elements — Requirements & Recommendations", "Adoption Sequence & Dependencies", "Private Cloud Adoption Timeline", "Engagement Milestones to Date", "Forward Delivery Plan", "Adoption Plan & Recommendation", "The short version", "What we heard, and what we have built to", "The problems worth solving first", "The open questions", "The technical items to confirm early", "Sequencing Constraints", "What this asks of Acme Health's team", "Open Items"]) {
+    for (const heading of ["Executive Summary", "Situation", "Plan on a Page", "Entitlement Burndown", "Scoped Effort", "Customer Effort by Week & Work Stream", "Target Personnel by Work Stream", "VCF Design Profile", "Design Elements — Requirements & Recommendations", "Adoption Sequence & Dependencies", "Private Cloud Adoption Timeline", "Engagement Milestones to Date", "Forward Delivery Plan", "Adoption Plan & Recommendation", "Summary", "What we heard, and what we have built to", "Customer Problems", "Open Questions", "The technical items to confirm early", "Sequencing Constraints", "Customer Team Commitments", "Open Items"]) {
       expect(visible, heading).toContain(heading);
     }
     for (const category of FIXED_GANTT_CATEGORIES) expect(visible).toContain(category);
@@ -81,7 +81,7 @@ describe("Condensed FCP", () => {
     const html = render(document);
     expect(check(html, document)).toEqual([]);
     const visible = text(html);
-    for (const heading of ["Target Personnel by Work Stream", "What we heard", "The problems worth solving first", "The open questions", "Engagement Milestones to Date"]) expect(visible, heading).not.toContain(heading);
+    for (const heading of ["Target Personnel by Work Stream", "What we heard", "Customer Problems", "Open Questions", "Engagement Milestones to Date"]) expect(visible, heading).not.toContain(heading);
     expect(visible).not.toMatch(/to be named|to be recorded|to be confirmed\b(?! —)/);
   });
 
@@ -116,7 +116,7 @@ describe("Condensed FCP gates", () => {
 
   it("blocks a missing category or mandatory section", () => {
     expect(check(html.replaceAll(`<strong>Modernize Cloud</strong>`, ""), document).join(" ")).toContain("Category missing");
-    expect(check(html.replaceAll("The short version", "Summary"), document).join(" ")).toContain("Mandatory section missing");
+    expect(check(html.replaceAll("<h3>Summary</h3>", "<h3>Recap</h3>"), document).join(" ")).toContain("Mandatory section missing");
   });
 
   it("names the download with the FCP suffix", () => {
