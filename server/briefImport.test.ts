@@ -121,3 +121,36 @@ describe("brief import with hand-entered content", () => {
     expect(report.whatWeHeard).toHaveLength(2);
   });
 });
+
+describe("Copilot prompt for an engagement", () => {
+  it("names the customer, lists what the app holds, and pre-fills the name", async () => {
+    const { copilotBriefPrompt, COPILOT_BRIEF_PROMPT } = await import("../shared/briefPrompt");
+    const document = createDefaultDocument();
+    expect(copilotBriefPrompt({ ...document, fields: { ...document.fields, customerName: "" } })).toBe(COPILOT_BRIEF_PROMPT);
+    const prompt = copilotBriefPrompt({ ...document, fields: { ...document.fields, customerName: "Acme \"North\" Health", entitlementAmount: 79403, entitlementStart: "2026-04-29" } });
+    expect(prompt.startsWith("This brief is for Acme \"North\" Health.")).toBe(true);
+    expect(prompt).toContain("- Entitlement value: $79,403");
+    expect(prompt).toContain('"customer": { "name": "Acme \\"North\\" Health",');
+    expect(prompt).toContain(COPILOT_BRIEF_PROMPT.slice(0, 60));
+    for (const internal of ["rate", "PO value", "segment:"]) expect(prompt.slice(0, prompt.indexOf("You are preparing"))).not.toContain(internal);
+  });
+});
+
+describe("reading Copilot's reply", () => {
+  it("accepts plain JSON, a fenced json block, or JSON with text around it", async () => {
+    const { parseBriefText } = await import("../shared/briefImport");
+    const brief = { schemaVersion: 1, customer: { name: "Acme Health" } };
+    const json = JSON.stringify(brief, null, 2);
+    expect(parseBriefText(json)).toEqual(brief);
+    expect(parseBriefText(`Here is the brief:\n\`\`\`json\n${json}\n\`\`\`\nLet me know.`)).toEqual(brief);
+    expect(parseBriefText(`Sure! ${json} Hope that helps.`)).toEqual(brief);
+    expect(() => parseBriefText("No brief here.")).toThrow();
+  });
+
+  it("asks Copilot for a downloadable file named after the customer", async () => {
+    const { copilotBriefPrompt, COPILOT_BRIEF_PROMPT } = await import("../shared/briefPrompt");
+    const document = createDefaultDocument();
+    expect(COPILOT_BRIEF_PROMPT).toContain("downloadable file named customer-brief.json");
+    expect(copilotBriefPrompt({ ...document, fields: { ...document.fields, customerName: "Acme Health, Inc." } })).toContain("downloadable file named Acme-Health-Inc-brief.json");
+  });
+});

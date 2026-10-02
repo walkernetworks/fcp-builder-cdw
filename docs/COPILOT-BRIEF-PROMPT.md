@@ -1,9 +1,11 @@
 # Copilot prompt for the customer brief
 
-Paste this into Microsoft Copilot together with the customer's meeting notes, transcripts and questionnaire answers (or ask Copilot to find them). Save the JSON it returns as a `.json` file and import it on the **FCP Report Content** step (**Import the Copilot customer brief**). Every field can also be filled or corrected by hand on that step. The same text is available from the app's **Copy Copilot prompt** button; the source is `shared/briefPrompt.ts`.
+Use **Copy Copilot prompt** on the FCP Report Content step rather than this page: it copies this prompt with a header for the open engagement (the customer name, where Copilot should search, and what the app already holds) and the customer name filled into the JSON. Copilot returns the brief as a downloadable `<customer>-brief.json` file, or as a json code block. Import it with **Choose brief JSON**, or paste the reply with **Paste brief JSON**; either way you review the changes before anything is applied. `pnpm brief:check <file>` checks a saved brief locally and prints only its shape, with values masked.
+
+The generic prompt, without the engagement header:
 
 ```text
-You are preparing a customer brief for a CDW VMware Cloud Foundation (VCF) engagement. Read the meeting notes, transcripts, emails and questionnaire answers I give you (or that you can find for this customer) and return ONE JSON object in exactly the shape below. Return only the JSON, with no commentary before or after it.
+You are preparing a customer brief for a CDW VMware Cloud Foundation (VCF) engagement. Read the meeting notes, transcripts, emails and questionnaire answers I give you (or that you can find for this customer) and return ONE JSON object in exactly the shape below. Deliver it as a downloadable file named customer-brief.json that contains only the JSON. If you cannot create a file, reply with only one ```json code block and no commentary before or after it.
 
 Rules
 - Use only facts that are stated in the sources. Never estimate or invent numbers, dates, hours, core counts or names.
