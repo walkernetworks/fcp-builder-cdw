@@ -1,5 +1,6 @@
 import { barWindow } from "./buildingBlocks";
 import { completedReport } from "./report";
+import type { Timeline } from "./fcp";
 import { calculateEntitlementEndDate, DELIVERY_ROLE_BY_WORKSTREAM, isGateActivity, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
 /**
@@ -68,7 +69,11 @@ export type WorkPackageEffort = RoleHours & {
   total: number;
   /** Why a work package on the timeline carries no CDW hours. */
   note?: "customer-owned" | "checkpoint" | "not in the scoped hours";
+  /** Why the work package moves after the entitlement window; it carries no entitlement hours. */
+  deferred?: DeferralReason;
 };
+
+export type DeferralReason = "not funded" | "after the entitlement window";
 
 export type ScopedEffort = {
   /** Which table the report shows. */
@@ -278,6 +283,13 @@ export function fitToEnvelope(lines: EffortLine[], envelopeHours: number | null)
   return { lines: working, fullScopeHours, status: "short" as FitStatus, shortfallHours: afterReduction - envelopeHours, headroomHours: 0 };
 }
 
+/** The entitlement end: an approved extension, the recorded term, or one year from the entitlement start. */
+export function entitlementTermEnd(document: EngagementDocument): string | null {
+  const { report, fields } = document;
+  if (report.entitlement.extensionTo && report.entitlement.extensionApprovedBy) return report.entitlement.extensionTo;
+  return report.entitlement.termEnd || calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd || null;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Hours by timeline work package
 // ---------------------------------------------------------------------------------------------
@@ -333,6 +345,18 @@ function footedColumn(values: number[], target: number): number[] {
 export function workPackageEffort(document: EngagementDocument, lines: EffortLine[], totals: RoleHours): WorkPackageEffort[] {
   const timeline = document.adoptionTimeline;
   const bars = timeline.lanes.flatMap(lane => lane.bars.map(bar => ({ lane, bar })));
+  // Work the entitlement cannot carry moves after it: an add-on's build when only its design fits the
+  // hours, and anything that starts after the entitlement ends.
+  const termEnd = entitlementTermEnd(document);
+  const deferred = new Map<string, DeferralReason>();
+  for (const item of lines) {
+    const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
+    if (addOn && item.reduction === "design only") for (const { bar } of bars) if (addOn.bars.test(bar.id)) deferred.set(bar.id, "not funded");
+  }
+  if (termEnd) for (const { bar } of bars) {
+    const window = barWindow(timeline, bar);
+    if (window && window.start > termEnd && !deferred.has(bar.id)) deferred.set(bar.id, "after the entitlement window");
+  }
   const exact = new Map<string, RoleHours & { label: string; lane: TimelineLane | null; bar: TimelineBar | null }>();
   const add = (key: string, label: string, lane: TimelineLane | null, bar: TimelineBar | null, roles: RoleHours, share: number) => {
     const row = exact.get(key) ?? { label, lane, bar, architect: 0, srConsultant: 0, projectManager: 0 };
@@ -343,7 +367,7 @@ export function workPackageEffort(document: EngagementDocument, lines: EffortLin
   };
   for (const item of lines) {
     const roles = splitRoles(item.base, item.lead);
-    const matches = bars.filter(({ bar }) => barsForLine(item)(bar.id));
+    const matches = bars.filter(({ bar }) => barsForLine(item)(bar.id) && !deferred.has(bar.id));
     if (!matches.length) { add(`line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, null, null, roles, 1); continue; }
     // Weighted by length, capped so a long-running oversight package does not take most of a line's hours.
     const cap = timeline.cadence === "week" ? 8 : 2;
@@ -379,9 +403,44 @@ export function workPackageEffort(document: EngagementDocument, lines: EffortLin
       id: bar.id, label: bar.label, category: lane.category, workstreamType: lane.workstreamType, leadRole: DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType],
       start: window?.start ?? null, end: window?.end ?? null, architect: 0, srConsultant: 0, projectManager: 0, total: 0,
       note: isGateActivity(bar) ? "checkpoint" : CUSTOMER_OWNED_BARS.test(bar.id) ? "customer-owned" : "not in the scoped hours",
+      ...(deferred.has(bar.id) ? { deferred: deferred.get(bar.id) } : {}),
     };
   });
   return [...funded, ...unfunded].sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));
+}
+
+/**
+ * The timelines as the customer sees them: deferred work leaves the entitlement timeline and starts in the
+ * Two-Year Notional the month after the entitlement ends, keeping its order and length.
+ */
+export function timelinesWithDeferrals(document: EngagementDocument, deferredIds: string[]): { adoption: Timeline; notional: Timeline } {
+  const ids = new Set(deferredIds);
+  const adoption: Timeline = { ...document.adoptionTimeline, lanes: document.adoptionTimeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !ids.has(bar.id)) })) };
+  const notional = document.twoYearPlan;
+  const termEnd = entitlementTermEnd(document);
+  const start = /^(\d{4})-(\d{2})/.exec(notional.startDate);
+  const end = termEnd ? /^(\d{4})-(\d{2})/.exec(termEnd) : null;
+  if (!ids.size || !start || !end) return { adoption, notional };
+  // First notional month after the entitlement ends (monthly columns from the notional start).
+  const firstAfter = (Number(end[1]) - Number(start[1])) * 12 + Number(end[2]) - Number(start[2]) + 2;
+  const moving = notional.lanes.flatMap(lane => lane.bars).filter(bar => ids.has(bar.id) && bar.startCol < firstAfter);
+  if (!moving.length || firstAfter > notional.columns.length) return { adoption, notional };
+  const earliest = Math.min(...moving.map(bar => bar.startCol));
+  const last = notional.columns.length + 1;
+  return {
+    adoption,
+    notional: {
+      ...notional,
+      lanes: notional.lanes.map(lane => ({
+        ...lane,
+        bars: lane.bars.map(bar => {
+          if (!moving.includes(bar)) return bar;
+          const startCol = Math.min(notional.columns.length, firstAfter + bar.startCol - earliest);
+          return { ...bar, startCol, endCol: Math.min(last, Math.max(startCol + 1, startCol + bar.endCol - bar.startCol)) };
+        }),
+      })),
+    },
+  };
 }
 
 const CUSTOMER_OWNED_BARS = /^bar-(hcl-|soft-prerequisite-|networking-physical-fabric)/;
