@@ -174,3 +174,40 @@ describe("burndown", () => {
     expect(buildBurndown(engagement(document => { document.report.entitlement.hours = null; }))).toBeNull();
   });
 });
+
+describe("planner-adjusted hours", () => {
+  const planned = () => migrateDocument(engagement(document => {
+    Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated" });
+  }));
+
+  it("replace the baseline per role, keep the rest, and drive the totals", () => {
+    const document = planned();
+    const before = buildScopedEffort(document);
+    const target = before.workPackages.find(row => row.total > 0)!;
+    document.report.workPackageHours = [{ id: target.id, architect: target.baseline.architect + 10, srConsultant: null, projectManager: 0 }];
+    const after = buildScopedEffort(document);
+    const row = after.workPackages.find(item => item.id === target.id)!;
+    expect(row).toMatchObject({ architect: target.baseline.architect + 10, srConsultant: target.baseline.srConsultant, projectManager: 0, adjusted: true });
+    expect(after.totals.total).toBe(before.totals.total + 10 - target.baseline.projectManager);
+  });
+
+  it("bring work beyond the entitlement hours back into the entitlement", () => {
+    const document = planned();
+    const deferred = buildScopedEffort(document).workPackages.find(row => row.deferred === "not funded");
+    expect(deferred).toBeTruthy();
+    document.report.workPackageHours = [{ id: deferred!.id, architect: 4, srConsultant: 20, projectManager: 4 }];
+    const row = buildScopedEffort(document).workPackages.find(item => item.id === deferred!.id)!;
+    expect(row.deferred).toBeUndefined();
+    expect(row.total).toBe(28);
+  });
+
+  it("price the plan against the entitlement value with thresholds, on the server only", () => {
+    const document = planned();
+    const cost = scopedEffortForDocument(document).internal.cost!;
+    expect(cost.entitlementValue).toBe(document.fields.entitlementAmount);
+    expect(cost.ratio).toBeCloseTo(cost.planCost / cost.entitlementValue, 5);
+    document.report.workPackageHours = [{ id: scopedEffortForDocument(document).workPackages.find(row => row.total > 0)!.id, architect: 5000, srConsultant: null, projectManager: null }];
+    expect(scopedEffortForDocument(document).internal.cost!.status).toBe("over");
+    expect(JSON.stringify(scopedEffortForDocument(document))).not.toMatch(/"[a-z]*rate[a-z]*"\s*:/i);
+  });
+});

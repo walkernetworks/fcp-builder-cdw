@@ -55,6 +55,16 @@ export type EffortLine = {
 export type RoleHours = { architect: number; srConsultant: number; projectManager: number };
 export type EffortRow = RoleHours & { workstream: string; total: number; note?: string };
 
+/** Plan cost against the entitlement value: within up to 90%, near up to 100%, over beyond it. */
+export const COST_THRESHOLDS = { near: 0.9, over: 1 } as const;
+export type CostStatus = "within" | "near" | "over" | "no-value";
+export type PlanCost = { planCost: number; entitlementValue: number; ratio: number | null; status: CostStatus; byPackage: Record<string, number> };
+
+export function costStatus(ratio: number | null): CostStatus {
+  if (ratio === null) return "no-value";
+  return ratio > COST_THRESHOLDS.over ? "over" : ratio >= COST_THRESHOLDS.near ? "near" : "within";
+}
+
 export type FitStatus = "no-envelope" | "fits" | "fits-reduced" | "short";
 /** Calculated hours on one timeline work package, with its window and lead delivery role. */
 export type WorkPackageEffort = RoleHours & {
@@ -71,6 +81,10 @@ export type WorkPackageEffort = RoleHours & {
   note?: "customer-owned" | "checkpoint" | "not in the scoped hours";
   /** Why the work package moves after the entitlement window; it carries no entitlement hours. */
   deferred?: DeferralReason;
+  /** The calculated hours before any planner adjustment. */
+  baseline: RoleHours;
+  /** True when the planner set hours for at least one role. */
+  adjusted: boolean;
 };
 
 export type DeferralReason = "not funded" | "after the entitlement window";
@@ -90,6 +104,8 @@ export type ScopedEffort = {
     envelopeSource: "entitled hours" | "entitlement value" | "none";
     fullScopeHours: number;
     planHours: number;
+    /** Dollar view of the plan against the entitlement value, filled in by the server; planner screens only. */
+    cost?: PlanCost;
     status: FitStatus;
     shortfallHours: number;
     headroomHours: number;
@@ -353,6 +369,10 @@ export function workPackageEffort(document: EngagementDocument, lines: EffortLin
     const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
     if (addOn && item.reduction === "design only") for (const { bar } of bars) if (addOn.bars.test(bar.id)) deferred.set(bar.id, "not funded");
   }
+  // Hours the planner set on a work package bring it back into the entitlement.
+  const overrides = new Map(document.report.workPackageHours.map(item => [item.id, item]));
+  const overrideTotal = (id: string) => { const item = overrides.get(id); return item ? (item.architect ?? 0) + (item.srConsultant ?? 0) + (item.projectManager ?? 0) : 0; };
+  for (const [id, reason] of Array.from(deferred.entries())) if (reason === "not funded" && overrideTotal(id) > 0) deferred.delete(id);
   if (termEnd) for (const { bar } of bars) {
     const window = barWindow(timeline, bar);
     if (window && window.start > termEnd && !deferred.has(bar.id)) deferred.set(bar.id, "after the entitlement window");
@@ -380,9 +400,20 @@ export function workPackageEffort(document: EngagementDocument, lines: EffortLin
   const architect = footedColumn(rows.map(([, row]) => row.architect), totals.architect);
   const srConsultant = footedColumn(rows.map(([, row]) => row.srConsultant), totals.srConsultant);
   const projectManager = footedColumn(rows.map(([, row]) => row.projectManager), totals.projectManager);
-  const funded = rows.map(([id, row], index) => {
+  /** Applies the planner's hours over the baseline; work after the entitlement or owned by others takes none. */
+  const withOverride = (row: Omit<WorkPackageEffort, "total" | "baseline" | "adjusted">, baseline: RoleHours): WorkPackageEffort => {
+    const override = overrides.get(row.id);
+    const editable = override && !row.deferred && row.note !== "checkpoint" && row.note !== "customer-owned";
+    const roles = editable
+      ? { architect: override.architect ?? baseline.architect, srConsultant: override.srConsultant ?? baseline.srConsultant, projectManager: override.projectManager ?? baseline.projectManager }
+      : baseline;
+    const total = roles.architect + roles.srConsultant + roles.projectManager;
+    const { note, ...rest } = row;
+    return { ...rest, ...roles, total, baseline, adjusted: Boolean(editable), ...(note && total === 0 ? { note } : {}) };
+  };
+  const calculated = rows.map(([id, row], index) => {
     const window = row.bar ? barWindow(timeline, row.bar) : null;
-    return {
+    return withOverride({
       id,
       label: row.label,
       category: row.lane?.category ?? null,
@@ -390,22 +421,21 @@ export function workPackageEffort(document: EngagementDocument, lines: EffortLin
       leadRole: row.lane ? DELIVERY_ROLE_BY_WORKSTREAM[row.lane.workstreamType] : "",
       start: window?.start ?? null,
       end: window?.end ?? null,
-      architect: architect[index],
-      srConsultant: srConsultant[index],
-      projectManager: projectManager[index],
-      total: architect[index] + srConsultant[index] + projectManager[index],
-    } as WorkPackageEffort;
-  }).filter(row => row.total > 0);
-  // Work packages on the timeline with no CDW hours, so nothing on the plan goes unaccounted for.
-  const unfunded = bars.filter(({ bar }) => !funded.some(row => row.id === bar.id)).map(({ lane, bar }): WorkPackageEffort => {
+      architect: 0, srConsultant: 0, projectManager: 0,
+    }, { architect: architect[index], srConsultant: srConsultant[index], projectManager: projectManager[index] });
+  }).filter(row => row.baseline.architect + row.baseline.srConsultant + row.baseline.projectManager > 0);
+  // Work packages on the timeline with no calculated hours, so nothing on the plan goes unaccounted for.
+  const others = bars.filter(({ bar }) => !calculated.some(row => row.id === bar.id)).map(({ lane, bar }) => {
     const window = barWindow(timeline, bar);
-    return {
+    return withOverride({
       id: bar.id, label: bar.label, category: lane.category, workstreamType: lane.workstreamType, leadRole: DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType],
-      start: window?.start ?? null, end: window?.end ?? null, architect: 0, srConsultant: 0, projectManager: 0, total: 0,
+      start: window?.start ?? null, end: window?.end ?? null, architect: 0, srConsultant: 0, projectManager: 0,
       note: isGateActivity(bar) ? "checkpoint" : CUSTOMER_OWNED_BARS.test(bar.id) ? "customer-owned" : "not in the scoped hours",
       ...(deferred.has(bar.id) ? { deferred: deferred.get(bar.id) } : {}),
-    };
+    }, { architect: 0, srConsultant: 0, projectManager: 0 });
   });
+  const funded = calculated;
+  const unfunded = others;
   return [...funded, ...unfunded].sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));
 }
 
@@ -459,19 +489,23 @@ export function buildScopedEffort(document: EngagementDocument, options: { envel
     projectManager: item.projectManager,
     total: item.architect + item.srConsultant + item.projectManager,
   }));
+  const workPackages = workPackageEffort(document, fitted.lines, totalsOf(calculatedRows));
+  const planned = workPackages.filter(row => row.total > 0);
   const rows = assignments.length ? assignments : calculatedRows;
+  // The calculated plan is the work packages as adjusted by the planner; it falls back to the catalog lines with no timeline.
+  const calculatedTotals = planned.length ? planned.reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 }) : totalsOf(calculatedRows);
   return {
     source: assignments.length ? "assignments" : "calculated",
     rows,
-    workPackages: workPackageEffort(document, fitted.lines, totalsOf(calculatedRows)),
-    totals: totalsOf(rows),
+    workPackages,
+    totals: assignments.length ? totalsOf(assignments) : calculatedTotals,
     internal: {
       lines: fitted.lines,
       calculatedRows,
       envelopeHours,
       envelopeSource,
       fullScopeHours: Math.round(fitted.fullScopeHours),
-      planHours: totalsOf(calculatedRows).total,
+      planHours: calculatedTotals.total,
       status: fitted.status,
       shortfallHours: Math.round(fitted.shortfallHours),
       headroomHours: Math.round(fitted.headroomHours),

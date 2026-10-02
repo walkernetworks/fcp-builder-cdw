@@ -218,6 +218,7 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
     sources: keep(parseRows(brief.sources, element(reportShape.sources), "sources", warnings), prior.sources),
     revision: typeof brief.revision === "string" ? brief.revision : prior.revision,
     hiddenGenerated: prior.hiddenGenerated,
+    workPackageHours: prior.workPackageHours,
   };
 
   // An expiry moves only when both the new date and the approver are recorded.
