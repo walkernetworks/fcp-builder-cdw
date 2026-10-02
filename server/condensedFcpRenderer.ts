@@ -1,5 +1,5 @@
 import { barWindow } from "../shared/buildingBlocks";
-import { buildBurndown, buildCustomerEffort, formatWindow, type Burndown, type ScopedEffort } from "../shared/effort";
+import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, type Burndown, type ScopedEffort } from "../shared/effort";
 import { calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
 import { effectiveReport, platformName } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
@@ -230,7 +230,11 @@ export type CondensedFcpOptions = { today?: string; effort: ScopedEffort };
 
 export function renderCondensedFcpHtml(title: string, source: EngagementDocument, options: CondensedFcpOptions): string {
   // The report as it prints: generated rows the planner kept plus the planner's completed rows.
-  const document: EngagementDocument = { ...source, report: effectiveReport(source) };
+  // Work the entitlement cannot carry is drawn after it, in the Two-Year Notional.
+  const deferredWork = options.effort.workPackages.filter(row => row.deferred);
+  const customerTimelines = timelinesWithDeferrals(source, deferredWork.map(row => row.id));
+  const planned: EngagementDocument = { ...source, adoptionTimeline: customerTimelines.adoption, twoYearPlan: customerTimelines.notional };
+  const document: EngagementDocument = { ...planned, report: effectiveReport(planned) };
   const { fields, report } = document;
   const today = options.today ?? new Date().toISOString().slice(0, 10);
   const asOf = report.asOf || today;
@@ -241,7 +245,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const termEnd = burndown?.termEnd || report.entitlement.termEnd || calculateEntitlementEndDate(fields.entitlementStart) || null;
   const termStart = burndown?.termStart || report.entitlement.termStart || fields.entitlementStart || null;
   const effort = options.effort;
-  const customerEffort = buildCustomerEffort(source);
+  const customerEffort = buildCustomerEffort(planned);
   const items = [...planItems(document, customer), ...deadlines(document, termEnd)].sort((left, right) => left.start.localeCompare(right.start));
   const platform = platformName(document);
   const timelines = timelineSheets(document, longDate(fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate) || "Plan start", termEnd ? longDate(termEnd) : document.adoptionTimeline.columns.at(-1) || "plan end");
@@ -261,7 +265,8 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const situation = report.situation.map(esc);
   const planOnPage = FIXED_GANTT_CATEGORIES.map(category => {
     const work = items.filter(item => item.category === category && !item.customerOwned && item.swatch !== "muted").map(item => item.label);
-    const text = work.length ? esc(Array.from(new Set(work)).slice(0, 4).join("; ")) : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`;
+    const later = deferredWork.filter(row => row.category === category).map(row => row.label.replace(UNDECIDED_DEPTH, ""));
+    const text = `${work.length ? esc(Array.from(new Set(work)).slice(0, 4).join("; ")) : later.length ? "nothing in the entitlement window" : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; after the entitlement: ${esc(later.join("; "))}` : ""}`;
     return `<li><b>${esc(category)}</b> — ${text}</li>`;
   }).join("");
   const lead = `A design-led plan to move ${esc(customer)} onto ${esc(platform)} — ${esc(plan.label.toLowerCase())}${termEnd ? ` — consuming the services entitlement before it lapses on ${esc(longDate(termEnd))}` : ""}.`;
@@ -324,7 +329,8 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     : "";
   const forward = items.filter(item => !item.customerOwned && item.swatch !== "muted" && item.category !== "Program Management & Governance")
     .map(item => `<div class="ms"><b>${esc(formatWindow(item.start, item.end))}</b><span>${esc(item.label)}${item.outcome ? ` — ${esc(item.outcome)}` : ""}</span></div>`).join("")
-    + (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption — all hours consumed ahead of expiry.</span></div>` : "");
+    + (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption — all hours consumed ahead of expiry.</span></div>` : "")
+    + (deferredWork.length ? `<div class="ms"><b>After ${esc(termEnd ? shortDate(termEnd) : "the entitlement")}</b><span>${esc(deferredWork.map(row => row.label.replace(UNDECIDED_DEPTH, "")).join("; "))} — shown in the Two-Year Notional as follow-on scope.</span></div>` : "");
 
   // ---- Adoption plan & recommendation
   const builds = plan.implementationPackages.length > 0;

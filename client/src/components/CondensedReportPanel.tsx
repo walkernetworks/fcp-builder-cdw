@@ -1,3 +1,4 @@
+import { WorkPackageTable } from "@/components/WorkPackageHours";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -39,7 +40,7 @@ export function CondensedReportPanel({ document, onChange }: Props) {
 
   const commitHours = () => {
     if (!data) return;
-    const rows = data.internal.calculatedRows.map(row => ({ workstream: row.note ? `${row.workstream} (${row.note})` : row.workstream, architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager }));
+    const rows = data.workPackages.filter(row => row.total > 0).map(row => ({ workstream: row.label, architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager }));
     onChange({ ...document, report: { ...document.report, resourceAssignments: rows } });
     toast.success("Calculated hours saved as the resource assignments; edit them in the report content.");
   };
@@ -62,7 +63,7 @@ export function CondensedReportPanel({ document, onChange }: Props) {
         <div>
           <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#c8102e]">Condensed FCP</p>
           <h3 className="mt-1 text-lg font-semibold text-slate-950">Scoped effort and report content</h3>
-          <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">Hours are priced from the services catalog for this plan. Signed resource assignments replace them in the report. The fit figures below are internal and never appear in the document.</p>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">Hours are priced from the services catalog for this plan and placed on the adoption timeline's work packages. Signed resource assignments replace them in the report. The fit figures below are internal and never appear in the document.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => { setEditing(JSON.stringify(document.report, null, 2)); setErrors([]); }}><FilePenLine className="size-4" /> Edit report content</Button>
@@ -73,14 +74,19 @@ export function CondensedReportPanel({ document, onChange }: Props) {
       {!data ? <p className="mt-4 flex items-center gap-2 text-sm text-slate-500"><Loader2 className="size-4 animate-spin" /> Calculating hours…</p> : (
         <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_1fr]">
           <div className="overflow-x-auto">
-            <p className="mb-1 text-xs font-semibold text-slate-600">{data.source === "assignments" ? "Signed resource assignments (shown in the report)" : "Calculated from the plan (shown in the report until assignments are entered)"}</p>
-            <table className="w-full text-xs">
-              <thead><tr className="bg-slate-100 text-left text-[10px] uppercase tracking-wide text-slate-500"><th className="p-2">Workstream</th><th className="p-2 text-right">Architect</th><th className="p-2 text-right">Sr. Consultant</th><th className="p-2 text-right">PM</th><th className="p-2 text-right">Total</th></tr></thead>
-              <tbody>
-                {data.rows.map(row => <tr key={row.workstream} className="border-b border-slate-100"><td className="p-2 font-semibold text-slate-800">{row.workstream}{row.note ? <span className="ml-1 font-normal text-slate-500">({row.note})</span> : null}</td><td className="p-2 text-right">{row.architect}</td><td className="p-2 text-right">{row.srConsultant}</td><td className="p-2 text-right">{row.projectManager}</td><td className="p-2 text-right font-semibold">{row.total}</td></tr>)}
-                <tr className="font-bold text-slate-950"><td className="p-2">Total</td><td className="p-2 text-right">{data.totals.architect}</td><td className="p-2 text-right">{data.totals.srConsultant}</td><td className="p-2 text-right">{data.totals.projectManager}</td><td className="p-2 text-right">{data.totals.total}</td></tr>
-              </tbody>
-            </table>
+            {data.source === "assignments" ? <>
+              <p className="mb-1 text-xs font-semibold text-slate-600">Signed resource assignments (shown in the report)</p>
+              <table className="w-full text-xs">
+                <thead><tr className="bg-slate-100 text-left text-[10px] uppercase tracking-wide text-slate-500"><th className="p-2">Workstream</th><th className="p-2 text-right">Architect</th><th className="p-2 text-right">Sr. Consultant</th><th className="p-2 text-right">PM</th><th className="p-2 text-right">Total</th></tr></thead>
+                <tbody>
+                  {data.rows.map(row => <tr key={row.workstream} className="border-b border-slate-100"><td className="p-2 font-semibold text-slate-800">{row.workstream}</td><td className="p-2 text-right">{row.architect}</td><td className="p-2 text-right">{row.srConsultant}</td><td className="p-2 text-right">{row.projectManager}</td><td className="p-2 text-right font-semibold">{row.total}</td></tr>)}
+                  <tr className="font-bold text-slate-950"><td className="p-2">Total</td><td className="p-2 text-right">{data.totals.architect}</td><td className="p-2 text-right">{data.totals.srConsultant}</td><td className="p-2 text-right">{data.totals.projectManager}</td><td className="p-2 text-right">{data.totals.total}</td></tr>
+                </tbody>
+              </table>
+            </> : <>
+              <p className="mb-1 text-xs font-semibold text-slate-600">Calculated from the plan, by work package: the same table as stage 03 and the report, until assignments are entered</p>
+              <WorkPackageTable effort={data} />
+            </>}
           </div>
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-950">
             <p className="text-[10px] font-black uppercase tracking-[.14em]">Internal fit check · not in the report</p>

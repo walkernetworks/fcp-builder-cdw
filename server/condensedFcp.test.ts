@@ -206,3 +206,27 @@ describe("gates on the timeline", () => {
     expect(html).toMatch(/grid-column:2\/3;[^"]*justify-self:end/);
   });
 });
+
+describe("work the entitlement cannot carry", () => {
+  it("moves out of the entitlement timeline and starts after the entitlement in the notional", async () => {
+    const { migrateDocument } = await import("../shared/fcp");
+    const { timelinesWithDeferrals } = await import("../shared/effort");
+    const document = migrateDocument(engagement(raw => { raw.resourceAssignments = []; }));
+    const effort = scopedEffortForDocument(document);
+    const deferred = effort.workPackages.filter(row => row.deferred);
+    expect(deferred.length).toBeGreaterThan(0);
+    expect(deferred.every(row => row.total === 0)).toBe(true);
+
+    const { adoption, notional } = timelinesWithDeferrals(document, deferred.map(row => row.id));
+    const ids = new Set(deferred.map(row => row.id));
+    expect(adoption.lanes.flatMap(lane => lane.bars).some(bar => ids.has(bar.id))).toBe(false);
+    // The entitlement ends 28 Apr 2027; the notional starts Oct 2026, so May 2027 is column 8.
+    const moved = notional.lanes.flatMap(lane => lane.bars).filter(bar => ids.has(bar.id));
+    expect(moved.length).toBe(deferred.length);
+    expect(Math.min(...moved.map(bar => bar.startCol))).toBe(notional.columns.indexOf("May 2027") + 1);
+
+    const visible = text(render(document));
+    expect(visible).toContain("after the entitlement:");
+    expect(check(render(document), document)).toEqual([]);
+  });
+});
