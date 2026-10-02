@@ -1,6 +1,6 @@
 import { barWindow } from "../shared/buildingBlocks";
-import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, type Burndown, type ScopedEffort } from "../shared/effort";
-import { calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
+import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
+import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
 import { effectiveReport, platformName } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { selectedScopeSummary } from "./fcpRenderer";
@@ -53,7 +53,6 @@ const SWATCH_BY_WORKSTREAM: Record<WorkstreamType, Swatch> = {
 };
 
 const DESIGN_ID = /^bar-(playbook-design-|playbook-component-design-)/;
-const SITE_ID = /^bar-(hcl-remediation|hcl-procurement|hcl-greenfield|soft-prerequisite-|networking-physical-fabric)/;
 
 function planItems(document: EngagementDocument, customer: string): PlanItem[] {
   const timeline = document.adoptionTimeline;
@@ -65,20 +64,23 @@ function planItems(document: EngagementDocument, customer: string): PlanItem[] {
     return windows.length ? { start: windows.map(window => window.start).sort()[0], end: windows.map(window => window.end).sort().at(-1)! } : null;
   };
 
-  const design = span(all.filter(({ bar }) => DESIGN_ID.test(bar.id)));
+  const design = span(all.filter(({ bar }) => DESIGN_ID.test(bar.id) && activityOwner(bar) === "cdw"));
   if (design) items.push({ category: "Modernize Infrastructure", label: "Design discovery, architecture and design", ...design, swatch: "infrastructure", milestone: true, outcome: "Design signed off; hosts, storage, network and change windows agreed.", dependsOn: [] });
 
   for (const { lane, bar, window } of all) {
-    if (!window || DESIGN_ID.test(bar.id) || SITE_ID.test(bar.id) || bar.id === "bar-platform-plan") continue;
-    const gate = bar.id === "bar-hcl-gate";
+    // Customer-owned work comes through the customer-owned work rows; design is drawn as one span above.
+    const owner = activityOwner(bar);
+    if (!window || owner === "customer" || (DESIGN_ID.test(bar.id) && owner === "cdw") || bar.id === "bar-platform-plan") continue;
+    const gate = owner === "checkpoint";
+    const hardware = bar.id === "bar-hcl-gate";
     items.push({
       category: lane.category,
-      label: gate ? "Hardware compatibility confirmed" : bar.label.replace(UNDECIDED_DEPTH, ""),
+      label: hardware ? "Hardware compatibility confirmed" : bar.label.replace(UNDECIDED_DEPTH, ""),
       start: window.start,
       end: window.end,
       swatch: gate ? "muted" : SWATCH_BY_WORKSTREAM[lane.workstreamType],
       milestone: bar.milestone && !gate,
-      outcome: gate ? "Gate: platform build starts only once hardware compatibility is confirmed." : firstSentence(bar.outcome),
+      outcome: hardware ? "Gate: platform build starts only once hardware compatibility is confirmed." : gate ? `Checkpoint: ${firstSentence(bar.outcome) || "confirmed before the next stage starts."}` : firstSentence(bar.outcome),
       dependsOn: (bar.prerequisites ?? []).flatMap(id => (labelOf.has(id) && !DESIGN_ID.test(id) ? [labelOf.get(id)!] : DESIGN_ID.test(id) ? ["design sign-off"] : [])),
     });
   }
@@ -232,7 +234,8 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   // The report as it prints: generated rows the planner kept plus the planner's completed rows.
   // Work the entitlement cannot carry is drawn after it, in the Two-Year Notional.
   const deferredWork = options.effort.workPackages.filter(row => row.deferred);
-  const customerTimelines = timelinesWithDeferrals(source, deferredWork.map(row => row.id));
+  // Every bar carries who owns it (the planner's choice or the default) for drawing and sequencing.
+  const customerTimelines = timelinesWithDeferrals(withOwnership(source), deferredWork.map(row => row.id));
   const planned: EngagementDocument = { ...source, adoptionTimeline: customerTimelines.adoption, twoYearPlan: customerTimelines.notional };
   const document: EngagementDocument = { ...planned, report: effectiveReport(planned) };
   const { fields, report } = document;

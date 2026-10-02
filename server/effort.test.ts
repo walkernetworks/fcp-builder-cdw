@@ -273,3 +273,39 @@ describe("entitlement view of the timeline", () => {
     expect(saved).toHaveLength(original.lanes.flatMap(lane => lane.bars).length);
   });
 });
+
+describe("who owns a work package", () => {
+  const planned = () => migrateDocument(engagement(document => {
+    Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated" });
+  }));
+  const settings = (id: string, owner: "cdw" | "customer" | "checkpoint") => ({ id, architect: null, srConsultant: null, projectManager: null, placement: "auto" as const, owner });
+
+  it("defaults hardware evidence and site work to the customer and the hardware gate to a checkpoint", () => {
+    const rows = buildScopedEffort(planned()).workPackages;
+    expect(rows.find(row => row.id === "bar-hcl-gate")?.owner).toBe("checkpoint");
+    expect(rows.find(row => row.id.startsWith("bar-hcl-") && row.id !== "bar-hcl-gate")?.owner).toBe("customer");
+    expect(rows.find(row => row.id === "bar-management-domain")?.owner).toBe("cdw");
+  });
+
+  it("can hand CDW work to the customer, taking its hours out, and take customer work back with hours", () => {
+    const document = planned();
+    const before = buildScopedEffort(document);
+    const build = before.workPackages.find(row => row.id === "bar-management-domain")!;
+    const evidence = before.workPackages.find(row => row.owner === "customer")!;
+    document.report.workPackageHours = [settings(build.id, "customer"), { ...settings(evidence.id, "cdw"), srConsultant: 12 }];
+    const after = buildScopedEffort(document);
+    expect(after.workPackages.find(row => row.id === build.id)).toMatchObject({ owner: "customer", total: 0, note: "customer-owned" });
+    expect(after.workPackages.find(row => row.id === evidence.id)).toMatchObject({ owner: "cdw", srConsultant: 12 });
+    expect(after.totals.total).toBe(before.totals.total - build.total + 12);
+  });
+
+  it("draws a planner checkpoint as a marker and customer work dashed", async () => {
+    const { renderTimeline } = await import("./timelineHtml");
+    const { withOwnership } = await import("../shared/effort");
+    const document = planned();
+    document.report.workPackageHours = [settings("bar-workload-domain", "checkpoint"), settings("bar-management-domain", "customer")];
+    const html = renderTimeline(withOwnership(document).adoptionTimeline);
+    expect(html).toMatch(/justify-self:end;border-radius:999px;[^"]*" title="[^"]*Create and Validate the Initial VCF Workload Domain/);
+    expect(html).toMatch(/border-style:dashed" title="Customer-owned · /);
+  });
+});

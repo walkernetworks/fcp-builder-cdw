@@ -38,12 +38,6 @@ export function CondensedReportPanel({ document, onChange }: Props) {
   }, [document, mutate]);
   const assignments = document.report.resourceAssignments;
 
-  const commitHours = () => {
-    if (!data) return;
-    const rows = data.workPackages.filter(row => row.total > 0).map(row => ({ workstream: row.label, architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager }));
-    onChange({ ...document, report: { ...document.report, resourceAssignments: rows } });
-    toast.success("Calculated hours saved as the resource assignments; edit them in the report content.");
-  };
 
   const saveReport = () => {
     if (editing === null) return;
@@ -67,7 +61,6 @@ export function CondensedReportPanel({ document, onChange }: Props) {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => { setEditing(JSON.stringify(document.report, null, 2)); setErrors([]); }}><FilePenLine className="size-4" /> Edit report content</Button>
-          <Button size="sm" variant="outline" onClick={commitHours} disabled={!data}><Calculator className="size-4" /> {assignments.length ? "Replace assignments with calculated hours" : "Use calculated hours as assignments"}</Button>
         </div>
       </div>
 

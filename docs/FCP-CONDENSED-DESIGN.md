@@ -51,6 +51,7 @@ This adds a second export, the **Condensed FCP**, in the FCP 2.0 "Make Amazing H
 | Discovery answers | Used only where the plan makes them matter (design elements, constraints, open items; `shared/reportView.ts`). All answers on record go to the delivery team in the Technical Handoff (`shared/deliveryBriefing.ts`) |
 | Empty sections | Left out of the report; nothing prints as a placeholder |
 | Budget limit | The entitlement window never costs more than the entitlement value (rate card, server only). While it would, the latest non-design work moves to the Two-Year Notional with anything that depends on it. Planners can pin work to either place on stage 03. If design and pinned work alone exceed the value, the Condensed FCP export is refused |
+| Ownership | Each work package is CDW, Customer, or Checkpoint, chosen on stage 03. Defaults: hardware evidence, remediation and procurement, site prerequisites and (on VCF) the physical fabric are customer-owned; the hardware compatibility gate is a checkpoint. Customer work and checkpoints carry no CDW hours; customer work is drawn dashed and listed as customer-owned work |
 | Follow-on scope | Work in the Two-Year Notional keeps its hours as follow-on scope (no limit), printed in its own table and never counted in the entitlement totals |
 | Engagement Milestones to Date | Brief `milestonesToDate` |
 | Forward Delivery Plan | **Generated** from the timeline |

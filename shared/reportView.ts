@@ -1,6 +1,6 @@
 import { barWindow } from "./buildingBlocks";
-import { buildCustomerEffort, buildScopedEffort } from "./effort";
-import { calculateEntitlementEndDate, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument } from "./fcp";
+import { buildCustomerEffort, buildScopedEffort, withOwnership } from "./effort";
+import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument } from "./fcp";
 import { ADD_ON_OUTCOMES, canonicalAddOn, completedReport, type ReportContent } from "./report";
 
 /**
@@ -170,13 +170,14 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   const personnel = buildScopedEffort(document).rows.map(row => ({ workstream: row.workstream, cdw: [] as string[], broadcom: [] as string[], customer: [] as string[] }));
 
   // ---- Customer-owned work from the plan
-  const siteWindows = timeline.lanes.flatMap(lane => lane.bars).filter(bar => SITE_ID.test(bar.id)).flatMap(bar => {
-    const window = barWindow(timeline, bar);
-    return window ? [window] : [];
-  });
-  const customerOwnedWork: Array<Row<"customerOwnedWork">> = siteWindows.length
-    ? [{ label: SITE_PREREQUISITES_LABEL, start: siteWindows.map(window => window.start).sort()[0].slice(0, 7), end: siteWindows.map(window => window.end).sort().at(-1)!.slice(0, 7) }]
-    : [];
+  // Work packages the customer carries: the default site work as one span, anything else the planner gave the customer by name.
+  const customerBars = withOwnership(document).adoptionTimeline.lanes.flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "customer");
+  const windowsOf = (bars: typeof customerBars) => bars.flatMap(bar => { const window = barWindow(timeline, bar); return window ? [window] : []; });
+  const siteWindows = windowsOf(customerBars.filter(bar => SITE_ID.test(bar.id)));
+  const customerOwnedWork: Array<Row<"customerOwnedWork">> = [
+    ...(siteWindows.length ? [{ label: SITE_PREREQUISITES_LABEL, start: siteWindows.map(window => window.start).sort()[0].slice(0, 7), end: siteWindows.map(window => window.end).sort().at(-1)!.slice(0, 7) }] : []),
+    ...customerBars.filter(bar => !SITE_ID.test(bar.id)).flatMap(bar => { const window = barWindow(timeline, bar); return window ? [{ label: bar.label, start: window.start.slice(0, 7), end: window.end.slice(0, 7) }] : []; }),
+  ];
 
   // ---- Open items for what is still missing
   const openItems: Array<Row<"openItems">> = [];
