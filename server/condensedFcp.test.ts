@@ -230,3 +230,15 @@ describe("work the entitlement cannot carry", () => {
     expect(check(render(document), document)).toEqual([]);
   });
 });
+
+describe("follow-on scope", () => {
+  it("prints deferred work as follow-on hours, not in the entitlement totals", async () => {
+    const { migrateDocument } = await import("../shared/fcp");
+    const document = migrateDocument(engagement());
+    const html = render(document);
+    expect(check(html, document)).toEqual([]);
+    const visible = text(html);
+    expect(visible).toContain("Follow-on Scope — Two-Year Notional");
+    expect(visible).toMatch(/Total follow-on hours/);
+  });
+});

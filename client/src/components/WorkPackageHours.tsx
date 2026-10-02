@@ -10,6 +10,8 @@ import { useEffect } from "react";
 const DEFERRED: Record<NonNullable<WorkPackageEffort["deferred"]>, string> = {
   "not funded": "Beyond the entitlement hours",
   "after the entitlement window": "Starts after the entitlement ends",
+  "over budget": "Over the entitlement value",
+  "planned for later": "Planned for later",
 };
 
 const NOTE: Record<NonNullable<WorkPackageEffort["note"]>, string> = {
@@ -51,6 +53,8 @@ export function CostMeter({ cost, hours }: { cost: PlanCost; hours: number }) {
         {dollars(cost.planCost)} for {hours.toLocaleString("en-US")} hours
         {cost.entitlementValue > 0 && <> of {dollars(cost.entitlementValue)} ({percent}%){cost.status === "over" ? ` · over by ${dollars(cost.planCost - cost.entitlementValue)}` : ` · ${dollars(cost.entitlementValue - cost.planCost)} left`}</>}
       </p>
+      {cost.status === "over" && <p className="mt-1 font-semibold">The entitlement window cannot go over the entitlement value, and the Condensed FCP will not export. Only design and work pinned to the entitlement are left to cut: reduce their hours or move work to the Two-Year Notional.</p>}
+      {cost.followOnCost > 0 && <p className="mt-1">Follow-on scope in the Two-Year Notional: {dollars(cost.followOnCost)} (no limit; not drawn from the entitlement).</p>}
       {cost.entitlementValue > 0 && (
         <div className="relative mt-2 h-2 rounded-full bg-white/70">
           <div className={`h-2 rounded-full ${style.bar}`} style={{ width: `${Math.min(100, percent)}%` }} />
@@ -63,25 +67,33 @@ export function CostMeter({ cost, hours }: { cost: PlanCost; hours: number }) {
 
 const ROLES: Array<[keyof RoleHours, string]> = [["architect", "Architect"], ["srConsultant", "Sr. Consultant"], ["projectManager", "Sr. Project Manager"]];
 
-/** Hours per role for one work package: the calculated baseline, which the planner can adjust. */
+const PLACEMENT: Array<[WorkPackageEffort["placement"], string]> = [["auto", "Automatic"], ["entitlement", "Entitlement window"], ["notional", "Two-Year Notional"]];
+
+/** Hours per role for one work package: the calculated baseline, which the planner can adjust, and where it is planned. */
 export function RoleHoursEditor({ document, effort, barId, onChange }: { document: EngagementDocument; effort: ScopedEffort | undefined; barId: string; onChange: (document: EngagementDocument) => void }) {
   const row = effort?.workPackages.find(item => item.id === barId);
   if (!effort || !row) return <p className="text-xs text-slate-500">Calculating hours…</p>;
   if (row.note === "checkpoint" || row.note === "customer-owned") return <p className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">{row.note === "checkpoint" ? "A checkpoint carries no CDW hours." : "Customer-owned work carries no CDW hours."}</p>;
-  if (row.deferred === "after the entitlement window") return <p className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">This work package starts after the entitlement ends, so it carries no entitlement hours. Move it into the entitlement window to give it hours.</p>;
-  const override = document.report.workPackageHours.find(item => item.id === barId) ?? { id: barId, architect: null, srConsultant: null, projectManager: null };
+  const override = document.report.workPackageHours.find(item => item.id === barId) ?? { id: barId, architect: null, srConsultant: null, projectManager: null, placement: "auto" as const };
   const write = (next: typeof override | null) => {
     const others = document.report.workPackageHours.filter(item => item.id !== barId);
-    const keep = next && (next.architect !== null || next.srConsultant !== null || next.projectManager !== null);
+    const keep = next && (next.architect !== null || next.srConsultant !== null || next.projectManager !== null || next.placement !== "auto");
     onChange({ ...document, report: { ...document.report, workPackageHours: keep ? [...others, next] : others } });
   };
   const cost = effort.internal.cost;
+  const hoursNow = row.followOn ?? row;
+  const placementNote: Record<NonNullable<WorkPackageEffort["deferred"]>, string> = {
+    "not funded": "Only this add-on's design fits the entitlement hours, so its build is follow-on scope. Choose Entitlement window to bring it in.",
+    "after the entitlement window": "Starts after the entitlement ends, so its hours are follow-on scope. Move it into the window to use entitlement hours.",
+    "over budget": "Moved out of the entitlement to keep the plan within the entitlement value. Choose Entitlement window to keep it in; later work moves out instead.",
+    "planned for later": "Placed in the Two-Year Notional as follow-on scope.",
+  };
   return (
     <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 lg:grid-cols-[1fr_1.2fr]">
       <div>
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-500">Hours by role</p>
-          {row.adjusted && <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => write(null)}><RotateCcw className="size-3.5" /> Back to baseline</Button>}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-500">{row.deferred ? "Follow-on hours by role · Two-Year Notional" : "Hours by role · entitlement"}</p>
+          {row.adjusted && <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => write({ ...override, architect: null, srConsultant: null, projectManager: null })}><RotateCcw className="size-3.5" /> Back to baseline</Button>}
         </div>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {ROLES.map(([role, label]) => (
@@ -91,7 +103,13 @@ export function RoleHoursEditor({ document, effort, barId, onChange }: { documen
             </label>
           ))}
         </div>
-        <p className="mt-2 text-xs text-slate-700"><b>{row.total.toLocaleString("en-US")} hours</b>{cost ? <> · {dollars(cost.byPackage[barId] ?? 0)}</> : null}{row.deferred === "not funded" ? " · beyond the entitlement hours; set hours to bring it into the entitlement" : ""}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-700">
+          <span><b>{hoursNow.total.toLocaleString("en-US")} hours</b>{cost ? <> · {dollars(cost.byPackage[barId] ?? 0)}</> : null}</span>
+          <span className="ml-auto flex items-center gap-1">Planned in
+            {PLACEMENT.map(([value, label]) => <Button key={value} type="button" size="sm" variant={override.placement === value ? "default" : "outline"} className="h-7 px-2 text-[11px]" onClick={() => write({ ...override, placement: value })}>{label}</Button>)}
+          </span>
+        </div>
+        {row.deferred && <p className="mt-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[11px] leading-4 text-slate-600">{placementNote[row.deferred]}</p>}
       </div>
       {cost && <CostMeter cost={cost} hours={effort.totals.total} />}
     </div>
@@ -122,6 +140,7 @@ export function WorkPackageTable({ effort }: { effort: ScopedEffort }) {
   const rows = effort.workPackages;
   const funded = rows.filter(row => row.total > 0);
   const totals = funded.reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
+  const followOn = rows.reduce((sum, row) => row.followOn ? { architect: sum.architect + row.followOn.architect, srConsultant: sum.srConsultant + row.followOn.srConsultant, projectManager: sum.projectManager + row.followOn.projectManager, total: sum.total + row.followOn.total } : sum, { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
   const inWindow = rows.filter(row => !row.deferred);
   const groups = [
     ...[...FIXED_GANTT_CATEGORIES, null].map(category => ({ title: category ?? "Not on the timeline", rows: inWindow.filter(row => row.category === category) })),
@@ -142,22 +161,27 @@ export function WorkPackageTable({ effort }: { effort: ScopedEffort }) {
           {groups.map(group => [
             <tr key={`group-${group.title}`}><td colSpan={7} className="bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-slate-600">{group.title}</td></tr>,
             ...group.rows.map(row => {
-              const muted = row.total === 0;
+              const shown = row.followOn ?? row;
+              const muted = shown.total === 0;
               const tag = row.deferred ? DEFERRED[row.deferred] : row.note ? NOTE[row.note] : row.adjusted ? "Adjusted" : null;
               return (
                 <tr key={row.id} className="border-b border-slate-100 align-top">
                   <td className={`px-2 py-1.5 font-semibold ${muted ? "text-slate-400" : "text-slate-900"}`}>{row.label}{tag && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">{tag}</span>}</td>
                   <td className="whitespace-nowrap px-2 py-1.5 text-slate-600">{row.deferred ? "After the entitlement" : row.start && row.end ? formatWindow(row.start, row.end) : "—"}</td>
                   <td className="px-2 py-1.5 text-slate-600">{row.leadRole || "—"}</td>
-                  {numberCell(row.architect, muted)}{numberCell(row.srConsultant, muted)}{numberCell(row.projectManager, muted)}{numberCell(row.total, muted)}
+                  {numberCell(shown.architect, muted)}{numberCell(shown.srConsultant, muted)}{numberCell(shown.projectManager, muted)}{numberCell(shown.total, muted)}
                 </tr>
               );
             }),
           ])}
           <tr className="border-t-2 border-slate-900 font-bold text-slate-950">
-            <td className="px-2 py-1.5" colSpan={3}>Total CDW-delivered hours</td>
+            <td className="px-2 py-1.5" colSpan={3}>Total entitlement hours</td>
             {numberCell(totals.architect, false)}{numberCell(totals.srConsultant, false)}{numberCell(totals.projectManager, false)}{numberCell(totals.total, false)}
           </tr>
+          {followOn.total > 0 && <tr className="font-semibold text-slate-700">
+            <td className="px-2 py-1.5" colSpan={3}>Follow-on hours (Two-Year Notional, not in the entitlement)</td>
+            {numberCell(followOn.architect, false)}{numberCell(followOn.srConsultant, false)}{numberCell(followOn.projectManager, false)}{numberCell(followOn.total, false)}
+          </tr>}
         </tbody>
       </table>
     </div>

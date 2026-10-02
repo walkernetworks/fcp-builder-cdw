@@ -58,7 +58,7 @@ export type EffortRow = RoleHours & { workstream: string; total: number; note?: 
 /** Plan cost against the entitlement value: within up to 90%, near up to 100%, over beyond it. */
 export const COST_THRESHOLDS = { near: 0.9, over: 1 } as const;
 export type CostStatus = "within" | "near" | "over" | "no-value";
-export type PlanCost = { planCost: number; entitlementValue: number; ratio: number | null; status: CostStatus; byPackage: Record<string, number> };
+export type PlanCost = { planCost: number; followOnCost: number; entitlementValue: number; ratio: number | null; status: CostStatus; byPackage: Record<string, number> };
 
 export function costStatus(ratio: number | null): CostStatus {
   if (ratio === null) return "no-value";
@@ -81,13 +81,17 @@ export type WorkPackageEffort = RoleHours & {
   note?: "customer-owned" | "checkpoint" | "not in the scoped hours";
   /** Why the work package moves after the entitlement window; it carries no entitlement hours. */
   deferred?: DeferralReason;
+  /** Hours of deferred work, planned as follow-on scope in the Two-Year Notional; not counted in the entitlement. */
+  followOn?: RoleHours & { total: number };
+  /** Where the planner placed the work package; automatic follows the entitlement hours and budget. */
+  placement: "auto" | "entitlement" | "notional";
   /** The calculated hours before any planner adjustment. */
   baseline: RoleHours;
   /** True when the planner set hours for at least one role. */
   adjusted: boolean;
 };
 
-export type DeferralReason = "not funded" | "after the entitlement window";
+export type DeferralReason = "not funded" | "after the entitlement window" | "over budget" | "planned for later";
 
 export type ScopedEffort = {
   /** Which table the report shows. */
@@ -357,86 +361,128 @@ function footedColumn(values: number[], target: number): number[] {
  * Spreads each catalog line over the timeline work packages that deliver it, weighted by each package's
  * length, so the hours sit in the windows and under the lead roles the timeline already shows. A line
  * whose work packages were removed from the timeline keeps its hours on a row of its own.
+ *
+ * Work the entitlement cannot carry keeps its hours as follow-on scope in the Two-Year Notional: an
+ * add-on's build when only its design fits, anything starting after the entitlement ends, and anything
+ * the planner places there. The planner's hours replace the baseline wherever the work is planned.
  */
 export function workPackageEffort(document: EngagementDocument, lines: EffortLine[], totals: RoleHours): WorkPackageEffort[] {
   const timeline = document.adoptionTimeline;
   const bars = timeline.lanes.flatMap(lane => lane.bars.map(bar => ({ lane, bar })));
-  // Work the entitlement cannot carry moves after it: an add-on's build when only its design fits the
-  // hours, and anything that starts after the entitlement ends.
   const termEnd = entitlementTermEnd(document);
+  const overrides = new Map(document.report.workPackageHours.map(item => [item.id, item]));
   const deferred = new Map<string, DeferralReason>();
   for (const item of lines) {
     const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
     if (addOn && item.reduction === "design only") for (const { bar } of bars) if (addOn.bars.test(bar.id)) deferred.set(bar.id, "not funded");
   }
-  // Hours the planner set on a work package bring it back into the entitlement.
-  const overrides = new Map(document.report.workPackageHours.map(item => [item.id, item]));
-  const overrideTotal = (id: string) => { const item = overrides.get(id); return item ? (item.architect ?? 0) + (item.srConsultant ?? 0) + (item.projectManager ?? 0) : 0; };
-  for (const [id, reason] of Array.from(deferred.entries())) if (reason === "not funded" && overrideTotal(id) > 0) deferred.delete(id);
-  if (termEnd) for (const { bar } of bars) {
+  for (const { bar } of bars) {
+    const placement = overrides.get(bar.id)?.placement ?? "auto";
+    if (placement === "entitlement") deferred.delete(bar.id);
+    if (placement === "notional") deferred.set(bar.id, "planned for later");
     const window = barWindow(timeline, bar);
-    if (window && window.start > termEnd && !deferred.has(bar.id)) deferred.set(bar.id, "after the entitlement window");
+    // Hours cannot be consumed after the entitlement ends, whatever the placement.
+    if (termEnd && window && window.start > termEnd) deferred.set(bar.id, "after the entitlement window");
   }
-  const exact = new Map<string, RoleHours & { label: string; lane: TimelineLane | null; bar: TimelineBar | null }>();
-  const add = (key: string, label: string, lane: TimelineLane | null, bar: TimelineBar | null, roles: RoleHours, share: number) => {
-    const row = exact.get(key) ?? { label, lane, bar, architect: 0, srConsultant: 0, projectManager: 0 };
+
+  type Accumulated = RoleHours & { label: string };
+  // The entitlement baseline (footed to the catalog totals) and the follow-on estimate are kept apart.
+  const inWindow = new Map<string, Accumulated>();
+  const followOn = new Map<string, Accumulated>();
+  // An add-on build the planner pinned to the entitlement, beyond the catalog fit.
+  const pinned = new Map<string, Accumulated>();
+  const add = (target: Map<string, Accumulated>, key: string, label: string, roles: RoleHours, share: number) => {
+    const row = target.get(key) ?? { label, architect: 0, srConsultant: 0, projectManager: 0 };
     row.architect += roles.architect * share;
     row.srConsultant += roles.srConsultant * share;
     row.projectManager += roles.projectManager * share;
-    exact.set(key, row);
+    target.set(key, row);
+  };
+  // Weighted by length, capped so a long-running oversight package does not take most of a line's hours.
+  const cap = timeline.cadence === "week" ? 8 : 2;
+  const spread = (matches: typeof bars, roles: RoleHours, keep: (id: string) => boolean, target: Map<string, Accumulated>) => {
+    const weights = matches.map(({ bar }) => Math.min(cap, Math.max(1, bar.endCol - bar.startCol)));
+    const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+    matches.forEach(({ bar }, index) => { if (keep(bar.id)) add(target, bar.id, bar.label, roles, weights[index] / weightTotal); });
   };
   for (const item of lines) {
     const roles = splitRoles(item.base, item.lead);
-    const matches = bars.filter(({ bar }) => barsForLine(item)(bar.id) && !deferred.has(bar.id));
-    if (!matches.length) { add(`line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, null, null, roles, 1); continue; }
-    // Weighted by length, capped so a long-running oversight package does not take most of a line's hours.
-    const cap = timeline.cadence === "week" ? 8 : 2;
-    const weights = matches.map(({ bar }) => Math.min(cap, Math.max(1, bar.endCol - bar.startCol)));
-    const weightTotal = weights.reduce((sum, value) => sum + value, 0);
-    matches.forEach(({ lane, bar }, index) => add(bar.id, bar.label, lane, bar, roles, weights[index] / weightTotal));
+    const matches = bars.filter(({ bar }) => barsForLine(item)(bar.id));
+    const current = matches.filter(({ bar }) => !deferred.has(bar.id));
+    if (current.length) spread(current, roles, () => true, inWindow);
+    else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
+    // Deferred packages of the line get their share as a follow-on estimate.
+    spread(matches, roles, id => deferred.has(id), followOn);
+    // An add-on cut to its design keeps the rest of its hours on its build packages, as follow-on scope.
+    const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
+    if (addOn && item.reduction === "design only" && item.fullBase > item.base) {
+      const build = bars.filter(({ bar }) => addOn.bars.test(bar.id));
+      if (build.length) {
+        spread(build, splitRoles(item.fullBase - item.base, item.lead), id => deferred.has(id), followOn);
+        spread(build, splitRoles(item.fullBase - item.base, item.lead), id => !deferred.has(id), pinned);
+      }
+    }
   }
-  const categoryOrder = (lane: TimelineLane | null) => (lane ? FIXED_GANTT_CATEGORIES.indexOf(lane.category) : FIXED_GANTT_CATEGORIES.length);
-  const rows = Array.from(exact.entries()).sort(([, left], [, right]) => categoryOrder(left.lane) - categoryOrder(right.lane) || (left.bar?.startCol ?? 999) - (right.bar?.startCol ?? 999) || left.label.localeCompare(right.label));
-  const architect = footedColumn(rows.map(([, row]) => row.architect), totals.architect);
-  const srConsultant = footedColumn(rows.map(([, row]) => row.srConsultant), totals.srConsultant);
-  const projectManager = footedColumn(rows.map(([, row]) => row.projectManager), totals.projectManager);
-  /** Applies the planner's hours over the baseline; work after the entitlement or owned by others takes none. */
-  const withOverride = (row: Omit<WorkPackageEffort, "total" | "baseline" | "adjusted">, baseline: RoleHours): WorkPackageEffort => {
-    const override = overrides.get(row.id);
-    const editable = override && !row.deferred && row.note !== "checkpoint" && row.note !== "customer-owned";
+
+  const footed = (source: Map<string, Accumulated>, target: (key: keyof RoleHours, values: number[]) => number) => {
+    const entries = Array.from(source.entries());
+    const columns = (["architect", "srConsultant", "projectManager"] as const).map(key => footedColumn(entries.map(([, row]) => row[key]), target(key, entries.map(([, row]) => row[key]))));
+    return entries.map(([id, row], index) => [id, { row, roles: { architect: columns[0][index], srConsultant: columns[1][index], projectManager: columns[2][index] } }] as const);
+  };
+  const baselines = new Map([
+    ...footed(inWindow, key => totals[key]),
+    ...footed(followOn, (_key, values) => Math.round(values.reduce((sum, value) => sum + value, 0))),
+    ...footed(pinned, (_key, values) => Math.round(values.reduce((sum, value) => sum + value, 0))),
+  ]);
+  const entries = Array.from(baselines.entries());
+  const lanes = new Map(bars.map(({ lane, bar }) => [bar.id, { lane, bar }]));
+  const ids = [...bars.map(({ bar }) => bar.id), ...entries.map(([id]) => id).filter(id => !lanes.has(id))];
+
+  return ids.map((id): WorkPackageEffort => {
+    const placed = lanes.get(id);
+    const entry = baselines.get(id);
+    const baseline = entry?.roles ?? { architect: 0, srConsultant: 0, projectManager: 0 };
+    const window = placed ? barWindow(timeline, placed.bar) : null;
+    const note: WorkPackageEffort["note"] = placed && isGateActivity(placed.bar) ? "checkpoint" : placed && CUSTOMER_OWNED_BARS.test(id) ? "customer-owned" : undefined;
+    const override = overrides.get(id);
+    const editable = !note && override;
     const roles = editable
       ? { architect: override.architect ?? baseline.architect, srConsultant: override.srConsultant ?? baseline.srConsultant, projectManager: override.projectManager ?? baseline.projectManager }
-      : baseline;
-    const total = roles.architect + roles.srConsultant + roles.projectManager;
-    const { note, ...rest } = row;
-    return { ...rest, ...roles, total, baseline, adjusted: Boolean(editable), ...(note && total === 0 ? { note } : {}) };
-  };
-  const calculated = rows.map(([id, row], index) => {
-    const window = row.bar ? barWindow(timeline, row.bar) : null;
-    return withOverride({
+      : note ? { architect: 0, srConsultant: 0, projectManager: 0 } : baseline;
+    const sum = roles.architect + roles.srConsultant + roles.projectManager;
+    const reason = deferred.get(id);
+    const lane = placed?.lane ?? null;
+    return {
       id,
-      label: row.label,
-      category: row.lane?.category ?? null,
-      workstreamType: row.lane?.workstreamType ?? null,
-      leadRole: row.lane ? DELIVERY_ROLE_BY_WORKSTREAM[row.lane.workstreamType] : "",
+      label: placed?.bar.label ?? entry?.row.label ?? id,
+      category: lane?.category ?? null,
+      workstreamType: lane?.workstreamType ?? null,
+      leadRole: lane ? DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType] : "",
       start: window?.start ?? null,
       end: window?.end ?? null,
-      architect: 0, srConsultant: 0, projectManager: 0,
-    }, { architect: architect[index], srConsultant: srConsultant[index], projectManager: projectManager[index] });
-  }).filter(row => row.baseline.architect + row.baseline.srConsultant + row.baseline.projectManager > 0);
-  // Work packages on the timeline with no calculated hours, so nothing on the plan goes unaccounted for.
-  const others = bars.filter(({ bar }) => !calculated.some(row => row.id === bar.id)).map(({ lane, bar }) => {
-    const window = barWindow(timeline, bar);
-    return withOverride({
-      id: bar.id, label: bar.label, category: lane.category, workstreamType: lane.workstreamType, leadRole: DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType],
-      start: window?.start ?? null, end: window?.end ?? null, architect: 0, srConsultant: 0, projectManager: 0,
-      note: isGateActivity(bar) ? "checkpoint" : CUSTOMER_OWNED_BARS.test(bar.id) ? "customer-owned" : "not in the scoped hours",
-      ...(deferred.has(bar.id) ? { deferred: deferred.get(bar.id) } : {}),
-    }, { architect: 0, srConsultant: 0, projectManager: 0 });
+      ...(reason ? { architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: reason, followOn: { ...roles, total: sum } } : { ...roles, total: sum }),
+      baseline,
+      adjusted: Boolean(editable && (override.architect !== null || override.srConsultant !== null || override.projectManager !== null)),
+      placement: override?.placement ?? "auto",
+      ...(note ? { note } : !reason && sum === 0 ? { note: "not in the scoped hours" as const } : {}),
+    };
+  }).sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));
+}
+
+/** Work packages that are design work; the budget limit never moves them out of the entitlement. */
+export const isDesignWorkPackage = (id: string) => DESIGN_BARS.test(id);
+
+/** Moves work packages out of the entitlement into follow-on scope and recalculates the entitlement totals. */
+export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, DeferralReason>): ScopedEffort {
+  if (!moves.size) return effort;
+  const workPackages = effort.workPackages.map(row => {
+    const reason = moves.get(row.id);
+    if (!reason || row.deferred) return row;
+    return { ...row, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: reason, followOn: { architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager, total: row.total } };
   });
-  const funded = calculated;
-  const unfunded = others;
-  return [...funded, ...unfunded].sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));
+  if (effort.source === "assignments") return { ...effort, workPackages };
+  const totals = workPackages.reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
+  return { ...effort, workPackages, totals, internal: { ...effort.internal, planHours: totals.total } };
 }
 
 /**
