@@ -124,12 +124,37 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   if (typeof customer.name === "string") fieldsPatch.customerName = customer.name;
   if (typeof customer.location === "string") fieldsPatch.location = customer.location;
   if (typeof customer.segment === "string") fieldsPatch.customerSegment = customer.segment;
+  if (typeof customer.accountId === "string" || typeof customer.accountId === "number") fieldsPatch.accountId = String(customer.accountId);
+  // The primary contact, or else the first customer contact, as "Name, role".
+  const customerContacts = isPlainObject(brief.contacts) && Array.isArray(brief.contacts.customer) ? brief.contacts.customer.filter(isPlainObject) : [];
+  const firstContact = customerContacts.find(item => typeof item.name === "string" && item.name.trim()) as { name: string; role?: string } | undefined;
+  if (typeof customer.primaryContact === "string") fieldsPatch.primaryContact = customer.primaryContact;
+  else if (firstContact && !document.fields.primaryContact) fieldsPatch.primaryContact = [firstContact.name, firstContact.role].filter(Boolean).join(", ");
+
+  // Schedule: dates the customer named, hardware lead time, and calendar constraints.
+  const schedule = isPlainObject(brief.schedule) ? brief.schedule : {};
+  const date = (key: string, target: string) => {
+    const value = schedule[key];
+    if (typeof value !== "string") return;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) fieldsPatch[target] = value;
+    else warnings.push(`schedule.${key}: ${JSON.stringify(value)} is not a YYYY-MM-DD date; ignored`);
+  };
+  date("projectStart", "plannedProjectStart");
+  date("implementationStart", "plannedImplementationStart");
+  date("targetComplete", "targetComplete");
+  if (schedule.hardwareLeadWeeks !== undefined) fieldsPatch.hardwareLeadWeeks = schedule.hardwareLeadWeeks;
+  if (typeof schedule.calendarConstraints === "string") fieldsPatch.timelineNotes = schedule.calendarConstraints;
+  if (discovery.targetRelease !== undefined) fieldsPatch.compatibilityTargetRelease = discovery.targetRelease;
   if (typeof entitlement.value === "number") fieldsPatch.entitlementAmount = entitlement.value;
   if (typeof entitlement.termStart === "string") fieldsPatch.entitlementStart = entitlement.termStart;
   if (typeof discovery.plannedPath === "string") detailsPatch.upgradePath = discovery.plannedPath;
   if (typeof discovery.platformEdition === "string") detailsPatch.platformEdition = discovery.platformEdition;
   if (typeof discovery.consolidatedDomain === "boolean") detailsPatch.domainTopology = discovery.consolidatedDomain ? "consolidated" : "standard";
   if (typeof discovery.storage === "string") detailsPatch.principalStorage = discovery.storage;
+  if (Array.isArray(discovery.sitePrerequisitesOpen)) detailsPatch.softPrerequisites = discovery.sitePrerequisitesOpen;
+  if (isPlainObject(discovery.componentDepth)) detailsPatch.componentDepths = discovery.componentDepth;
+  if (typeof discovery.industry === "string") detailsPatch.industryTemplate = discovery.industry;
+  if (typeof discovery.planningNotes === "string") detailsPatch.notes = discovery.planningNotes;
   const newHosts = isPlainObject(discovery.newHostsPurchased) ? discovery.newHostsPurchased : {};
   if ((Number(newHosts.management) || 0) + (Number(newHosts.workload) || 0) > 0) fieldsPatch.hardwareAvailability = "new";
 
