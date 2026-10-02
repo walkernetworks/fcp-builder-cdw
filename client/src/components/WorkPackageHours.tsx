@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { FIXED_GANTT_CATEGORIES, type EngagementDocument, type Timeline } from "@shared/fcp";
-import { COST_THRESHOLDS, formatWindow, type PlanCost, type RoleHours, type ScopedEffort, type WorkPackageEffort } from "@shared/effort";
+import { COST_THRESHOLDS, formatWindow, timelinesWithDeferrals, withHiddenBars, withoutBars, type PlanCost, type RoleHours, type ScopedEffort, type WorkPackageEffort } from "@shared/effort";
 import { RotateCcw } from "lucide-react";
 import { useEffect } from "react";
 
@@ -116,22 +116,52 @@ export function RoleHoursEditor({ document, effort, barId, onChange }: { documen
   );
 }
 
-/** The Entitlement Adoption Timeline with hours: click a work package to adjust its hours by role. */
+const deferredIds = (effort: ScopedEffort | undefined) => new Set((effort?.workPackages ?? []).filter(row => row.deferred).map(row => row.id));
+
+/**
+ * The Entitlement Adoption Timeline with hours: click a work package to adjust its hours by role or where it
+ * is planned. Work in the Two-Year Notional (placed there, or moved to keep the plan within the entitlement
+ * value) is not drawn here; it appears on the Two-Year Notional tab.
+ */
 export function EntitlementTimelineWithHours({ document, onTimelineChange, onChange, description }: { document: EngagementDocument; onTimelineChange: (timeline: Timeline) => void; onChange: (document: EngagementDocument) => void; description: string }) {
   const effort = useScopedEffort(document);
+  const hidden = deferredIds(effort);
+  const moved = (effort?.workPackages ?? []).filter(row => row.deferred);
   return (
     <div className="space-y-4">
-      <AdoptionTimelineEditor timeline={document.adoptionTimeline} onChange={onTimelineChange} title="Entitlement Adoption Timeline" description={`${description} Click a work package to adjust its hours by role.`} selectionDetail={barId => <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} />} />
+      {moved.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-700">
+          <b>{moved.length} work package{moved.length === 1 ? " is" : "s are"} in the Two-Year Notional</b>, after the entitlement ends: {moved.map(row => row.label).join("; ")}. Open the Two-Year Notional tab to see them or bring one back.
+        </div>
+      )}
+      <AdoptionTimelineEditor timeline={withoutBars(document.adoptionTimeline, hidden)} onChange={edited => onTimelineChange(withHiddenBars(edited, document.adoptionTimeline, hidden))} title="Entitlement Adoption Timeline" description={`${description} Click a work package to adjust its hours by role or plan it in the Two-Year Notional.`} selectionDetail={barId => <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} />} />
       <section className="border border-slate-200 bg-white p-5 shadow-sm">
         <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Hours by work package</p>
         <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-600">
-          Baseline hours come from the services catalog for this plan, placed on the work packages that deliver them; adjusted rows are marked. Work the entitlement cannot carry moves to the Two-Year Notional, after the entitlement ends. The Condensed FCP and the Delivery Package show this same table.
+          Baseline hours come from the services catalog for this plan, placed on the work packages that deliver them; adjusted rows are marked. The entitlement window is held to the entitlement value; work beyond it moves to the Two-Year Notional as follow-on scope. The Condensed FCP and the Delivery Package show this same table.
           {effort?.source === "assignments" && <b className="text-slate-800"> Signed resource assignments are entered ({effort.totals.total.toLocaleString("en-US")} hours), so the report shows those instead.</b>}
         </p>
         {effort?.internal.cost && effort.source === "calculated" && <div className="mt-3"><CostMeter cost={effort.internal.cost} hours={effort.totals.total} /></div>}
         {effort ? <div className="mt-4"><WorkPackageTable effort={effort} /></div> : <p className="mt-4 text-xs text-slate-500">Calculating…</p>}
       </section>
     </div>
+  );
+}
+
+/** The Two-Year Notional with work moved out of the entitlement drawn after it; click a moved package to change its hours or bring it back. */
+export function NotionalTimelineWithHours({ document, onChange, description }: { document: EngagementDocument; onChange: (document: EngagementDocument) => void; description: string }) {
+  const effort = useScopedEffort(document);
+  const hidden = deferredIds(effort);
+  const notional = hidden.size ? timelinesWithDeferrals(document, Array.from(hidden)).notional : document.twoYearPlan;
+  const known = new Set((effort?.workPackages ?? []).map(row => row.id));
+  return (
+    <AdoptionTimelineEditor
+      timeline={notional}
+      onChange={twoYearPlan => onChange({ ...document, planAuthority: "manual", twoYearPlan })}
+      title="Two-Year Notional"
+      description={`${description} Work moved out of the entitlement starts the month after it ends; click it to change its follow-on hours or bring it back into the entitlement.`}
+      selectionDetail={barId => known.has(barId) ? <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} /> : <p className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">Notional roadmap activity; it carries no entitlement hours.</p>}
+    />
   );
 }
 

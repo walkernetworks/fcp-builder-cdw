@@ -241,3 +241,35 @@ describe("entitlement budget limit", () => {
     expect(scopedEffortForDocument(document).workPackages.find(row => row.id === build.id)!.deferred).toBeUndefined();
   });
 });
+
+describe("placing work in the Two-Year Notional", () => {
+  it("takes the package's hours out of the entitlement, even for design work", () => {
+    const document = migrateDocument(engagement(document => {
+      Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated" });
+    }));
+    const before = scopedEffortForDocument(document);
+    const design = before.workPackages.find(row => row.id.startsWith("bar-playbook-design-") && row.total > 0)!;
+    document.report.workPackageHours = [{ id: design.id, architect: null, srConsultant: null, projectManager: null, placement: "notional" }];
+    const after = scopedEffortForDocument(document);
+    const moved = after.workPackages.find(row => row.id === design.id)!;
+    expect(moved.deferred).toBe("planned for later");
+    expect(moved.followOn!.total).toBe(design.total);
+    expect(after.internal.cost!.planCost).toBeLessThan(before.internal.cost!.planCost);
+  });
+});
+
+describe("entitlement view of the timeline", () => {
+  it("hides moved work for editing and puts it back on save", async () => {
+    const { withoutBars, withHiddenBars } = await import("../shared/effort");
+    const document = migrateDocument(engagement(document => { Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated" }); }));
+    const original = document.adoptionTimeline;
+    const target = original.lanes.flatMap(lane => lane.bars).find(bar => bar.id === "bar-management-domain")!;
+    const hidden = new Set([target.id]);
+    const view = withoutBars(original, hidden);
+    expect(view.lanes.flatMap(lane => lane.bars).some(bar => bar.id === target.id)).toBe(false);
+    const edited = { ...view, lanes: view.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, label: `${bar.label}!` })) })) };
+    const saved = withHiddenBars(edited, original, hidden).lanes.flatMap(lane => lane.bars);
+    expect(saved.find(bar => bar.id === target.id)).toEqual(target);
+    expect(saved).toHaveLength(original.lanes.flatMap(lane => lane.bars).length);
+  });
+});
