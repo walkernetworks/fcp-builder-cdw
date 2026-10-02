@@ -90,6 +90,20 @@ const element = <T extends z.ZodType>(schema: T) => (schema as any).unwrap().ele
  * fields, narrative content goes to the report. RVTools inventory and hand-edited timelines are never
  * changed; a generated plan is rebuilt from the new fields.
  */
+/**
+ * Reads a brief from Copilot's reply: plain JSON, a fenced json code block, or JSON with text around it.
+ * Throws when no JSON object can be read.
+ */
+export function parseBriefText(text: string): unknown {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
+  const body = (fenced ? fenced[1] : text).trim();
+  try { return JSON.parse(body); } catch {
+    const start = body.indexOf("{"), end = body.lastIndexOf("}");
+    if (start === -1 || end <= start) throw new Error("No JSON object found.");
+    return JSON.parse(body.slice(start, end + 1));
+  }
+}
+
 export function applyCustomerBrief(document: EngagementDocument, raw: unknown): BriefImportResult {
   const fail = (error: string): BriefImportResult => ({ ok: false, document, changes: [], coerced: [], warnings: [], missing: [], error });
   if (!isPlainObject(raw)) return fail("The file is not a JSON object.");
