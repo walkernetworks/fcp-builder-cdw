@@ -191,14 +191,15 @@ describe("planner-adjusted hours", () => {
     expect(after.totals.total).toBe(before.totals.total + 10 - target.baseline.projectManager);
   });
 
-  it("bring work beyond the entitlement hours back into the entitlement", () => {
+  it("keep their follow-on hours when deferred, and come back into the entitlement when pinned there", () => {
     const document = planned();
     const deferred = buildScopedEffort(document).workPackages.find(row => row.deferred === "not funded");
     expect(deferred).toBeTruthy();
-    document.report.workPackageHours = [{ id: deferred!.id, architect: 4, srConsultant: 20, projectManager: 4 }];
+    expect(deferred!.followOn!.total).toBeGreaterThan(0);
+    document.report.workPackageHours = [{ id: deferred!.id, architect: null, srConsultant: null, projectManager: null, placement: "entitlement" }];
     const row = buildScopedEffort(document).workPackages.find(item => item.id === deferred!.id)!;
     expect(row.deferred).toBeUndefined();
-    expect(row.total).toBe(28);
+    expect(row.total).toBe(deferred!.followOn!.total);
   });
 
   it("price the plan against the entitlement value with thresholds, on the server only", () => {
@@ -209,5 +210,34 @@ describe("planner-adjusted hours", () => {
     document.report.workPackageHours = [{ id: scopedEffortForDocument(document).workPackages.find(row => row.total > 0)!.id, architect: 5000, srConsultant: null, projectManager: null }];
     expect(scopedEffortForDocument(document).internal.cost!.status).toBe("over");
     expect(JSON.stringify(scopedEffortForDocument(document))).not.toMatch(/"[a-z]*rate[a-z]*"\s*:/i);
+  });
+});
+
+describe("entitlement budget limit", () => {
+  const planned = (value: number) => migrateDocument(engagement(document => {
+    Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated", entitlementAmount: value });
+  }));
+
+  it("moves the latest non-design work to the notional until the entitlement window fits the value", () => {
+    const loose = scopedEffortForDocument(planned(10_000_000));
+    const value = Math.round(loose.internal.cost!.planCost * 0.85);
+    const effort = scopedEffortForDocument(planned(value));
+    const moved = effort.workPackages.filter(row => row.deferred === "over budget");
+    expect(moved.length).toBeGreaterThan(0);
+    expect(effort.internal.cost!.planCost).toBeLessThanOrEqual(value);
+    expect(effort.internal.cost!.status).not.toBe("over");
+    expect(moved.every(row => !/^bar-(platform-plan|playbook-design-|playbook-component-design-)/.test(row.id) && row.followOn!.total > 0)).toBe(true);
+    expect(effort.internal.cost!.followOnCost).toBeGreaterThan(0);
+  });
+
+  it("keeps pinned work in and stays over when only design and pinned work remain", () => {
+    const tiny = scopedEffortForDocument(planned(1_000));
+    expect(tiny.internal.cost!.status).toBe("over");
+    expect(tiny.workPackages.filter(row => row.total > 0).every(row => /design|requirements|mobilize|plan/i.test(row.label) || row.placement === "entitlement")).toBe(true);
+
+    const document = planned(1_000);
+    const build = scopedEffortForDocument(planned(10_000_000)).workPackages.find(row => row.id === "bar-management-domain")!;
+    document.report.workPackageHours = [{ id: build.id, architect: null, srConsultant: null, projectManager: null, placement: "entitlement" }];
+    expect(scopedEffortForDocument(document).workPackages.find(row => row.id === build.id)!.deferred).toBeUndefined();
   });
 });

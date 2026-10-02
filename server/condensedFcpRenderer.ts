@@ -294,6 +294,18 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by work package and role, in the windows of the adoption timeline. Estimated from this plan; the signed resource assignments replace these figures.</p><table data-foot="sum"><thead><tr><th>Work Package</th><th>Window</th><th>Lead Delivery Role</th><th class="num">Architect</th><th class="num">Sr. Consultant</th><th class="num">Sr. Project Manager</th><th class="num">Total Hours</th></tr></thead><tbody>${body.join("")}${other.join("")}<tr class="total"><td>${effortTotal[0]}</td><td></td><td></td>${effortTotal.slice(1).map(value => `<td class="num">${value}</td>`).join("")}</tr></tbody></table>`;
   }
 
+  // ---- Follow-on scope: work planned after the entitlement, in hours (no limit; a follow-on services scope)
+  const followOnRows = effort.workPackages.filter(row => row.followOn && row.followOn.total > 0);
+  const notionalBars = new Map(customerTimelines.notional.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
+  const followOnTotals = followOnRows.reduce((sum, row) => ({ architect: sum.architect + row.followOn!.architect, srConsultant: sum.srConsultant + row.followOn!.srConsultant, projectManager: sum.projectManager + row.followOn!.projectManager, total: sum.total + row.followOn!.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
+  const followOnSection = followOnRows.length
+    ? `<h3>Follow-on Scope — Two-Year Notional</h3><p class="lead">Work planned after the entitlement, estimated in hours for a follow-on services scope. It is not drawn from the current entitlement.</p>${table(["Work Package", "Planned Window", "Lead Delivery Role", "Architect", "Sr. Consultant", "Sr. Project Manager", "Total Hours"], followOnRows.map(row => {
+      const bar = notionalBars.get(row.id);
+      const window = bar ? barWindow(customerTimelines.notional, bar) : null;
+      return [esc(row.label.replace(UNDECIDED_DEPTH, "")), window ? esc(formatWindow(window.start, window.end)) : "", esc(row.leadRole), hours(row.followOn!.architect), hours(row.followOn!.srConsultant), hours(row.followOn!.projectManager), hours(row.followOn!.total)];
+    }), { numeric: [3, 4, 5, 6], foot: true, total: ["Total follow-on hours", "", "", hours(followOnTotals.architect), hours(followOnTotals.srConsultant), hours(followOnTotals.projectManager), hours(followOnTotals.total)] })}`
+    : "";
+
   // ---- Customer effort
   const peak = customerEffort.peak;
   const customerEffortSection = customerEffort.phases.length
@@ -368,6 +380,7 @@ ${situation.length ? `<h3>Situation</h3><ul>${situation.map(item => `<li>${item}
 
 ${burndownSection}
 ${scopedEffort}
+${followOnSection}
 ${customerEffortSection}
 ${personnel}
 

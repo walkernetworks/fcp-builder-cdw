@@ -45,9 +45,12 @@ export function registerExportDownloadRoutes(app: Express) {
 
       let html: string;
       if (ticket.documentType === "condensed-fcp") {
-        html = renderCondensedFcpHtml(row.title, document, { effort: scopedEffortForDocument(document) });
+        const effort = scopedEffortForDocument(document);
+        html = renderCondensedFcpHtml(row.title, document, { effort });
         // The condensed FCP goes to the customer as-is, so every content gate must pass first.
         const failures = checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount });
+        // The entitlement window never goes over the entitlement value; only design and pinned work can keep it over.
+        if (effort.internal.cost?.status === "over") failures.push("The entitlement window costs more than the entitlement value. Reduce hours or move work to the Two-Year Notional on the Entitlement Adoption Timeline step.");
         if (failures.length) return deny(res, 409, `The Condensed FCP was not exported because it failed these checks:\n- ${failures.join("\n- ")}`);
       } else {
         html = ticket.documentType === "plan-output" ? renderHclCompatibilityPlanOutputHtml(row.title, document) : renderFcpHtml(row.title, document);

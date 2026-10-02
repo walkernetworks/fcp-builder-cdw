@@ -50,6 +50,8 @@ This adds a second export, the **Condensed FCP**, in the FCP 2.0 "Make Amazing H
 | Private Cloud Adoption Timeline and Two-Year Notional | **Generated** timelines, drawn with the full FCP's category Gantt (`server/timelineHtml.ts`). Gates are checkpoints drawn as markers and take no schedule time. Customer-owned work and deadlines are listed in the sequence table |
 | Discovery answers | Used only where the plan makes them matter (design elements, constraints, open items; `shared/reportView.ts`). All answers on record go to the delivery team in the Technical Handoff (`shared/deliveryBriefing.ts`) |
 | Empty sections | Left out of the report; nothing prints as a placeholder |
+| Budget limit | The entitlement window never costs more than the entitlement value (rate card, server only). While it would, the latest non-design work moves to the Two-Year Notional with anything that depends on it. Planners can pin work to either place on stage 03. If design and pinned work alone exceed the value, the Condensed FCP export is refused |
+| Follow-on scope | Work in the Two-Year Notional keeps its hours as follow-on scope (no limit), printed in its own table and never counted in the entitlement totals |
 | Engagement Milestones to Date | Brief `milestonesToDate` |
 | Forward Delivery Plan | **Generated** from the timeline |
 | Adoption Plan & Recommendation (mandatory) | Mixed (below) |
