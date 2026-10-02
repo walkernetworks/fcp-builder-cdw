@@ -1,6 +1,6 @@
 import { barWindow } from "./buildingBlocks";
 import { completedReport } from "./report";
-import { calculateEntitlementEndDate, effectiveDeliveryPath, effectivePlatformEdition, resolvePlanOutcomes, type EngagementDocument, type TimelineBar } from "./fcp";
+import { calculateEntitlementEndDate, DELIVERY_ROLE_BY_WORKSTREAM, isGateActivity, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
 /**
  * Hours model for the Condensed FCP, after the fcp-builder skill's fcp_hours.py.
@@ -55,10 +55,27 @@ export type RoleHours = { architect: number; srConsultant: number; projectManage
 export type EffortRow = RoleHours & { workstream: string; total: number; note?: string };
 
 export type FitStatus = "no-envelope" | "fits" | "fits-reduced" | "short";
+/** Calculated hours on one timeline work package, with its window and lead delivery role. */
+export type WorkPackageEffort = RoleHours & {
+  id: string;
+  label: string;
+  category: TimelineLane["category"] | null;
+  workstreamType: TimelineLane["workstreamType"] | null;
+  leadRole: string;
+  /** ISO dates of the work package's window; null when the work is no longer on the timeline. */
+  start: string | null;
+  end: string | null;
+  total: number;
+  /** Why a work package on the timeline carries no CDW hours. */
+  note?: "customer-owned" | "checkpoint" | "not in the scoped hours";
+};
+
 export type ScopedEffort = {
   /** Which table the report shows. */
   source: "assignments" | "calculated";
   rows: EffortRow[];
+  /** The calculated hours spread over the timeline work packages that deliver them; columns foot to the calculated totals. */
+  workPackages: WorkPackageEffort[];
   totals: RoleHours & { total: number };
   /** INTERNAL: the calculated lines and the fit against the envelope. Never rendered in the report. */
   internal: {
@@ -162,7 +179,8 @@ export function scopedEffortLines(document: EngagementDocument): EffortLine[] {
   if (path === "in-place") lines.push(fillLine("In-place upgrade waves", DEFAULT_WAVE_BASE.inPlace));
 
   const designOnly = path === "design-only" || path === "undecided";
-  if (!designOnly) {
+  const firstAddOn = lines.length;
+  {
     if (!vvf && has("networking:edge-cluster-routing", "networking:vpc")) lines.push(line("NSX networking, Edge and VPC", "X6", "addon"));
     else if (!vvf && has("networking:overlay-transport", "networking:network-operations")) lines.push(line("NSX networking", "X5", "addon"));
     if (vvf && has("networking:physical-fabric")) lines.push(line("VDS networking", "X7", "addon"));
@@ -179,6 +197,8 @@ export function scopedEffortLines(document: EngagementDocument): EffortLine[] {
     if (has("resilience:cloud-cyber-recovery")) lines.push(line("Live Cyber Recovery", "X14", "addon"));
     if (has("networking:load-balancing", "security:waf")) lines.push(line("Avi Load Balancer and WAF", "X15", "addon"));
   }
+  // With no build in scope, each selected component is designed but not implemented.
+  if (designOnly) for (const item of lines.slice(firstAddOn)) { item.base = item.fullBase * ADD_ON_DESIGN_SHARE; item.reduction = "design only"; }
   return lines;
 }
 
@@ -258,6 +278,115 @@ export function fitToEnvelope(lines: EffortLine[], envelopeHours: number | null)
   return { lines: working, fullScopeHours, status: "short" as FitStatus, shortfallHours: afterReduction - envelopeHours, headroomHours: 0 };
 }
 
+// ---------------------------------------------------------------------------------------------
+// Hours by timeline work package
+// ---------------------------------------------------------------------------------------------
+
+const DESIGN_BARS = /^bar-(platform-plan|playbook-design-|playbook-component-design-|platform-execution-decision|platform-design-authority|platform-operating-readiness)/;
+const BUILD_BARS = /^bar-(management-domain|workload-domain|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover)/;
+/** Work packages each catalog line pays for: the implementation bars, or the component design bar when the line is design only. */
+const ADD_ON_BARS: Partial<Record<CatalogCode, { bars: RegExp; design: string }>> = {
+  X2: { bars: /^bar-(cloud-)?automation(-(?!data-services).*)?$/, design: "automation" },
+  X3: { bars: /^bar-(cloud-)?automation(-(?!data-services).*)?$/, design: "automation" },
+  X4: { bars: /^bar-(cloud-)?operations(-.*)?$|^bar-playbook-adoption-/, design: "operations" },
+  X5: { bars: /^bar-(cloud-)?networking-(?!physical-fabric|load-balancing)|^bar-vcf-networking-nsx$/, design: "networking" },
+  X6: { bars: /^bar-(cloud-)?networking-(?!physical-fabric|load-balancing)|^bar-vcf-networking-nsx$/, design: "networking" },
+  X7: { bars: /^bar-networking-physical-fabric$/, design: "networking" },
+  X8: { bars: /^bar-(cloud-)?private-ai/, design: "private-ai" },
+  X9: { bars: /^bar-(cloud-)?kubernetes/, design: "kubernetes" },
+  X10: { bars: /^bar-(cloud-)?resilience-(?!cloud-cyber-recovery)/, design: "resilience" },
+  X11: { bars: /^bar-(cloud-)?security-(?!waf)|^bar-security-services-platform$/, design: "security" },
+  X12: { bars: /^bar-(cloud-)?security-(?!waf)|^bar-security-services-platform$/, design: "security" },
+  X13: { bars: /^bar-(cloud-)?automation-data-services/, design: "automation" },
+  X14: { bars: /^bar-(cloud-)?resilience-cloud-cyber-recovery/, design: "resilience" },
+  X15: { bars: /^bar-(cloud-)?(networking-load-balancing|security-waf)/, design: "networking" },
+};
+
+function barsForLine(item: EffortLine): (id: string) => boolean {
+  if (/^(A|DD)\d/.test(item.code)) return id => DESIGN_BARS.test(id);
+  if (/^D\d/.test(item.code)) return id => BUILD_BARS.test(id);
+  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain)$/.test(id);
+  if (item.code === "FILL") return id => /^bar-playbook-execution-/.test(id);
+  const addOn = ADD_ON_BARS[item.code];
+  if (!addOn) return () => false;
+  if (item.reduction === "design only") return id => id === `bar-playbook-component-design-${addOn.design}`;
+  return id => addOn.bars.test(id);
+}
+
+/** Rounds each column so it foots to its target: floors, then hands the remainder to the largest fractions. */
+function footedColumn(values: number[], target: number): number[] {
+  const floors = values.map(Math.floor);
+  let remainder = target - floors.reduce((sum, value) => sum + value, 0);
+  const order = values.map((value, index) => ({ index, fraction: value - Math.floor(value) })).sort((left, right) => right.fraction - left.fraction);
+  for (let step = 0; remainder !== 0 && step < order.length * 2; step += 1) {
+    const { index } = order[step % order.length];
+    if (remainder > 0) { floors[index] += 1; remainder -= 1; } else if (floors[index] > 0) { floors[index] -= 1; remainder += 1; }
+  }
+  return floors;
+}
+
+/**
+ * Spreads each catalog line over the timeline work packages that deliver it, weighted by each package's
+ * length, so the hours sit in the windows and under the lead roles the timeline already shows. A line
+ * whose work packages were removed from the timeline keeps its hours on a row of its own.
+ */
+export function workPackageEffort(document: EngagementDocument, lines: EffortLine[], totals: RoleHours): WorkPackageEffort[] {
+  const timeline = document.adoptionTimeline;
+  const bars = timeline.lanes.flatMap(lane => lane.bars.map(bar => ({ lane, bar })));
+  const exact = new Map<string, RoleHours & { label: string; lane: TimelineLane | null; bar: TimelineBar | null }>();
+  const add = (key: string, label: string, lane: TimelineLane | null, bar: TimelineBar | null, roles: RoleHours, share: number) => {
+    const row = exact.get(key) ?? { label, lane, bar, architect: 0, srConsultant: 0, projectManager: 0 };
+    row.architect += roles.architect * share;
+    row.srConsultant += roles.srConsultant * share;
+    row.projectManager += roles.projectManager * share;
+    exact.set(key, row);
+  };
+  for (const item of lines) {
+    const roles = splitRoles(item.base, item.lead);
+    const matches = bars.filter(({ bar }) => barsForLine(item)(bar.id));
+    if (!matches.length) { add(`line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, null, null, roles, 1); continue; }
+    // Weighted by length, capped so a long-running oversight package does not take most of a line's hours.
+    const cap = timeline.cadence === "week" ? 8 : 2;
+    const weights = matches.map(({ bar }) => Math.min(cap, Math.max(1, bar.endCol - bar.startCol)));
+    const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+    matches.forEach(({ lane, bar }, index) => add(bar.id, bar.label, lane, bar, roles, weights[index] / weightTotal));
+  }
+  const categoryOrder = (lane: TimelineLane | null) => (lane ? FIXED_GANTT_CATEGORIES.indexOf(lane.category) : FIXED_GANTT_CATEGORIES.length);
+  const rows = Array.from(exact.entries()).sort(([, left], [, right]) => categoryOrder(left.lane) - categoryOrder(right.lane) || (left.bar?.startCol ?? 999) - (right.bar?.startCol ?? 999) || left.label.localeCompare(right.label));
+  const architect = footedColumn(rows.map(([, row]) => row.architect), totals.architect);
+  const srConsultant = footedColumn(rows.map(([, row]) => row.srConsultant), totals.srConsultant);
+  const projectManager = footedColumn(rows.map(([, row]) => row.projectManager), totals.projectManager);
+  const funded = rows.map(([id, row], index) => {
+    const window = row.bar ? barWindow(timeline, row.bar) : null;
+    return {
+      id,
+      label: row.label,
+      category: row.lane?.category ?? null,
+      workstreamType: row.lane?.workstreamType ?? null,
+      leadRole: row.lane ? DELIVERY_ROLE_BY_WORKSTREAM[row.lane.workstreamType] : "",
+      start: window?.start ?? null,
+      end: window?.end ?? null,
+      architect: architect[index],
+      srConsultant: srConsultant[index],
+      projectManager: projectManager[index],
+      total: architect[index] + srConsultant[index] + projectManager[index],
+    } as WorkPackageEffort;
+  }).filter(row => row.total > 0);
+  // Work packages on the timeline with no CDW hours, so nothing on the plan goes unaccounted for.
+  const unfunded = bars.filter(({ bar }) => !funded.some(row => row.id === bar.id)).map(({ lane, bar }): WorkPackageEffort => {
+    const window = barWindow(timeline, bar);
+    return {
+      id: bar.id, label: bar.label, category: lane.category, workstreamType: lane.workstreamType, leadRole: DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType],
+      start: window?.start ?? null, end: window?.end ?? null, architect: 0, srConsultant: 0, projectManager: 0, total: 0,
+      note: isGateActivity(bar) ? "checkpoint" : CUSTOMER_OWNED_BARS.test(bar.id) ? "customer-owned" : "not in the scoped hours",
+    };
+  });
+  return [...funded, ...unfunded].sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));
+}
+
+const CUSTOMER_OWNED_BARS = /^bar-(hcl-|soft-prerequisite-|networking-physical-fabric)/;
+const categoryIndex = (category: TimelineLane["category"] | null) => (category ? FIXED_GANTT_CATEGORIES.indexOf(category) : FIXED_GANTT_CATEGORIES.length);
+
 export function buildScopedEffort(document: EngagementDocument, options: { envelopeHours?: number | null; envelopeSource?: ScopedEffort["internal"]["envelopeSource"] } = {}): ScopedEffort {
   const entitled = document.report.entitlement.hours;
   const envelopeHours = entitled ?? options.envelopeHours ?? null;
@@ -275,6 +404,7 @@ export function buildScopedEffort(document: EngagementDocument, options: { envel
   return {
     source: assignments.length ? "assignments" : "calculated",
     rows,
+    workPackages: workPackageEffort(document, fitted.lines, totalsOf(calculatedRows)),
     totals: totalsOf(rows),
     internal: {
       lines: fitted.lines,

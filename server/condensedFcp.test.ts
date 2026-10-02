@@ -110,7 +110,7 @@ describe("Condensed FCP gates", () => {
   });
 
   it("blocks a table that does not foot", () => {
-    const broken = html.replace(/(<tr class="total"><td>Total CDW-delivered hours<\/td><td class="num">)(\d+)/, (_match, head: string, value: string) => `${head}${Number(value) + 5}`);
+    const broken = html.replace(/(<tr class="total"><td>Total CDW-delivered hours<\/td>(?:<td><\/td>)*<td class="num">)(\d+)/, (_match, head: string, value: string) => `${head}${Number(value) + 5}`);
     expect(check(broken, document).join(" ")).toContain("does not foot");
   });
 
@@ -164,5 +164,45 @@ describe("generated report content", () => {
     expect(effectiveReport(document).designProfile.availability).toBe(generateReport(document).designProfile.availability);
     document.report.designProfile.availability = "Single site with vSphere HA";
     expect(effectiveReport(document).designProfile.availability).toBe("Single site with vSphere HA");
+  });
+});
+
+describe("discovery answers", () => {
+  it("add design content only where the plan makes them matter", async () => {
+    const { generateReport } = await import("../shared/reportView");
+    const document = engagement();
+    Object.assign(document.report.discovery, { enhancedLinkedMode: true, jumboFrames: false, backup: "Veeam", serverVendor: "Dell", renewalDate: "2027-06-30", addOnsPurchased: ["Avi Load Balancer"] });
+    const greenfield = generateReport(document);
+    expect(greenfield.designElements.map(item => item.row.component)).toEqual(expect.arrayContaining(["Backup", "Hardware lifecycle"]));
+    expect(greenfield.constraints.map(item => item.row.constraint)).toContain("Subscription renewal 30 Jun 2027");
+    expect(greenfield.constraints.map(item => item.row.constraint)).not.toContain("Enhanced Linked Mode split before convergence");
+    expect(greenfield.openItems.map(item => item.row.item)).toContain("Avi Load Balancer is purchased but not in this plan");
+
+    document.fields.adoptionDetails.upgradePath = "converge";
+    expect(generateReport(document).constraints.map(item => item.row.constraint)).toContain("Enhanced Linked Mode split before convergence");
+
+    document.fields.adoptionDetails.upgradePath = "design-only";
+    const designOnly = generateReport(document).designElements.map(item => item.row.component);
+    expect(designOnly).not.toContain("Backup");
+    expect(designOnly).not.toContain("Hardware lifecycle");
+  });
+
+  it("brief the delivery team on what is on record and nothing else", async () => {
+    const { deliveryBriefing } = await import("../shared/deliveryBriefing");
+    const document = engagement();
+    document.report.discovery = { ...document.report.discovery, currentPlatform: null, backup: "Veeam", jumboFrames: false, enhancedLinkedMode: null };
+    const topics = deliveryBriefing(document).map(item => item.topic);
+    expect(topics).toEqual(expect.arrayContaining(["Backup", "Jumbo frames"]));
+    expect(topics).not.toContain("Current platform");
+    expect(topics).not.toContain("Enhanced Linked Mode");
+  });
+});
+
+describe("gates on the timeline", () => {
+  it("draws a gate as a marker in its last window, not as a span", async () => {
+    const { renderTimeline } = await import("./timelineHtml");
+    const timeline = { ...engagement().adoptionTimeline, cadence: "month" as const, columns: ["Jan", "Feb", "Mar"], lanes: [{ id: "lane", category: "Program Management & Governance" as const, workstreamType: "Governance" as const, label: "Governance", bars: [{ id: "bar-hcl-gate", startCol: 1, endCol: 3, color: "green" as const, label: "Hardware Compatibility Confirmed", milestone: true, deferred: false }] }] };
+    const html = renderTimeline(timeline as any);
+    expect(html).toMatch(/grid-column:2\/3;[^"]*justify-self:end/);
   });
 });

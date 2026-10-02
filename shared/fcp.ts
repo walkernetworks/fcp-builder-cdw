@@ -137,6 +137,11 @@ export type DeliveryStaffingPlan = {
   peakConcurrentPackages: number;
 };
 
+/** A gate is a checkpoint, not work: drawn as a marker and never given hours. */
+export function isGateActivity(bar: Pick<TimelineBar, "id" | "color">): boolean {
+  return bar.color === "gate" || bar.id === "bar-hcl-gate";
+}
+
 export const DELIVERY_ROLE_BY_WORKSTREAM: Record<WorkstreamType, string> = {
   Governance: "Engagement Manager / Project Manager",
   "Operating Model / Platform": "VCF Architect + Operations Lead",
@@ -2177,7 +2182,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     });
   }
 
-  const [hclGateStart, hclGateEnd] = range(hclBufferEnd, 1);
+  // A gate is a checkpoint, not work: it sits in the last window of the evidence work and adds no time of its own.
+  const [hclGateStart, hclGateEnd] = range(Math.max(1, hclBufferEnd - 1), 1);
   programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", "Hardware Compatibility Confirmed", true, false, hclDependency, `Platform build starts only after this milestone. Compatibility check result: ${hclPathLabel(path)}.`));
 
   const pathwayDesignEnd = playbookPlan.designPackages.length ? pathwayDesignCursor : hclGateEnd;

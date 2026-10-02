@@ -1,7 +1,7 @@
 import { barWindow } from "./buildingBlocks";
 import { buildCustomerEffort, buildScopedEffort } from "./effort";
 import { calculateEntitlementEndDate, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument } from "./fcp";
-import { completedReport, type ReportContent } from "./report";
+import { ADD_ON_OUTCOMES, canonicalAddOn, completedReport, type ReportContent } from "./report";
 
 /**
  * What the Condensed FCP generates from the plan when the planner has not written it, and the report the
@@ -77,6 +77,11 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   const vvf = effectivePlatformEdition(fields) === "vvf";
   const sites = inventory.datacenters || report.discovery.datacenters || 0;
   const path = playbookPlanForFields(fields).path;
+  const discovery = report.discovery;
+  const builds = path !== "design-only" && path !== "undecided";
+  const moves = path === "greenfield" || path === "hybrid" || path === "in-place" || path === "converge" || path === "import-workload-domain";
+  const inScope = (capability: string) => Array.from(outcomeKeys).some(key => key.startsWith(`${capability}:`));
+  const overlay = outcomeKeys.has("networking:overlay-transport") || outcomeKeys.has("networking:vpc") || outcomeKeys.has("networking:edge-cluster-routing");
 
   // ---- Situation (from RVTools)
   const situation: string[] = [];
@@ -105,8 +110,10 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   };
   if (storageText[storage]) designElements.push({ component: "Principal storage", requirement: storageText[storage][0], recommendation: storageText[storage][1], gate: null });
   if (!vvf) {
-    designElements.push(outcomeKeys.has("networking:overlay-transport") || outcomeKeys.has("networking:vpc")
-      ? { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: "Confirm MTU end to end and the transport VLANs before the overlay is enabled.", gate: "MTU confirmed" }
+    designElements.push(overlay
+      ? discovery.jumboFrames === true
+        ? { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: "Jumbo frames are already enabled; confirm the transport VLANs carry them end to end before the overlay is enabled.", gate: null }
+        : { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: `${discovery.jumboFrames === false ? "Jumbo frames are not enabled today; raise" : "Confirm"} the MTU end to end and the transport VLANs before the overlay is enabled.`, gate: "MTU confirmed" }
       : { component: "Networking", requirement: "NSX is deployed with VCF; workloads can stay VLAN-backed.", recommendation: "Start VLAN-backed; consider overlay networking in a later phase.", gate: null });
   }
   const required = requiredCores(document);
@@ -124,11 +131,19 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   const oldHardware = vmsBelowHardware19(document);
   if (oldHardware) designElements.push({ component: "Workloads", requirement: "Supported guest operating systems and VM hardware.", recommendation: `Remediate ${oldHardware.toLocaleString("en-US")} VMs below hardware version 19 ahead of their migration waves.`, gate: null });
 
+  // Discovery answers that change the design, only where the plan makes them matter.
+  if (builds && discovery.serverVendor) designElements.push({ component: "Hardware lifecycle", requirement: `Hosts are ${discovery.serverVendor}; vLCM images manage firmware and drivers with the ESX image.`, recommendation: `Build the cluster images with the ${discovery.serverVendor} vendor add-on and hardware support manager.`, gate: null });
+  if (moves && discovery.backup) designElements.push({ component: "Backup", requirement: `${discovery.backup} protects the workloads moving to the new platform.`, recommendation: `Confirm ${discovery.backup} supports the target vSphere and VCF release before the first wave; re-point jobs as each wave lands.`, gate: "backup support confirmed" });
+  if (inScope("resilience") && discovery.drSolution) designElements.push({ component: "Disaster recovery", requirement: `Recovery runs on ${discovery.drSolution} today.`, recommendation: "The recovery design decides whether VMware Live Recovery replaces it or runs alongside, and sets the recovery objectives.", gate: null });
+  if (inScope("security") && discovery.securityTooling) designElements.push({ component: "Security tooling", requirement: `${discovery.securityTooling} stays in place.`, recommendation: "Design vDefend policy alongside the existing tooling so controls do not overlap or conflict.", gate: null });
+  if (inScope("kubernetes") && discovery.containerPlatform) designElements.push({ component: "Containers", requirement: `${discovery.containerPlatform} runs containers today.`, recommendation: "Decide in design which clusters move to the Supervisor and VKS and which stay where they are.", gate: null });
+  if (discovery.edgeSites) designElements.push({ component: "Edge sites", requirement: `${discovery.edgeSites} edge site${discovery.edgeSites === 1 ? "" : "s"} in the estate.`, recommendation: "Decide in design whether each edge site joins the fleet or stays on its current platform.", gate: null });
+
   // ---- Technical items
   const technicalItems: Array<Row<"technicalItems">> = [];
   if (onVsphere8(document)) technicalItems.push({ item: "vSphere 8 end of general support 11 October 2027", reference: "Broadcom Product Lifecycle" });
   if (!vvf && (path === "greenfield" || path === "hybrid" || path === "converge")) technicalItems.push({ item: "The VCF Installer deploys vCenter, NSX and VCF Operations with the management domain", reference: "VCF documentation > Overview > VCF Installer Overview" });
-  if (path === "converge" || path === "import-workload-domain") technicalItems.push({ item: "Convergence blockers closed: Enhanced Linked Mode removed, vLCM images, no vCenter HA, DRS fully automated", reference: "VCF documentation > Deployment > Supported and not supported configurations" });
+  if (path === "converge" || path === "import-workload-domain") technicalItems.push({ item: `Convergence blockers closed: ${discovery.enhancedLinkedMode === false ? "" : "Enhanced Linked Mode removed, "}vLCM images, no vCenter HA, DRS fully automated`, reference: "VCF documentation > Deployment > Supported and not supported configurations" });
 
   // ---- Sequencing constraints
   const timeline = document.adoptionTimeline;
@@ -141,6 +156,8 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   for (const outcome of outcomes.filter(item => item.requiredBy.length).slice(0, 3)) {
     constraints.push({ constraint: `${planOutcomeLabel(outcome.key)} before ${outcome.requiredBy.map(key => planOutcomeLabel(key)).join(" and ")}`, imposedBy: "Platform", effect: "Sequenced as a prerequisite" });
   }
+  if ((path === "converge" || path === "import-workload-domain") && discovery.enhancedLinkedMode === true) constraints.push({ constraint: "Enhanced Linked Mode split before convergence", imposedBy: "Platform", effect: "vCenters leave the linked group before they join VCF" });
+  if (discovery.renewalDate) constraints.push({ constraint: `Subscription renewal ${shortDate(discovery.renewalDate)}`, imposedBy: "Licensing", effect: "Licensing activated and the renewal sized before that date" });
   if (termEnd) constraints.push({ constraint: `Entitlement expiry ${shortDate(termEnd)}`, imposedBy: "Entitlement term", effect: handoverWindow ? `Handover completes in ${monthYear(handoverWindow.end)}` : "All hours consumed before expiry" });
 
   // ---- Asks of the customer's team
@@ -164,6 +181,12 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   // ---- Open items for what is still missing
   const openItems: Array<Row<"openItems">> = [];
   if (!inventory.hosts) openItems.push({ item: "Current RVTools export", gates: "Design sign-off and sizing", owner: "" });
+  for (const purchased of discovery.addOnsPurchased) {
+    const key = canonicalAddOn(purchased);
+    const addOn = key ? ADD_ON_OUTCOMES[key] : null;
+    const planned = addOn?.priority && addOn.focus ? addOn.focus.some(focus => outcomeKeys.has(`${addOn.priority}:${focus}`)) : false;
+    if (!planned) openItems.push({ item: `${addOn?.label ?? purchased} is purchased but not in this plan`, gates: "Scope: add it or record why it waits", owner: "" });
+  }
   if (!report.entitlement.hours) openItems.push({ item: "Entitled hours from the signed resource assignments", gates: "Burndown and weekly pace", owner: "" });
 
   // ---- Milestones from the engagement dates

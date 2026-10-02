@@ -4,7 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { applyTimelineGesture, applyWorkstreamPresentation, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, normalizeActivityLabel, validateTimeline, validateTimelineSequence, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS, type Timeline, type TimelineBar } from "@shared/fcp";
+import { applyTimelineGesture, applyWorkstreamPresentation, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, isGateActivity, normalizeActivityLabel, validateTimeline, validateTimelineSequence, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS, type Timeline, type TimelineBar } from "@shared/fcp";
 import { CalendarRange, Flag, Plus, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -214,16 +214,17 @@ export function AdoptionTimelineEditor({
                 {group.activities.map(({ lane, activity, track }) => (
                   <div
                     key={activity.id}
-                    className={cn("group relative z-[1] m-1.5 flex min-h-12 cursor-grab touch-none select-none items-center overflow-hidden rounded-lg border px-4 py-2 text-[11px] font-semibold leading-tight shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing", colorClasses[activity.color], selected?.barId === activity.id && "ring-2 ring-slate-950 ring-offset-2")}
-                    style={{ gridColumn: `${activity.startCol} / ${activity.endCol}`, gridRow: track + 1 }}
+                    className={cn("group relative z-[1] m-1.5 flex min-h-12 cursor-grab touch-none select-none items-center overflow-hidden rounded-lg border px-4 py-2 text-[11px] font-semibold leading-tight shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing", colorClasses[activity.color], isGateActivity(activity) && "justify-self-end rounded-full px-3", selected?.barId === activity.id && "ring-2 ring-slate-950 ring-offset-2")}
+                    // A gate is a checkpoint, not a duration: drawn as a marker at the end of its last window.
+                    style={{ gridColumn: isGateActivity(activity) ? `${activity.endCol - 1} / ${activity.endCol}` : `${activity.startCol} / ${activity.endCol}`, gridRow: track + 1 }}
                     onClick={() => setSelected({ laneId: lane.id, barId: activity.id })}
                     onPointerDown={event => beginDrag(event, lane.id, activity, "move", group.category)}
                     aria-label={`${lane.workstreamType}: ${activity.label}. Lead role ${DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType]}. ${timeline.columns[activity.startCol - 1]} to ${timeline.columns[Math.max(activity.startCol - 1, activity.endCol - 2)]}`}
                     title={`${lane.workstreamType}: ${activity.label}\nLead role: ${DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType]}\n${timeline.columns[activity.startCol - 1]} to ${timeline.columns[Math.max(activity.startCol - 1, activity.endCol - 2)]}${activity.outcome ? `\nIntended outcome: ${activity.outcome}` : ""}${activity.dependsOn ? `\n${activity.dependsOn}` : ""}`}
                   >
-                    <button className="absolute inset-y-0 left-0 w-3 cursor-ew-resize touch-none border-r border-black/10 bg-black/10 sm:w-2" onPointerDown={event => beginDrag(event, lane.id, activity, "start", group.category)} aria-label={`Resize ${activity.label} start`} />
+                    {!isGateActivity(activity) && <button className="absolute inset-y-0 left-0 w-3 cursor-ew-resize touch-none border-r border-black/10 bg-black/10 sm:w-2" onPointerDown={event => beginDrag(event, lane.id, activity, "start", group.category)} aria-label={`Resize ${activity.label} start`} />}
                     <span className="line-clamp-2 break-words">{activity.milestone && "◆ "}{activity.label}</span>
-                    <button className="absolute inset-y-0 right-0 w-3 cursor-ew-resize touch-none border-l border-black/10 bg-black/10 sm:w-2" onPointerDown={event => beginDrag(event, lane.id, activity, "end", group.category)} aria-label={`Resize ${activity.label} end`} />
+                    {!isGateActivity(activity) && <button className="absolute inset-y-0 right-0 w-3 cursor-ew-resize touch-none border-l border-black/10 bg-black/10 sm:w-2" onPointerDown={event => beginDrag(event, lane.id, activity, "end", group.category)} aria-label={`Resize ${activity.label} end`} />}
                   </div>
                 ))}
                 {group.activities.length === 0 && <button className="col-span-full m-3 border border-dashed border-slate-300 py-3 text-xs text-slate-500 hover:border-slate-500" onClick={() => addLane(group.category)}>Add the First Work Package</button>}
