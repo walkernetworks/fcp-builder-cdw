@@ -113,6 +113,21 @@ describe("hours model", () => {
     }
   });
 
+  it("splits the deploy line by how much work each build package is", () => {
+    const document = engagement(document => {
+      document.fields.adoptionDetails.domainTopology = "standard";
+      document.inventory.hosts = 40;
+      document.report.entitlement.hours = null;
+    });
+    document.adoptionTimeline = refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline;
+    const effort = buildScopedEffort(document);
+    const technical = (id: string) => { const row = effort.workPackages.find(item => item.id === id)!; return row.architect + row.srConsultant; };
+    const foundation = technical("bar-management-domain");
+    expect(technical("bar-workload-domain") / foundation).toBeCloseTo(0.8, 1);
+    expect(technical("bar-platform-handover") / foundation).toBeCloseTo(0.2, 1);
+    expect(technical("bar-platform-licensing") / foundation).toBeCloseTo(0.1, 1);
+  });
+
   it("adds 8 architect hours to discovery for each capability area of interest", () => {
     const document = engagement(document => {
       document.report.discovery.assessmentCompleted = false;
