@@ -113,6 +113,21 @@ describe("hours model", () => {
     }
   });
 
+  it("splits the deploy line by how much work each build package is", () => {
+    const document = engagement(document => {
+      document.fields.adoptionDetails.domainTopology = "standard";
+      document.inventory.hosts = 40;
+      document.report.entitlement.hours = null;
+    });
+    document.adoptionTimeline = refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline;
+    const effort = buildScopedEffort(document);
+    const technical = (id: string) => { const row = effort.workPackages.find(item => item.id === id)!; return row.architect + row.srConsultant; };
+    const foundation = technical("bar-management-domain");
+    expect(technical("bar-workload-domain") / foundation).toBeCloseTo(0.8, 1);
+    expect(technical("bar-platform-handover") / foundation).toBeCloseTo(0.2, 1);
+    expect(technical("bar-platform-licensing") / foundation).toBeCloseTo(0.1, 1);
+  });
+
   it("adds 8 architect hours to discovery for each capability area of interest", () => {
     const document = engagement(document => {
       document.report.discovery.assessmentCompleted = false;
@@ -364,5 +379,44 @@ describe("who owns a work package", () => {
     const html = renderTimeline(withOwnership(document).adoptionTimeline);
     expect(html).toMatch(/justify-self:end;border-radius:999px;[^"]*" title="[^"]*Create and Validate the Initial VCF Workload Domain/);
     expect(html).toMatch(/border-style:dashed" title="Customer-owned · /);
+  });
+});
+
+describe("pre-built hours for every option", () => {
+  const focuses: Record<string, [keyof EngagementDocument["fields"]["adoptionDetails"], string[]]> = {
+    operations: ["operations", ["lifecycle", "observability", "capacity-cost", "custom-dashboards", "identity-certificates", "event-integration"]],
+    automation: ["automation", ["vm-self-service", "infrastructure-as-code", "day-2-automation", "governance", "application-provisioning", "data-services"]],
+    networking: ["networking", ["physical-fabric", "edge-cluster-routing", "overlay-transport", "vpc", "load-balancing", "network-operations"]],
+    security: ["security", ["segmentation", "identity-rbac", "hardening-compliance", "ids-ips", "malware-prevention", "identity-firewall", "security-intelligence", "waf"]],
+    resilience: ["resilience", ["recovery-architecture", "recovery-exercises", "cyber-recovery", "cloud-cyber-recovery"]],
+    kubernetes: ["kubernetes", ["workload-domains", "platform-operations", "developer-experience"]],
+    "private-ai": ["privateAi", ["gpu-capacity", "ai-guardrails", "pilot-onboarding"]],
+  };
+  const options: Array<[string, (document: EngagementDocument) => void]> = [["platform only", () => {}]];
+  for (const [capability, [key, values]] of Object.entries(focuses)) {
+    options.push([`${capability} (general)`, document => { document.fields.priorities = [capability as never]; }]);
+    for (const value of values) options.push([`${capability}: ${value}`, document => { document.fields.priorities = [capability as never]; (document.fields.adoptionDetails[key] as string[]) = [value]; }]);
+  }
+  options.push(["efficiency design", document => { document.fields.adoptionDetails.componentDepths.efficiency = "tier-2"; }]);
+
+  it("gives every CDW work package hours, on every path, edition and selected option", () => {
+    const gaps: string[] = [];
+    for (const platformEdition of ["vcf", "vvf"] as const) {
+      for (const upgradePath of ["undecided", "in-place", "converge", "import-workload-domain", "greenfield", "hybrid", "design-only"] as const) {
+        for (const [name, select] of options) {
+          const document = createDefaultDocument();
+          Object.assign(document.fields, { customerName: "Acme", plannedProjectStart: "2026-06-01", plannedImplementationStart: "2026-06-01", entitlementStart: "2026-06-01", priorities: [] });
+          Object.assign(document.fields.adoptionDetails, { upgradePath, platformEdition });
+          document.inventory.hosts = 40;
+          select(document);
+          const planned = refreshDerivedDocument(document, { forceRebuild: true });
+          planned.report.entitlement.hours = null;
+          for (const row of buildScopedEffort(planned).workPackages) {
+            if (row.note === "not in the scoped hours" || row.id.startsWith("line:")) gaps.push(`${platformEdition} ${upgradePath} ${name}: ${row.id}`);
+          }
+        }
+      }
+    }
+    expect(gaps).toEqual([]);
   });
 });
