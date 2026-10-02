@@ -1,7 +1,7 @@
 import { barWindow } from "./buildingBlocks";
 import { completedReport } from "./report";
 import type { Timeline } from "./fcp";
-import { calculateEntitlementEndDate, DELIVERY_ROLE_BY_WORKSTREAM, isGateActivity, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
+import { activityOwner, calculateEntitlementEndDate, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
 /**
  * Hours model for the Condensed FCP, after the fcp-builder skill's fcp_hours.py.
@@ -85,6 +85,8 @@ export type WorkPackageEffort = RoleHours & {
   followOn?: RoleHours & { total: number };
   /** Where the planner placed the work package; automatic follows the entitlement hours and budget. */
   placement: "auto" | "entitlement" | "notional";
+  /** Who carries the work package (the planner's choice or the default). */
+  owner: ActivityOwner;
   /** The calculated hours before any planner adjustment. */
   baseline: RoleHours;
   /** True when the planner set hours for at least one role. */
@@ -366,9 +368,12 @@ function footedColumn(values: number[], target: number): number[] {
  * add-on's build when only its design fits, anything starting after the entitlement ends, and anything
  * the planner places there. The planner's hours replace the baseline wherever the work is planned.
  */
-export function workPackageEffort(document: EngagementDocument, lines: EffortLine[], totals: RoleHours): WorkPackageEffort[] {
+export function workPackageEffort(source: EngagementDocument, lines: EffortLine[], totals: RoleHours): WorkPackageEffort[] {
+  const document = withOwnership(source);
   const timeline = document.adoptionTimeline;
   const bars = timeline.lanes.flatMap(lane => lane.bars.map(bar => ({ lane, bar })));
+  // Only CDW-owned work carries CDW hours.
+  const cdw = (id: string) => { const placed = bars.find(({ bar }) => bar.id === id); return !placed || activityOwner(placed.bar) === "cdw"; };
   const termEnd = entitlementTermEnd(document);
   const overrides = new Map(document.report.workPackageHours.map(item => [item.id, item]));
   const deferred = new Map<string, DeferralReason>();
@@ -407,7 +412,8 @@ export function workPackageEffort(document: EngagementDocument, lines: EffortLin
   };
   for (const item of lines) {
     const roles = splitRoles(item.base, item.lead);
-    const matches = bars.filter(({ bar }) => barsForLine(item)(bar.id));
+    // Customer-owned packages keep their share of the line, which then drops out of CDW's hours.
+    const matches = bars.filter(({ bar }) => barsForLine(item)(bar.id) && activityOwner(bar) !== "checkpoint");
     // Work the planner placed in the notional keeps its share of the line and takes it out of the entitlement.
     const current = matches.filter(({ bar }) => !deferred.has(bar.id) || deferred.get(bar.id) === "planned for later");
     if (current.length) spread(current, roles, () => true, inWindow);
@@ -417,7 +423,7 @@ export function workPackageEffort(document: EngagementDocument, lines: EffortLin
     // An add-on cut to its design keeps the rest of its hours on its build packages, as follow-on scope.
     const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
     if (addOn && item.reduction === "design only" && item.fullBase > item.base) {
-      const build = bars.filter(({ bar }) => addOn.bars.test(bar.id));
+      const build = bars.filter(({ bar }) => addOn.bars.test(bar.id) && cdw(bar.id));
       if (build.length) {
         spread(build, splitRoles(item.fullBase - item.base, item.lead), id => deferred.has(id), followOn);
         spread(build, splitRoles(item.fullBase - item.base, item.lead), id => !deferred.has(id), pinned);
@@ -444,7 +450,8 @@ export function workPackageEffort(document: EngagementDocument, lines: EffortLin
     const entry = baselines.get(id);
     const baseline = entry?.roles ?? { architect: 0, srConsultant: 0, projectManager: 0 };
     const window = placed ? barWindow(timeline, placed.bar) : null;
-    const note: WorkPackageEffort["note"] = placed && isGateActivity(placed.bar) ? "checkpoint" : placed && CUSTOMER_OWNED_BARS.test(id) ? "customer-owned" : undefined;
+    const owner = placed ? activityOwner(placed.bar) : "cdw";
+    const note: WorkPackageEffort["note"] = owner === "checkpoint" ? "checkpoint" : owner === "customer" ? "customer-owned" : undefined;
     const override = overrides.get(id);
     const editable = !note && override;
     const roles = editable
@@ -465,6 +472,7 @@ export function workPackageEffort(document: EngagementDocument, lines: EffortLin
       baseline,
       adjusted: Boolean(editable && (override.architect !== null || override.srConsultant !== null || override.projectManager !== null)),
       placement: override?.placement ?? "auto",
+      owner,
       ...(note ? { note } : !reason && sum === 0 ? { note: "not in the scoped hours" as const } : {}),
     };
   }).sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));
@@ -532,7 +540,14 @@ export function withHiddenBars(edited: Timeline, original: Timeline, ids: Set<st
   return { ...edited, lanes: edited.lanes.map(lane => ({ ...lane, bars: [...lane.bars, ...(hidden.get(lane.id) ?? [])] })) };
 }
 
-const CUSTOMER_OWNED_BARS = /^bar-(hcl-|soft-prerequisite-|networking-physical-fabric)/;
+/** The document with every timeline bar stamped with who carries it: the planner's choice, or the defaults. */
+export function withOwnership(document: EngagementDocument): EngagementDocument {
+  const owners = new Map<string, ActivityOwner>();
+  // On VVF the physical fabric is the VDS networking work CDW is scoped for; on VCF it is a customer site prerequisite.
+  if (effectivePlatformEdition(document.fields) === "vvf") owners.set("bar-networking-physical-fabric", "cdw");
+  for (const item of document.report.workPackageHours) if (item.owner !== "auto") owners.set(item.id, item.owner);
+  return { ...document, adoptionTimeline: stampActivityOwners(document.adoptionTimeline, owners), twoYearPlan: stampActivityOwners(document.twoYearPlan, owners) };
+}
 const categoryIndex = (category: TimelineLane["category"] | null) => (category ? FIXED_GANTT_CATEGORIES.indexOf(category) : FIXED_GANTT_CATEGORIES.length);
 
 export function buildScopedEffort(document: EngagementDocument, options: { envelopeHours?: number | null; envelopeSource?: ScopedEffort["internal"]["envelopeSource"] } = {}): ScopedEffort {

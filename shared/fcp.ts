@@ -94,6 +94,8 @@ export const timelineBarSchema = z.object({
   outcome: z.string().min(1).optional(),
   milestone: z.boolean().default(false),
   deferred: z.boolean().default(false),
+  /** Who carries the work, stamped for display from the planner's choice (see withOwnership); not saved on the bar. */
+  owner: z.enum(["cdw", "customer", "checkpoint"]).optional(),
 });
 
 export const timelineLaneSchema = z.object({
@@ -137,9 +139,31 @@ export type DeliveryStaffingPlan = {
   peakConcurrentPackages: number;
 };
 
+export type ActivityOwner = "cdw" | "customer" | "checkpoint";
+
+/** Work the customer carries by default: hardware evidence and remediation, site prerequisites, and the physical fabric. */
+const DEFAULT_CUSTOMER_OWNED = /^bar-(hcl-(remediation|procurement|greenfield)|soft-prerequisite-|networking-physical-fabric)/;
+
+/** Who carries a work package: the planner's choice when stamped on the bar, otherwise the defaults. */
+export function activityOwner(bar: Pick<TimelineBar, "id" | "color" | "owner">): ActivityOwner {
+  if (bar.owner) return bar.owner;
+  if (bar.color === "gate" || bar.id === "bar-hcl-gate") return "checkpoint";
+  return DEFAULT_CUSTOMER_OWNED.test(bar.id) ? "customer" : "cdw";
+}
+
 /** A gate is a checkpoint, not work: drawn as a marker and never given hours. */
-export function isGateActivity(bar: Pick<TimelineBar, "id" | "color">): boolean {
-  return bar.color === "gate" || bar.id === "bar-hcl-gate";
+export function isGateActivity(bar: Pick<TimelineBar, "id" | "color" | "owner">): boolean {
+  return activityOwner(bar) === "checkpoint";
+}
+
+/** Stamps each bar with who carries it, from the planner's choices by bar id (missing ids keep the defaults). */
+export function stampActivityOwners(timeline: Timeline, owners: Map<string, ActivityOwner>): Timeline {
+  return { ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, owner: owners.get(bar.id) ?? activityOwner({ ...bar, owner: undefined }) })) })) };
+}
+
+/** Removes display-only owner stamps before a timeline is saved. */
+export function unstampActivityOwners(timeline: Timeline): Timeline {
+  return { ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(({ owner: _owner, ...bar }) => bar) })) };
 }
 
 export const DELIVERY_ROLE_BY_WORKSTREAM: Record<WorkstreamType, string> = {

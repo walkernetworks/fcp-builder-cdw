@@ -1,5 +1,5 @@
 import type { Timeline, TimelineBar, TimelineLane } from "../shared/fcp";
-import { colorForWorkstreamType, isGateActivity, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
+import { activityOwner, colorForWorkstreamType, isGateActivity, DELIVERY_ROLE_BY_WORKSTREAM, FIXED_GANTT_CATEGORIES, WORKSTREAM_TYPES, WORKSTREAM_TYPE_COLORS } from "../shared/fcp";
 
 /** The category Gantt shared by the FCP and the Condensed FCP: workstream-coloured bars stacked under the five fixed categories. */
 
@@ -30,11 +30,14 @@ export function renderBar(activity: TimelineBar, totalColumns: number, workstrea
   const lastEnd = Math.max(2, Math.min(totalColumns + 1, activity.endCol));
   const start = gate ? lastEnd - 1 : Math.max(1, Math.min(totalColumns, activity.startCol));
   const end = gate ? lastEnd : Math.max(start + 1, Math.min(totalColumns + 1, activity.endCol));
-  return `<div class="timeline-bar ${activity.deferred ? "deferred" : ""}" style="grid-column:${start}/${end};grid-row:${track + 1};align-self:center;${gate ? "justify-self:end;border-radius:999px;" : ""}background:${color.bg};color:${color.fg};border-color:${color.border}" title="${esc(workstreamType)}: ${esc(activity.label)}&#10;Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[workstreamType])}${activity.outcome ? `&#10;Intended outcome: ${esc(activity.outcome)}` : ""}${activity.dependsOn ? `&#10;${esc(activity.dependsOn)}` : ""}">${activity.milestone ? "◆ " : ""}${esc(activity.label)}</div>`;
+  // Customer-owned work keeps its workstream colour as a dashed outline.
+  const customer = activityOwner(activity) === "customer";
+  const fill = customer ? `background:#fff;color:${color.border};border-color:${color.border};border-style:dashed` : `background:${color.bg};color:${color.fg};border-color:${color.border}`;
+  return `<div class="timeline-bar ${activity.deferred ? "deferred" : ""}" style="grid-column:${start}/${end};grid-row:${track + 1};align-self:center;${gate ? "justify-self:end;border-radius:999px;" : ""}${fill}" title="${customer ? "Customer-owned · " : ""}${esc(workstreamType)}: ${esc(activity.label)}&#10;Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[workstreamType])}${activity.outcome ? `&#10;Intended outcome: ${esc(activity.outcome)}` : ""}${activity.dependsOn ? `&#10;${esc(activity.dependsOn)}` : ""}">${activity.milestone ? "◆ " : ""}${esc(activity.label)}</div>`;
 }
 
 export function renderWorkstreamLegend() {
-  return `<div class="timeline-legend"><span>Delivery workstream key</span>${WORKSTREAM_TYPES.map(type => { const color = palette[WORKSTREAM_TYPE_COLORS[type]] || palette.slate; return `<span class="timeline-legend-item" title="Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[type])}" style="border-color:${color.border};background:${color.bg};color:${color.fg}"><i></i>${esc(type)}</span>`; }).join("")}</div>`;
+  return `<div class="timeline-legend"><span>Delivery workstream key</span>${WORKSTREAM_TYPES.map(type => { const color = palette[WORKSTREAM_TYPE_COLORS[type]] || palette.slate; return `<span class="timeline-legend-item" title="Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[type])}" style="border-color:${color.border};background:${color.bg};color:${color.fg}"><i></i>${esc(type)}</span>`; }).join("")}<span class="timeline-legend-item" style="border-color:#64748b;border-style:dashed;background:#fff;color:#334155"><i></i>Customer-owned</span><span class="timeline-legend-item" style="border-color:#64748b;border-radius:999px;background:#fff;color:#334155">◆ Checkpoint</span></div>`;
 }
 
 export function groupTimelineLanes(lanes: TimelineLane[]) {

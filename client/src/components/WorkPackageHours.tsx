@@ -2,8 +2,8 @@ import { AdoptionTimelineEditor } from "@/components/AdoptionTimelineEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
-import { FIXED_GANTT_CATEGORIES, type EngagementDocument, type Timeline } from "@shared/fcp";
-import { COST_THRESHOLDS, formatWindow, timelinesWithDeferrals, withHiddenBars, withoutBars, type PlanCost, type RoleHours, type ScopedEffort, type WorkPackageEffort } from "@shared/effort";
+import { FIXED_GANTT_CATEGORIES, unstampActivityOwners, type EngagementDocument, type Timeline } from "@shared/fcp";
+import { COST_THRESHOLDS, formatWindow, timelinesWithDeferrals, withHiddenBars, withoutBars, withOwnership, type PlanCost, type RoleHours, type ScopedEffort, type WorkPackageEffort } from "@shared/effort";
 import { RotateCcw } from "lucide-react";
 import { useEffect } from "react";
 
@@ -70,16 +70,17 @@ export function CostMeter({ cost, hours, assignments = false }: { cost: PlanCost
 const ROLES: Array<[keyof RoleHours, string]> = [["architect", "Architect"], ["srConsultant", "Sr. Consultant"], ["projectManager", "Sr. Project Manager"]];
 
 const PLACEMENT: Array<[WorkPackageEffort["placement"], string]> = [["auto", "Automatic"], ["entitlement", "Entitlement window"], ["notional", "Two-Year Notional"]];
+const OWNERS: Array<[WorkPackageEffort["owner"], string]> = [["cdw", "CDW"], ["customer", "Customer"], ["checkpoint", "Checkpoint"]];
+type Settings = EngagementDocument["report"]["workPackageHours"][number];
 
 /** Hours per role for one work package: the calculated baseline, which the planner can adjust, and where it is planned. */
 export function RoleHoursEditor({ document, effort, barId, onChange }: { document: EngagementDocument; effort: ScopedEffort | undefined; barId: string; onChange: (document: EngagementDocument) => void }) {
   const row = effort?.workPackages.find(item => item.id === barId);
   if (!effort || !row) return <p className="text-xs text-slate-500">Calculating hours…</p>;
-  if (row.note === "checkpoint" || row.note === "customer-owned") return <p className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">{row.note === "checkpoint" ? "A checkpoint carries no CDW hours." : "Customer-owned work carries no CDW hours."}</p>;
-  const override = document.report.workPackageHours.find(item => item.id === barId) ?? { id: barId, architect: null, srConsultant: null, projectManager: null, placement: "auto" as const };
-  const write = (next: typeof override | null) => {
+  const override: Settings = document.report.workPackageHours.find(item => item.id === barId) ?? { id: barId, architect: null, srConsultant: null, projectManager: null, placement: "auto", owner: "auto" };
+  const write = (next: Settings | null) => {
     const others = document.report.workPackageHours.filter(item => item.id !== barId);
-    const keep = next && (next.architect !== null || next.srConsultant !== null || next.projectManager !== null || next.placement !== "auto");
+    const keep = next && (next.architect !== null || next.srConsultant !== null || next.projectManager !== null || next.placement !== "auto" || next.owner !== "auto");
     onChange({ ...document, report: { ...document.report, workPackageHours: keep ? [...others, next] : others } });
   };
   const cost = effort.internal.cost;
@@ -90,9 +91,24 @@ export function RoleHoursEditor({ document, effort, barId, onChange }: { documen
     "over budget": "Moved out of the entitlement to keep the plan within the entitlement value. Choose Entitlement window to keep it in; later work moves out instead.",
     "planned for later": "Placed in the Two-Year Notional as follow-on scope.",
   };
+  // Choosing the default owner clears the choice, so a later change to the defaults still applies.
+  const ownedBy = (
+    <div className="flex flex-wrap items-center gap-1 text-xs text-slate-700">
+      <span className="mr-1 font-semibold">Owned by</span>
+      {OWNERS.map(([value, label]) => <Button key={value} type="button" size="sm" variant={row.owner === value ? "default" : "outline"} className="h-7 px-2 text-[11px]" onClick={() => write({ ...override, owner: value })}>{label}</Button>)}
+      {override.owner !== "auto" && <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => write({ ...override, owner: "auto" })}><RotateCcw className="size-3.5" /> Default</Button>}
+    </div>
+  );
+  if (row.owner !== "cdw") return (
+    <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+      {ownedBy}
+      <p className="text-xs text-slate-600">{row.owner === "checkpoint" ? "A checkpoint marks a confirmation point; it takes no time and carries no CDW hours." : "Customer-owned work is run by the customer's team; it carries no CDW hours and is listed as customer-owned work in the report."} Choose CDW to give it hours.</p>
+    </div>
+  );
   return (
     <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 lg:grid-cols-[1fr_1.2fr]">
       <div>
+        <div className="mb-2">{ownedBy}</div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-500">{row.deferred ? "Follow-on hours by role · Two-Year Notional" : "Hours by role · entitlement"}</p>
           {row.adjusted && <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => write({ ...override, architect: null, srConsultant: null, projectManager: null })}><RotateCcw className="size-3.5" /> Back to baseline</Button>}
@@ -127,15 +143,12 @@ export function RoleHoursEditor({ document, effort, barId, onChange }: { documen
  */
 export function AssignmentsInForce({ document, effort, onChange }: { document: EngagementDocument; effort: ScopedEffort; onChange: (document: EngagementDocument) => void }) {
   if (effort.source !== "assignments") return null;
-  const plan = effort.workPackages.filter(row => row.total > 0 && !row.deferred);
-  const planHours = plan.reduce((sum, row) => sum + row.total, 0);
-  const replace = () => onChange({ ...document, report: { ...document.report, resourceAssignments: plan.map(row => ({ workstream: row.label, architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager })) } });
+  const planHours = effort.workPackages.filter(row => !row.deferred).reduce((sum, row) => sum + row.total, 0);
   const clear = () => onChange({ ...document, report: { ...document.report, resourceAssignments: [] } });
   return (
     <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-950">
-      <p><b>Signed resource assignments are in force ({effort.totals.total.toLocaleString("en-US")} hours).</b> They replace this plan in the report and in the cost check, so changing hours or moving work here does not change either. This plan is {planHours.toLocaleString("en-US")} hours in the entitlement.</p>
+      <p><b>Signed resource assignments are in force ({effort.totals.total.toLocaleString("en-US")} hours).</b> They are the hours from the signed resource assignment document, entered on the FCP Report Content step, and they replace this plan in the report and in the cost check, so changing hours or moving work here does not change either. This plan is {planHours.toLocaleString("en-US")} hours in the entitlement.</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        <Button type="button" size="sm" className="h-7 text-xs" onClick={replace}>Replace assignments with this plan</Button>
         <Button type="button" size="sm" variant="outline" className="h-7 bg-white text-xs" onClick={clear}>Clear assignments</Button>
       </div>
     </div>
@@ -160,7 +173,7 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
           <b>{moved.length} work package{moved.length === 1 ? " is" : "s are"} in the Two-Year Notional</b>, after the entitlement ends: {moved.map(row => row.label).join("; ")}. Open the Two-Year Notional tab to see them or bring one back.
         </div>
       )}
-      <AdoptionTimelineEditor timeline={withoutBars(document.adoptionTimeline, hidden)} onChange={edited => onTimelineChange(withHiddenBars(edited, document.adoptionTimeline, hidden))} title="Entitlement Adoption Timeline" description={`${description} Click a work package to adjust its hours by role or plan it in the Two-Year Notional.`} selectionDetail={barId => <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} />} />
+      <AdoptionTimelineEditor timeline={withoutBars(withOwnership(document).adoptionTimeline, hidden)} onChange={edited => onTimelineChange(withHiddenBars(unstampActivityOwners(edited), document.adoptionTimeline, hidden))} title="Entitlement Adoption Timeline" description={`${description} Click a work package to adjust its hours by role or plan it in the Two-Year Notional.`} selectionDetail={barId => <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} />} />
       <section className="border border-slate-200 bg-white p-5 shadow-sm">
         <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Hours by work package</p>
         <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-600">
@@ -178,12 +191,13 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
 export function NotionalTimelineWithHours({ document, onChange, description }: { document: EngagementDocument; onChange: (document: EngagementDocument) => void; description: string }) {
   const effort = useScopedEffort(document);
   const hidden = deferredIds(effort);
-  const notional = hidden.size ? timelinesWithDeferrals(document, Array.from(hidden)).notional : document.twoYearPlan;
+  const owned = withOwnership(document);
+  const notional = hidden.size ? timelinesWithDeferrals(owned, Array.from(hidden)).notional : owned.twoYearPlan;
   const known = new Set((effort?.workPackages ?? []).map(row => row.id));
   return (
     <AdoptionTimelineEditor
       timeline={notional}
-      onChange={twoYearPlan => onChange({ ...document, planAuthority: "manual", twoYearPlan })}
+      onChange={twoYearPlan => onChange({ ...document, planAuthority: "manual", twoYearPlan: unstampActivityOwners(twoYearPlan) })}
       title="Two-Year Notional"
       description={`${description} Work moved out of the entitlement starts the month after it ends; click it to change its follow-on hours or bring it back into the entitlement.`}
       selectionDetail={barId => known.has(barId) ? <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} /> : <p className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">Notional roadmap activity; it carries no entitlement hours.</p>}
