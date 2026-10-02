@@ -38,6 +38,10 @@ const CATALOG = {
   X13: { base: 40, lead: "srConsultant" }, X14: { base: 40, lead: "srConsultant" }, X15: { base: 40, lead: "srConsultant" },
   // VCF Networking with VPCs (1 domain): 100 architect, 20 consultant.
   X16: { base: 100, lead: "architect", support: 0.2 },
+  // vSphere 8 to VVF 9 upgrade with VCF Operations, vCenter and ESX hosts: single site up to 25 servers, 1-3 sites up to 40.
+  U1: { base: 36, lead: "architect" }, U2: { base: 68, lead: "architect" },
+  // Not in the Required Hours table; sized like the smallest architect-led design add-on (DvPG networking).
+  EF: { base: 20, lead: "architect" },
 } as const satisfies Record<string, { base: number; lead: Lead; support?: number; pm?: number }>;
 export type CatalogCode = keyof typeof CATALOG;
 
@@ -233,27 +237,39 @@ export function scopedEffortLines(document: EngagementDocument): EffortLine[] {
     for (let index = 0; index < domains; index += 1) lines.push(line("Workload domain import", "X1", index === 0 ? "core" : "repeatable"));
   }
   if (path === "greenfield" || path === "hybrid") lines.push(fillLine("Workload migration waves", DEFAULT_WAVE_BASE.migration));
-  if (path === "in-place") lines.push(fillLine("In-place upgrade waves", DEFAULT_WAVE_BASE.inPlace));
+  // An in-place upgrade brings the upgraded estate under VCF management, priced like a convergence; a VVF
+  // upgrade is priced from the vSphere 8 to VVF 9 upgrade rows.
+  if (path === "in-place") {
+    const code: CatalogCode = vvf
+      ? (sites <= 1 && servers <= 25 ? "U1" : "U2")
+      : deployBracket({ instances, workloadDomains: consolidated ? 0 : 1, nodes: servers, consolidated });
+    lines.push(line(vvf ? "VVF upgrade, licensing and handover" : "VCF management of the upgraded platform", code, "core"));
+    lines.push(fillLine("In-place upgrade waves", DEFAULT_WAVE_BASE.inPlace));
+  }
 
   const designOnly = path === "design-only" || path === "undecided";
   const firstAddOn = lines.length;
   {
     if (!vvf && has("networking:vpc")) lines.push(line("NSX networking, Edge and VPC", "X16", "addon"));
     else if (!vvf && has("networking:edge-cluster-routing")) lines.push(line("NSX networking and Edge", "X6", "addon"));
-    else if (!vvf && has("networking:overlay-transport", "networking:network-operations")) lines.push(line("NSX networking", "X5", "addon"));
-    if (vvf && has("networking:physical-fabric")) lines.push(line("VDS networking", "X7", "addon"));
+    else if (!vvf && has("platform:nsx", "networking:overlay-transport", "networking:network-operations")) lines.push(line("NSX networking", "X5", "addon"));
+    // Physical fabric design with distributed port groups, when no NSX networking line already covers networking design.
+    if (has("networking:physical-fabric") && !lines.slice(firstAddOn).some(item => /^X(5|6|16)$/.test(item.code))) lines.push(line("VDS networking", "X7", "addon"));
     if (has("automation:vm-self-service", "automation:day-2-automation", "automation:core", "automation:infrastructure-as-code", "automation:governance", "automation:application-provisioning")) {
       lines.push(line("Automation and self-service", has("automation:infrastructure-as-code", "automation:governance", "automation:application-provisioning") ? "X3" : "X2", "addon"));
     }
-    if (has("operations:observability", "operations:custom-dashboards", "operations:capacity-cost", "operations:event-integration", "operations:core")) lines.push(line("VCF Operations, dashboards and logs", "X4", "addon"));
+    if (hasAny("operations")) lines.push(line("VCF Operations, dashboards and logs", "X4", "addon"));
     if (hasAny("kubernetes") && !hasAny("private-ai")) lines.push(line("Supervisor and VKS", "X9", "addon"));
     if (hasAny("private-ai")) lines.push(line("Private AI Services", "X8", "addon"));
     if (has("automation:data-services")) lines.push(line("Data Services Manager", "X13", "addon"));
     if (has("security:ids-ips", "security:malware-prevention", "security:security-intelligence", "security:identity-firewall")) lines.push(line("vDefend firewall and threat prevention", "X12", "addon"));
     else if (has("security:segmentation")) lines.push(line("vDefend distributed firewall", "X11", "addon"));
+    // Hardening, identity and access have no catalog row; priced like vDefend teach-to-fish.
+    else if (Array.from(outcomes).some(key => key.startsWith("security:") && key !== "security:waf")) lines.push(line("Security hardening, identity and access", "X11", "addon"));
     if (has("resilience:recovery-architecture", "resilience:recovery-exercises", "resilience:cyber-recovery", "resilience:core")) lines.push(line("VMware Live Recovery", "X10", "addon"));
     if (has("resilience:cloud-cyber-recovery")) lines.push(line("Live Cyber Recovery", "X14", "addon"));
     if (has("networking:load-balancing", "security:waf")) lines.push(line("Avi Load Balancer and WAF", "X15", "addon"));
+    if (fields.adoptionDetails.componentDepths.efficiency !== "not-selected") lines.push(line("Efficiency, memory tiering and sizing design", "EF", "addon"));
   }
   // With no build in scope, each selected component is designed but not implemented.
   if (designOnly) for (const item of lines.slice(firstAddOn)) { item.base = item.fullBase * ADD_ON_DESIGN_SHARE; item.reduction = "design only"; }
@@ -353,7 +369,7 @@ const GOVERNANCE_BARS = /^bar-(platform-plan|platform-execution-decision|platfor
 const DISCOVERY_BARS = /^bar-playbook-design-requirements$/;
 const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$)/;
 const COMPONENT_DESIGN_BARS = /^bar-playbook-component-design-/;
-const BUILD_BARS = /^bar-(management-domain|workload-domain|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover)/;
+const BUILD_BARS = /^bar-(management-domain|workload-domain|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover|playbook-adoption-vcf-management$)/;
 /**
  * Relative effort of each build package, used to split the deploy line instead of window length. Sized from the
  * VCF 9.1 Planning and Preparation Workbook: deploying and configuring the management domain with its fleet
@@ -361,7 +377,7 @@ const BUILD_BARS = /^bar-(management-domain|workload-domain|converge-management-
  * preparation are lighter, handover lighter still, and licensing activation is a few hours.
  */
 const BUILD_WEIGHTS: Array<[RegExp, number]> = [
-  [/^bar-(management-domain|converge-management-domain|vvf-foundation)$/, 1],
+  [/^bar-(management-domain|converge-management-domain|vvf-foundation|playbook-adoption-vcf-management|import-workload-domain)$/, 1],
   [/^bar-workload-domain$/, 0.8],
   [/^bar-vvf-workload-clusters$/, 0.4],
   [/^bar-(import-foundation-validation|in-place-preparation)$/, 0.4],
@@ -373,30 +389,34 @@ const buildWeight = (id: string) => BUILD_WEIGHTS.find(([pattern]) => pattern.te
 const ADD_ON_BARS: Partial<Record<CatalogCode, { bars: RegExp; design: string }>> = {
   X2: { bars: /^bar-(cloud-)?automation(-(?!data-services).*)?$/, design: "automation" },
   X3: { bars: /^bar-(cloud-)?automation(-(?!data-services).*)?$/, design: "automation" },
-  X4: { bars: /^bar-(cloud-)?operations(-.*)?$|^bar-playbook-adoption-/, design: "operations" },
+  X4: { bars: /^bar-(cloud-)?operations(-.*)?$|^bar-playbook-adoption-vvf-operations$/, design: "operations" },
   X5: { bars: /^bar-(cloud-)?networking-(?!physical-fabric|load-balancing)|^bar-vcf-networking-nsx$/, design: "networking" },
   X6: { bars: /^bar-(cloud-)?networking-(?!physical-fabric|load-balancing)|^bar-vcf-networking-nsx$/, design: "networking" },
   X16: { bars: /^bar-(cloud-)?networking-(?!physical-fabric|load-balancing)|^bar-vcf-networking-nsx$/, design: "networking" },
   X7: { bars: /^bar-networking-physical-fabric$/, design: "networking" },
-  X8: { bars: /^bar-(cloud-)?private-ai/, design: "private-ai" },
+  // Private AI includes Supervisor and VKS.
+  X8: { bars: /^bar-(cloud-)?(private-ai|kubernetes)/, design: "private-ai|kubernetes" },
   X9: { bars: /^bar-(cloud-)?kubernetes/, design: "kubernetes" },
   X10: { bars: /^bar-(cloud-)?resilience-(?!cloud-cyber-recovery)/, design: "resilience" },
   X11: { bars: /^bar-(cloud-)?security-(?!waf)|^bar-security-services-platform$/, design: "security" },
   X12: { bars: /^bar-(cloud-)?security-(?!waf)|^bar-security-services-platform$/, design: "security" },
   X13: { bars: /^bar-(cloud-)?automation-data-services/, design: "automation" },
   X14: { bars: /^bar-(cloud-)?resilience-cloud-cyber-recovery/, design: "resilience" },
-  X15: { bars: /^bar-(cloud-)?(networking-load-balancing|security-waf)/, design: "networking" },
+  X15: { bars: /^bar-(cloud-)?(networking-load-balancing|security-waf)/, design: "networking|security" },
+  EF: { bars: /^bar-playbook-component-design-efficiency$/, design: "efficiency" },
 };
+/** The component design package(s) an add-on's design work sits on. */
+const componentDesign = (addOn: { design: string }) => (id: string) => new RegExp(`^bar-playbook-component-design-(${addOn.design})$`).test(id);
 
 function barsForLine(item: EffortLine): (id: string) => boolean {
   if (/^A\d$/.test(item.code)) return id => CORE_DESIGN_BARS.test(id) && !DISCOVERY_BARS.test(id);
   if (/^(DD\d|DX)$/.test(item.code)) return id => DISCOVERY_BARS.test(id);
-  if (/^D\d/.test(item.code)) return id => BUILD_BARS.test(id);
-  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain)$/.test(id);
+  if (/^(D\d|U\d)$/.test(item.code)) return id => BUILD_BARS.test(id);
+  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain|platform-handover)$/.test(id);
   if (item.code === "FILL") return id => /^bar-playbook-execution-/.test(id);
   const addOn = ADD_ON_BARS[item.code];
   if (!addOn) return () => false;
-  if (item.reduction === "design only") return id => id === `bar-playbook-component-design-${addOn.design}`;
+  if (item.reduction === "design only") return componentDesign(addOn);
   return id => addOn.bars.test(id);
 }
 
@@ -434,7 +454,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   const deferred = new Map<string, DeferralReason>();
   for (const item of lines) {
     const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
-    if (addOn && item.reduction === "design only") for (const { bar } of bars) if (addOn.bars.test(bar.id)) deferred.set(bar.id, "not funded");
+    if (addOn && item.reduction === "design only") for (const { bar } of bars) if (addOn.bars.test(bar.id) && !componentDesign(addOn)(bar.id)) deferred.set(bar.id, "not funded");
   }
   for (const { bar } of bars) {
     const placement = overrides.get(bar.id)?.placement ?? "auto";
@@ -490,7 +510,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     // A fully scoped add-on designs its component on the component design package and builds on the rest.
     const addOnDesign = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
     if (addOnDesign && item.reduction !== "design only") {
-      const design = live(id => id === `bar-playbook-component-design-${addOnDesign.design}`);
+      const design = live(componentDesign(addOnDesign));
       if (design.length && matches.some(({ bar }) => inEntitlement(bar.id))) {
         spread(design, scale(roles, ADD_ON_DESIGN_SHARE), () => true, inWindow);
         roles = scale(roles, 1 - ADD_ON_DESIGN_SHARE);
@@ -499,7 +519,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     // Work the planner placed in the notional keeps its share of the line and takes it out of the entitlement.
     const current = matches.filter(({ bar }) => inEntitlement(bar.id));
     // The deploy line is split by how much work each build package is, not by how long its window is.
-    const weightOf = /^D\d/.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : lengthWeight;
+    const weightOf = /^(D\d|U\d|X1)$/.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : lengthWeight;
     if (current.length) spread(current, roles, () => true, inWindow, weightOf);
     else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     // Deferred packages of the line get their share as a follow-on estimate.
