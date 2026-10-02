@@ -267,7 +267,7 @@ export function ReportContentEditor({ document, onChange }: Props) {
             <RowTable rows={report.technicalItems} columns={[{ key: "item", label: "Item", type: "longtext" }, { key: "reference", label: "Reference", width: "35%" }]} blank={{ item: "", reference: "" }} addLabel="Add item" onChange={rows => set("technicalItems", rows)} generated={generatedFor("technicalItems")} />
           </Section>
 
-          <Section value="constraints" title="Sequencing constraints" heading="Why the order is not negotiable" hint="What forces the order of work. Platform and entitlement constraints come from the plan; add calendar constraints such as site dates or change freezes.">
+          <Section value="constraints" title="Sequencing constraints" heading="Sequencing Constraints" hint="What forces the order of work. Platform and entitlement constraints come from the plan; add calendar constraints such as site dates or change freezes.">
             <RowTable rows={report.constraints} columns={[{ key: "constraint", label: "Constraint", type: "longtext" }, { key: "imposedBy", label: "Imposed by", width: "18%" }, { key: "effect", label: "Effect on the order", type: "longtext" }]} blank={{ constraint: "", imposedBy: "", effect: "" }} addLabel="Add constraint" onChange={rows => set("constraints", rows)} generated={generatedFor("constraints")} />
           </Section>
 
