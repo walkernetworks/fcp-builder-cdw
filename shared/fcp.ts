@@ -228,8 +228,8 @@ const PLAYBOOK_PATHS: Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, "path">> = {
     description: "Complete the decision register before committing implementation work.",
     decisions: ["Existing hardware support", "Existing VCF and vCenter state", "Capital availability", "Risk and rollback tolerance"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm VCF Requirements and Constraints", outcome: "Issue the requirements and constraints register for scope, support, change windows, and customer responsibilities.", dependsOn: "Imported estate evidence and customer discovery.", acceptance: "Named owners confirm the requirements, constraints, and unresolved evidence." },
-      { id: "pathway-decision", phase: "Design", title: "Select VCF Adoption Path and Record Decisions", outcome: "Issue the decision register with pathway options, selected approach, rationale, and rejected alternatives.", dependsOn: "Requirements, HCL disposition, estate health, and funding constraints.", acceptance: "Customer and delivery architecture owners approve the pathway decision." },
+      { id: "requirements", phase: "Design", title: "VCF Requirements", outcome: "Agree scope, support boundaries, change windows, and customer responsibilities.", dependsOn: "Imported estate evidence and customer discovery.", acceptance: "Named owners confirm the requirements, constraints, and unresolved evidence." },
+      { id: "pathway-decision", phase: "Design", title: "Choose the Adoption Path", outcome: "Compare the pathway options, pick one, and record why the others were set aside.", dependsOn: "Requirements, HCL disposition, estate health, and funding constraints.", acceptance: "Customer and delivery architecture owners approve the pathway decision." },
     ],
     implementationPackages: [],
   },
@@ -238,14 +238,14 @@ const PLAYBOOK_PATHS: Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, "path">> = {
     description: "Upgrade the supported existing vSphere estate in place, validate it, and bring the accepted platform under VCF management.",
     decisions: ["Exact vCenter and ESXi builds", "HCL-supported host cohorts", "Upgrade sequence", "Rollback method", "Change windows"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm Upgrade Requirements and Constraints", outcome: "Issue the requirements and constraints register, including support boundaries, rollback limits, freeze periods, and customer acceptance conditions.", dependsOn: "RVTools estate evidence, exact product builds, HCL disposition, and customer change calendar.", acceptance: "Infrastructure, application, and change owners confirm the baseline and constraints." },
-      { id: "target-state", phase: "Design", title: "Design VCF 9.1 Target State and Record Decisions", outcome: "Issue the decision register and logical target state for domains, clusters, component placement, storage, networking, and management ownership.", dependsOn: "Confirmed requirements and supported upgrade pathway.", acceptance: "Architecture owners approve the target state and decision rationale." },
-      { id: "platform-design", phase: "Design", title: "Design Management Domain, Platform, and Prerequisites", outcome: "Issue the logical and physical platform design, host and cluster placement, IP/VLAN, DNS/NTP, and prerequisite closure plan.", dependsOn: "Target-state decisions and accepted HCL evidence.", acceptance: "Platform, network, storage, and operations owners accept the detailed design." },
-      { id: "upgrade-runbook", phase: "Design", title: "Design Upgrade Runbook, Validation, and Change Windows", outcome: "Issue the implementation runbook with prechecks, sequencing, rollback, post-upgrade health checks, and acceptance criteria.", dependsOn: "Approved platform design, backup and recovery controls, and customer change calendar.", acceptance: "Change authority approves the runbook, rollback plan, validation evidence, and execution windows." },
+      { id: "requirements", phase: "Design", title: "Upgrade Requirements", outcome: "Agree support boundaries, rollback limits, freeze periods, and customer acceptance conditions.", dependsOn: "RVTools estate evidence, exact product builds, HCL disposition, and customer change calendar.", acceptance: "Infrastructure, application, and change owners confirm the baseline and constraints." },
+      { id: "target-state", phase: "Design", title: "VCF 9.1 Target-State Design", outcome: "Decide the target state for domains, clusters, component placement, storage, networking, and management ownership, and record each decision.", dependsOn: "Confirmed requirements and supported upgrade pathway.", acceptance: "Architecture owners approve the target state and decision rationale." },
+      { id: "platform-design", phase: "Design", title: "Management Domain Design", outcome: "Design the platform: host and cluster placement, IP/VLAN, DNS/NTP, and a plan to close each prerequisite.", dependsOn: "Target-state decisions and accepted HCL evidence.", acceptance: "Platform, network, storage, and operations owners accept the detailed design." },
+      { id: "upgrade-runbook", phase: "Design", title: "Upgrade Runbook and Change Windows", outcome: "Write the step-by-step upgrade runbook: prechecks, order, rollback, post-upgrade health checks, and acceptance criteria.", dependsOn: "Approved platform design, backup and recovery controls, and customer change calendar.", acceptance: "Change authority approves the runbook, rollback plan, validation evidence, and execution windows." },
     ],
     implementationPackages: [
-      { id: "upgrade-waves", phase: "Implementation", title: "Execute Approved In-Place Upgrade and Validation Waves", outcome: "Upgrade the approved vCenter and ESXi cohorts to the target release and retain post-wave health evidence.", dependsOn: "Approved runbook, closed HCL prerequisites, recoverable backups, and approved change windows.", acceptance: "Each wave passes platform health, management, storage, network, and workload validation." },
-      { id: "vcf-management", phase: "Adoption", title: "Bring the Upgraded Platform Under VCF Management", outcome: "Establish the accepted VCF management and lifecycle operating model for the upgraded estate.", dependsOn: "Accepted upgrade waves and supported VCF management pathway.", acceptance: "Lifecycle, monitoring, backup, ownership, and escalation controls are operational." },
+      { id: "upgrade-waves", phase: "Implementation", title: "In-Place Upgrade Waves", outcome: "Upgrade the approved vCenter and ESXi cohorts to the target release and retain post-wave health evidence.", dependsOn: "Approved runbook, closed HCL prerequisites, recoverable backups, and approved change windows.", acceptance: "Each wave passes platform health, management, storage, network, and workload validation." },
+      { id: "vcf-management", phase: "Adoption", title: "Bring Under VCF Management", outcome: "Establish the accepted VCF management and lifecycle operating model for the upgraded estate.", dependsOn: "Accepted upgrade waves and supported VCF management pathway.", acceptance: "Lifecycle, monitoring, backup, ownership, and escalation controls are operational." },
     ],
   },
   converge: {
@@ -253,12 +253,12 @@ const PLAYBOOK_PATHS: Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, "path">> = {
     description: "Reuse a healthy existing vCenter and convert its cluster into the VCF management domain.",
     decisions: ["Management-domain candidate cluster", "Storage support", "Existing NSX condition", "Network prerequisites", "Convergence rollback"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm Convergence Requirements and Constraints", outcome: "Validate source vCenter health, cluster membership, storage, HCL status, and existing NSX conditions. Confirm the convergence blockers are closed: Enhanced Linked Mode removed, clusters on vLCM images rather than baselines, no vCenter HA, DRS fully automated, static VMkernel addressing, and no custom vCenter ports.", dependsOn: "Complete estate and platform evidence.", acceptance: "The candidate cluster is accepted for convergence or exceptions are assigned." },
-      { id: "target-state", phase: "Design", title: "Design the VCF Management Domain Target State", outcome: "Issue the management-domain logical and physical design, component placement, storage, network, and operations decisions.", dependsOn: "Accepted convergence candidate and pathway decision.", acceptance: "Architecture and operations owners approve the management-domain design." },
-      { id: "converge-runbook", phase: "Design", title: "Design the Convergence Runbook and Validation Plan", outcome: "Issue the convergence sequence, fresh NSX prerequisites where applicable, rollback controls, and acceptance tests.", dependsOn: "Approved target-state design and network prerequisites.", acceptance: "Change authority approves the convergence window and validation plan." },
+      { id: "requirements", phase: "Design", title: "Convergence Requirements", outcome: "Validate source vCenter health, cluster membership, storage, HCL status, and existing NSX conditions. Confirm the convergence blockers are closed: Enhanced Linked Mode removed, clusters on vLCM images rather than baselines, no vCenter HA, DRS fully automated, static VMkernel addressing, and no custom vCenter ports.", dependsOn: "Complete estate and platform evidence.", acceptance: "The candidate cluster is accepted for convergence or exceptions are assigned." },
+      { id: "target-state", phase: "Design", title: "Management Domain Design", outcome: "Design the management domain: logical and physical layout, component placement, storage, network, and operations.", dependsOn: "Accepted convergence candidate and pathway decision.", acceptance: "Architecture and operations owners approve the management-domain design." },
+      { id: "converge-runbook", phase: "Design", title: "Convergence Runbook", outcome: "Write the convergence sequence, fresh NSX prerequisites where they apply, rollback controls, and acceptance tests.", dependsOn: "Approved target-state design and network prerequisites.", acceptance: "Change authority approves the convergence window and validation plan." },
     ],
     implementationPackages: [
-      { id: "converge", phase: "Implementation", title: "Converge Existing vCenter into the VCF Management Domain", outcome: "Convert the approved existing environment into an operational VCF management domain.", dependsOn: "Approved convergence runbook and closed HCL/network prerequisites.", acceptance: "Management-domain health, inventory, networking, lifecycle, and operational controls pass validation." },
+      { id: "converge", phase: "Implementation", title: "Converge vCenter into VCF", outcome: "Convert the approved existing environment into an operational VCF management domain.", dependsOn: "Approved convergence runbook and closed HCL/network prerequisites.", acceptance: "Management-domain health, inventory, networking, lifecycle, and operational controls pass validation." },
     ],
   },
   "import-workload-domain": {
@@ -266,12 +266,12 @@ const PLAYBOOK_PATHS: Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, "path">> = {
     description: "Import an existing vCenter and all of its clusters into an established VCF instance as a workload domain.",
     decisions: ["Destination VCF instance", "Domain boundary", "Complete vCenter cluster scope", "Dependency and rollback plan"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm Workload-Domain Import Requirements", outcome: "Validate the destination foundation, complete source-vCenter scope (the whole vCenter is imported, not individual clusters), cluster health, dependencies, and support evidence. Confirm the convergence blockers are closed: Enhanced Linked Mode removed, clusters on vLCM images rather than baselines, no vCenter HA, DRS fully automated, static VMkernel addressing, and no custom vCenter ports.", dependsOn: "An accepted VCF foundation and complete source-vCenter inventory.", acceptance: "Customer confirms that the complete vCenter and its clusters are in scope." },
-      { id: "domain-design", phase: "Design", title: "Design Workload-Domain Segmentation and Import", outcome: "Issue the workload-domain boundary, placement, storage, networking, lifecycle, and ownership design.", dependsOn: "Accepted domain scope and destination capacity.", acceptance: "Architecture and operations owners approve the workload-domain design." },
-      { id: "import-runbook", phase: "Design", title: "Design Import, Rollback, and Validation Runbook", outcome: "Issue the import sequence, dependency controls, rollback method, and acceptance tests.", dependsOn: "Approved workload-domain design and customer change calendar.", acceptance: "Change authority approves the import runbook and execution window." },
+      { id: "requirements", phase: "Design", title: "Import Requirements", outcome: "Validate the destination foundation, complete source-vCenter scope (the whole vCenter is imported, not individual clusters), cluster health, dependencies, and support evidence. Confirm the convergence blockers are closed: Enhanced Linked Mode removed, clusters on vLCM images rather than baselines, no vCenter HA, DRS fully automated, static VMkernel addressing, and no custom vCenter ports.", dependsOn: "An accepted VCF foundation and complete source-vCenter inventory.", acceptance: "Customer confirms that the complete vCenter and its clusters are in scope." },
+      { id: "domain-design", phase: "Design", title: "Workload Domain Import Design", outcome: "Design the workload-domain boundary, placement, storage, networking, lifecycle, and ownership.", dependsOn: "Accepted domain scope and destination capacity.", acceptance: "Architecture and operations owners approve the workload-domain design." },
+      { id: "import-runbook", phase: "Design", title: "Import and Rollback Runbook", outcome: "Write the import sequence, dependency controls, rollback method, and acceptance tests.", dependsOn: "Approved workload-domain design and customer change calendar.", acceptance: "Change authority approves the import runbook and execution window." },
     ],
     implementationPackages: [
-      { id: "import", phase: "Implementation", title: "Import Existing vCenter as a VCF Workload Domain", outcome: "Import the complete approved vCenter estate and validate it as an operational VCF workload domain.", dependsOn: "Approved import runbook and healthy destination foundation.", acceptance: "Inventory, cluster health, lifecycle, networking, storage, and workloads pass validation." },
+      { id: "import", phase: "Implementation", title: "Import vCenter as a Workload Domain", outcome: "Import the complete approved vCenter estate and validate it as an operational VCF workload domain.", dependsOn: "Approved import runbook and healthy destination foundation.", acceptance: "Inventory, cluster health, lifecycle, networking, storage, and workloads pass validation." },
     ],
   },
   greenfield: {
@@ -279,13 +279,13 @@ const PLAYBOOK_PATHS: Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, "path">> = {
     description: "Build a new VCF foundation on separately funded hardware and migrate workloads in controlled waves.",
     decisions: ["Approved capital funding", "Management-domain topology", "Principal storage", "Physical network", "Migration-wave scope"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm Greenfield Requirements, Funding, and Constraints", outcome: "Confirm separately funded hardware, capacity, site constraints, workload scope, and acceptance boundaries.", dependsOn: "Approved capital path and customer estate evidence.", acceptance: "Funding owner confirms hardware and non-service dependencies." },
-      { id: "target-state", phase: "Design", title: "Design Greenfield VCF Target State and Bill of Materials", outcome: "Issue logical and physical designs, host and cluster sizing, storage and network design, IP/DNS/NTP plan, and bill of materials.", dependsOn: "Confirmed topology, component scope, and adoption depth.", acceptance: "Architecture, infrastructure, network, storage, and procurement owners approve the design." },
-      { id: "migration-design", phase: "Design", title: "Design Workload Migration and Cutover Waves", outcome: "Issue application cohorts, dependencies, change windows, rollback, validation, and legacy decommissioning plan.", dependsOn: "Approved target platform and complete workload inventory.", acceptance: "Application and change owners approve wave assignments and acceptance criteria." },
+      { id: "requirements", phase: "Design", title: "Greenfield Requirements and Funding", outcome: "Confirm separately funded hardware, capacity, site constraints, workload scope, and acceptance boundaries.", dependsOn: "Approved capital path and customer estate evidence.", acceptance: "Funding owner confirms hardware and non-service dependencies." },
+      { id: "target-state", phase: "Design", title: "Greenfield Design and Bill of Materials", outcome: "Design the platform: host and cluster sizing, storage, network, IP/DNS/NTP, and the bill of materials.", dependsOn: "Confirmed topology, component scope, and adoption depth.", acceptance: "Architecture, infrastructure, network, storage, and procurement owners approve the design." },
+      { id: "migration-design", phase: "Design", title: "Migration and Cutover Plan", outcome: "Group applications into cohorts and plan their dependencies, change windows, rollback, validation, and legacy decommissioning.", dependsOn: "Approved target platform and complete workload inventory.", acceptance: "Application and change owners approve wave assignments and acceptance criteria." },
     ],
     implementationPackages: [
-      { id: "foundation", phase: "Implementation", title: "Deploy and Validate the Greenfield VCF Foundation", outcome: "Deploy the approved management and workload-domain foundation on customer-funded hardware.", dependsOn: "Hardware, rack, network, storage, DNS, NTP, and IP prerequisites accepted.", acceptance: "The VCF foundation passes platform, lifecycle, network, storage, and operations validation." },
-      { id: "migration-waves", phase: "Implementation", title: "Execute Approved Workload Migration and Cutover Waves", outcome: "Move approved workload cohorts to the accepted VCF foundation and validate service restoration.", dependsOn: "Accepted foundation, approved wave plan, backups, rollback, and change windows.", acceptance: "Each wave meets application, platform, and operational acceptance criteria." },
+      { id: "foundation", phase: "Implementation", title: "Greenfield VCF Foundation Build", outcome: "Deploy the approved management and workload-domain foundation on customer-funded hardware.", dependsOn: "Hardware, rack, network, storage, DNS, NTP, and IP prerequisites accepted.", acceptance: "The VCF foundation passes platform, lifecycle, network, storage, and operations validation." },
+      { id: "migration-waves", phase: "Implementation", title: "Workload Migration and Cutover", outcome: "Move approved workload cohorts to the accepted VCF foundation and validate service restoration.", dependsOn: "Accepted foundation, approved wave plan, backups, rollback, and change windows.", acceptance: "Each wave meets application, platform, and operational acceptance criteria." },
     ],
   },
   hybrid: {
@@ -293,12 +293,12 @@ const PLAYBOOK_PATHS: Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, "path">> = {
     description: "Assign the appropriate VCF pathway to each estate cohort and coordinate the work through one governed program.",
     decisions: ["Cohort inventory", "Pathway per cohort", "Shared target architecture", "Wave dependencies", "Cross-path acceptance"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Classify Estate Cohorts and Delivery Constraints", outcome: "Assign each vCenter, cluster, site, or workload cohort to a candidate pathway with evidence and constraints.", dependsOn: "Complete estate inventory and HCL disposition.", acceptance: "Every in-scope cohort has an owner, pathway candidate, and unresolved-action list." },
-      { id: "pathway-decision", phase: "Design", title: "Approve the Cohort Pathway Decision Register", outcome: "Record the approved in-place, convergence, import, or greenfield path and rationale for every cohort.", dependsOn: "Cohort classification, capital availability, risk tolerance, and target architecture.", acceptance: "Architecture and customer owners approve all cohort decisions." },
-      { id: "integrated-runbook", phase: "Design", title: "Design Integrated Migration, Cutover, and Validation Waves", outcome: "Issue the cross-path sequence, dependencies, rollback controls, change windows, and common acceptance model.", dependsOn: "Approved cohort decision register and target-state design.", acceptance: "Delivery and change owners approve the integrated execution plan." },
+      { id: "requirements", phase: "Design", title: "Group the Estate into Cohorts", outcome: "Assign each vCenter, cluster, site, or workload cohort to a candidate pathway with evidence and constraints.", dependsOn: "Complete estate inventory and HCL disposition.", acceptance: "Every in-scope cohort has an owner, pathway candidate, and unresolved-action list." },
+      { id: "pathway-decision", phase: "Design", title: "Agree a Path for Each Cohort", outcome: "Record the approved in-place, convergence, import, or greenfield path and rationale for every cohort.", dependsOn: "Cohort classification, capital availability, risk tolerance, and target architecture.", acceptance: "Architecture and customer owners approve all cohort decisions." },
+      { id: "integrated-runbook", phase: "Design", title: "Migration Wave Plan", outcome: "Sequence the work across pathways and set dependencies, rollback controls, change windows, and one acceptance model.", dependsOn: "Approved cohort decision register and target-state design.", acceptance: "Delivery and change owners approve the integrated execution plan." },
     ],
     implementationPackages: [
-      { id: "delivery-waves", phase: "Implementation", title: "Execute Approved Multi-Path VCF Adoption Waves", outcome: "Execute each cohort’s approved pathway while maintaining shared governance and acceptance evidence.", dependsOn: "Approved integrated runbook and pathway-specific prerequisites.", acceptance: "Every completed cohort passes its platform, workload, and operational acceptance checks." },
+      { id: "delivery-waves", phase: "Implementation", title: "Cohort Migration Waves", outcome: "Execute each cohort’s approved pathway while maintaining shared governance and acceptance evidence.", dependsOn: "Approved integrated runbook and pathway-specific prerequisites.", acceptance: "Every completed cohort passes its platform, workload, and operational acceptance checks." },
     ],
   },
   "design-only": {
@@ -306,10 +306,10 @@ const PLAYBOOK_PATHS: Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, "path">> = {
     description: "Complete the design and handoff artifacts without committing implementation execution.",
     decisions: ["Requirements and constraints", "Target pathway", "Topology and components", "Physical prerequisites", "Future execution windows"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm VCF Requirements and Constraints", outcome: "Issue the requirements and constraints register with customer priorities, boundaries, and unresolved evidence.", dependsOn: "Estate evidence and customer discovery.", acceptance: "Named owners approve requirements and constraints." },
-      { id: "decision-register", phase: "Design", title: "Issue the VCF Decision Register", outcome: "Record pathway, topology, storage, networking, component, and adoption-depth decisions with rationale.", dependsOn: "Requirements, evidence, and stakeholder decisions.", acceptance: "Architecture owners approve the decision register." },
-      { id: "logical-physical-design", phase: "Design", title: "Issue Logical and Physical VCF Design", outcome: "Deliver domain, cluster, component placement, host, network, storage, IP, DNS, NTP, and sizing designs.", dependsOn: "Approved decision register.", acceptance: "Infrastructure owners accept the logical and physical design." },
-      { id: "implementation-handoff", phase: "Handoff", title: "Issue Implementation Runbook and Acceptance Plan", outcome: "Deliver the future execution sequence, rollback approach, change-window plan, validation criteria, runbooks, RACI, and escalation model.", dependsOn: "Accepted logical and physical design.", acceptance: "Delivery leadership confirms the package is implementation ready." },
+      { id: "requirements", phase: "Design", title: "VCF Requirements", outcome: "Agree customer priorities and boundaries, and list the evidence still missing.", dependsOn: "Estate evidence and customer discovery.", acceptance: "Named owners approve requirements and constraints." },
+      { id: "decision-register", phase: "Design", title: "VCF Target-State Design", outcome: "Record pathway, topology, storage, networking, component, and adoption-depth decisions with rationale.", dependsOn: "Requirements, evidence, and stakeholder decisions.", acceptance: "Architecture owners approve the decision register." },
+      { id: "logical-physical-design", phase: "Design", title: "Logical and Physical Design", outcome: "Deliver domain, cluster, component placement, host, network, storage, IP, DNS, NTP, and sizing designs.", dependsOn: "Approved decision register.", acceptance: "Infrastructure owners accept the logical and physical design." },
+      { id: "implementation-handoff", phase: "Handoff", title: "Implementation Runbook and Acceptance Plan", outcome: "Deliver the future execution sequence, rollback approach, change-window plan, validation criteria, runbooks, RACI, and escalation model.", dependsOn: "Accepted logical and physical design.", acceptance: "Delivery leadership confirms the package is implementation ready." },
     ],
     implementationPackages: [],
   },
@@ -327,8 +327,8 @@ const VVF_PLAYBOOK_PATHS: Partial<Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, 
     description: "Complete the VVF decision register before committing implementation work.",
     decisions: ["Existing hardware support", "Existing vSphere and vCenter state", "Capital availability", "Risk and rollback tolerance"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm VVF Requirements and Constraints", outcome: "Issue the requirements and constraints register for scope, support, change windows, and customer responsibilities.", dependsOn: "Imported estate evidence and customer discovery.", acceptance: "Named owners confirm the requirements, constraints, and unresolved evidence." },
-      { id: "pathway-decision", phase: "Design", title: "Select VVF Adoption Path and Record Decisions", outcome: "Issue the decision register with the in-place, converge, or greenfield option selected, rationale, and rejected alternatives.", dependsOn: "Requirements, HCL disposition, estate health, and funding constraints.", acceptance: "Customer and delivery architecture owners approve the pathway decision." },
+      { id: "requirements", phase: "Design", title: "VVF Requirements", outcome: "Agree scope, support boundaries, change windows, and customer responsibilities.", dependsOn: "Imported estate evidence and customer discovery.", acceptance: "Named owners confirm the requirements, constraints, and unresolved evidence." },
+      { id: "pathway-decision", phase: "Design", title: "Choose the Adoption Path", outcome: "Compare the in-place, converge, and greenfield options, pick one, and record why the others were set aside.", dependsOn: "Requirements, HCL disposition, estate health, and funding constraints.", acceptance: "Customer and delivery architecture owners approve the pathway decision." },
     ],
     implementationPackages: [],
   },
@@ -337,14 +337,14 @@ const VVF_PLAYBOOK_PATHS: Partial<Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, 
     description: "Upgrade the supported vSphere 8 or earlier VVF estate in place to VVF 9 in the documented component order, then operate it through VCF Operations.",
     decisions: ["Exact vCenter and ESX builds", "HCL-supported host cohorts", "Subscription licensing in place", "Rollback method", "Change windows"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm VVF Upgrade Requirements and Constraints", outcome: "Issue the requirements and constraints register, including subscription licensing (perpetual keys cannot be upgraded), support boundaries, rollback limits, freeze periods, and acceptance conditions.", dependsOn: "RVTools estate evidence, exact product builds, HCL disposition, and customer change calendar.", acceptance: "Infrastructure, application, and change owners confirm the baseline and constraints." },
-      { id: "target-state", phase: "Design", title: "Design VVF 9 Target State and Record Decisions", outcome: "Issue the decision register and target state for vCenter, clusters, vLCM images, storage, VKS, and VCF Operations.", dependsOn: "Confirmed requirements and supported upgrade pathway.", acceptance: "Architecture owners approve the target state and decision rationale." },
-      { id: "platform-design", phase: "Design", title: "Design vCenter, VCF Operations, Storage, and Prerequisites", outcome: "Issue the platform design for vCenter, VCF Operations and cloud proxy, license server, storage, IP, DNS, and NTP, with the prerequisite closure plan.", dependsOn: "Target-state decisions and accepted HCL evidence.", acceptance: "Platform, storage, and operations owners accept the detailed design." },
-      { id: "upgrade-runbook", phase: "Design", title: "Design the VVF Upgrade Runbook, Validation, and Change Windows", outcome: "Issue the runbook in the supported order: VCF Operations and cloud proxy, vCenter and management services, Operations for logs, VKS and Supervisor, ESX, VMware Tools and VM hardware, then vSAN on-disk format, with prechecks and rollback.", dependsOn: "Approved platform design, backup posture, and change calendar.", acceptance: "Change authority approves the runbook and upgrade windows." },
+      { id: "requirements", phase: "Design", title: "Upgrade Requirements", outcome: "Agree subscription licensing (perpetual keys cannot be upgraded), support boundaries, rollback limits, freeze periods, and acceptance conditions.", dependsOn: "RVTools estate evidence, exact product builds, HCL disposition, and customer change calendar.", acceptance: "Infrastructure, application, and change owners confirm the baseline and constraints." },
+      { id: "target-state", phase: "Design", title: "VVF 9 Target-State Design", outcome: "Decide the target state for vCenter, clusters, vLCM images, storage, VKS, and VCF Operations, and record each decision.", dependsOn: "Confirmed requirements and supported upgrade pathway.", acceptance: "Architecture owners approve the target state and decision rationale." },
+      { id: "platform-design", phase: "Design", title: "vCenter and VCF Operations Design", outcome: "Design vCenter, VCF Operations and cloud proxy, license server, storage, IP, DNS, and NTP, with a plan to close each prerequisite.", dependsOn: "Target-state decisions and accepted HCL evidence.", acceptance: "Platform, storage, and operations owners accept the detailed design." },
+      { id: "upgrade-runbook", phase: "Design", title: "Upgrade Runbook and Change Windows", outcome: "Write the upgrade runbook in the supported order: VCF Operations and cloud proxy, vCenter and management services, Operations for logs, VKS and Supervisor, ESX, VMware Tools and VM hardware, then vSAN on-disk format, with prechecks and rollback.", dependsOn: "Approved platform design, backup posture, and change calendar.", acceptance: "Change authority approves the runbook and upgrade windows." },
     ],
     implementationPackages: [
-      { id: "upgrade-waves", phase: "Implementation", title: "Execute Approved VVF Upgrade and Validation Waves", outcome: "Upgrade the approved vCenter and ESX cohorts to VVF 9 in the runbook order and retain post-wave health evidence.", dependsOn: "Approved runbook, closed HCL prerequisites, recoverable backups, and approved change windows.", acceptance: "Each wave passes platform health, management, storage, network, and workload validation." },
-      { id: "vvf-operations", phase: "Adoption", title: "Operate the Upgraded Platform Through VCF Operations", outcome: "Establish VCF Operations, vLCM image lifecycle, and the operating model for the upgraded VVF estate.", dependsOn: "Accepted upgrade waves.", acceptance: "Lifecycle, monitoring, backup, ownership, and escalation controls are operational." },
+      { id: "upgrade-waves", phase: "Implementation", title: "In-Place Upgrade Waves", outcome: "Upgrade the approved vCenter and ESX cohorts to VVF 9 in the runbook order and retain post-wave health evidence.", dependsOn: "Approved runbook, closed HCL prerequisites, recoverable backups, and approved change windows.", acceptance: "Each wave passes platform health, management, storage, network, and workload validation." },
+      { id: "vvf-operations", phase: "Adoption", title: "Run the Platform in VCF Operations", outcome: "Establish VCF Operations, vLCM image lifecycle, and the operating model for the upgraded VVF estate.", dependsOn: "Accepted upgrade waves.", acceptance: "Lifecycle, monitoring, backup, ownership, and escalation controls are operational." },
     ],
   },
   converge: {
@@ -352,12 +352,12 @@ const VVF_PLAYBOOK_PATHS: Partial<Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, 
     description: "Use the VCF Installer to bring a healthy existing vCenter and its clusters into VVF 9 without rebuilding them.",
     decisions: ["Source vCenter and ESX builds", "Convergence blockers", "Storage support", "Network prerequisites", "Convergence rollback"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm VVF Convergence Requirements and Blockers", outcome: `Validate source vCenter health, cluster membership, storage, and HCL status. ${VVF_CONVERGE_BLOCKERS}`, dependsOn: "Complete estate and platform evidence.", acceptance: "The source vCenter is accepted for convergence or exceptions are assigned." },
-      { id: "target-state", phase: "Design", title: "Design the VVF Target State", outcome: "Issue the VVF design for vCenter, VCF Operations, license server, clusters, vLCM images, storage, and operations.", dependsOn: "Accepted convergence candidate and pathway decision.", acceptance: "Architecture and operations owners approve the VVF design." },
-      { id: "converge-runbook", phase: "Design", title: "Design the VVF Convergence Runbook and Validation Plan", outcome: "Issue the convergence sequence with the VCF Installer, rollback controls, and acceptance tests.", dependsOn: "Approved target-state design and closed convergence blockers.", acceptance: "Change authority approves the convergence window and validation plan." },
+      { id: "requirements", phase: "Design", title: "Convergence Requirements", outcome: `Validate source vCenter health, cluster membership, storage, and HCL status. ${VVF_CONVERGE_BLOCKERS}`, dependsOn: "Complete estate and platform evidence.", acceptance: "The source vCenter is accepted for convergence or exceptions are assigned." },
+      { id: "target-state", phase: "Design", title: "VVF Target-State Design", outcome: "Design vCenter, VCF Operations, the license server, clusters, vLCM images, storage, and operations for VVF.", dependsOn: "Accepted convergence candidate and pathway decision.", acceptance: "Architecture and operations owners approve the VVF design." },
+      { id: "converge-runbook", phase: "Design", title: "Convergence Runbook", outcome: "Write the convergence sequence with the VCF Installer, rollback controls, and acceptance tests.", dependsOn: "Approved target-state design and closed convergence blockers.", acceptance: "Change authority approves the convergence window and validation plan." },
     ],
     implementationPackages: [
-      { id: "converge", phase: "Implementation", title: "Converge Existing vCenter into VVF", outcome: "Convert the approved existing vCenter into an operational VVF 9 environment with VCF Operations and management services.", dependsOn: "Approved convergence runbook and closed HCL and convergence prerequisites.", acceptance: "Platform health, inventory, lifecycle, and operational controls pass validation." },
+      { id: "converge", phase: "Implementation", title: "Converge vCenter into VVF", outcome: "Convert the approved existing vCenter into an operational VVF 9 environment with VCF Operations and management services.", dependsOn: "Approved convergence runbook and closed HCL and convergence prerequisites.", acceptance: "Platform health, inventory, lifecycle, and operational controls pass validation." },
     ],
   },
   greenfield: {
@@ -365,13 +365,13 @@ const VVF_PLAYBOOK_PATHS: Partial<Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, 
     description: "Build a new VVF 9 foundation with the VCF Installer on separately funded hardware and migrate workloads in controlled waves.",
     decisions: ["Approved capital funding", "Cluster topology", "Principal storage", "Physical network", "Migration-wave scope"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm Greenfield VVF Requirements, Funding, and Constraints", outcome: "Confirm separately funded hardware, capacity, vSAN capacity entitlement, site constraints, workload scope, and acceptance boundaries.", dependsOn: "Approved capital path and customer estate evidence.", acceptance: "Funding owner confirms hardware and non-service dependencies." },
-      { id: "target-state", phase: "Design", title: "Design Greenfield VVF Target State and Bill of Materials", outcome: "Issue logical and physical designs, host and cluster sizing, storage and VDS network design, IP/DNS/NTP plan, and bill of materials.", dependsOn: "Confirmed topology, component scope, and adoption depth.", acceptance: "Architecture, infrastructure, network, storage, and procurement owners approve the design." },
-      { id: "migration-design", phase: "Design", title: "Design Workload Migration and Cutover Waves", outcome: "Issue application cohorts, dependencies, change windows, rollback, validation, and legacy decommissioning plan. HCX is not included with VVF, so plan vMotion, cross-vCenter vMotion, or replication-based moves.", dependsOn: "Approved target platform and complete workload inventory.", acceptance: "Application and change owners approve wave assignments and acceptance criteria." },
+      { id: "requirements", phase: "Design", title: "Greenfield Requirements and Funding", outcome: "Confirm separately funded hardware, capacity, vSAN capacity entitlement, site constraints, workload scope, and acceptance boundaries.", dependsOn: "Approved capital path and customer estate evidence.", acceptance: "Funding owner confirms hardware and non-service dependencies." },
+      { id: "target-state", phase: "Design", title: "Greenfield Design and Bill of Materials", outcome: "Design the platform: host and cluster sizing, storage, VDS networking, IP/DNS/NTP, and the bill of materials.", dependsOn: "Confirmed topology, component scope, and adoption depth.", acceptance: "Architecture, infrastructure, network, storage, and procurement owners approve the design." },
+      { id: "migration-design", phase: "Design", title: "Migration and Cutover Plan", outcome: "Group applications into cohorts and plan their dependencies, change windows, rollback, validation, and legacy decommissioning. HCX is not included with VVF, so plan vMotion, cross-vCenter vMotion, or replication-based moves.", dependsOn: "Approved target platform and complete workload inventory.", acceptance: "Application and change owners approve wave assignments and acceptance criteria." },
     ],
     implementationPackages: [
-      { id: "foundation", phase: "Implementation", title: "Deploy and Validate the Greenfield VVF Foundation", outcome: "Deploy vCenter, VCF Operations, the license server, and management services with the VCF Installer on customer-funded hardware.", dependsOn: "Hardware, rack, network, storage, DNS, NTP, and IP prerequisites accepted.", acceptance: "The VVF foundation passes platform, lifecycle, storage, and operations validation." },
-      { id: "migration-waves", phase: "Implementation", title: "Execute Approved Workload Migration and Cutover Waves", outcome: "Move approved workload cohorts to the accepted VVF foundation and validate service restoration.", dependsOn: "Accepted foundation, approved wave plan, backups, rollback, and change windows.", acceptance: "Each wave meets application, platform, and operational acceptance criteria." },
+      { id: "foundation", phase: "Implementation", title: "Greenfield VVF Foundation Build", outcome: "Deploy vCenter, VCF Operations, the license server, and management services with the VCF Installer on customer-funded hardware.", dependsOn: "Hardware, rack, network, storage, DNS, NTP, and IP prerequisites accepted.", acceptance: "The VVF foundation passes platform, lifecycle, storage, and operations validation." },
+      { id: "migration-waves", phase: "Implementation", title: "Workload Migration and Cutover", outcome: "Move approved workload cohorts to the accepted VVF foundation and validate service restoration.", dependsOn: "Accepted foundation, approved wave plan, backups, rollback, and change windows.", acceptance: "Each wave meets application, platform, and operational acceptance criteria." },
     ],
   },
   "design-only": {
@@ -379,10 +379,10 @@ const VVF_PLAYBOOK_PATHS: Partial<Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, 
     description: "Complete the VVF design and handoff artifacts without committing implementation execution.",
     decisions: ["Requirements and constraints", "Target pathway", "Topology and components", "Physical prerequisites", "Future execution windows"],
     designPackages: [
-      { id: "requirements", phase: "Design", title: "Confirm VVF Requirements and Constraints", outcome: "Issue the requirements and constraints register with customer priorities, boundaries, and unresolved evidence.", dependsOn: "Estate evidence and customer discovery.", acceptance: "Named owners approve requirements and constraints." },
-      { id: "decision-register", phase: "Design", title: "Issue the VVF Decision Register", outcome: "Record pathway, topology, storage, networking, component, and adoption-depth decisions with rationale.", dependsOn: "Requirements, evidence, and stakeholder decisions.", acceptance: "Architecture owners approve the decision register." },
-      { id: "logical-physical-design", phase: "Design", title: "Issue Logical and Physical VVF Design", outcome: "Deliver vCenter, cluster, component placement, host, network, storage, IP, DNS, NTP, and sizing designs.", dependsOn: "Approved decision register.", acceptance: "Infrastructure owners accept the logical and physical design." },
-      { id: "implementation-handoff", phase: "Handoff", title: "Issue Implementation Runbook and Acceptance Plan", outcome: "Deliver the future execution sequence, rollback approach, change-window plan, validation criteria, runbooks, RACI, and escalation model.", dependsOn: "Accepted logical and physical design.", acceptance: "Delivery leadership confirms the package is implementation ready." },
+      { id: "requirements", phase: "Design", title: "VVF Requirements", outcome: "Agree customer priorities and boundaries, and list the evidence still missing.", dependsOn: "Estate evidence and customer discovery.", acceptance: "Named owners approve requirements and constraints." },
+      { id: "decision-register", phase: "Design", title: "VVF Target-State Design", outcome: "Record pathway, topology, storage, networking, component, and adoption-depth decisions with rationale.", dependsOn: "Requirements, evidence, and stakeholder decisions.", acceptance: "Architecture owners approve the decision register." },
+      { id: "logical-physical-design", phase: "Design", title: "Logical and Physical Design", outcome: "Deliver vCenter, cluster, component placement, host, network, storage, IP, DNS, NTP, and sizing designs.", dependsOn: "Approved decision register.", acceptance: "Infrastructure owners accept the logical and physical design." },
+      { id: "implementation-handoff", phase: "Handoff", title: "Implementation Runbook and Acceptance Plan", outcome: "Deliver the future execution sequence, rollback approach, change-window plan, validation criteria, runbooks, RACI, and escalation model.", dependsOn: "Accepted logical and physical design.", acceptance: "Delivery leadership confirms the package is implementation ready." },
     ],
     implementationPackages: [],
   },
@@ -468,7 +468,7 @@ export function getVcfPlaybookWorkPackageOwnership(path: UpgradePath, workPackag
     },
     "design-only": {
       requirements: GOVERNANCE_OWNERSHIP,
-      "decision-register": GOVERNANCE_OWNERSHIP,
+      "decision-register": INFRASTRUCTURE_DESIGN_OWNERSHIP,
       "logical-physical-design": INFRASTRUCTURE_DESIGN_OWNERSHIP,
       "implementation-handoff": INFRASTRUCTURE_WAVE_OWNERSHIP,
     },
@@ -1512,15 +1512,15 @@ export function normalizeTimelineTaxonomy(timeline: Timeline): Timeline {
 
 function upgradeServiceLabel(path: UpgradePath): string {
   const labels: Record<UpgradePath, string> = {
-    undecided: "Execute Approved VCF Pathway and Controlled Delivery Waves",
-    "in-place": "Execute Approved In-Place Upgrade and Validation Waves",
-    converge: "Converge Existing vCenter into the VCF Management Domain",
-    "import-workload-domain": "Import Existing vCenter as a VCF Workload Domain",
-    greenfield: "Deploy Approved Greenfield VCF Foundation and Migrate Workloads",
-    hybrid: "Execute Approved Multi-Path VCF Adoption Waves",
-    "new-build": "Deploy Approved VCF Foundation and Converge Workloads",
-    "migration-waves": "Execute Approved Workload Migration and Cutover Waves",
-    "design-only": "Issue VCF Target-State Design and Implementation Runbook",
+    undecided: "VCF Delivery Waves",
+    "in-place": "In-Place Upgrade Waves",
+    converge: "Converge vCenter into VCF",
+    "import-workload-domain": "Import vCenter as a Workload Domain",
+    greenfield: "Greenfield VCF Build and Migration",
+    hybrid: "Cohort Migration Waves",
+    "new-build": "VCF Foundation Build and Workload Convergence",
+    "migration-waves": "Workload Migration and Cutover",
+    "design-only": "VCF Target-State Design and Implementation Runbook",
   };
   return labels[path];
 }
@@ -1535,7 +1535,7 @@ function upgradePathNarrative(path: UpgradePath): string {
     hybrid: "The hybrid path records a cohort-level decision for each estate segment, then coordinates in-place upgrades, convergence, workload-domain imports, or greenfield migration waves through one decision register and acceptance model.",
     "new-build": "The new-build path sequences target-state and physical design, supported hardware and foundation acceptance, VCF platform deployment, workload convergence, migration validation, and operational handover.",
     "migration-waves": "The migration path sequences workload-domain and migration design, dependency and rollback planning, controlled cutover waves, post-migration validation, and operational handover.",
-    "design-only": "The design-only path issues the requirements and constraints register, decision register, logical and physical design, migration and cutover plan, validation criteria, and implementation-ready handover package without executing migration.",
+    "design-only": "The design-only path produces the requirements and constraints register, decision register, logical and physical design, migration and cutover plan, validation criteria, and implementation-ready handover package without executing migration.",
   };
   return narratives[path];
 }
@@ -1576,54 +1576,54 @@ function confirmedDeliveryContext(fields: MinimalFields): string {
 
 const focusLabels: Record<Capability, Record<string, string>> = {
   operations: {
-    lifecycle: "Configure VCF Lifecycle, Certificates, and Change Controls",
-    observability: "Deploy VCF Operations Health, Logs, and Diagnostics",
-    "capacity-cost": "Baseline Capacity and Cost Visibility",
-    "custom-dashboards": "Publish Operational Dashboards and Service Measures",
-    "identity-certificates": "Implement Identity, Credential, and Certificate Operations",
-    "event-integration": "Integrate Events with Incident and Escalation Workflows",
+    lifecycle: "Lifecycle and Change Control",
+    observability: "Health, Logs, and Diagnostics",
+    "capacity-cost": "Capacity and Cost Visibility",
+    "custom-dashboards": "Dashboards and Service Measures",
+    "identity-certificates": "Credential and Certificate Operations",
+    "event-integration": "Event-to-Incident Integration",
   },
   automation: {
-    "vm-self-service": "Launch a Governed VM Self-Service Catalog",
-    "infrastructure-as-code": "Build Infrastructure-as-Code Blueprints and Release Controls",
-    "day-2-automation": "Implement Day-2 Remediation and Maintenance Automation",
-    governance: "Configure Tenant, Quota, and Policy Governance",
-    "application-provisioning": "Onboard the First Application Team to the Platform",
-    "data-services": "Enable Data Services Manager Database Self-Service",
+    "vm-self-service": "VM Self-Service Catalog",
+    "infrastructure-as-code": "Infrastructure-as-Code Blueprints",
+    "day-2-automation": "Day-2 Automation",
+    governance: "Tenant and Quota Governance",
+    "application-provisioning": "First App Team Onboarding",
+    "data-services": "Database Self-Service with Data Services Manager",
   },
   networking: {
-    "physical-fabric": "Implement Physical Fabric, VLAN, and MTU Prerequisites",
-    "edge-cluster-routing": "Deploy NSX Edge Cluster and North-South Routing",
-    "overlay-transport": "Roll Out NSX Overlay Transport and Host Connectivity",
-    vpc: "Enable VCF VPCs and Transit Gateway Connectivity",
-    "load-balancing": "Deploy Avi Load Balancer and Application Ingress",
-    "network-operations": "Handover VCF Networking and NSX Operations",
+    "physical-fabric": "Physical Network Prerequisites",
+    "edge-cluster-routing": "NSX Edges and Routing",
+    "overlay-transport": "NSX Overlay Rollout",
+    vpc: "VCF VPCs and Transit Gateway",
+    "load-balancing": "Avi Load Balancing and Ingress",
+    "network-operations": "NSX Operations Handover",
   },
   security: {
-    segmentation: "Implement Segmentation and Security Policy",
-    "identity-rbac": "Implement Identity and RBAC Controls",
-    "hardening-compliance": "Apply Hardening and Compliance Controls",
-    "ids-ips": "Enable vDefend Distributed IDS/IPS",
-    "malware-prevention": "Enable vDefend Malware Prevention and Sandboxing",
-    "identity-firewall": "Implement Identity-Aware Firewall Rules",
-    "security-intelligence": "Enable Security Intelligence and Traffic Visualization",
-    waf: "Enable Avi Web Application Firewall",
+    segmentation: "Segmentation Rollout",
+    "identity-rbac": "Identity and Access Controls",
+    "hardening-compliance": "Hardening and Compliance",
+    "ids-ips": "vDefend Distributed IDS/IPS",
+    "malware-prevention": "vDefend Malware Prevention",
+    "identity-firewall": "Identity-Aware Firewall Rules",
+    "security-intelligence": "Security Intelligence and Traffic Views",
+    waf: "Avi Web Application Firewall",
   },
   resilience: {
-    "recovery-architecture": "Implement Recovery Architecture",
-    "recovery-exercises": "Execute Recovery Exercise and Runbook Validation",
-    "cyber-recovery": "Implement On-Premises Cyber Recovery Environment",
-    "cloud-cyber-recovery": "Implement Cloud Cyber Recovery with VMware Live Recovery",
+    "recovery-architecture": "Recovery Services Build",
+    "recovery-exercises": "Recovery Exercise",
+    "cyber-recovery": "Cyber Recovery Vault",
+    "cloud-cyber-recovery": "Cloud Cyber Recovery (VMware Live Recovery)",
   },
   kubernetes: {
-    "workload-domains": "Create Workload Domain and Enable Supervisor",
-    "platform-operations": "Operationalize Kubernetes Platform Services",
-    "developer-experience": "Onboard Developer Experience Guardrails",
+    "workload-domains": "Enable the VKS Supervisor",
+    "platform-operations": "Kubernetes Platform Operations",
+    "developer-experience": "Developer Guardrails",
   },
   "private-ai": {
-    "gpu-capacity": "Implement AI Capacity and GPU Enablement",
-    "ai-guardrails": "Apply Private AI Guardrails",
-    "pilot-onboarding": "Onboard the First Private AI Pilot",
+    "gpu-capacity": "GPU Capacity for AI",
+    "ai-guardrails": "Private AI Guardrails",
+    "pilot-onboarding": "First Private AI Pilot",
   },
 };
 
@@ -1634,8 +1634,8 @@ const focusLabels: Record<Capability, Record<string, string>> = {
 export type PlanOutcomeKey = string;
 
 const PLATFORM_OUTCOME_LABELS: Record<string, string> = {
-  "platform:nsx": "Implement Approved VCF Networking and NSX Design",
-  "platform:ssp": "Deploy the vDefend Security Services Platform",
+  "platform:nsx": "NSX Build-Out",
+  "platform:ssp": "vDefend Security Services Platform",
 };
 
 /**
@@ -1831,17 +1831,17 @@ export function planOutcomeLabel(key: PlanOutcomeKey, edition: PlatformEdition =
   if (PLATFORM_OUTCOME_LABELS[key]) return PLATFORM_OUTCOME_LABELS[key];
   const [capability, focus] = key.split(":") as [Capability, string];
   if (focus === "core") return genericCapabilityLabel(capability, edition);
-  if (edition === "vvf" && key === "operations:lifecycle") return "Configure vLCM Image Lifecycle and Change Controls";
+  if (edition === "vvf" && key === "operations:lifecycle") return "vLCM Lifecycle and Change Control";
   return focusLabels[capability]?.[focus] ?? `${capabilityTitle(capability)} capability`;
 }
 
 function genericCapabilityLabel(capability: Capability, edition: PlatformEdition): string {
-  if (capability === "operations") return "Operationalize Platform Lifecycle and Service Health";
-  if (capability === "automation") return "Enable Automation and Self-Service";
-  if (capability === "kubernetes") return "Enable Kubernetes / Supervisor Services";
-  if (capability === "private-ai") return "Prepare Private AI / GPU Platform Enablement";
-  if (capability === "security") return edition === "vvf" ? "Implement vSphere Hardening and Access Controls" : "Implement Security and Segmentation Controls";
-  if (capability === "resilience") return "Implement Resilience, DR, and Cyber-Recovery Controls";
+  if (capability === "operations") return "Platform Lifecycle and Service Health";
+  if (capability === "automation") return "Automation and Self-Service";
+  if (capability === "kubernetes") return "Kubernetes Supervisor Services";
+  if (capability === "private-ai") return "Private AI and GPU Platform";
+  if (capability === "security") return edition === "vvf" ? "vSphere Hardening and Access Controls" : "Security and Segmentation Controls";
+  if (capability === "resilience") return "Resilience, DR, and Cyber Recovery";
   return `${capabilityTitle(capability)} Implementation`;
 }
 
@@ -1851,19 +1851,19 @@ export function planRequiresNsx(fields: MinimalFields): boolean {
 }
 
 const componentDesignProfiles: Record<Capability, { title: string; outcome: string; dependency: string; ownership: VcfPlaybookOwnership }> = {
-  operations: { title: "Design VCF Operations Adoption", outcome: "Issue the Operations architecture, data sources, dashboard and alert scope, lifecycle ownership, and operating acceptance criteria.", dependency: "Confirm the operations depth, platform owners, telemetry sources, and support model.", ownership: OPERATIONS_OWNERSHIP },
-  automation: { title: "Design VCF Automation and Self-Service", outcome: "Issue the organization, project, catalog, blueprint, policy, approval, source-control, and service-ownership design.", dependency: "Confirm the automation depth, catalog product owner, tenant model, approvals, and integration boundaries.", ownership: { category: "Modernize Cloud", workstreamType: "Consume / Handover" } },
-  networking: { title: "Design VCF Networking and NSX", outcome: "Issue the physical fabric, transport zone, Edge, routing, overlay, IP, MTU, and network-operations design.", dependency: "Confirm network ownership, fabric standards, routing handoffs, NSX scope, and selected adoption depth.", ownership: INFRASTRUCTURE_DESIGN_OWNERSHIP },
-  security: { title: "Design vDefend and Security Policy", outcome: "Issue the segmentation, policy, identity, hardening, evidence, rollout-wave, and security-operations design.", dependency: "Confirm the security owner, application dependency evidence, policy lifecycle, and selected adoption depth.", ownership: { category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" } },
-  resilience: { title: "Design Recovery and Resilience Services", outcome: "Issue the protection tiers, RPO/RTO, recovery topology, runbooks, exercise model, and acceptance evidence.", dependency: "Confirm protected workloads, business recovery objectives, tooling, sites, and recovery ownership.", ownership: { category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" } },
-  kubernetes: { title: "Design VKS Platform and Developer Consumption", outcome: "Issue the workload-domain, Supervisor, namespace, policy, lifecycle, data-protection, and developer-consumption design.", dependency: "Confirm the platform owner, sponsored workload, network and security controls, and selected adoption depth.", ownership: { category: "Modernize Cloud", workstreamType: "Consume / Handover" } },
-  "private-ai": { title: "Design Private AI Platform and Governance", outcome: "Issue the GPU capacity, workload-domain, data boundary, model access, security, lifecycle, pilot, and acceptance design.", dependency: "Confirm funded GPU capacity, a named use case, data classification, security approval, and selected adoption depth.", ownership: { category: "Modernize Cloud", workstreamType: "Consume / Handover" } },
+  operations: { title: "VCF Operations Design", outcome: "Design the Operations architecture, data sources, dashboard and alert scope, lifecycle ownership, and operating acceptance criteria.", dependency: "Confirm the operations depth, platform owners, telemetry sources, and support model.", ownership: OPERATIONS_OWNERSHIP },
+  automation: { title: "Automation and Self-Service Design", outcome: "Design the organization, projects, catalog, blueprints, policies, approvals, source control, and service ownership.", dependency: "Confirm the automation depth, catalog product owner, tenant model, approvals, and integration boundaries.", ownership: { category: "Modernize Cloud", workstreamType: "Consume / Handover" } },
+  networking: { title: "NSX Networking Design", outcome: "Design the physical fabric, transport zones, Edges, routing, overlay, IP, MTU, and network operations.", dependency: "Confirm network ownership, fabric standards, routing handoffs, NSX scope, and selected adoption depth.", ownership: INFRASTRUCTURE_DESIGN_OWNERSHIP },
+  security: { title: "vDefend Security Design", outcome: "Design segmentation, policy, identity, hardening, evidence, rollout waves, and security operations.", dependency: "Confirm the security owner, application dependency evidence, policy lifecycle, and selected adoption depth.", ownership: { category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" } },
+  resilience: { title: "Recovery and Resilience Design", outcome: "Set protection tiers and RPO/RTO, design the recovery topology, and write the runbooks, exercise model, and acceptance evidence.", dependency: "Confirm protected workloads, business recovery objectives, tooling, sites, and recovery ownership.", ownership: { category: "Modernize Security & Resilience", workstreamType: "Security & Resiliency" } },
+  kubernetes: { title: "VKS Platform Design", outcome: "Design the workload domain, Supervisor, namespaces, policy, lifecycle, data protection, and how developers use the platform.", dependency: "Confirm the platform owner, sponsored workload, network and security controls, and selected adoption depth.", ownership: { category: "Modernize Cloud", workstreamType: "Consume / Handover" } },
+  "private-ai": { title: "Private AI Design", outcome: "Plan GPU capacity and design the workload domain, data boundaries, model access, security, lifecycle, pilot, and acceptance.", dependency: "Confirm funded GPU capacity, a named use case, data classification, security approval, and selected adoption depth.", ownership: { category: "Modernize Cloud", workstreamType: "Consume / Handover" } },
 };
 
 /** VVF has no NSX or vDefend, so its networking and security designs cover VDS, Avi, hardening, and access. */
 const VVF_COMPONENT_DESIGN_TITLES: Partial<Record<Capability, string>> = {
-  networking: "Design VDS Networking and Load Balancing",
-  security: "Design vSphere Hardening, Access, and Application Security",
+  networking: "VDS Networking and Load Balancing Design",
+  security: "vSphere Hardening and Access Design",
 };
 
 export function getVcfComponentDesignOwnership(capability: Capability): VcfPlaybookOwnership {
@@ -1880,6 +1880,15 @@ function componentDepthFor(fields: MinimalFields, capability: Capability): Adopt
 
 function componentDepthLabel(depth: AdoptionDepth): string {
   return ({ "not-selected": "depth to be confirmed", "tier-1": "Tier 1 · Deployed", "tier-2": "Tier 2 · Operationalized", "tier-3": "Tier 3 · Business Consumption" })[depth];
+}
+
+/** A component design's name carries its committed depth; an undecided depth is noted in the outcome instead. */
+function componentDesignTitle(title: string, depth: AdoptionDepth): string {
+  return depth === "not-selected" ? title : `${title} — ${componentDepthLabel(depth)}`;
+}
+
+function componentDepthNote(depth: AdoptionDepth): string {
+  return depth === "not-selected" ? "Adoption depth is still to be confirmed." : `The committed adoption depth is ${componentDepthLabel(depth)}.`;
 }
 
 function selectedFocuses(fields: MinimalFields, capability: Capability): string[] {
@@ -1937,7 +1946,7 @@ function buildPlatformInventoryActivity(inventory: InventorySummary, cadence: Ti
 
   if (!platforms.length) {
     return {
-      label: `${openingWindow}: Mobilize and Establish Delivery Baseline`,
+      label: `${openingWindow}: Kickoff and Delivery Plan`,
       color: "amber",
       dependsOn: appendDeliveryContext("Upload RVTools vHost data with server make, model, CPU, adapters, storage-controller, and ESXi fields; confirm the bill of materials and delivery prerequisites before platform deployment begins."),
       outcome: "Use the opening window to confirm design decisions, evidence, dependencies, and delivery ownership; implementation services begin only in the selected implementation window.",
@@ -1945,7 +1954,7 @@ function buildPlatformInventoryActivity(inventory: InventorySummary, cadence: Ti
   }
 
   return {
-    label: `${openingWindow}: Mobilize and Establish Delivery Baseline`,
+    label: `${openingWindow}: Kickoff and Delivery Plan`,
     color: "teal",
       dependsOn: appendDeliveryContext(`RVTools identifies ${observedHosts} observed host${observedHosts === 1 ? "" : "s"} across ${observedModels || platforms.length} host model${(observedModels || platforms.length) === 1 ? "" : "s"}. ${hclPathContext} ${hclDeliveryContext} Confirm server configuration, CPU, NIC, storage controller, firmware, driver, vSAN/ReadyNode details, bill of materials, and implementation prerequisites before platform deployment begins.`),
       outcome: `Use the opening window to capture the offline HCL evidence, design decisions, and remaining delivery dependencies; implementation services begin only in the selected implementation window.`,
@@ -2127,11 +2136,11 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       taskStart,
       taskEnd,
       colorForWorkstreamType(profile.ownership.workstreamType),
-      `${edition === "vvf" ? VVF_COMPONENT_DESIGN_TITLES[capability] ?? profile.title : profile.title} — ${componentDepthLabel(depth)}`,
+      componentDesignTitle(edition === "vvf" ? VVF_COMPONENT_DESIGN_TITLES[capability] ?? profile.title : profile.title, depth),
       false,
       false,
       appendDeliveryContext(profile.dependency),
-      `${profile.outcome} The committed adoption depth is ${componentDepthLabel(depth)}.`,
+      `${profile.outcome} ${componentDepthNote(depth)}`,
     ));
     componentDesignCursors[laneKey] = taskEnd;
   });
@@ -2142,11 +2151,11 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       taskStart,
       taskEnd,
       colorForWorkstreamType("Infrastructure Build"),
-      `Design Efficiency, Memory Tiering, and Sizing — ${componentDepthLabel(fields.adoptionDetails.componentDepths.efficiency)}`,
+      componentDesignTitle("Efficiency and Memory Tiering Design", fields.adoptionDetails.componentDepths.efficiency),
       false,
       false,
       "Confirm hardware architecture, performance baseline, supported memory-tiering configuration, vSAN layout, and financial measurement method.",
-      "Issue the hardware-efficiency sizing model, implementation boundaries, performance validation plan, and measurable acceptance direction.",
+      "Size the hardware for efficiency, set implementation boundaries, plan performance validation, and agree how success is measured.",
     ));
     componentDesignCursors.infrastructureBuild = taskEnd;
   }
@@ -2164,7 +2173,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   if (path === "yellow" || path === "unresolved") {
     // The offline HCL check has already run on the imported hosts, so closing its gaps starts with mobilization.
     const [remediationStart, remediationEnd] = range(mobilizationStart, remediationDuration);
-    infrastructureBars.push(bar("bar-hcl-remediation", remediationStart, remediationEnd, "amber", path === "yellow" ? "Remediate and Verify HCL Exceptions" : "Collect Missing HCL Evidence and Confirm Path", false, false, appendDeliveryContext("Runs alongside mobilization. Resolve server, CPU, firmware, or identity evidence before releasing the platform build."), path === "yellow" ? "Close the reported HCL exception path and retain verification evidence." : "Collect missing vHost identity and configuration evidence before committing the platform path."));
+    infrastructureBars.push(bar("bar-hcl-remediation", remediationStart, remediationEnd, "amber", path === "yellow" ? "Fix HCL Exceptions" : "Close HCL Evidence Gaps", false, false, appendDeliveryContext("Runs alongside mobilization. Resolve server, CPU, firmware, or identity evidence before releasing the platform build."), path === "yellow" ? "Close the reported HCL exception path and retain verification evidence." : "Collect missing vHost identity and configuration evidence before committing the platform path."));
     hclBufferEnd = Math.max(mobilizationEnd, remediationEnd);
     hclDependency = path === "yellow"
       ? "Confirmed when the flagged hosts are remediated and verified."
@@ -2175,8 +2184,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     const [procurementStart, procurementEnd] = range(mobilizationEnd, procurementDuration);
     const [greenfieldStart, greenfieldEnd] = range(procurementEnd, greenfieldDuration);
     infrastructureBars.push(
-      bar("bar-hcl-procurement", procurementStart, procurementEnd, "red", "Procure Replacement Hardware or Approve Greenfield Path", false, false, appendDeliveryContext("Proceed only after the Red HCL result has a replacement, repurpose, or approved exception decision."), "Secure the supported hardware path before downstream domain build activities begin."),
-      bar("bar-hcl-greenfield", greenfieldStart, greenfieldEnd, "red", "Provision and Validate Greenfield Hardware Baseline", false, false, "Start after procurement, hardware delivery, and rack-and-stack acceptance.", "Validate the newly provisioned hardware baseline before releasing VCF deployment work."),
+      bar("bar-hcl-procurement", procurementStart, procurementEnd, "red", "Replacement Hardware or Greenfield Decision", false, false, appendDeliveryContext("Proceed only after the Red HCL result has a replacement, repurpose, or approved exception decision."), "Secure the supported hardware path before downstream domain build activities begin."),
+      bar("bar-hcl-greenfield", greenfieldStart, greenfieldEnd, "red", "Greenfield Hardware Setup", false, false, "Start after procurement, hardware delivery, and rack-and-stack acceptance.", "Validate the newly provisioned hardware baseline before releasing VCF deployment work."),
     );
     hclBufferEnd = greenfieldEnd;
     hclDependency = "Confirmed when replacement hardware is procured and provisioned, or an exception is approved.";
@@ -2210,7 +2219,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   // A gate is a checkpoint, not work: it sits in the last window of the evidence work and adds no time of its own.
   const [hclGateStart, hclGateEnd] = range(Math.max(1, hclBufferEnd - 1), 1);
-  programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", "Hardware Compatibility Confirmed", true, false, hclDependency, `Platform build starts only after this milestone. Compatibility check result: ${hclPathLabel(path)}.`));
+  programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", "Hardware Compatibility Sign-Off", true, false, hclDependency, `Platform build starts only after this milestone. Compatibility check result: ${hclPathLabel(path)}.`));
 
   const pathwayDesignEnd = playbookPlan.designPackages.length ? pathwayDesignCursor : hclGateEnd;
   const infrastructureDesignEnd = Math.max(pathwayDesignEnd, componentDesignCursors.infrastructureBuild, componentDesignCursors.infrastructureWaves);
@@ -2234,23 +2243,23 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const nsxScheduledWithFoundation = networkingInScope && (playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid");
 
   if (playbookPlan.path === "in-place") {
-    foundationEnd = addInfrastructurePackage("bar-in-place-preparation", vvf ? "Prepare Supported Estate for the VVF Upgrade" : "Prepare Supported Estate for In-Place Upgrade", deliveryStart, managementDuration, "Starts after hardware compatibility is confirmed and the upgrade runbook is approved; close platform, backup, firmware, driver, lifecycle, and management prerequisites.", "Release only the supported host and management cohorts into the approved upgrade waves.", buildPrerequisites);
+    foundationEnd = addInfrastructurePackage("bar-in-place-preparation", vvf ? "Upgrade Preparation" : "Upgrade Preparation", deliveryStart, managementDuration, "Starts after hardware compatibility is confirmed and the upgrade runbook is approved; close platform, backup, firmware, driver, lifecycle, and management prerequisites.", "Release only the supported host and management cohorts into the approved upgrade waves.", buildPrerequisites);
     foundationId = "bar-in-place-preparation";
     workloadEnd = foundationEnd;
   } else if (playbookPlan.path === "converge") {
     foundationId = vvf ? "bar-vvf-foundation" : "bar-converge-management-domain";
-    foundationEnd = addInfrastructurePackage(foundationId, implementationPackage?.title || "Converge Existing vCenter into the VCF Management Domain", deliveryStart, managementDuration, implementationPackage?.dependsOn || "Begin after the convergence runbook is approved.", implementationPackage?.outcome || "Establish the VCF management domain from the accepted existing environment.", buildPrerequisites);
+    foundationEnd = addInfrastructurePackage(foundationId, implementationPackage?.title || "Converge vCenter into VCF", deliveryStart, managementDuration, implementationPackage?.dependsOn || "Begin after the convergence runbook is approved.", implementationPackage?.outcome || "Establish the VCF management domain from the accepted existing environment.", buildPrerequisites);
     workloadEnd = foundationEnd;
   } else if (playbookPlan.path === "import-workload-domain") {
     foundationId = "bar-import-foundation-validation";
-    foundationEnd = addInfrastructurePackage(foundationId, "Validate Destination VCF Foundation for Import", deliveryStart, managementDuration, "Begin after the destination VCF instance, capacity, networking, storage, and lifecycle health are accepted.", "Confirm the destination foundation can receive the complete source vCenter as a workload domain.", buildPrerequisites);
+    foundationEnd = addInfrastructurePackage(foundationId, "Ready the VCF Foundation for Import", deliveryStart, managementDuration, "Begin after the destination VCF instance, capacity, networking, storage, and lifecycle health are accepted.", "Confirm the destination foundation can receive the complete source vCenter as a workload domain.", buildPrerequisites);
     workloadEnd = foundationEnd;
     const [importStart, importEnd] = range(foundationEnd, workloadDuration);
-    migrationBars.push({ ...bar("bar-import-workload-domain", importStart, importEnd, colorForWorkstreamType("Migration Waves"), "Import Existing vCenter as a VCF Workload Domain", false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after destination-foundation acceptance."), implementationPackage?.outcome || "Import and validate the approved workload domain."), prerequisites: [foundationId] });
+    migrationBars.push({ ...bar("bar-import-workload-domain", importStart, importEnd, colorForWorkstreamType("Migration Waves"), "Import vCenter as a Workload Domain", false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after destination-foundation acceptance."), implementationPackage?.outcome || "Import and validate the approved workload domain."), prerequisites: [foundationId] });
     platformReadyId = "bar-import-workload-domain";
     directMigrationExecutionEnd = importEnd;
   } else if (playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid") {
-    const foundationTitle = playbookPlan.path === "greenfield" ? implementationPackage?.title || "Deploy and Validate the Greenfield VCF Foundation" : "Establish the Shared VCF Foundation for Approved Cohorts";
+    const foundationTitle = playbookPlan.path === "greenfield" ? implementationPackage?.title || "Greenfield VCF Foundation Build" : "Shared VCF Foundation Build";
     foundationId = vvf ? "bar-vvf-foundation" : "bar-management-domain";
     foundationEnd = addInfrastructurePackage(foundationId, foundationTitle, deliveryStart, managementDuration, playbookPlan.path === "greenfield" ? "Begin only after separately funded hardware, rack, network, storage, DNS, NTP, and IP prerequisites are accepted." : "Begin after the cohort decision register and shared target-state design are approved.", playbookPlan.path === "greenfield" ? (vvf ? "Deploy vCenter, VCF Operations, and management services with the VCF Installer and validate core platform health." : "Deploy the approved management-domain foundation and validate core platform health.") : "Establish the common VCF control plane required by the approved cohort pathways.", buildPrerequisites);
     let workloadPrerequisite = foundationId;
@@ -2259,8 +2268,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       workloadPrerequisite = "bar-vcf-networking-nsx";
     }
     workloadEnd = vvf
-      ? addInfrastructurePackage("bar-vvf-workload-clusters", "Configure Workload Clusters, vLCM Images, and Storage", foundationEnd, workloadDuration, "Begin after the VVF foundation and the approved storage and network prerequisites are validated.", "Prepare the workload clusters used by migration waves and selected component adoption.", [workloadPrerequisite])
-      : addInfrastructurePackage("bar-workload-domain", "Create and Validate the Initial VCF Workload Domain", foundationEnd, workloadDuration, "Begin after management-domain health and the approved network and storage prerequisites are validated.", "Create the workload-domain foundation used by migration waves and selected component adoption.", [workloadPrerequisite]);
+      ? addInfrastructurePackage("bar-vvf-workload-clusters", "Workload Clusters and vLCM Images", foundationEnd, workloadDuration, "Begin after the VVF foundation and the approved storage and network prerequisites are validated.", "Prepare the workload clusters used by migration waves and selected component adoption.", [workloadPrerequisite])
+      : addInfrastructurePackage("bar-workload-domain", "First Workload Domain", foundationEnd, workloadDuration, "Begin after management-domain health and the approved network and storage prerequisites are validated.", "Create the workload-domain foundation used by migration waves and selected component adoption.", [workloadPrerequisite]);
   }
 
   const executionPackage = playbookPlan.path === "greenfield"
@@ -2327,7 +2336,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     const anchorId = playbookPlan.path === "in-place" ? platformReadyId : foundationId;
     const [licenseStart, licenseEnd] = range(playbookPlan.path === "in-place" ? platformReadyEnd : foundationEnd, scheduleUnits(cadence, 2, 1));
     operationsBars.push({
-      ...bar("bar-platform-licensing", licenseStart, licenseEnd, colorForWorkstreamType("Operating Model / Platform"), "Register VCF Operations and Activate Subscription Licensing", false, false, "Complete within the 90-day evaluation period: register VCF Operations in the VCF Business Services console, allocate cores, and apply the license file in connected or disconnected mode. Disconnected sites must report usage at least every 180 days.", "Activate subscription licensing for the deployed platform and its add-ons before the evaluation period ends."),
+      ...bar("bar-platform-licensing", licenseStart, licenseEnd, colorForWorkstreamType("Operating Model / Platform"), "VCF Operations Licensing", false, false, "Complete within the 90-day evaluation period: register VCF Operations in the VCF Business Services console, allocate cores, and apply the license file in connected or disconnected mode. Disconnected sites must report usage at least every 180 days.", "Activate subscription licensing for the deployed platform and its add-ons before the evaluation period ends."),
       prerequisites: [anchorId],
     });
     endById.set("bar-platform-licensing", licenseEnd);
@@ -2402,24 +2411,24 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     const lastDesignPackage = playbookPlan.designPackages.at(-1);
     const [decisionStart, decisionEnd] = range(designEnd, 1);
     programBars.push({
-      ...bar("bar-platform-execution-decision", decisionStart, decisionEnd, colorForWorkstreamType("Governance"), playbookPlan.path === "design-only" ? "Approve Implementation Funding and Delivery Window" : "Approve the VCF Adoption Pathway and Execution Funding", true, false, "Begin after the design package is accepted by the architecture and funding owners.", "Record the approved execution pathway, funding, delivery window, and implementation partner so implementation can be planned."),
+      ...bar("bar-platform-execution-decision", decisionStart, decisionEnd, colorForWorkstreamType("Governance"), playbookPlan.path === "design-only" ? "Funding and Delivery Window Approval" : "Pathway and Funding Approval", true, false, "Begin after the design package is accepted by the architecture and funding owners.", "Record the approved execution pathway, funding, delivery window, and implementation partner so implementation can be planned."),
       ...(lastDesignPackage ? { prerequisites: [`bar-playbook-design-${lastDesignPackage.id}`] } : {}),
     });
     const [governanceStart, governanceEnd] = range(decisionEnd, windowEnd + 1 - decisionEnd);
     programBars.push({
-      ...bar("bar-platform-design-authority", governanceStart, governanceEnd, colorForWorkstreamType("Governance"), "Maintain Design Authority and Entitlement Governance", false, false, "Continue after the execution decision through entitlement end.", "Keep the decision register, design baseline, risks, and entitlement drawdown current until implementation is contracted."),
+      ...bar("bar-platform-design-authority", governanceStart, governanceEnd, colorForWorkstreamType("Governance"), "Design Authority and Entitlement Tracking", false, false, "Continue after the execution decision through entitlement end.", "Keep the decision register, design baseline, risks, and entitlement drawdown current until implementation is contracted."),
       prerequisites: ["bar-platform-execution-decision"],
     });
     const [readinessStart, readinessEnd] = range(designEnd, windowEnd + 1 - designEnd);
     operationsBars.push({
-      ...bar("bar-platform-operating-readiness", readinessStart, readinessEnd, colorForWorkstreamType("Operating Model / Platform"), "Prepare Operating Model, Skills, and Runbooks for Implementation", false, false, "Begin after the design package is accepted.", "Prepare platform ownership, skills, support model, and operational runbooks so implementation can start without delay once approved."),
+      ...bar("bar-platform-operating-readiness", readinessStart, readinessEnd, colorForWorkstreamType("Operating Model / Platform"), "Team and Operating Model Readiness", false, false, "Begin after the design package is accepted.", "Prepare platform ownership, skills, support model, and operational runbooks so implementation can start without delay once approved."),
       ...(lastDesignPackage ? { prerequisites: [`bar-playbook-design-${lastDesignPackage.id}`] } : {}),
     });
   }
 
   if (implementationApproved) {
     const [handoverStart, handoverEnd] = range(Math.max(migrationEnd, operationsCursor, cloudEnd, securityEnd, networkingEnd), handoverDuration);
-    operationsBars.push({ ...bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Validate Handover, Service Acceptance, and Ongoing Lifecycle", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm the operating model, evidence, ownership, and the continuing lifecycle cadence."), prerequisites: [deliveryCompleteId] });
+    operationsBars.push({ ...bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Handover and Service Acceptance", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm the operating model, evidence, ownership, and the continuing lifecycle cadence."), prerequisites: [deliveryCompleteId] });
   }
 
   const lanes: TimelineLane[] = [
@@ -2463,11 +2472,11 @@ const followOnServiceProfiles: Record<Capability, Record<string, FollowOnService
     "event-integration": { label: "Event-to-Incident Integration and Escalation", outcome: "Route prioritized events into incident workflows with escalation paths and service-level reporting.", entryCondition: "the ITSM or event target, severity model, and resolver groups are agreed" },
   },
   automation: {
-    "vm-self-service": { label: "Launch a Governed VM Self-Service Catalog", outcome: "Launch a measured catalog for selected tenants with quotas, approvals, and support ownership.", entryCondition: "catalog blueprints, tenancy rules, and a support handoff are accepted" },
+    "vm-self-service": { label: "VM Self-Service Catalog", outcome: "Launch a measured catalog for selected tenants with quotas, approvals, and support ownership.", entryCondition: "catalog blueprints, tenancy rules, and a support handoff are accepted" },
     "infrastructure-as-code": { label: "Infrastructure-as-Code Blueprint Factory and Release Controls", outcome: "Establish reusable blueprints, source control, policy controls, and release practices.", entryCondition: "a source-control workflow, security alignment, and content owners are available" },
     "day-2-automation": { label: "Operate Day-2 Remediation and Maintenance Automation", outcome: "Operationalize priority remediation and maintenance automations with runbook and rollback controls.", entryCondition: "priority workflows, approval paths, and rollback owners are confirmed" },
     governance: { label: "Tenant, Quota, and Policy Governance", outcome: "Run tenant, quota, policy, and exception governance as an ongoing operating practice.", entryCondition: "the tenant model, quota policy, and exception authority are confirmed", eligibility: { requiresAnyFocus: ["vm-self-service", "infrastructure-as-code"] } },
-    "application-provisioning": { label: "Onboard the First Application Team to the Platform", outcome: "Onboard a first application team through governed blueprints and a supported delivery path.", entryCondition: "a sponsored workload, application team, and service support model are confirmed", eligibility: { requiresAnyFocus: ["vm-self-service", "infrastructure-as-code"] } },
+    "application-provisioning": { label: "First App Team Onboarding", outcome: "Onboard a first application team through governed blueprints and a supported delivery path.", entryCondition: "a sponsored workload, application team, and service support model are confirmed", eligibility: { requiresAnyFocus: ["vm-self-service", "infrastructure-as-code"] } },
   },
   networking: {
     "physical-fabric": { label: "VCF Network Foundation and Physical Fabric Alignment", outcome: "Align transport VLANs, MTU, routing handoffs, and physical-fabric dependencies for the VCF platform.", entryCondition: "network owners, VLAN and MTU standards, and routing handoffs are confirmed" },
@@ -2645,7 +2654,7 @@ function baselineEntitlementLanes(fields: MinimalFields, startColumn: number, co
       workstreamType: "Governance",
       start: startColumn,
       end,
-      label: "Delivery Governance and Value Tracking",
+      label: "Governance and Value Reviews",
       outcome: "Maintain executive alignment, delivery ownership, adoption measures, and value tracking through the two-year planning horizon.",
     },
     {
@@ -2654,7 +2663,7 @@ function baselineEntitlementLanes(fields: MinimalFields, startColumn: number, co
       workstreamType: "Operating Model / Platform",
       start: operatingModelStart,
       end,
-      label: "Platform Operating Model and Lifecycle Adoption",
+      label: "Operating Model and Lifecycle",
       outcome: "Embed platform lifecycle, service ownership, operational cadence, and consumption practices through the two-year planning horizon.",
     },
     {
@@ -2675,7 +2684,7 @@ function baselineEntitlementLanes(fields: MinimalFields, startColumn: number, co
       workstreamType: "Operating Model / Platform",
       start: startColumn,
       end,
-      label: "VCF Networking and NSX Lifecycle Progression",
+      label: "NSX Lifecycle and Growth",
       outcome: "Continue the confirmed VCF networking and NSX platform operations, edge and overlay lifecycle planning, and network-service handover through entitlement end.",
     });
   }
@@ -3173,7 +3182,7 @@ function normalizeRawTimelineTaxonomy(value: unknown): unknown {
         return { ...rawLane, category, workstreamType, name: workstreamType, bars: Array.isArray(rawLane.bars) ? rawLane.bars.map(bar => {
           const rawBar = bar as Record<string, unknown>;
           const label = typeof rawBar.label === "string"
-            ? rawBar.label.replace("Mobilize and Freeze VCF Delivery Baseline", "Mobilize and Establish Delivery Baseline")
+            ? rawBar.label.replace("Mobilize and Freeze VCF Delivery Baseline", "Kickoff and Delivery Plan")
             : rawBar.label;
           return { ...rawBar, label, color: colorForWorkstreamType(workstreamType), deferred: false };
         }) : rawLane.bars };
@@ -3253,14 +3262,158 @@ function inferredPlanAuthority(value: unknown, document: EngagementDocument, gen
 
 /** Old generated labels and their current wording; a label the planner typed is never matched. */
 const LEGACY_GENERATED_LABELS: Array<[RegExp, string]> = [
-  [/^HCL Gate: /, "Hardware Compatibility Confirmed"],
+  [/^HCL Gate: .*$/, "Hardware Compatibility Sign-Off"],
   [/^Finalize ToR switch design and port readiness$/, "Finalize ToR switch design and port configuration"],
+  [/^(Month 1|Weeks 1–2): Mobilize and Establish Delivery Baseline$/, "$1: Kickoff and Delivery Plan"],
+  // Design-only packages as main named them.
+  [/^Issue the VCF Decision Register$/, "VCF Target-State Design"],
+  [/^Issue the VVF Decision Register$/, "VVF Target-State Design"],
+  [/^Issue Logical and Physical VCF Design$/, "Logical and Physical Design"],
+  [/^Issue Logical and Physical VVF Design$/, "Logical and Physical Design"],
+  [/^Issue Implementation Runbook and Acceptance Plan$/, "Implementation Runbook and Acceptance Plan"],
+  // Component designs: an undecided depth leaves the name; a committed tier stays on it.
+  [/^Design VCF Operations Adoption — depth to be confirmed$/, "VCF Operations Design"],
+  [/^Design VCF Operations Adoption( — Tier .+)$/, "VCF Operations Design$1"],
+  [/^Design VCF Automation and Self-Service — depth to be confirmed$/, "Automation and Self-Service Design"],
+  [/^Design VCF Automation and Self-Service( — Tier .+)$/, "Automation and Self-Service Design$1"],
+  [/^Design VCF Networking and NSX — depth to be confirmed$/, "NSX Networking Design"],
+  [/^Design VCF Networking and NSX( — Tier .+)$/, "NSX Networking Design$1"],
+  [/^Design vDefend and Security Policy — depth to be confirmed$/, "vDefend Security Design"],
+  [/^Design vDefend and Security Policy( — Tier .+)$/, "vDefend Security Design$1"],
+  [/^Design Recovery and Resilience Services — depth to be confirmed$/, "Recovery and Resilience Design"],
+  [/^Design Recovery and Resilience Services( — Tier .+)$/, "Recovery and Resilience Design$1"],
+  [/^Design VKS Platform and Developer Consumption — depth to be confirmed$/, "VKS Platform Design"],
+  [/^Design VKS Platform and Developer Consumption( — Tier .+)$/, "VKS Platform Design$1"],
+  [/^Design Private AI Platform and Governance — depth to be confirmed$/, "Private AI Design"],
+  [/^Design Private AI Platform and Governance( — Tier .+)$/, "Private AI Design$1"],
+  [/^Design VDS Networking and Load Balancing — depth to be confirmed$/, "VDS Networking and Load Balancing Design"],
+  [/^Design VDS Networking and Load Balancing( — Tier .+)$/, "VDS Networking and Load Balancing Design$1"],
+  [/^Design vSphere Hardening, Access, and Application Security — depth to be confirmed$/, "vSphere Hardening and Access Design"],
+  [/^Design vSphere Hardening, Access, and Application Security( — Tier .+)$/, "vSphere Hardening and Access Design$1"],
+  [/^Design Efficiency, Memory Tiering, and Sizing — depth to be confirmed$/, "Efficiency and Memory Tiering Design"],
+  [/^Design Efficiency, Memory Tiering, and Sizing( — Tier .+)$/, "Efficiency and Memory Tiering Design$1"],
+  // Stage names that read as plain work rather than instructions.
+  [/^Hardware Compatibility Confirmed$/, "Hardware Compatibility Sign-Off"],
+  [/^Collect Missing HCL Evidence and Confirm Path$/, "Close HCL Evidence Gaps"],
+  [/^Remediate and Verify HCL Exceptions$/, "Fix HCL Exceptions"],
+  [/^Procure Replacement Hardware or Approve Greenfield Path$/, "Replacement Hardware or Greenfield Decision"],
+  [/^Provision and Validate Greenfield Hardware Baseline$/, "Greenfield Hardware Setup"],
+  [/^Delivery Governance and Value Tracking$/, "Governance and Value Reviews"],
+  [/^Maintain Design Authority and Entitlement Governance$/, "Design Authority and Entitlement Tracking"],
+  [/^Prepare Operating Model, Skills, and Runbooks for Implementation$/, "Team and Operating Model Readiness"],
+  [/^Approve the VCF Adoption Pathway and Execution Funding$/, "Pathway and Funding Approval"],
+  [/^Approve Implementation Funding and Delivery Window$/, "Funding and Delivery Window Approval"],
+  [/^Platform Operating Model and Lifecycle Adoption$/, "Operating Model and Lifecycle"],
+  [/^VCF Networking and NSX Lifecycle Progression$/, "NSX Lifecycle and Growth"],
+  [/^Validate Handover, Service Acceptance, and Ongoing Lifecycle$/, "Handover and Service Acceptance"],
+  [/^Confirm VCF Requirements and Constraints$/, "VCF Requirements"],
+  [/^Confirm VVF Requirements and Constraints$/, "VVF Requirements"],
+  [/^Confirm Upgrade Requirements and Constraints$/, "Upgrade Requirements"],
+  [/^Confirm VVF Upgrade Requirements and Constraints$/, "Upgrade Requirements"],
+  [/^Confirm Convergence Requirements and Constraints$/, "Convergence Requirements"],
+  [/^Confirm VVF Convergence Requirements and Blockers$/, "Convergence Requirements"],
+  [/^Confirm Workload-Domain Import Requirements$/, "Import Requirements"],
+  [/^Confirm Greenfield Requirements, Funding, and Constraints$/, "Greenfield Requirements and Funding"],
+  [/^Confirm Greenfield VVF Requirements, Funding, and Constraints$/, "Greenfield Requirements and Funding"],
+  [/^Select VCF Adoption Path and Record Decisions$/, "Choose the Adoption Path"],
+  [/^Select VVF Adoption Path and Record Decisions$/, "Choose the Adoption Path"],
+  [/^Design VCF 9\.1 Target State and Record Decisions$/, "VCF 9.1 Target-State Design"],
+  [/^Design VVF 9 Target State and Record Decisions$/, "VVF 9 Target-State Design"],
+  [/^Design VCF Target State and Record Decisions$/, "VCF Target-State Design"],
+  [/^Design VVF Target State and Record Decisions$/, "VVF Target-State Design"],
+  [/^Classify Estate Cohorts and Delivery Constraints$/, "Group the Estate into Cohorts"],
+  [/^Approve the Cohort Pathway Decision Register$/, "Agree a Path for Each Cohort"],
+  [/^Design Logical and Physical VCF Architecture$/, "Logical and Physical Design"],
+  [/^Design Logical and Physical VVF Architecture$/, "Logical and Physical Design"],
+  [/^Design Management Domain, Platform, and Prerequisites$/, "Management Domain Design"],
+  [/^Design vCenter, VCF Operations, Storage, and Prerequisites$/, "vCenter and VCF Operations Design"],
+  [/^Design the VCF Management Domain Target State$/, "Management Domain Design"],
+  [/^Design the VVF Target State$/, "VVF Target-State Design"],
+  [/^Design Greenfield VCF Target State and Bill of Materials$/, "Greenfield Design and Bill of Materials"],
+  [/^Design Greenfield VVF Target State and Bill of Materials$/, "Greenfield Design and Bill of Materials"],
+  [/^Design Workload-Domain Segmentation and Import$/, "Workload Domain Import Design"],
+  [/^Design Upgrade Runbook, Validation, and Change Windows$/, "Upgrade Runbook and Change Windows"],
+  [/^Design the VVF Upgrade Runbook, Validation, and Change Windows$/, "Upgrade Runbook and Change Windows"],
+  [/^Design the Convergence Runbook and Validation Plan$/, "Convergence Runbook"],
+  [/^Design the VVF Convergence Runbook and Validation Plan$/, "Convergence Runbook"],
+  [/^Design Import, Rollback, and Validation Runbook$/, "Import and Rollback Runbook"],
+  [/^Design Workload Migration and Cutover Waves$/, "Migration and Cutover Plan"],
+  [/^Design Integrated Migration, Cutover, and Validation Waves$/, "Migration Wave Plan"],
+  [/^Design Implementation Runbook and Acceptance Plan$/, "Implementation Runbook and Acceptance Plan"],
+  [/^Prepare Supported Estate for In-Place Upgrade$/, "Upgrade Preparation"],
+  [/^Prepare Supported Estate for the VVF Upgrade$/, "Upgrade Preparation"],
+  [/^Execute Approved In-Place Upgrade and Validation Waves$/, "In-Place Upgrade Waves"],
+  [/^Execute Approved VVF Upgrade and Validation Waves$/, "In-Place Upgrade Waves"],
+  [/^Bring the Upgraded Platform Under VCF Management$/, "Bring Under VCF Management"],
+  [/^Operate the Upgraded Platform Through VCF Operations$/, "Run the Platform in VCF Operations"],
+  [/^Converge Existing vCenter into the VCF Management Domain$/, "Converge vCenter into VCF"],
+  [/^Converge Existing vCenter into VVF$/, "Converge vCenter into VVF"],
+  [/^Validate Destination VCF Foundation for Import$/, "Ready the VCF Foundation for Import"],
+  [/^Import Existing vCenter as a VCF Workload Domain$/, "Import vCenter as a Workload Domain"],
+  [/^Deploy and Validate the Greenfield VCF Foundation$/, "Greenfield VCF Foundation Build"],
+  [/^Deploy and Validate the Greenfield VVF Foundation$/, "Greenfield VVF Foundation Build"],
+  [/^Execute Approved Workload Migration and Cutover Waves$/, "Workload Migration and Cutover"],
+  [/^Establish the Shared VCF Foundation for Approved Cohorts$/, "Shared VCF Foundation Build"],
+  [/^Execute Approved Multi-Path VCF Adoption Waves$/, "Cohort Migration Waves"],
+  [/^Create and Validate the Initial VCF Workload Domain$/, "First Workload Domain"],
+  [/^Configure Workload Clusters, vLCM Images, and Storage$/, "Workload Clusters and vLCM Images"],
+  [/^Register VCF Operations and Activate Subscription Licensing$/, "VCF Operations Licensing"],
+  [/^Deploy VCF Operations Health, Logs, and Diagnostics$/, "Health, Logs, and Diagnostics"],
+  [/^Publish Operational Dashboards and Service Measures$/, "Dashboards and Service Measures"],
+  [/^Baseline Capacity and Cost Visibility$/, "Capacity and Cost Visibility"],
+  [/^Configure VCF Lifecycle, Certificates, and Change Controls$/, "Lifecycle and Change Control"],
+  [/^Configure vLCM Image Lifecycle and Change Controls$/, "vLCM Lifecycle and Change Control"],
+  [/^Implement Identity, Credential, and Certificate Operations$/, "Credential and Certificate Operations"],
+  [/^Integrate Events with Incident and Escalation Workflows$/, "Event-to-Incident Integration"],
+  [/^Launch a Governed VM Self-Service Catalog$/, "VM Self-Service Catalog"],
+  [/^Build Infrastructure-as-Code Blueprints and Release Controls$/, "Infrastructure-as-Code Blueprints"],
+  [/^Implement Day-2 Remediation and Maintenance Automation$/, "Day-2 Automation"],
+  [/^Configure Tenant, Quota, and Policy Governance$/, "Tenant and Quota Governance"],
+  [/^Onboard the First Application Team to the Platform$/, "First App Team Onboarding"],
+  [/^Enable Data Services Manager Database Self-Service$/, "Database Self-Service with Data Services Manager"],
+  [/^Implement Physical Fabric, VLAN, and MTU Prerequisites$/, "Physical Network Prerequisites"],
+  [/^Implement Approved VCF Networking and NSX Design$/, "NSX Build-Out"],
+  [/^Deploy NSX Edge Cluster and North-South Routing$/, "NSX Edges and Routing"],
+  [/^Roll Out NSX Overlay Transport and Host Connectivity$/, "NSX Overlay Rollout"],
+  [/^Enable VCF VPCs and Transit Gateway Connectivity$/, "VCF VPCs and Transit Gateway"],
+  [/^Deploy Avi Load Balancer and Application Ingress$/, "Avi Load Balancing and Ingress"],
+  [/^Handover VCF Networking and NSX Operations$/, "NSX Operations Handover"],
+  [/^Deploy the vDefend Security Services Platform$/, "vDefend Security Services Platform"],
+  [/^Implement Segmentation and Security Policy$/, "Segmentation Rollout"],
+  [/^Implement Identity and RBAC Controls$/, "Identity and Access Controls"],
+  [/^Apply Hardening and Compliance Controls$/, "Hardening and Compliance"],
+  [/^Enable vDefend Distributed IDS\/IPS$/, "vDefend Distributed IDS/IPS"],
+  [/^Enable vDefend Malware Prevention and Sandboxing$/, "vDefend Malware Prevention"],
+  [/^Implement Identity-Aware Firewall Rules$/, "Identity-Aware Firewall Rules"],
+  [/^Enable Security Intelligence and Traffic Visualization$/, "Security Intelligence and Traffic Views"],
+  [/^Enable Avi Web Application Firewall$/, "Avi Web Application Firewall"],
+  [/^Implement Recovery Architecture$/, "Recovery Services Build"],
+  [/^Execute Recovery Exercise and Runbook Validation$/, "Recovery Exercise"],
+  [/^Implement On-Premises Cyber Recovery Environment$/, "Cyber Recovery Vault"],
+  [/^Implement Cloud Cyber Recovery with VMware Live Recovery$/, "Cloud Cyber Recovery (VMware Live Recovery)"],
+  [/^Create Workload Domain and Enable Supervisor$/, "Enable the VKS Supervisor"],
+  [/^Operationalize Kubernetes Platform Services$/, "Kubernetes Platform Operations"],
+  [/^Onboard Developer Experience Guardrails$/, "Developer Guardrails"],
+  [/^Implement AI Capacity and GPU Enablement$/, "GPU Capacity for AI"],
+  [/^Apply Private AI Guardrails$/, "Private AI Guardrails"],
+  [/^Onboard the First Private AI Pilot$/, "First Private AI Pilot"],
+  [/^Operationalize Platform Lifecycle and Service Health$/, "Platform Lifecycle and Service Health"],
+  [/^Enable Automation and Self-Service$/, "Automation and Self-Service"],
+  [/^Enable Kubernetes \/ Supervisor Services$/, "Kubernetes Supervisor Services"],
+  [/^Prepare Private AI \/ GPU Platform Enablement$/, "Private AI and GPU Platform"],
+  [/^Implement vSphere Hardening and Access Controls$/, "vSphere Hardening and Access Controls"],
+  [/^Implement Security and Segmentation Controls$/, "Security and Segmentation Controls"],
+  [/^Implement Resilience, DR, and Cyber-Recovery Controls$/, "Resilience, DR, and Cyber Recovery"],
+  [/^Execute Approved VCF Pathway and Controlled Delivery Waves$/, "VCF Delivery Waves"],
+  [/^Deploy Approved Greenfield VCF Foundation and Migrate Workloads$/, "Greenfield VCF Build and Migration"],
+  [/^Deploy Approved VCF Foundation and Converge Workloads$/, "VCF Foundation Build and Workload Convergence"],
+  [/^Issue VCF Target-State Design and Implementation Runbook$/, "VCF Target-State Design and Implementation Runbook"],
 ];
 
 /**
  * Brings a hand-edited plan's generated wording up to date without touching the planner's work: positions,
  * renamed labels, and added or removed activities stay as they are. Only the start conditions, outcomes, and
- * prerequisite links of activities the generator still produces are refreshed, plus the old HCL gate name.
+ * prerequisite links of activities the generator still produces are refreshed, plus older generated stage names.
  */
 function withRefreshedActivityDetails(timeline: Timeline, sources: Timeline[], withinEntitlement: boolean): Timeline {
   const details = new Map<string, TimelineBar>();
@@ -3274,7 +3427,8 @@ function withRefreshedActivityDetails(timeline: Timeline, sources: Timeline[], w
     lanes: timeline.lanes.map(lane => ({
       ...lane,
       bars: lane.bars.map(activity => {
-        const label = LEGACY_GENERATED_LABELS.find(([pattern]) => pattern.test(activity.label))?.[1] ?? activity.label;
+        const legacy = LEGACY_GENERATED_LABELS.find(([pattern]) => pattern.test(activity.label));
+        const label = legacy ? activity.label.replace(legacy[0], legacy[1]) : activity.label;
         const source = details.get(activity.id);
         if (!source) return label === activity.label ? activity : { ...activity, label };
         const dependsOn = text(source.dependsOn);
