@@ -168,9 +168,8 @@ html,body{margin:0;background:#fff;color:var(--ink);font:12.5px/1.5 -apple-syste
 .strip{display:flex;justify-content:space-between;align-items:center;border-top:4px solid var(--red);padding:6px 0 8px;border-bottom:1px solid var(--line);margin-bottom:12px;font-size:8.5px;color:var(--muted);-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .strip .logo{width:.45in;color:var(--red);vertical-align:middle;margin-right:8px}
 .legendrow{font-size:8px;color:var(--gray);padding-top:8px;border-top:1px solid var(--line);margin-top:12px}
-.band{background:var(--dark);color:#fff;padding:16px 20px;border-radius:3px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.band h1{margin:0 0 6px;font-size:19px}
-.band p{margin:0;font-size:12px;color:#d6dae2}
+.title{margin:6px 0 4px;font-size:22px;font-weight:900;letter-spacing:-.01em;color:var(--ink)}
+.lead-in{margin:0 0 4px;font-size:12.5px;color:var(--slate)}
 .pills{font-size:10.5px;color:var(--slate);padding:9px 2px;border-bottom:2px solid var(--red)}
 .pills b{color:var(--ink)}
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-top:0;margin-bottom:6px}
@@ -261,7 +260,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ? `<div class="kpi"><div class="v">${esc(money(fields.entitlementAmount))}</div><div class="l">${esc(platform.split(" ")[0])} Services Entitlement</div><div class="sub">${burndown ? `${hours(burndown.entitledHours)} hours · ` : ""}${termStart && termEnd ? `${esc(shortDate(termStart))} – ${esc(shortDate(termEnd))}` : ""}</div></div>`
     : `<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">No entitlement booked yet</div></div>`;
   const kpis = burndown
-    ? `${valueTile}<div class="kpi"><div class="v">${hours(burndown.remainingHours)} hrs</div><div class="l">Hours Remaining</div><div class="sub">${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} hours delivered${report.entitlement.consumedAsOf ? ` (as of ${esc(shortDate(report.entitlement.consumedAsOf))})` : ""}</div></div><div class="kpi"><div class="v">${burndown.daysToExpiry} days</div><div class="l">Days to Expiry</div><div class="sub">Expires ${esc(shortDate(burndown.termEnd))}${burndown.extended ? " · extension approved" : " · no extension recorded"}</div></div><div class="kpi"><div class="v">${burndown.expiryPace} hrs/wk</div><div class="l">Required Weekly Pace</div><div class="sub">To consume by expiry · ~${burndown.expiryPaceFte} FTE from ${esc(shortDate(burndown.asOf))}</div></div>`
+    ? `${valueTile}<div class="kpi"><div class="v">${hours(burndown.remainingHours)} hrs</div><div class="l">Hours Remaining</div><div class="sub">${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} hours delivered${report.entitlement.consumedAsOf ? ` (as of ${esc(shortDate(report.entitlement.consumedAsOf))})` : ""}</div></div><div class="kpi"><div class="v">${burndown.daysToExpiry} days</div><div class="l">Days to Expiry</div><div class="sub">Expires ${esc(shortDate(burndown.termEnd))}</div></div><div class="kpi"><div class="v">${burndown.expiryPace} hrs/wk</div><div class="l">Required Weekly Pace</div><div class="sub">To consume by expiry · ~${burndown.expiryPaceFte} FTE from ${esc(shortDate(burndown.asOf))}</div></div>`
     : `${valueTile}<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">${effort.source === "assignments" ? "Signed resource assignments" : "Estimated from the plan"}</div></div><div class="kpi"><div class="v">${esc(termEnd ? shortDate(termEnd) : shortDate(items.at(-1)?.end ?? asOf))}</div><div class="l">${termEnd ? "Delivery Window Ends" : "Planned Completion"}</div><div class="sub">No consumption data yet</div></div><div class="kpi"><div class="v">${esc(platform)}</div><div class="l">Target Platform</div><div class="sub">${esc(plan.label)}</div></div>`;
 
   // ---- Executive summary
@@ -356,8 +355,8 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ? `${hours(burndown.remainingHours)} hours remain and the entitlement expires on <b>${esc(longDate(burndown.termEnd))}</b>. Unconsumed hours are not refunded. The entitlement funds the one-time work: ${funds}. That requires about ${burndown.expiryPace} hours of delivery per week from today.`
     : `${funds.charAt(0).toUpperCase()}${funds.slice(1)}. Unconsumed entitlement hours are not refunded once an entitlement is booked.`;
   const heard = report.whatWeHeard.length ? `<h3>What we heard, and what we have built to</h3>${table(["Component", `${customer} Position`, "Where It Lands in This Plan"], report.whatWeHeard.map(item => [esc(item.component), esc(item.customerPosition), esc(item.whereItLands)]))}` : "";
-  const problems = report.problems.length ? `<h3>The problems worth solving first</h3><ul>${report.problems.map(item => `<li><b>${esc(item.problem)}</b>${item.addressedBy ? ` — ${esc(item.addressedBy)}` : ""}</li>`).join("")}</ul>` : "";
-  const questions = report.openQuestions.length ? `<h3>The open questions</h3>${table(["Question", "Why we are asking now"], report.openQuestions.map(item => [esc(item.question), esc(item.whyNow)]))}` : "";
+  const problems = report.problems.length ? `<h3>Customer Problems</h3><ul>${report.problems.map(item => `<li><b>${esc(item.problem)}</b>${item.addressedBy ? ` — ${esc(item.addressedBy)}` : ""}</li>`).join("")}</ul>` : "";
+  const questions = report.openQuestions.length ? `<h3>Open Questions</h3>${table(["Question", "Why we are asking now"], report.openQuestions.map(item => [esc(item.question), esc(item.whyNow)]))}` : "";
   const technical = report.technicalItems.map(item => `<li>${esc(item.item)}${item.reference ? ` — ${esc(item.reference)}` : ""}</li>`);
   const capitalized = (value: string) => (value ? value.charAt(0).toUpperCase() + value.slice(1) : value);
   const constraints = report.constraints.map(item => ({ ...item, imposedBy: capitalized(item.imposedBy) || "Calendar" }));
@@ -370,8 +369,9 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const sources = report.sources.length ? report.sources.map(item => `${esc(item.title)}${item.date ? ` (${esc(shortDate(item.date))})` : ""}`).join("; ") : "Engagement plan and RVTools estate data";
 
   const body = `
-<div class="band"><h1>${esc(platform.startsWith("VVF") ? "VMware vSphere Foundation" : "VMware Cloud Foundation")} Adoption — ${esc(customer)}</h1><p>Prepared for ${esc(customer)} | ${esc(stamp)}<br>${lead}</p></div>
-<div class="pills">Customer: <b>${esc(customer)}${fields.location ? ` — ${esc(fields.location)}` : ""}</b> • Platform: <b>${esc(platform)}</b>${termStart && termEnd ? ` • Entitlement: <b>${esc(shortDate(termStart))} – ${esc(shortDate(termEnd))}</b>` : ""} • Path: <b>${esc(plan.label)}</b> • Delivery: <b>${esc(deliveryModel)}</b></div>
+<h1 class="title">${esc(platform.startsWith("VVF") ? "VMware vSphere Foundation" : "VMware Cloud Foundation")} Adoption — ${esc(customer)}</h1>
+<p class="lead-in">${lead}</p>
+<div class="pills">Platform: <b>${esc(platform)}</b> • Path: <b>${esc(plan.label)}</b> • Delivery: <b>${esc(deliveryModel)}</b></div>
 <div class="kpis">${kpis}</div>
 
 <h2>Executive Summary</h2>
@@ -387,7 +387,6 @@ ${followOnSection}
 ${customerEffortSection}
 ${personnel}
 
-<div class="closer">Make a clean ${esc(platform.split(" ")[0])} foundation happen.</div>
 ${profileRows.length ? `<h2>${esc(platform.split(" ")[0])} Design Profile</h2>
 <p class="lead">Architecture summarized across the standard design profile categories. Decisions marked for design are set in the design sessions.</p>
 ${table(["Profile Category", `${customer} Design Decision`], profileRows)}` : ""}
@@ -405,22 +404,20 @@ ${milestones}
 ${forward ? `<h3>Forward Delivery Plan</h3>${forward}` : ""}
 ${timelines.notional}
 
-<div class="closer">Make a proven, repeatable move happen.</div>
 <h2>Adoption Plan &amp; Recommendation</h2>
 <p class="lead">What we recommend ${esc(customer)} does with the remaining entitlement, and why the sequence is what it is.</p>
-<h3>The short version</h3>
+<h3>Summary</h3>
 <p>${shortVersion}</p>
 ${heard}
 ${problems}
 ${questions}
 ${technical.length ? `<h3>The technical items to confirm early</h3><ul>${technical.join("")}</ul>` : ""}
 ${pulledIn.length ? `<p class="lead">Prerequisites included so selected outcomes can be delivered: ${esc(pulledIn.map(item => `${planOutcomeLabel(item.key)} (for ${item.requiredBy.map(key => planOutcomeLabel(key)).join(", ")})`).join("; "))}.</p>` : ""}
-${constraints.length ? `<h3>Why the order is not negotiable</h3>
+${constraints.length ? `<h3>Sequencing Constraints</h3>
 ${table(["Constraint", "Imposed By", "Effect on the Sequence"], constraints.map(item => [esc(item.constraint), esc(item.imposedBy), esc(item.effect)]))}` : ""}
-${asks.length ? `<h3>What this asks of ${esc(customer)}'s team</h3><ul>${asks.map(item => `<li>${item}</li>`).join("")}</ul>` : ""}
+${asks.length ? `<h3>Customer Team Commitments</h3><ul>${asks.map(item => `<li>${item}</li>`).join("")}</ul>` : ""}
 ${openItems}
 
-<div class="closer">Make full use of the entitlement happen.</div>
 <div class="closer red">Make Amazing Happen.</div>
 ${report.revision ? `<div class="revision">Revision: ${esc(report.revision)}</div>` : ""}
 <p class="sources">Prepared by CDW Consulting Solution Architecture for ${esc(customer)} — Functional Consumption Plan (Condensed) · ${esc(stamp)}. Sources: ${sources}.</p>`;

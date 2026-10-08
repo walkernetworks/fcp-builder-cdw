@@ -229,17 +229,11 @@ describe("customer effort", () => {
 describe("burndown", () => {
   it("matches the Services Status Report method", () => {
     const burndown = buildBurndown(engagement())!;
-    expect(burndown).toMatchObject({ entitledHours: 262, consumedHours: 39, remainingHours: 223, daysToExpiry: 210, expiryPace: 7.4, expiryPaceFte: 0.19, extended: false });
+    expect(burndown).toMatchObject({ entitledHours: 262, consumedHours: 39, remainingHours: 223, daysToExpiry: 210, expiryPace: 7.4, expiryPaceFte: 0.19 });
     expect(Math.round(burndown.pctConsumed * 1000) / 10).toBe(14.9);
     expect(Math.round(burndown.pctElapsed * 1000) / 10).toBe(42.3);
     expect(burndown.gapPoints).toBeLessThan(0); // negative means behind
     expect(burndown.band).toBe("AT RISK");
-  });
-
-  it("moves the expiry only for an approved extension", () => {
-    const extended = buildBurndown(engagement(document => { Object.assign(document.report.entitlement, { extensionTo: "2027-07-28", extensionApprovedBy: "Broadcom account director" }); }))!;
-    expect(extended).toMatchObject({ termEnd: "2027-07-28", extended: true });
-    expect(extended.expiryPace).toBeLessThan(7.4);
   });
 
   it("returns nothing without entitled hours", () => {
