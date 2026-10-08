@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { capabilitySchema, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, type EngagementDocument, type MinimalFields } from "./fcp";
+import { capabilitySchema, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, type Capability, type EngagementDocument, type MinimalFields } from "./fcp";
 import { createFieldCoercer, deepMerge, isPlainObject, type Json, type JsonObject } from "./fieldCoercion";
 import { ADD_ON_OUTCOMES, canonicalAddOn, discoveryAnswersSchema, reportSchema, type ReportContent } from "./report";
 
@@ -80,6 +80,19 @@ function textList(value: unknown, label: string, warnings: string[]): string[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) { warnings.push(`${label}: expected a list; ignored`); return []; }
   return value.flatMap(item => (typeof item === "string" && item.trim() ? [item.trim()] : []));
+}
+
+/** Brief outcome areas: the adoption-detail list each fills, and the priority it turns on. */
+const OUTCOME_AREAS: Array<[string, Capability]> = [
+  ["operations", "operations"], ["automation", "automation"], ["networking", "networking"], ["security", "security"],
+  ["resilience", "resilience"], ["kubernetes", "kubernetes"], ["privateAi", "private-ai"],
+];
+
+/** The allowed focus values for one adoption-detail list. */
+function focusOptions(detailKey: string): string[] {
+  let schema: any = (minimalFieldsSchema.shape.adoptionDetails.shape as Record<string, unknown>)[detailKey];
+  while (schema && !(schema instanceof z.ZodArray)) schema = schema._def?.innerType;
+  return schema ? [...schema.element.options] : [];
 }
 
 const reportShape = reportSchema.shape;
@@ -178,6 +191,17 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
       addOn.focus.forEach(focus => focusAdditions[addOn.detailKey!].add(focus));
     }
     if (key === "hcx") changes.push("discovery.addOnsConsidered: HCX is planned through the migration waves; no separate outcome added");
+  }
+  // Outcomes the customer asked for in each area build the adoption plan; they add to what is already selected.
+  const outcomesWanted = isPlainObject(discovery.outcomesWanted) ? discovery.outcomesWanted : {};
+  for (const [detailKey, capability] of OUTCOME_AREAS) {
+    const allowed = focusOptions(detailKey);
+    for (const value of textList(outcomesWanted[detailKey], `discovery.outcomesWanted.${detailKey}`, warnings)) {
+      const focus = value.toLowerCase().replace(/[\s_]+/g, "-");
+      if (!allowed.includes(focus)) { warnings.push(`discovery.outcomesWanted.${detailKey}: "${value}" is not a recognized outcome; ignored`); continue; }
+      priorities.add(capability);
+      (focusAdditions[detailKey] ??= new Set()).add(focus);
+    }
   }
   const declined = textList(discovery.notInterested, "discovery.notInterested", warnings);
   const declinedPriorities = new Set(declined.flatMap(value => {

@@ -57,7 +57,7 @@ export function CustomerBriefImport({ document, onChange }: Props) {
       await navigator.clipboard.writeText(copilotBriefPrompt(document));
       const name = document.fields.customerName.trim();
       if (name) toast.success(`Copilot prompt for ${name} copied. Paste it into Copilot (add any notes it cannot find), then save the JSON it returns and choose it here.`);
-      else toast.warning("Prompt copied without a customer name. Add the customer on the Engagement step so the prompt names them, or tell Copilot who the brief is for.");
+      else toast.warning("Prompt copied without a customer name. Enter the customer name below so the prompt names them, or tell Copilot who the brief is for.");
     } catch {
       toast.error("The prompt could not be copied; copy it from docs/COPILOT-BRIEF-PROMPT.md instead.");
     }
@@ -75,8 +75,8 @@ export function CustomerBriefImport({ document, onChange }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Customer brief</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Import the Copilot customer brief</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">A JSON file of call notes and questionnaire answers. Planning answers fill the plan inputs; what we heard, open questions, personnel and milestones fill the Condensed FCP. Read in this browser; nothing is applied until you confirm.</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Start from a Copilot brief</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Copilot reads the call notes, emails and questionnaire answers and returns one JSON brief. It fills the engagement details, the adoption plan (pathway, outcomes and depth), and the Condensed FCP content: what we heard, open questions, personnel and milestones. Read in this browser; nothing is applied until you confirm.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void copyPrompt()}><ClipboardCopy className="size-4" /> Copy Copilot prompt</Button>
