@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "asOf": "2026-09-30",
-  "customer": { "name": "Acme Health", "location": "Reno, NV", "segment": "Commercial" },
+  "customer": { "name": "Acme Health", "location": "Reno, NV", "segment": "Commercial", "accountId": null, "primaryContact": null },
   "contacts": {
     "customer": [{ "name": "Pat Rivera", "role": "Platform lead" }, { "name": "Sam Lee", "role": "Network" }],
     "cdw": [{ "name": "Jordan Blake", "role": "Architect" }, { "name": "Casey Morgan", "role": "Sr. Consultant" }],
@@ -13,9 +13,9 @@
     "termStart": "2026-04-29",
     "termEnd": "2027-04-28",
     "hoursConsumed": 39,
-    "consumedAsOf": "2026-09-03",
-    "extension": { "to": null, "approvedBy": null }
+    "consumedAsOf": "2026-09-03"
   },
+  "schedule": { "projectStart": null, "implementationStart": null, "targetComplete": null, "hardwareLeadWeeks": null, "calendarConstraints": null },
   "deliveryModel": "CDW + Broadcom",
   "headline": "Amazing happens when two people run a platform that runs itself and recovers on cue.",
   "discovery": {
@@ -36,7 +36,11 @@
     "consolidatedDomain": true,
     "newHostsPurchased": { "management": 0, "workload": 8 },
     "addOnsConsidered": ["VCF Operations", "VMware Live Recovery"],
-    "notInterested": ["Kubernetes", "Private AI", "HCX"]
+    "notInterested": ["Kubernetes", "Private AI", "HCX"],
+    "sitePrerequisitesOpen": [],
+    "componentDepth": { "operations": null, "automation": null, "networkingSecurity": null, "kubernetesAi": null, "efficiency": null },
+    "industry": null, "targetRelease": null, "planningNotes": null,
+    "outcomesWanted": { "operations": ["observability"], "automation": [], "networking": [], "security": [], "resilience": ["recovery-architecture"], "kubernetes": [], "privateAi": [] }
   },
   "situation": ["DR site being built: 8 new hosts and a NetApp array fed by SnapMirror; recovery time objective and orchestration not yet defined"],
   "designProfile": {

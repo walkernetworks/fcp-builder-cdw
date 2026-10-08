@@ -1,9 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { applyCustomerBrief, type BriefImportResult } from "@shared/briefImport";
-import { COPILOT_BRIEF_PROMPT } from "@shared/briefPrompt";
+import { Textarea } from "@/components/ui/textarea";
+import { applyCustomerBrief, parseBriefText, type BriefImportResult } from "@shared/briefImport";
+import { copilotBriefPrompt } from "@shared/briefPrompt";
 import type { EngagementDocument } from "@shared/fcp";
-import { ClipboardCopy, FileJson, Upload } from "lucide-react";
+import { ClipboardCopy, ClipboardPaste, FileJson, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -27,12 +28,13 @@ function List({ title, items, tone }: { title: string; items: string[]; tone: "s
 export function CustomerBriefImport({ document, onChange }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<{ filename: string; result: BriefImportResult } | null>(null);
+  const [pasted, setPasted] = useState<string | null>(null);
   const report = document.report;
 
   const readFile = async (file: File | undefined) => {
     if (!file) return;
     try {
-      const parsed = JSON.parse(await file.text());
+      const parsed = parseBriefText(await file.text());
       setPreview({ filename: file.name, result: applyCustomerBrief(document, parsed) });
     } catch {
       toast.error(`${file.name} is not valid JSON.`);
@@ -41,10 +43,21 @@ export function CustomerBriefImport({ document, onChange }: Props) {
     }
   };
 
+  const readPasted = () => {
+    try {
+      setPreview({ filename: "Pasted from Copilot", result: applyCustomerBrief(document, parseBriefText(pasted ?? "")) });
+      setPasted(null);
+    } catch {
+      toast.error("No JSON found in the pasted text. Paste Copilot's whole reply or just its JSON block.");
+    }
+  };
+
   const copyPrompt = async () => {
     try {
-      await navigator.clipboard.writeText(COPILOT_BRIEF_PROMPT);
-      toast.success("Copilot prompt copied. Paste it into Copilot with the customer's notes, then save the JSON it returns and choose it here.");
+      await navigator.clipboard.writeText(copilotBriefPrompt(document));
+      const name = document.fields.customerName.trim();
+      if (name) toast.success(`Copilot prompt for ${name} copied. Paste it into Copilot (add any notes it cannot find), then save the JSON it returns and choose it here.`);
+      else toast.warning("Prompt copied without a customer name. Enter the customer name below so the prompt names them, or tell Copilot who the brief is for.");
     } catch {
       toast.error("The prompt could not be copied; copy it from docs/COPILOT-BRIEF-PROMPT.md instead.");
     }
@@ -62,11 +75,12 @@ export function CustomerBriefImport({ document, onChange }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Customer brief</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Import the Copilot customer brief</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">A JSON file of call notes and questionnaire answers. Planning answers fill the plan inputs; what we heard, open questions, personnel and milestones fill the Condensed FCP. Read in this browser; nothing is applied until you confirm.</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Start from a Copilot brief</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Copilot reads the call notes, emails and questionnaire answers and returns one JSON brief. It fills the engagement details, the adoption plan (pathway, outcomes and depth), and the Condensed FCP content: what we heard, open questions, personnel and milestones. Read in this browser; nothing is applied until you confirm.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void copyPrompt()}><ClipboardCopy className="size-4" /> Copy Copilot prompt</Button>
+          <Button variant="outline" onClick={() => setPasted("")}><ClipboardPaste className="size-4" /> Paste brief JSON</Button>
           <Button variant="outline" onClick={() => inputRef.current?.click()}><Upload className="size-4" /> Choose brief JSON</Button>
         </div>
       </div>
@@ -80,6 +94,20 @@ export function CustomerBriefImport({ document, onChange }: Props) {
           </p>
         </div>
       )}
+
+      <Dialog open={pasted !== null} onOpenChange={open => { if (!open) setPasted(null); }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Paste the brief from Copilot</DialogTitle>
+            <DialogDescription>Paste Copilot's reply: the JSON alone, its json code block, or the whole reply. It is read in this browser, and you review the changes before anything is applied.</DialogDescription>
+          </DialogHeader>
+          <Textarea className="h-[50vh] font-mono text-xs" value={pasted ?? ""} onChange={event => setPasted(event.target.value)} spellCheck={false} placeholder='{ "schemaVersion": 1, ... }' />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPasted(null)}>Cancel</Button>
+            <Button onClick={readPasted} disabled={!pasted?.trim()}>Review brief</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={preview !== null} onOpenChange={open => { if (!open) setPreview(null); }}>
         <DialogContent className="max-w-2xl">

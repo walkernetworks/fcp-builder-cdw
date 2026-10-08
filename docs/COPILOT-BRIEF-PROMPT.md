@@ -1,9 +1,11 @@
 # Copilot prompt for the customer brief
 
-Paste this into Microsoft Copilot together with the customer's meeting notes, transcripts and questionnaire answers (or ask Copilot to find them). Save the JSON it returns as a `.json` file and import it on the **FCP Report Content** step (**Import the Copilot customer brief**). Every field can also be filled or corrected by hand on that step. The same text is available from the app's **Copy Copilot prompt** button; the source is `shared/briefPrompt.ts`.
+Use **Copy Copilot prompt** on the Engagement step rather than this page: it copies this prompt with a header for the open engagement (the customer name, where Copilot should search, and what the app already holds) and the customer name filled into the JSON. Copilot returns the brief as a downloadable `<customer>-brief.json` file, or as a json code block. Import it with **Choose brief JSON**, or paste the reply with **Paste brief JSON**; either way you review the changes before anything is applied. `pnpm brief:check <file>` checks a saved brief locally and prints only its shape, with values masked.
+
+The generic prompt, without the engagement header:
 
 ```text
-You are preparing a customer brief for a CDW VMware Cloud Foundation (VCF) engagement. Read the meeting notes, transcripts, emails and questionnaire answers I give you (or that you can find for this customer) and return ONE JSON object in exactly the shape below. Return only the JSON, with no commentary before or after it.
+You are preparing a customer brief for a CDW VMware Cloud Foundation (VCF) engagement. Read the meeting notes, transcripts, emails and questionnaire answers I give you (or that you can find for this customer) and return ONE JSON object in exactly the shape below. Deliver it as a downloadable file named customer-brief.json that contains only the JSON. If you cannot create a file, reply with only one ```json code block and no commentary before or after it.
 
 Rules
 - Use only facts that are stated in the sources. Never estimate or invent numbers, dates, hours, core counts or names.
@@ -15,14 +17,28 @@ Rules
 - Write to the customer, not about them ("Keep the existing array", not "the customer refuses to change storage").
 
 What each section is for
-- customer, contacts: who the customer is and who is involved (customer, CDW, Broadcom), with roles.
-- entitlement: the services entitlement. value is the entitlement dollar value (the only dollar figure the report may show). hours is the entitled hours from the signed resource assignments. hoursConsumed and consumedAsOf come from the latest consumption record. extension only when an extension is APPROVED: give both the new date and who approved it, otherwise leave both null.
+- customer, contacts: who the customer is and who is involved (customer, CDW, Broadcom), with roles. primaryContact is the customer's main contact as "Name, role"; accountId is the CDW account number when it appears in the sources.
+- schedule: dates the customer named. projectStart is when they want the engagement to start, implementationStart when build work can begin, targetComplete their target finish. hardwareLeadWeeks is the lead time for new hardware in weeks. calendarConstraints is one or two sentences on freezes, site dates, fiscal deadlines or other limits on timing.
+- entitlement: the services entitlement. value is the entitlement dollar value (the only dollar figure the report may show). hours is the entitled hours from the signed resource assignments. hoursConsumed and consumedAsOf come from the latest consumption record.
 - discovery: answers to the discovery questionnaire (RVTools export, licensing and core counts, current versions, Enhanced Linked Mode, networking, vCenters, data centers, edge sites, ESX hosts, storage, hardware vendor, container platform, network details, jumbo frames, security tooling, DR, backup, hyperscalers, new hardware purchased, planned path, consolidated domain, add-ons considered or not wanted).
   - plannedPath: one of greenfield, in-place, converge, import-workload-domain, hybrid, design-only, undecided.
   - platformEdition: vcf or vvf (VMware vSphere Foundation) when the customer is licensed for VVF only.
   - storage: vsan, nfs-v3, vmfs-fc, other-existing, or undecided.
   - consolidatedDomain: true for one consolidated management and workload domain (usually 10 hosts or fewer).
   - assessmentCompleted: true when a VCF assessment or compatibility assessment has already been delivered.
+  - sitePrerequisitesOpen: site work the customer still has to finish before the build, using these names: dns-ntp, ip-pools, tor-switch-design. Leave [] when they are ready or nobody said.
+  - componentDepth: how far the customer wants each component taken, for operations, automation, networkingSecurity, kubernetesAi and efficiency: tier-1 (deployed), tier-2 (operationalized: run day to day with processes and ownership), tier-3 (business consumption: offered to the business as a service). null when not discussed.
+  - industry: one of general-enterprise, healthcare-life-sciences, financial-services-insurance, manufacturing-retail-distributed, public-sector-education, digital-products-technology.
+  - targetRelease: the ESXi release the platform should land on, "ESXi 9.0" or "ESXi 9.1", when stated.
+  - planningNotes: anything else that shapes the plan and has no other field, in one to three sentences.
+  - outcomesWanted: what the customer wants from each area once the platform is in, which builds the adoption plan. List only outcomes the customer asked for or agreed to, using these names:
+    - operations: lifecycle (lifecycle, certificates, passwords), observability (health, logs, diagnostics), capacity-cost (capacity and cost visibility, chargeback), custom-dashboards, identity-certificates (identity and privileged-access runbooks), event-integration (alerts into incident or ticketing tools)
+    - automation: vm-self-service (VM catalog), infrastructure-as-code, day-2-automation (remediation and maintenance), governance (projects, quotas, policy), application-provisioning, data-services (database self-service)
+    - networking: physical-fabric (VLANs, MTU, routing handoffs), edge-cluster-routing (NSX Edges, north-south routing), overlay-transport (NSX overlay segments), vpc, load-balancing (Avi), network-operations (network ownership and handover)
+    - security: segmentation (microsegmentation), identity-rbac (roles and access), hardening-compliance, ids-ips, malware-prevention, identity-firewall, security-intelligence, waf
+    - resilience: recovery-architecture (disaster recovery design), recovery-exercises (DR tests and runbooks), cyber-recovery (on-premises clean room), cloud-cyber-recovery
+    - kubernetes: workload-domains (Supervisor and VKS), platform-operations (cluster lifecycle), developer-experience (developer access and guardrails)
+    - privateAi: gpu-capacity, ai-guardrails (data and model governance), pilot-onboarding (a first AI pilot)
   - addOnsConsidered and notInterested use these names: vcf-operations, chargeback, vcf-automation, vcf-networks, nsx, vpc, vdefend, atp, acc, vks, private-ai, live-recovery, cloud-cyber-recovery, dsm, avi, hcx, memory-tiering.
 - situation: short factual bullets about the estate and context that RVTools cannot show (new sites being built, hardware refreshes, deadlines).
 - designProfile: one sentence each on the decided or proposed design for consumption, physical site configuration, availability, isolation (networking), recoverability, and expansion.
@@ -46,9 +62,10 @@ JSON shape (fill every key; keep the structure exactly)
 {
   "schemaVersion": 1,
   "asOf": "YYYY-MM-DD",
-  "customer": { "name": null, "location": null, "segment": "commercial | public-sector | null" },
+  "customer": { "name": null, "location": null, "segment": "commercial | public-sector | null", "accountId": null, "primaryContact": null },
   "contacts": { "customer": [{ "name": "", "role": "" }], "cdw": [], "broadcom": [] },
-  "entitlement": { "value": null, "hours": null, "termStart": null, "termEnd": null, "hoursConsumed": null, "consumedAsOf": null, "extension": { "to": null, "approvedBy": null } },
+  "entitlement": { "value": null, "hours": null, "termStart": null, "termEnd": null, "hoursConsumed": null, "consumedAsOf": null },
+  "schedule": { "projectStart": null, "implementationStart": null, "targetComplete": null, "hardwareLeadWeeks": null, "calendarConstraints": null },
   "deliveryModel": "CDW + Broadcom",
   "headline": null,
   "discovery": {
@@ -58,7 +75,10 @@ JSON shape (fill every key; keep the structure exactly)
     "securityTooling": null, "drSolution": null, "backup": null, "hyperscalers": [],
     "newHostsPurchased": { "management": null, "workload": null },
     "plannedPath": null, "platformEdition": null, "consolidatedDomain": null,
-    "addOnsConsidered": [], "notInterested": []
+    "addOnsConsidered": [], "notInterested": [],
+    "sitePrerequisitesOpen": [], "componentDepth": { "operations": null, "automation": null, "networkingSecurity": null, "kubernetesAi": null, "efficiency": null },
+    "industry": null, "targetRelease": null, "planningNotes": null,
+    "outcomesWanted": { "operations": [], "automation": [], "networking": [], "security": [], "resilience": [], "kubernetes": [], "privateAi": [] }
   },
   "situation": [],
   "designProfile": { "consumption": null, "physicalSite": null, "availability": null, "isolation": null, "recoverability": null, "expansion": null },

@@ -22,7 +22,7 @@ describe("customer brief import", () => {
   it("stores narrative content in the report", () => {
     const { report } = applyCustomerBrief(createDefaultDocument(), example()).document;
     expect(report.briefVersion).toBe(1);
-    expect(report.entitlement).toMatchObject({ hours: 262, hoursConsumed: 39, termEnd: "2027-04-28", extensionTo: null });
+    expect(report.entitlement).toMatchObject({ hours: 262, hoursConsumed: 39, termEnd: "2027-04-28" });
     expect(report.discovery).toMatchObject({ assessmentCompleted: true, esxHosts: 14, enhancedLinkedMode: false });
     expect(report.declined).toEqual(["Kubernetes", "Private AI", "HCX"]);
     expect(report.whatWeHeard).toHaveLength(2);
@@ -39,6 +39,18 @@ describe("customer brief import", () => {
     expect(fields.priorities).toContain("operations");
   });
 
+  it("builds the adoption plan from the outcomes the customer wants", () => {
+    const brief = example();
+    brief.discovery.outcomesWanted = { operations: ["capacity-cost", "Custom Dashboards"], automation: [], networking: [], security: ["segmentation", "firewall everything"], resilience: ["recovery-exercises"], kubernetes: [], privateAi: [] };
+    const result = applyCustomerBrief(createDefaultDocument(), brief);
+    const { fields } = result.document;
+    expect(fields.priorities).toEqual(expect.arrayContaining(["operations", "security", "resilience"]));
+    expect(fields.adoptionDetails.operations).toEqual(expect.arrayContaining(["capacity-cost", "custom-dashboards"]));
+    expect(fields.adoptionDetails.security).toContain("segmentation");
+    expect(fields.adoptionDetails.resilience).toContain("recovery-exercises");
+    expect(result.warnings).toContain('discovery.outcomesWanted.security: "firewall everything" is not a recognized outcome; ignored');
+  });
+
   it("drops a bad row with a warning instead of failing the import", () => {
     const brief = example();
     brief.milestonesToDate.push({ date: "September", event: "Kickoff" });
@@ -46,14 +58,6 @@ describe("customer brief import", () => {
     expect(result.ok).toBe(true);
     expect(result.document.report.milestonesToDate).toHaveLength(2);
     expect(result.warnings.some(warning => warning.startsWith("milestonesToDate[2]"))).toBe(true);
-  });
-
-  it("keeps the original expiry unless an extension names its approver", () => {
-    const brief = example();
-    brief.entitlement.extension = { to: "2027-07-28", approvedBy: null };
-    const result = applyCustomerBrief(createDefaultDocument(), brief);
-    expect(result.document.report.entitlement.extensionTo).toBeNull();
-    expect(result.warnings.join(" ")).toContain("needs both the new date and who approved it");
   });
 
   it("lists missing facts that become open items", () => {
@@ -119,5 +123,65 @@ describe("brief import with hand-entered content", () => {
     expect(report.situation).toEqual(["Typed by hand"]);
     expect(report.openItems).toEqual([{ item: "Hand-entered item", gates: "Build", owner: "Planner" }]);
     expect(report.whatWeHeard).toHaveLength(2);
+  });
+});
+
+describe("Copilot prompt for an engagement", () => {
+  it("names the customer, lists what the app holds, and pre-fills the name", async () => {
+    const { copilotBriefPrompt, COPILOT_BRIEF_PROMPT } = await import("../shared/briefPrompt");
+    const document = createDefaultDocument();
+    expect(copilotBriefPrompt({ ...document, fields: { ...document.fields, customerName: "" } })).toBe(COPILOT_BRIEF_PROMPT);
+    const prompt = copilotBriefPrompt({ ...document, fields: { ...document.fields, customerName: "Acme \"North\" Health", entitlementAmount: 79403, entitlementStart: "2026-04-29" } });
+    expect(prompt.startsWith("This brief is for Acme \"North\" Health.")).toBe(true);
+    expect(prompt).toContain("- Entitlement value: $79,403");
+    expect(prompt).toContain('"customer": { "name": "Acme \\"North\\" Health",');
+    expect(prompt).toContain(COPILOT_BRIEF_PROMPT.slice(0, 60));
+    for (const internal of ["rate", "PO value", "segment:"]) expect(prompt.slice(0, prompt.indexOf("You are preparing"))).not.toContain(internal);
+  });
+});
+
+describe("reading Copilot's reply", () => {
+  it("accepts plain JSON, a fenced json block, or JSON with text around it", async () => {
+    const { parseBriefText } = await import("../shared/briefImport");
+    const brief = { schemaVersion: 1, customer: { name: "Acme Health" } };
+    const json = JSON.stringify(brief, null, 2);
+    expect(parseBriefText(json)).toEqual(brief);
+    expect(parseBriefText(`Here is the brief:\n\`\`\`json\n${json}\n\`\`\`\nLet me know.`)).toEqual(brief);
+    expect(parseBriefText(`Sure! ${json} Hope that helps.`)).toEqual(brief);
+    expect(() => parseBriefText("No brief here.")).toThrow();
+  });
+
+  it("asks Copilot for a downloadable file named after the customer", async () => {
+    const { copilotBriefPrompt, COPILOT_BRIEF_PROMPT } = await import("../shared/briefPrompt");
+    const document = createDefaultDocument();
+    expect(COPILOT_BRIEF_PROMPT).toContain("downloadable file named customer-brief.json");
+    expect(copilotBriefPrompt({ ...document, fields: { ...document.fields, customerName: "Acme Health, Inc." } })).toContain("downloadable file named Acme-Health-Inc-brief.json");
+  });
+});
+
+describe("plan inputs from the brief", () => {
+  it("fills schedule, contact, site prerequisites, component depth, industry and release, mapping loose wording", () => {
+    const base = createDefaultDocument();
+    const result = applyCustomerBrief({ ...base, fields: { ...base.fields, primaryContact: "" } }, {
+      schemaVersion: 1,
+      customer: { name: "Acme Health", accountId: 12345 },
+      contacts: { customer: [{ name: "Pat Rivera", role: "Infrastructure Manager" }] },
+      schedule: { projectStart: "2026-11-02", implementationStart: "2027-01-04", targetComplete: "next spring", hardwareLeadWeeks: "10 weeks", calendarConstraints: "Change freeze Dec 15 to Jan 2." },
+      discovery: { sitePrerequisitesOpen: ["DNS", "top of rack"], componentDepth: { operations: "Operationalized", automation: "tier 1", networkingSecurity: null }, industry: "Healthcare", targetRelease: "9.1", planningNotes: "Two sites share one change board." },
+    });
+    expect(result.ok).toBe(true);
+    const { fields } = result.document;
+    expect(fields).toMatchObject({ accountId: "12345", primaryContact: "Pat Rivera, Infrastructure Manager", plannedProjectStart: "2026-11-02", plannedImplementationStart: "2027-01-04", hardwareLeadWeeks: 10, timelineNotes: "Change freeze Dec 15 to Jan 2.", compatibilityTargetRelease: "ESXi 9.1" });
+    expect(fields.adoptionDetails).toMatchObject({ softPrerequisites: ["dns-ntp", "tor-switch-design"], industryTemplate: "healthcare-life-sciences", notes: "Two sites share one change board." });
+    expect(fields.adoptionDetails.componentDepths).toMatchObject({ operations: "tier-2", automation: "tier-1", networkingSecurity: base.fields.adoptionDetails.componentDepths.networkingSecurity });
+    expect(result.warnings.join(" ")).toContain("schedule.targetComplete");
+    expect(fields.targetComplete).toBe(base.fields.targetComplete);
+  });
+
+  it("keeps a primary contact the planner already entered unless the brief names one", () => {
+    const base = createDefaultDocument();
+    const document = { ...base, fields: { ...base.fields, primaryContact: "Set by hand" } };
+    expect(applyCustomerBrief(document, { schemaVersion: 1, contacts: { customer: [{ name: "Pat Rivera", role: "" }] } }).document.fields.primaryContact).toBe("Set by hand");
+    expect(applyCustomerBrief(document, { schemaVersion: 1, customer: { primaryContact: "Sam Lee, CIO" } }).document.fields.primaryContact).toBe("Sam Lee, CIO");
   });
 });

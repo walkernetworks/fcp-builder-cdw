@@ -25,9 +25,6 @@ export const reportEntitlementSchema = z.object({
   termEnd: optionalDate,
   hoursConsumed: optionalNumber,
   consumedAsOf: optionalDate,
-  /** An expiry moves only with both a new date and the approver recorded. */
-  extensionTo: optionalDate,
-  extensionApprovedBy: optionalText,
 });
 
 export const discoveryAnswersSchema = z.object({
@@ -91,7 +88,7 @@ export const reportSchema = z.object({
   deliveryModel: optionalText,
   headline: optionalText,
   contacts: z.object({ customer: z.array(personSchema).default([]), cdw: z.array(personSchema).default([]), broadcom: z.array(personSchema).default([]) }).default({ customer: [], cdw: [], broadcom: [] }),
-  entitlement: reportEntitlementSchema.default({ hours: null, termStart: null, termEnd: null, hoursConsumed: null, consumedAsOf: null, extensionTo: null, extensionApprovedBy: null }),
+  entitlement: reportEntitlementSchema.default({ hours: null, termStart: null, termEnd: null, hoursConsumed: null, consumedAsOf: null }),
   discovery: discoveryAnswersSchema.default(() => discoveryAnswersSchema.parse({})),
   /** Outcomes the customer said they are not interested in, in their words (for example "Kubernetes"). */
   declined: z.array(z.string().max(200)).default([]),

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { capabilitySchema, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, type EngagementDocument, type MinimalFields } from "./fcp";
+import { capabilitySchema, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, type Capability, type EngagementDocument, type MinimalFields } from "./fcp";
 import { createFieldCoercer, deepMerge, isPlainObject, type Json, type JsonObject } from "./fieldCoercion";
 import { ADD_ON_OUTCOMES, canonicalAddOn, discoveryAnswersSchema, reportSchema, type ReportContent } from "./report";
 
@@ -82,6 +82,19 @@ function textList(value: unknown, label: string, warnings: string[]): string[] {
   return value.flatMap(item => (typeof item === "string" && item.trim() ? [item.trim()] : []));
 }
 
+/** Brief outcome areas: the adoption-detail list each fills, and the priority it turns on. */
+const OUTCOME_AREAS: Array<[string, Capability]> = [
+  ["operations", "operations"], ["automation", "automation"], ["networking", "networking"], ["security", "security"],
+  ["resilience", "resilience"], ["kubernetes", "kubernetes"], ["privateAi", "private-ai"],
+];
+
+/** The allowed focus values for one adoption-detail list. */
+function focusOptions(detailKey: string): string[] {
+  let schema: any = (minimalFieldsSchema.shape.adoptionDetails.shape as Record<string, unknown>)[detailKey];
+  while (schema && !(schema instanceof z.ZodArray)) schema = schema._def?.innerType;
+  return schema ? [...schema.element.options] : [];
+}
+
 const reportShape = reportSchema.shape;
 const element = <T extends z.ZodType>(schema: T) => (schema as any).unwrap().element as z.ZodType<any>;
 
@@ -90,6 +103,20 @@ const element = <T extends z.ZodType>(schema: T) => (schema as any).unwrap().ele
  * fields, narrative content goes to the report. RVTools inventory and hand-edited timelines are never
  * changed; a generated plan is rebuilt from the new fields.
  */
+/**
+ * Reads a brief from Copilot's reply: plain JSON, a fenced json code block, or JSON with text around it.
+ * Throws when no JSON object can be read.
+ */
+export function parseBriefText(text: string): unknown {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
+  const body = (fenced ? fenced[1] : text).trim();
+  try { return JSON.parse(body); } catch {
+    const start = body.indexOf("{"), end = body.lastIndexOf("}");
+    if (start === -1 || end <= start) throw new Error("No JSON object found.");
+    return JSON.parse(body.slice(start, end + 1));
+  }
+}
+
 export function applyCustomerBrief(document: EngagementDocument, raw: unknown): BriefImportResult {
   const fail = (error: string): BriefImportResult => ({ ok: false, document, changes: [], coerced: [], warnings: [], missing: [], error });
   if (!isPlainObject(raw)) return fail("The file is not a JSON object.");
@@ -110,12 +137,37 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   if (typeof customer.name === "string") fieldsPatch.customerName = customer.name;
   if (typeof customer.location === "string") fieldsPatch.location = customer.location;
   if (typeof customer.segment === "string") fieldsPatch.customerSegment = customer.segment;
+  if (typeof customer.accountId === "string" || typeof customer.accountId === "number") fieldsPatch.accountId = String(customer.accountId);
+  // The primary contact, or else the first customer contact, as "Name, role".
+  const customerContacts = isPlainObject(brief.contacts) && Array.isArray(brief.contacts.customer) ? brief.contacts.customer.filter(isPlainObject) : [];
+  const firstContact = customerContacts.find(item => typeof item.name === "string" && item.name.trim()) as { name: string; role?: string } | undefined;
+  if (typeof customer.primaryContact === "string") fieldsPatch.primaryContact = customer.primaryContact;
+  else if (firstContact && !document.fields.primaryContact) fieldsPatch.primaryContact = [firstContact.name, firstContact.role].filter(Boolean).join(", ");
+
+  // Schedule: dates the customer named, hardware lead time, and calendar constraints.
+  const schedule = isPlainObject(brief.schedule) ? brief.schedule : {};
+  const date = (key: string, target: string) => {
+    const value = schedule[key];
+    if (typeof value !== "string") return;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) fieldsPatch[target] = value;
+    else warnings.push(`schedule.${key}: ${JSON.stringify(value)} is not a YYYY-MM-DD date; ignored`);
+  };
+  date("projectStart", "plannedProjectStart");
+  date("implementationStart", "plannedImplementationStart");
+  date("targetComplete", "targetComplete");
+  if (schedule.hardwareLeadWeeks !== undefined) fieldsPatch.hardwareLeadWeeks = schedule.hardwareLeadWeeks;
+  if (typeof schedule.calendarConstraints === "string") fieldsPatch.timelineNotes = schedule.calendarConstraints;
+  if (discovery.targetRelease !== undefined) fieldsPatch.compatibilityTargetRelease = discovery.targetRelease;
   if (typeof entitlement.value === "number") fieldsPatch.entitlementAmount = entitlement.value;
   if (typeof entitlement.termStart === "string") fieldsPatch.entitlementStart = entitlement.termStart;
   if (typeof discovery.plannedPath === "string") detailsPatch.upgradePath = discovery.plannedPath;
   if (typeof discovery.platformEdition === "string") detailsPatch.platformEdition = discovery.platformEdition;
   if (typeof discovery.consolidatedDomain === "boolean") detailsPatch.domainTopology = discovery.consolidatedDomain ? "consolidated" : "standard";
   if (typeof discovery.storage === "string") detailsPatch.principalStorage = discovery.storage;
+  if (Array.isArray(discovery.sitePrerequisitesOpen)) detailsPatch.softPrerequisites = discovery.sitePrerequisitesOpen;
+  if (isPlainObject(discovery.componentDepth)) detailsPatch.componentDepths = discovery.componentDepth;
+  if (typeof discovery.industry === "string") detailsPatch.industryTemplate = discovery.industry;
+  if (typeof discovery.planningNotes === "string") detailsPatch.notes = discovery.planningNotes;
   const newHosts = isPlainObject(discovery.newHostsPurchased) ? discovery.newHostsPurchased : {};
   if ((Number(newHosts.management) || 0) + (Number(newHosts.workload) || 0) > 0) fieldsPatch.hardwareAvailability = "new";
 
@@ -139,6 +191,17 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
       addOn.focus.forEach(focus => focusAdditions[addOn.detailKey!].add(focus));
     }
     if (key === "hcx") changes.push("discovery.addOnsConsidered: HCX is planned through the migration waves; no separate outcome added");
+  }
+  // Outcomes the customer asked for in each area build the adoption plan; they add to what is already selected.
+  const outcomesWanted = isPlainObject(discovery.outcomesWanted) ? discovery.outcomesWanted : {};
+  for (const [detailKey, capability] of OUTCOME_AREAS) {
+    const allowed = focusOptions(detailKey);
+    for (const value of textList(outcomesWanted[detailKey], `discovery.outcomesWanted.${detailKey}`, warnings)) {
+      const focus = value.toLowerCase().replace(/[\s_]+/g, "-");
+      if (!allowed.includes(focus)) { warnings.push(`discovery.outcomesWanted.${detailKey}: "${value}" is not a recognized outcome; ignored`); continue; }
+      priorities.add(capability);
+      (focusAdditions[detailKey] ??= new Set()).add(focus);
+    }
   }
   const declined = textList(discovery.notInterested, "discovery.notInterested", warnings);
   const declinedPriorities = new Set(declined.flatMap(value => {
@@ -171,7 +234,6 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   const prior = document.report;
   const discoveryCheck = discoveryAnswersSchema.safeParse({ ...prior.discovery, ...Object.fromEntries(Object.entries(discovery).filter(([key]) => key in discoveryAnswersSchema.shape)) });
   if (!discoveryCheck.success) warnings.push(...discoveryCheck.error.issues.map(issue => `discovery.${issue.path.join(".")}: ${issue.message}; kept the previous value`));
-  const extension = isPlainObject(entitlement.extension) ? entitlement.extension : {};
   const contacts = isPlainObject(brief.contacts) ? brief.contacts : {};
   const person = element(reportShape.contacts.unwrap().shape.customer);
   const designProfile = reportShape.designProfile.unwrap().safeParse({ ...prior.designProfile, ...(isPlainObject(brief.designProfile) ? brief.designProfile : {}) });
@@ -196,8 +258,6 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
       termEnd: typeof entitlement.termEnd === "string" ? entitlement.termEnd : prior.entitlement.termEnd,
       hoursConsumed: typeof entitlement.hoursConsumed === "number" ? entitlement.hoursConsumed : prior.entitlement.hoursConsumed,
       consumedAsOf: typeof entitlement.consumedAsOf === "string" ? entitlement.consumedAsOf : prior.entitlement.consumedAsOf,
-      extensionTo: null,
-      extensionApprovedBy: null,
     }),
     discovery: discoveryCheck.success ? discoveryCheck.data : prior.discovery,
     declined: keep(declined, prior.declined),
@@ -220,13 +280,6 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
     hiddenGenerated: prior.hiddenGenerated,
     workPackageHours: prior.workPackageHours,
   };
-
-  // An expiry moves only when both the new date and the approver are recorded.
-  if (typeof extension.to === "string" && typeof extension.approvedBy === "string") {
-    report.entitlement = { ...report.entitlement, extensionTo: extension.to, extensionApprovedBy: extension.approvedBy };
-  } else if (extension.to || extension.approvedBy) {
-    warnings.push("entitlement.extension: an extension needs both the new date and who approved it; the original expiry stands");
-  }
 
   const reportCount = (label: string, count: number) => { if (count) changes.push(`report.${label}: ${count} item${count === 1 ? "" : "s"}`); };
   reportCount("situation", report.situation.length);
