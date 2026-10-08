@@ -393,7 +393,7 @@ describe("who owns a work package", () => {
     const document = planned();
     document.report.workPackageHours = [settings("bar-workload-domain", "checkpoint"), settings("bar-management-domain", "customer")];
     const html = renderTimeline(withOwnership(document).adoptionTimeline);
-    expect(html).toMatch(/justify-self:end;border-radius:999px;[^"]*" title="[^"]*Create and Validate the Initial VCF Workload Domain/);
+    expect(html).toMatch(/justify-self:end;border-radius:999px;[^"]*" title="[^"]*First Workload Domain/);
     expect(html).toMatch(/border-style:dashed" title="Customer-owned · /);
   });
 });
