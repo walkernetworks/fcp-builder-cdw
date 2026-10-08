@@ -144,13 +144,13 @@ const depthOptions: Array<{ value: AdoptionDepth; label: string; description: st
 ];
 
 const componentDesignTitles: Record<Capability, string> = {
-  operations: "Design VCF Operations Adoption",
-  automation: "Design VCF Automation and Self-Service",
-  networking: "Design VCF Networking and NSX",
-  security: "Design vDefend and Security Policy",
-  resilience: "Design Recovery and Resilience Services",
-  kubernetes: "Design VKS Platform and Developer Consumption",
-  "private-ai": "Design Private AI Platform and Governance",
+  operations: "VCF Operations Design",
+  automation: "Automation and Self-Service Design",
+  networking: "NSX Networking Design",
+  security: "vDefend Security Design",
+  resilience: "Recovery and Resilience Design",
+  kubernetes: "VKS Platform Design",
+  "private-ai": "Private AI Design",
 };
 
 const softPrerequisiteOptions = [

@@ -201,7 +201,7 @@ describe("discovery answers", () => {
 describe("gates on the timeline", () => {
   it("draws a gate as a marker in its last window, not as a span", async () => {
     const { renderTimeline } = await import("./timelineHtml");
-    const timeline = { ...engagement().adoptionTimeline, cadence: "month" as const, columns: ["Jan", "Feb", "Mar"], lanes: [{ id: "lane", category: "Program Management & Governance" as const, workstreamType: "Governance" as const, label: "Governance", bars: [{ id: "bar-hcl-gate", startCol: 1, endCol: 3, color: "green" as const, label: "Hardware Compatibility Confirmed", milestone: true, deferred: false }] }] };
+    const timeline = { ...engagement().adoptionTimeline, cadence: "month" as const, columns: ["Jan", "Feb", "Mar"], lanes: [{ id: "lane", category: "Program Management & Governance" as const, workstreamType: "Governance" as const, label: "Governance", bars: [{ id: "bar-hcl-gate", startCol: 1, endCol: 3, color: "green" as const, label: "Hardware Compatibility Sign-Off", milestone: true, deferred: false }] }] };
     const html = renderTimeline(timeline as any);
     expect(html).toMatch(/grid-column:2\/3;[^"]*justify-self:end/);
   });
