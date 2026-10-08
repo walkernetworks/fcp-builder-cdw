@@ -107,8 +107,8 @@ describe("outcome prerequisites", () => {
     expect(ssp.startCol).toBeGreaterThanOrEqual(nsx.endCol);
     expect(malware.startCol).toBeGreaterThanOrEqual(Math.max(segmentation.endCol, ssp.endCol));
     expect(malware.prerequisites).toEqual(expect.arrayContaining(["bar-security-segmentation", "bar-security-services-platform"]));
-    expect(segmentation.outcome).toContain("Included as a prerequisite for: Enable vDefend Malware Prevention and Sandboxing");
-    expect(malware.dependsOn).toMatch(/^Starts after: Create and Validate the Initial VCF Workload Domain; Implement Segmentation and Security Policy; Deploy the vDefend Security Services Platform\. Requires the vDefend Firewall with ATP add-on/);
+    expect(segmentation.outcome).toContain("Included as a prerequisite for: vDefend Malware Prevention");
+    expect(malware.dependsOn).toMatch(/^Starts after: First Workload Domain; Segmentation Rollout; vDefend Security Services Platform\. Requires the vDefend Firewall with ATP add-on/);
     expect(document.rationale).toContain("Prerequisites were added so selected outcomes can be delivered");
     expect(validateTimelineSequence(timeline)).toEqual([]);
   });
@@ -249,7 +249,7 @@ describe("VMware vSphere Foundation plans", () => {
     );
     const timeline = document.twoYearPlan;
     const ids = activities(timeline).map(item => item.id);
-    expect(activity(timeline, "bar-vvf-foundation").label).toBe("Deploy and Validate the Greenfield VVF Foundation");
+    expect(activity(timeline, "bar-vvf-foundation").label).toBe("Greenfield VVF Foundation Build");
     expect(ids).toContain("bar-vvf-workload-clusters");
     expect(ids).not.toContain("bar-workload-domain");
     expect(ids.some(id => id === "bar-vcf-networking-nsx" || id === "bar-security-segmentation" || id.startsWith("bar-cloud-automation"))).toBe(false);
@@ -262,14 +262,14 @@ describe("VMware vSphere Foundation plans", () => {
 
   it("falls back to a pathway decision when a VCF-only pathway is selected", () => {
     const timeline = vvf({ upgradePath: "import-workload-domain" }).adoptionTimeline;
-    expect(activity(timeline, "bar-playbook-design-pathway-decision").label).toBe("Select VVF Adoption Path and Record Decisions");
+    expect(activity(timeline, "bar-playbook-design-pathway-decision").label).toBe("Choose the Adoption Path");
     expect(activities(timeline).some(item => item.id === "bar-import-workload-domain")).toBe(false);
   });
 
   it("uses the VVF upgrade order and operations adoption for an in-place upgrade", () => {
     const timeline = vvf({ upgradePath: "in-place" }).adoptionTimeline;
     expect(activity(timeline, "bar-playbook-design-upgrade-runbook").outcome).toContain("VCF Operations and cloud proxy, vCenter and management services");
-    expect(activity(timeline, "bar-playbook-adoption-vvf-operations").label).toBe("Operate the Upgraded Platform Through VCF Operations");
+    expect(activity(timeline, "bar-playbook-adoption-vvf-operations").label).toBe("Run the Platform in VCF Operations");
   });
 });
 
@@ -325,7 +325,7 @@ describe("loading saved plans", () => {
     const { migrateDocument } = await import("../shared/fcp");
     const document = plan({ upgradePath: "design-only" });
     const labels = activities(document.adoptionTimeline).map(item => item.label);
-    expect(labels).toEqual(expect.arrayContaining(["Design VCF Target State and Record Decisions", "Design Logical and Physical VCF Architecture", "Design Implementation Runbook and Acceptance Plan"]));
+    expect(labels).toEqual(expect.arrayContaining(["VCF Target-State Design", "Logical and Physical Design", "Implementation Runbook and Acceptance Plan"]));
     expect(labels.some(label => label.startsWith("Issue "))).toBe(false);
     // The decision register is design work, not governance.
     expect(document.adoptionTimeline.lanes.find(lane => lane.bars.some(item => item.id === "bar-playbook-design-decision-register"))?.category).toBe("Modernize Infrastructure");
@@ -336,7 +336,7 @@ describe("loading saved plans", () => {
     find("bar-playbook-design-decision-register").label = "Issue the VCF Decision Register";
     find("bar-playbook-design-logical-physical-design").label = "Our Own Design Name";
     const migrated = activities(migrateDocument(edited).adoptionTimeline);
-    expect(migrated.find(item => item.id === "bar-playbook-design-decision-register")?.label).toBe("Design VCF Target State and Record Decisions");
+    expect(migrated.find(item => item.id === "bar-playbook-design-decision-register")?.label).toBe("VCF Target-State Design");
     expect(migrated.find(item => item.id === "bar-playbook-design-logical-physical-design")?.label).toBe("Our Own Design Name");
   });
 
@@ -356,7 +356,29 @@ describe("loading saved plans", () => {
     expect(migrated.planAuthority).toBe("manual");
     expect(after.find(item => item.id === "bar-operations-lifecycle")).toMatchObject({ startCol: lifecycle.startCol, endCol: lifecycle.endCol, label: "Our Lifecycle Rollout" });
     expect(after.find(item => item.id === "bar-operations-lifecycle")?.dependsOn).toMatch(/^Starts after: /);
-    expect(after.find(item => item.id === "bar-hcl-gate")?.label).toBe("Hardware Compatibility Confirmed");
+    expect(after.find(item => item.id === "bar-hcl-gate")?.label).toBe("Hardware Compatibility Sign-Off");
     expect(after.find(item => item.id === "bar-1767225600000-mine")?.label).toBe("Customer steering committee");
+  });
+
+  it("renames older generated stage names on saved plans, dropping an undecided depth and keeping a committed tier", async () => {
+    const { migrateDocument } = await import("../shared/fcp");
+    const document = plan({ upgradePath: "greenfield", operations: ["observability"], resilience: ["recovery-architecture"] }, { priorities: ["operations", "resilience"] });
+    const edited = structuredClone(document);
+    edited.planAuthority = "manual";
+    const bars = activities(edited.adoptionTimeline);
+    const relabel = (id: string, label: string) => { bars.find(item => item.id === id)!.label = label; };
+    relabel("bar-platform-plan", "Month 1: Mobilize and Establish Delivery Baseline");
+    relabel("bar-playbook-design-target-state", "Design Greenfield VCF Target State and Bill of Materials");
+    relabel("bar-playbook-component-design-operations", "Design VCF Operations Adoption — depth to be confirmed");
+    relabel("bar-playbook-component-design-resilience", "Design Recovery and Resilience Services — Tier 2 · Operationalized");
+    relabel("bar-operations-observability", "Deploy VCF Operations Health, Logs, and Diagnostics");
+
+    const after = activities(migrateDocument(edited).adoptionTimeline);
+    const label = (id: string) => after.find(item => item.id === id)?.label;
+    expect(label("bar-platform-plan")).toBe("Month 1: Kickoff and Delivery Plan");
+    expect(label("bar-playbook-design-target-state")).toBe("Greenfield Design and Bill of Materials");
+    expect(label("bar-playbook-component-design-operations")).toBe("VCF Operations Design");
+    expect(label("bar-playbook-component-design-resilience")).toBe("Recovery and Resilience Design — Tier 2 · Operationalized");
+    expect(label("bar-operations-observability")).toBe("Health, Logs, and Diagnostics");
   });
 });
