@@ -286,9 +286,25 @@ describe("planner-adjusted hours", () => {
 });
 
 describe("entitlement budget limit", () => {
-  const planned = (value: number) => migrateDocument(engagement(document => {
+  const planned = (value: number, hours: number | null = null) => migrateDocument(engagement(document => {
     Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated", entitlementAmount: value });
+    document.report.entitlement.hours = hours;
   }));
+
+  it("squeezes the plan into the entitled hours, filling what is left with work that still fits", () => {
+    const loose = scopedEffortForDocument(planned(10_000_000));
+    const hours = Math.round(loose.totals.total * 0.85);
+    const document = planned(10_000_000, hours);
+    const effort = scopedEffortForDocument(document);
+    const moved = effort.workPackages.filter(row => row.deferred === "over budget");
+    expect(moved.length).toBeGreaterThan(0);
+    expect(effort.totals.total).toBeLessThanOrEqual(hours);
+    expect(moved.every(row => !/^bar-(platform-plan|playbook-design-|playbook-component-design-)/.test(row.id))).toBe(true);
+    // Nothing moved could come back: each would overrun the hours, or its prerequisite moved too.
+    const movedIds = new Set(moved.map(row => row.id));
+    const prerequisites = new Map(document.adoptionTimeline.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar.prerequisites ?? []]));
+    for (const row of moved) expect((prerequisites.get(row.id) ?? []).some(id => movedIds.has(id)) || effort.totals.total + row.followOn!.total > hours, row.id).toBe(true);
+  });
 
   it("moves the latest non-design work to the notional until the entitlement window fits the value", () => {
     const loose = scopedEffortForDocument(planned(10_000_000));
@@ -398,6 +414,7 @@ describe("pre-built hours for every option", () => {
     for (const value of values) options.push([`${capability}: ${value}`, document => { document.fields.priorities = [capability as never]; (document.fields.adoptionDetails[key] as string[]) = [value]; }]);
   }
   options.push(["efficiency design", document => { document.fields.adoptionDetails.componentDepths.efficiency = "tier-2"; }]);
+  options.push(["prior assessment", document => { document.report.discovery.assessmentCompleted = true; }]);
 
   it("gives every CDW work package hours, on every path, edition and selected option", () => {
     const gaps: string[] = [];
@@ -411,6 +428,7 @@ describe("pre-built hours for every option", () => {
           select(document);
           const planned = refreshDerivedDocument(document, { forceRebuild: true });
           planned.report.entitlement.hours = null;
+          planned.report.discovery.assessmentCompleted = document.report.discovery.assessmentCompleted;
           for (const row of buildScopedEffort(planned).workPackages) {
             if (row.note === "not in the scoped hours" || row.id.startsWith("line:")) gaps.push(`${platformEdition} ${upgradePath} ${name}: ${row.id}`);
           }
