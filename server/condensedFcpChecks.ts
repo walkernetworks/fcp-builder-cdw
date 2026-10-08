@@ -12,7 +12,7 @@ const SCRUB = [
   "AT RISK", "catch-up pace", "catch up pace", "risk band", "gap points", "pace gap", "shortfall", "headroom", "funded hours", "unfunded",
 ];
 // Design-led framing: never a readiness exercise.
-const VOCABULARY = /\b(readiness|workshops?|TRW)\b/i;
+export const VOCABULARY = /\b(readiness|workshops?|TRW)\b/i;
 // Sections with no captured content are left out, so only the sections the app always writes are mandatory.
 const REQUIRED = ["Executive Summary", "Scoped Effort", "Adoption Plan &amp; Recommendation", ">Summary</h3>"];
 const INTERNAL_PATHS = ["/Users/", "/home/", "drive_1", "sharepoint", "localhost", "127.0.0.1"];
