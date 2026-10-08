@@ -30,6 +30,14 @@ What each section is for
   - industry: one of general-enterprise, healthcare-life-sciences, financial-services-insurance, manufacturing-retail-distributed, public-sector-education, digital-products-technology.
   - targetRelease: the ESXi release the platform should land on, "ESXi 9.0" or "ESXi 9.1", when stated.
   - planningNotes: anything else that shapes the plan and has no other field, in one to three sentences.
+  - outcomesWanted: what the customer wants from each area once the platform is in, which builds the adoption plan. List only outcomes the customer asked for or agreed to, using these names:
+    - operations: lifecycle (lifecycle, certificates, passwords), observability (health, logs, diagnostics), capacity-cost (capacity and cost visibility, chargeback), custom-dashboards, identity-certificates (identity and privileged-access runbooks), event-integration (alerts into incident or ticketing tools)
+    - automation: vm-self-service (VM catalog), infrastructure-as-code, day-2-automation (remediation and maintenance), governance (projects, quotas, policy), application-provisioning, data-services (database self-service)
+    - networking: physical-fabric (VLANs, MTU, routing handoffs), edge-cluster-routing (NSX Edges, north-south routing), overlay-transport (NSX overlay segments), vpc, load-balancing (Avi), network-operations (network ownership and handover)
+    - security: segmentation (microsegmentation), identity-rbac (roles and access), hardening-compliance, ids-ips, malware-prevention, identity-firewall, security-intelligence, waf
+    - resilience: recovery-architecture (disaster recovery design), recovery-exercises (DR tests and runbooks), cyber-recovery (on-premises clean room), cloud-cyber-recovery
+    - kubernetes: workload-domains (Supervisor and VKS), platform-operations (cluster lifecycle), developer-experience (developer access and guardrails)
+    - privateAi: gpu-capacity, ai-guardrails (data and model governance), pilot-onboarding (a first AI pilot)
   - addOnsConsidered and notInterested use these names: vcf-operations, chargeback, vcf-automation, vcf-networks, nsx, vpc, vdefend, atp, acc, vks, private-ai, live-recovery, cloud-cyber-recovery, dsm, avi, hcx, memory-tiering.
 - situation: short factual bullets about the estate and context that RVTools cannot show (new sites being built, hardware refreshes, deadlines).
 - designProfile: one sentence each on the decided or proposed design for consumption, physical site configuration, availability, isolation (networking), recoverability, and expansion.
@@ -68,7 +76,8 @@ JSON shape (fill every key; keep the structure exactly)
     "plannedPath": null, "platformEdition": null, "consolidatedDomain": null,
     "addOnsConsidered": [], "notInterested": [],
     "sitePrerequisitesOpen": [], "componentDepth": { "operations": null, "automation": null, "networkingSecurity": null, "kubernetesAi": null, "efficiency": null },
-    "industry": null, "targetRelease": null, "planningNotes": null
+    "industry": null, "targetRelease": null, "planningNotes": null,
+    "outcomesWanted": { "operations": [], "automation": [], "networking": [], "security": [], "resilience": [], "kubernetes": [], "privateAi": [] }
   },
   "situation": [],
   "designProfile": { "consumption": null, "physicalSite": null, "availability": null, "isolation": null, "recoverability": null, "expansion": null },

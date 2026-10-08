@@ -39,7 +39,8 @@
     "notInterested": ["Kubernetes", "Private AI", "HCX"],
     "sitePrerequisitesOpen": [],
     "componentDepth": { "operations": null, "automation": null, "networkingSecurity": null, "kubernetesAi": null, "efficiency": null },
-    "industry": null, "targetRelease": null, "planningNotes": null
+    "industry": null, "targetRelease": null, "planningNotes": null,
+    "outcomesWanted": { "operations": ["observability"], "automation": [], "networking": [], "security": [], "resilience": ["recovery-architecture"], "kubernetes": [], "privateAi": [] }
   },
   "situation": ["DR site being built: 8 new hosts and a NetApp array fed by SnapMirror; recovery time objective and orchestration not yet defined"],
   "designProfile": {

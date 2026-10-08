@@ -39,6 +39,18 @@ describe("customer brief import", () => {
     expect(fields.priorities).toContain("operations");
   });
 
+  it("builds the adoption plan from the outcomes the customer wants", () => {
+    const brief = example();
+    brief.discovery.outcomesWanted = { operations: ["capacity-cost", "Custom Dashboards"], automation: [], networking: [], security: ["segmentation", "firewall everything"], resilience: ["recovery-exercises"], kubernetes: [], privateAi: [] };
+    const result = applyCustomerBrief(createDefaultDocument(), brief);
+    const { fields } = result.document;
+    expect(fields.priorities).toEqual(expect.arrayContaining(["operations", "security", "resilience"]));
+    expect(fields.adoptionDetails.operations).toEqual(expect.arrayContaining(["capacity-cost", "custom-dashboards"]));
+    expect(fields.adoptionDetails.security).toContain("segmentation");
+    expect(fields.adoptionDetails.resilience).toContain("recovery-exercises");
+    expect(result.warnings).toContain('discovery.outcomesWanted.security: "firewall everything" is not a recognized outcome; ignored');
+  });
+
   it("drops a bad row with a warning instead of failing the import", () => {
     const brief = example();
     brief.milestonesToDate.push({ date: "September", event: "Kickoff" });
