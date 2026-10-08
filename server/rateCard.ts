@@ -21,28 +21,44 @@ export function fundedHoursFromValue(value: number): number | null {
 const costOf = (roles: RoleHours) => roles.architect * RATE.architect + roles.srConsultant * RATE.srConsultant + roles.projectManager * RATE.projectManager;
 
 /**
- * Keeps the entitlement window within the entitlement value: while the plan costs more, the latest
- * automatically placed work moves to the Two-Year Notional, with everything that depends on it. Design work
- * and work the planner pinned to the entitlement never move; if they alone exceed the value the plan stays over.
+ * Squeezes as much of the plan into the entitlement as it can carry: while the plan costs more than the
+ * entitlement value, or needs more than the entitled hours, the latest automatically placed work moves to the
+ * Two-Year Notional, with everything that depends on it. Moved work then comes back, earliest first, wherever it
+ * still fits and its prerequisites stayed. Design and governance work and work the planner pinned to the
+ * entitlement never move; if they alone exceed the entitlement the plan stays over.
  */
 function withinBudget(document: EngagementDocument, effort: ScopedEffort, value: number): ScopedEffort {
-  if (!value || effort.source === "assignments") return effort;
+  const hours = document.report.entitlement.hours;
+  if ((!value && !hours) || effort.source === "assignments") return effort;
+  const bars = document.adoptionTimeline.lanes.flatMap(lane => lane.bars);
   const dependents = new Map<string, string[]>();
-  for (const bar of document.adoptionTimeline.lanes.flatMap(lane => lane.bars)) for (const prerequisite of bar.prerequisites ?? []) dependents.set(prerequisite, [...(dependents.get(prerequisite) ?? []), bar.id]);
+  for (const bar of bars) for (const prerequisite of bar.prerequisites ?? []) dependents.set(prerequisite, [...(dependents.get(prerequisite) ?? []), bar.id]);
+  const prerequisites = new Map(bars.map(bar => [bar.id, bar.prerequisites ?? []]));
   const rows = new Map(effort.workPackages.map(row => [row.id, row]));
   const movable = (id: string) => { const row = rows.get(id); return Boolean(row && row.total > 0 && !row.deferred && row.placement === "auto" && row.category && !isDesignWorkPackage(id)); };
   const candidates = effort.workPackages.filter(row => movable(row.id)).sort((left, right) => (right.start ?? "").localeCompare(left.start ?? "") || right.total - left.total);
   const moves = new Map<string, DeferralReason>();
   let cost = costOf(effort.totals);
+  let planned = effort.totals.total;
+  const fits = () => (!value || cost <= value) && (!hours || planned <= hours);
   const move = (id: string) => {
     if (moves.has(id) || !movable(id)) return;
     moves.set(id, "over budget");
     cost -= costOf(rows.get(id)!);
+    planned -= rows.get(id)!.total;
     for (const dependent of dependents.get(id) ?? []) move(dependent);
   };
   for (const candidate of candidates) {
-    if (cost <= value) break;
+    if (fits()) break;
     move(candidate.id);
+  }
+  // Fill what is left of the entitlement: bring moved work back, earliest first, where it fits.
+  for (const row of effort.workPackages.filter(item => moves.has(item.id)).sort((left, right) => (left.start ?? "").localeCompare(right.start ?? ""))) {
+    if ((prerequisites.get(row.id) ?? []).some(id => moves.has(id))) continue;
+    cost += costOf(row);
+    planned += row.total;
+    if (fits()) moves.delete(row.id);
+    else { cost -= costOf(row); planned -= row.total; }
   }
   return deferWorkPackages(effort, moves);
 }
