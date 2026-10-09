@@ -78,6 +78,7 @@ export type Pass1 = {
   /** PM hours per technical hour; a line's loaded hours are its technical hours x (1 + pmRatio). */
   pmRatio: number;
   assumptions: Assumption[];
+  inputs: ResolvedInputs;
 };
 
 const v = (coefficient: Coefficient) => coefficient.value;
@@ -515,7 +516,7 @@ export function scopeV2(document: EngagementDocument): Pass1 {
     const users = ASSUMPTION_USERS[item.key];
     return !users || users.some(code => present.has(code));
   });
-  return { path, edition, lines, technical, pm, pmFloorApplied: floor > share, pmRatio: technical ? pm / technical : 0, assumptions: relevant };
+  return { path, edition, lines, technical, pm, pmFloorApplied: floor > share, pmRatio: technical ? pm / technical : 0, assumptions: relevant, inputs: x };
 }
 
 /** The lines each defaulted input feeds; an assumption is listed only when one of them is in the plan. Inputs not listed here feed every plan. */
