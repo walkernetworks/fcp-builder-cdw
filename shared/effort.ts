@@ -1,7 +1,8 @@
 import { barWindow } from "./buildingBlocks";
 import { canonicalAddOn, completedReport } from "./report";
-import { BUILD_STAGE_WEIGHTS } from "./hoursConfig";
-import { lineRoles, scopeV2, type Pass1, type V2Code } from "./hoursV2";
+import { BUILD_STAGE_WEIGHTS, HOURS_V2 } from "./hoursConfig";
+import { lineRoles, loadedOf, scopeV2, type Pass1, type V2Code } from "./hoursV2";
+import { fitV2, type FitV2 } from "./hoursFit";
 import type { Timeline } from "./fcp";
 import { activityOwner, calculateEntitlementEndDate, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
@@ -66,6 +67,8 @@ export type EffortLine = {
   reduction?: "proving run" | "design only" | "one domain";
   /** v2: the line's hours by role, with its share of the engagement PM pool, for `base`. */
   roles?: RoleHours;
+  /** v2: the add-on's design share was placed on its own, so these hours are build only. */
+  skipDesignShare?: boolean;
 };
 
 export type RoleHours = { architect: number; srConsultant: number; projectManager: number };
@@ -133,6 +136,8 @@ export type ScopedEffort = {
     headroomHours: number;
     /** v2 only: the Pass 1 scope. */
     pass1?: Pass1;
+    /** v2 only: the entitlement fit (Pass 2), with the month-by-month burn-down. Planner screens only. */
+    fit?: FitV2 & { burndown: Array<{ month: string; target: number; actual: number | null }> };
   };
 };
 
@@ -539,7 +544,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     }
     // A fully scoped add-on designs its component on the component design package and builds on the rest.
     const addOnDesign = addOnBars(item.code);
-    if (addOnDesign && item.reduction !== "design only") {
+    if (addOnDesign && item.reduction !== "design only" && !item.skipDesignShare) {
       const design = live(componentDesign(addOnDesign));
       if (design.length && matches.some(({ bar }) => inEntitlement(bar.id))) {
         spread(design, scale(roles, ADD_ON_DESIGN_SHARE), () => true, inWindow);
@@ -698,39 +703,105 @@ export function withOwnership(document: EngagementDocument): EngagementDocument 
 }
 const categoryIndex = (category: TimelineLane["category"] | null) => (category ? FIXED_GANTT_CATEGORIES.indexOf(category) : FIXED_GANTT_CATEGORIES.length);
 
-export type ScopedEffortOptions = { envelopeHours?: number | null; envelopeSource?: ScopedEffort["internal"]["envelopeSource"] };
+export type ScopedEffortOptions = { envelopeHours?: number | null; envelopeSource?: ScopedEffort["internal"]["envelopeSource"]; today?: string };
 
 /** Scoped effort from the hours model the document selects. */
 export function buildScopedEffort(document: EngagementDocument, options: ScopedEffortOptions = {}): ScopedEffort {
   return document.fields.hoursModel === "v2" ? buildScopedEffortV2(document, options) : buildScopedEffortV1(document, options);
 }
 
-/** v2 Pass 1 lines as effort lines, so they spread across the same stages as v1. */
-export function effortLinesFromPass1(pass1: Pass1): EffortLine[] {
-  return pass1.lines.map(line => ({
-    workstream: line.name,
-    code: line.code,
-    kind: line.code.startsWith("FILL") ? "fill" : line.code.startsWith("X") || line.code === "EF" ? "addon" : "core",
-    lead: line.lead,
-    fullBase: line.computedBase,
-    base: line.computedBase,
-    roles: lineRoles(pass1, line),
-    ...(line.designOnly ? { reduction: "design only" as const } : {}),
-  }));
+/** v2 Pass 1 lines as effort lines, so they spread across the same stages as v1; `bases` limits each line to part of its hours. */
+export function effortLinesFromPass1(pass1: Pass1, bases?: Map<V2Code, number>): EffortLine[] {
+  return pass1.lines.flatMap(line => {
+    const base = bases ? bases.get(line.code) ?? 0 : line.computedBase;
+    if (base <= 0) return [];
+    return [{
+      workstream: line.name,
+      code: line.code,
+      kind: line.code.startsWith("FILL") ? "fill" as const : line.code.startsWith("X") || line.code === "EF" ? "addon" as const : "core" as const,
+      lead: line.lead,
+      fullBase: base,
+      base,
+      roles: lineRoles(pass1, line, base),
+      ...(line.designOnly ? { reduction: "design only" as const } : {}),
+    }];
+  });
 }
 
-/** The v2 model: Pass 1 scope spread across the plan's stages. */
+/** Whole months from today (or the entitlement start, if later) to the end of the entitlement term. */
+function monthsLeft(document: EngagementDocument, today: string): number {
+  const end = entitlementTermEnd(document);
+  const start = document.fields.entitlementStart && document.fields.entitlementStart > today ? document.fields.entitlementStart : today;
+  if (!end) return HOURS_V2.fit.termMonths.value;
+  const [sy, sm] = start.split("-").map(Number);
+  const [ey, em] = end.split("-").map(Number);
+  return Math.max(1, (ey - sy) * 12 + em - sm);
+}
+
+/** Target and actual hours used, month by month, from the entitlement start to its end. */
+function fitBurndown(document: EngagementDocument, fit: FitV2): Array<{ month: string; target: number; actual: number | null }> {
+  const startDate = document.fields.entitlementStart || document.fields.plannedProjectStart;
+  const end = entitlementTermEnd(document);
+  if (!/^\d{4}-\d{2}/.test(startDate) || !end) return [];
+  const [sy, sm] = startDate.split("-").map(Number);
+  const [ey, em] = end.split("-").map(Number);
+  const months = Math.max(1, (ey - sy) * 12 + em - sm);
+  const consumed = document.report.entitlement.hoursConsumed;
+  const consumedMonth = document.report.entitlement.consumedAsOf?.slice(0, 7) ?? null;
+  return Array.from({ length: months }, (_, index) => {
+    const date = new Date(Date.UTC(sy, sm - 1 + index, 1));
+    const month = date.toISOString().slice(0, 7);
+    return { month, target: Math.min(fit.entitlementHours, (fit.entitlementHours / months) * (index + 1)), actual: consumed !== null && consumedMonth === month ? consumed : null };
+  });
+}
+
+/** The v2 model: Pass 1 scope, fitted to the entitlement by Pass 2, spread across the plan's stages. */
 function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffortOptions): ScopedEffort {
   const pass1 = scopeV2(document);
-  const lines = effortLinesFromPass1(pass1);
-  return assembleScopedEffort(document, lines, {
-    envelopeHours: document.report.entitlement.hours ?? options.envelopeHours ?? null,
-    envelopeSource: document.report.entitlement.hours !== null ? "entitled hours" : options.envelopeHours != null ? options.envelopeSource ?? "entitlement value" : "none",
-    fullScopeHours: pass1.technical + pass1.pm,
-    status: "no-envelope",
-    shortfallHours: 0,
-    headroomHours: 0,
-  }, { pass1 });
+  const entitled = document.report.entitlement.hours;
+  const envelopeHours = entitled ?? options.envelopeHours ?? null;
+  const envelopeSource: ScopedEffort["internal"]["envelopeSource"] = entitled !== null ? "entitled hours" : envelopeHours !== null ? options.envelopeSource ?? "entitlement value" : "none";
+  const fullScopeHours = pass1.lines.reduce((sum, line) => sum + loadedOf(pass1, line, line.computedBase), 0);
+  if (envelopeHours === null || envelopeHours <= 0) {
+    return assembleScopedEffort(document, effortLinesFromPass1(pass1), { envelopeHours, envelopeSource, fullScopeHours, status: "no-envelope", shortfallHours: 0, headroomHours: 0 }, { pass1 });
+  }
+  const inputs = document.fields.estimateInputs;
+  const fit = fitV2(pass1, {
+    entitlementHours: envelopeHours,
+    monthsRemaining: inputs.monthsRemaining ?? monthsLeft(document, options.today ?? new Date().toISOString().slice(0, 10)),
+    ranking: inputs.outcomeRanking,
+    wantThisYear: inputs.wantThisYear,
+    datedWaves: pass1.inputs.datedWaves,
+  });
+  const fundedBases = new Map<V2Code, number>();
+  const displacedBases = new Map<V2Code, number>();
+  const designShared = new Set<V2Code>();
+  for (const placement of fit.placements) {
+    const target = placement.bucket === "E1" || placement.bucket === "E2" ? fundedBases : displacedBases;
+    target.set(placement.code, (target.get(placement.code) ?? 0) + placement.base);
+    if (placement.designShare) designShared.add(placement.code);
+  }
+  // A line with only its design share in the entitlement is designed now and built later.
+  const fundedLines = effortLinesFromPass1(pass1, fundedBases).map(line => (designShared.has(line.code as V2Code) ? { ...line, reduction: "design only" as const } : line));
+  const displacedLines = effortLinesFromPass1(pass1, displacedBases).map(line => (designShared.has(line.code as V2Code) ? { ...line, skipDesignShare: true } : line));
+  const status: FitStatus = fit.underFunded ? "short" : displacedLines.length ? "fits-reduced" : "fits";
+  const effort = assembleScopedEffort(document, fundedLines, { envelopeHours, envelopeSource, fullScopeHours, status, shortfallHours: fit.underFunded?.gapHours ?? 0, headroomHours: fit.entitlementRemaining }, { pass1, fit: { ...fit, burndown: fitBurndown(document, fit) } });
+  if (!displacedLines.length) return effort;
+
+  // Displaced hours sit on their stages as follow-on scope; a stage with nothing left in the entitlement moves to the Two-Year Notional.
+  const displacedRows = workPackageEffort(document, displacedLines, totalsOf(rowsFromLines(displacedLines)));
+  const later = new Map(displacedRows.map(row => [row.id, row.total > 0 ? row : row.followOn ? { ...row, ...row.followOn } : row]));
+  const merged = effort.workPackages.map((row): WorkPackageEffort => {
+    const moved = later.get(row.id);
+    later.delete(row.id);
+    if (!moved || moved.total <= 0 || row.note === "checkpoint" || row.note === "customer-owned") return row;
+    const followOn = { architect: (row.followOn?.architect ?? 0) + moved.architect, srConsultant: (row.followOn?.srConsultant ?? 0) + moved.srConsultant, projectManager: (row.followOn?.projectManager ?? 0) + moved.projectManager, total: (row.followOn?.total ?? 0) + moved.total };
+    if (row.total > 0 || row.deferred) return { ...row, followOn };
+    const { note: _note, ...rest } = row;
+    return { ...rest, deferred: "not funded", followOn };
+  });
+  for (const row of Array.from(later.values())) if (row.total > 0) merged.push({ ...row, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: "not funded", followOn: { architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager, total: row.total } });
+  return { ...effort, workPackages: merged };
 }
 
 /** The v1 bracket model. */
@@ -754,7 +825,7 @@ function assembleScopedEffort(
   document: EngagementDocument,
   lines: EffortLine[],
   fit: { envelopeHours: number | null; envelopeSource: ScopedEffort["internal"]["envelopeSource"]; fullScopeHours: number; status: FitStatus; shortfallHours: number; headroomHours: number },
-  extra: Pick<ScopedEffort["internal"], "pass1"> = {},
+  extra: Pick<ScopedEffort["internal"], "pass1" | "fit"> = {},
 ): ScopedEffort {
   const calculatedRows = rowsFromLines(lines);
   const assignments = completedReport(document.report).resourceAssignments.map(item => ({

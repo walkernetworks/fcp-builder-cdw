@@ -3,10 +3,10 @@ import type { EngagementDocument } from "../shared/fcp";
 
 /**
  * INTERNAL ONLY. Broadcom Work Plan rate card and staffing mix from the fcp-builder skill (fcp_hours.py).
- * Used solely to estimate the funded envelope from the entitlement value when entitled hours are not known.
- * Rates never leave the server and no dollar figure is rendered in a document. The planner screens
- * receive only derived totals (plan cost, cost per work package, the entitlement value) so the hours can be
- * kept inside the entitlement.
+ * Used to estimate the funded envelope from the entitlement value when entitled hours are not known.
+ * Per-role rates never leave the server and no rate or dollar figure is rendered in a customer document.
+ * The planner screens receive derived totals (plan cost, cost per work package, the entitlement value) and,
+ * under the v2 hours model, the blended rate the fit used and the dollars per bucket.
  */
 const RATE = { architect: 327, srConsultant: 293, seniorArchitect: 328, projectManager: 312, offshoreProjectManager: 69 };
 const WORK_PLAN_MIX = { srConsultant: 177 / 276, architect: 32 / 276, seniorArchitect: 8 / 276, projectManager: 42 / 276, offshoreProjectManager: 17 / 276 };
@@ -63,8 +63,34 @@ function withinBudget(document: EngagementDocument, effort: ScopedEffort, value:
   return deferWorkPackages(effort, moves);
 }
 
+export type FitMoney = { blendedRate: number; rateSource: "rate card" | "planner override"; buckets: Record<"E1" | "E2" | "F" | "C" | "reserve", number> };
+
+/** v2: the entitlement value turned into hours at the blended rate, fitted by Pass 2 (no squeeze), with dollars per bucket for the planner. */
+function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEffort & { internal: ScopedEffort["internal"] & { money?: FitMoney } } {
+  const override = document.fields.estimateInputs.blendedRate;
+  const blendedRate = override ?? BLENDED_RATE;
+  const value = document.fields.entitlementAmount > 0 ? document.fields.entitlementAmount : 0;
+  const envelope = document.report.entitlement.hours === null && value ? value / blendedRate : null;
+  const effort = buildScopedEffort(document, { envelopeHours: envelope, envelopeSource: "entitlement value", today });
+  const fit = effort.internal.fit;
+  const dollars = (hours: number) => Math.round(hours * blendedRate);
+  const money: FitMoney | undefined = fit ? {
+    blendedRate,
+    rateSource: override ? "planner override" : "rate card",
+    buckets: { E1: dollars(fit.buckets.E1), E2: dollars(fit.buckets.E2), F: dollars(fit.buckets.F), C: dollars(fit.buckets.C), reserve: dollars(fit.reserveHours) },
+  } : undefined;
+  const planCost = dollars(effort.totals.total);
+  const followOnCost = dollars(effort.workPackages.reduce((sum, row) => sum + (row.followOn?.total ?? 0), 0));
+  const ratio = value ? planCost / value : null;
+  const byPackage = Object.fromEntries(effort.workPackages.map(row => [row.id, dollars((row.followOn ?? row).total)]));
+  // Under v2 the fit decides what is in the entitlement; only an under-funded core makes the plan cost more than the value.
+  const status = fit?.underFunded ? "over" : costStatus(ratio && ratio > 1 ? 1 : ratio);
+  return { ...effort, internal: { ...effort.internal, cost: { planCost, followOnCost, entitlementValue: value, ratio, status, byPackage }, ...(money ? { money } : {}) } };
+}
+
 /** Scoped effort with the envelope filled from the entitlement value when entitled hours are missing, kept within the value, and its cost. */
-export function scopedEffortForDocument(document: EngagementDocument): ScopedEffort {
+export function scopedEffortForDocument(document: EngagementDocument, today?: string): ScopedEffort {
+  if (document.fields.hoursModel === "v2") return scopedEffortV2(document, today);
   const estimated = document.report.entitlement.hours === null ? fundedHoursFromValue(document.fields.entitlementAmount) : null;
   const entitlementValue = document.fields.entitlementAmount > 0 ? document.fields.entitlementAmount : 0;
   const effort = withinBudget(document, buildScopedEffort(document, { envelopeHours: estimated, envelopeSource: "entitlement value" }), entitlementValue);
