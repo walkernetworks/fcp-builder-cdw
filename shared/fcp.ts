@@ -580,12 +580,106 @@ export type ExportPreferences = z.infer<typeof exportPreferencesSchema>;
 export const customerSegmentSchema = z.enum(["unspecified", "commercial", "public-sector"]);
 export type CustomerSegment = z.infer<typeof customerSegmentSchema>;
 
+/** Which hours model prices the plan: v1 (host brackets) or v2 (topology formulas with an entitlement fit). */
+export const hoursModelSchema = z.enum(["v1", "v2"]);
+export type HoursModel = z.infer<typeof hoursModelSchema>;
+
+const estimateCount = z.number().int().min(0).max(100_000).optional();
+const estimateFlag = z.boolean().optional();
+/**
+ * Estate and scope facts the v2 hours model prices from. Every field is optional: a missing value falls back
+ * to the RVTools inventory, the brief, or the default in shared/hoursConfig.ts, and the plan lists each
+ * default it used as an assumption.
+ */
+export const estimateInputsSchema = z.object({
+  // Topology
+  workloadDomains: estimateCount,
+  stretchedClusters: estimateCount,
+  storageTypes: estimateCount,
+  clustersOnFcOrNfs: estimateCount,
+  mixedStorage: estimateFlag,
+  dedicatedNsxWorkloadDomains: estimateCount,
+  noExistingNsx: estimateFlag,
+  enhancedLinkedMode: estimateFlag,
+  sourceIsVcf: estimateFlag,
+  source8x: estimateFlag,
+  // Prerequisite remediation
+  clustersOnVum: estimateCount,
+  vcentersWithIwa: estimateCount,
+  clustersOnVss: estimateCount,
+  legacyLogs: estimateFlag,
+  // VCF upgrade (U3) components present
+  upgradeVcfAutomation: estimateFlag,
+  upgradeLogs: estimateFlag,
+  upgradeVidmToIdentityBroker: estimateFlag,
+  upgradeHcx: estimateFlag,
+  upgradeAvi: estimateFlag,
+  upgradeSrm: estimateFlag,
+  upgradeSupervisors: estimateCount,
+  upgradeNsxFederation: estimateFlag,
+  // Waves
+  migrationSitePairs: estimateCount,
+  extendedVlans: estimateCount,
+  datedWaves: estimateCount,
+  // Automation
+  orgs: estimateCount,
+  catalogItems: estimateCount,
+  templates: estimateCount,
+  // Operations
+  vcenterSources: estimateCount,
+  managementPacks: estimateCount,
+  dashboards: estimateCount,
+  eventTargets: estimateCount,
+  // Networking
+  segments: estimateCount,
+  edgeClusters: estimateCount,
+  extraUplinkPairs: estimateCount,
+  externalVlans: estimateCount,
+  virtualNetworkAppliance: estimateFlag,
+  transitGateway: z.enum(["distributed", "centralized"]).optional(),
+  // vDefend
+  zones: estimateCount,
+  apps: estimateCount,
+  sspAlreadyDeployed: estimateFlag,
+  tuningCycles: estimateCount,
+  // Recovery
+  drSitePairs: estimateCount,
+  recoveryPlans: estimateCount,
+  protectedVms: estimateCount,
+  exercises: estimateCount,
+  ireTests: estimateCount,
+  // Kubernetes and Private AI
+  supervisors: estimateCount,
+  vksClusters: estimateCount,
+  gpuHosts: estimateCount,
+  models: estimateCount,
+  // Data Services Manager
+  engines: estimateCount,
+  dsmTemplates: estimateCount,
+  // Avi
+  clouds: estimateCount,
+  virtualServices: estimateCount,
+  wafPolicies: estimateCount,
+  // Efficiency
+  tieredHosts: estimateCount,
+  // Discovery
+  broadcomBaselineDelivered: estimateFlag,
+  // Entitlement fit
+  blendedRate: z.number().positive().max(10_000).optional(),
+  monthsRemaining: z.number().int().min(1).max(36).optional(),
+  outcomeRanking: z.array(capabilitySchema).max(7).optional(),
+  wantThisYear: z.array(capabilitySchema).max(7).optional(),
+});
+export type EstimateInputs = z.infer<typeof estimateInputsSchema>;
+
 export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   adoptionCadence: timelineCadenceSchema,
   adoptionDetails: adoptionDetailsSchema,
   exportPreferences: exportPreferencesSchema.default({ includeVcfReadiness: true, includeOperationalTimeline: true }),
   compatibilityTargetRelease: z.enum(HCL_CATALOG_RELEASES).default(HCL_TARGET_RELEASE),
   customerSegment: customerSegmentSchema.default("unspecified"),
+  hoursModel: hoursModelSchema.default("v1"),
+  estimateInputs: estimateInputsSchema.default({}),
 });
 export type MinimalFields = z.infer<typeof minimalFieldsSchema>;
 
@@ -1191,6 +1285,8 @@ export function createDefaultFields(): MinimalFields {
     adoptionCadence: "month",
     adoptionDetails: createDefaultAdoptionDetails(),
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
+    hoursModel: "v1",
+    estimateInputs: {},
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
   };
@@ -3128,6 +3224,8 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
     ...fields,
     adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise" },
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
+    hoursModel: "v1",
+    estimateInputs: {},
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
   };

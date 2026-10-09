@@ -669,7 +669,20 @@ export function withOwnership(document: EngagementDocument): EngagementDocument 
 }
 const categoryIndex = (category: TimelineLane["category"] | null) => (category ? FIXED_GANTT_CATEGORIES.indexOf(category) : FIXED_GANTT_CATEGORIES.length);
 
-export function buildScopedEffort(document: EngagementDocument, options: { envelopeHours?: number | null; envelopeSource?: ScopedEffort["internal"]["envelopeSource"] } = {}): ScopedEffort {
+export type ScopedEffortOptions = { envelopeHours?: number | null; envelopeSource?: ScopedEffort["internal"]["envelopeSource"] };
+
+/** Scoped effort from the hours model the document selects. */
+export function buildScopedEffort(document: EngagementDocument, options: ScopedEffortOptions = {}): ScopedEffort {
+  return document.fields.hoursModel === "v2" ? buildScopedEffortV2(document, options) : buildScopedEffortV1(document, options);
+}
+
+/** v2 is built in shared/hoursV2.ts and shared/hoursFit.ts; until it is wired in, it prices like v1. */
+function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffortOptions): ScopedEffort {
+  return buildScopedEffortV1(document, options);
+}
+
+/** The v1 bracket model. */
+export function buildScopedEffortV1(document: EngagementDocument, options: ScopedEffortOptions = {}): ScopedEffort {
   const entitled = document.report.entitlement.hours;
   const envelopeHours = entitled ?? options.envelopeHours ?? null;
   const envelopeSource = entitled !== null ? "entitled hours" : envelopeHours !== null ? options.envelopeSource ?? "entitlement value" : "none";
