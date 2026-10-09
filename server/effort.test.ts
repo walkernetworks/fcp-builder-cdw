@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { buildBurndown, buildCustomerEffort, buildScopedEffort, fitToEnvelope, scopedEffortLines, splitRoles, ROLE_LOADING, type EffortLine } from "../shared/effort";
-import { createDefaultDocument, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
+import { createDefaultDocument, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { fundedHoursFromValue, scopedEffortForDocument } from "./rateCard";
 
 const exampleBrief = () => JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../docs/examples/customer-brief.example.json"), "utf8"));
@@ -430,5 +430,17 @@ describe("pre-built hours for every option", () => {
       }
     }
     expect(gaps).toEqual([]);
+  });
+});
+
+describe("hours model flag", () => {
+  it("defaults to v1 and keeps saved engagements parsing without the new fields", () => {
+    const document = createDefaultDocument();
+    expect(document.fields.hoursModel).toBe("v1");
+    expect(document.fields.estimateInputs).toEqual({});
+    const { hoursModel: _model, estimateInputs: _inputs, ...saved } = document.fields;
+    const parsed = minimalFieldsSchema.parse(saved);
+    expect(parsed.hoursModel).toBe("v1");
+    expect(parsed.estimateInputs).toEqual({});
   });
 });
