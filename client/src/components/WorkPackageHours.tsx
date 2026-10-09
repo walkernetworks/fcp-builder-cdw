@@ -1,4 +1,5 @@
 import { AdoptionTimelineEditor } from "@/components/AdoptionTimelineEditor";
+import { EntitlementFitPanel } from "@/components/EntitlementFitPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
@@ -181,6 +182,7 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
         </p>
         {effort && <div className="mt-3"><AssignmentsInForce document={document} effort={effort} onChange={onChange} /></div>}
         {effort?.internal.cost && <div className="mt-3"><CostMeter cost={effort.internal.cost} hours={effort.totals.total} assignments={effort.source === "assignments"} /></div>}
+        <div className="mt-3"><EntitlementFitPanel document={document} effort={effort} onChange={onChange} /></div>
         {effort ? <div className="mt-4"><WorkPackageTable effort={effort} /></div> : <p className="mt-4 text-xs text-slate-500">Calculating…</p>}
       </section>
     </div>

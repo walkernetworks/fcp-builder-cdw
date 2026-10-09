@@ -308,6 +308,19 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     }), { numeric: [3, 4, 5, 6], foot: true, total: ["Total follow-on hours", "", "", hours(followOnTotals.architect), hours(followOnTotals.srConsultant), hours(followOnTotals.projectManager), hours(followOnTotals.total)] })}`
     : "";
 
+  // ---- Scope by bucket (v2 hours model): hours only, never rates or dollars
+  const fit = effort.internal.fit;
+  const bucketRows: Array<[string, string, number]> = fit ? [
+    ["This entitlement: core", "Discovery, design, the pathway build, dated migration waves and VCF Operations at Tier 1", fit.buckets.E1],
+    ["This entitlement: depth", "Selected outcomes, remaining waves and depth tiers, in priority order", fit.buckets.E2],
+    ["Follow-on entitlement", "Year two, with design already complete; depends on a future purchase", fit.buckets.F],
+    ["Customer-funded", "Work wanted this year beyond the entitlement, through CDW", fit.buckets.C],
+  ] : [];
+  const roundedBuckets = bucketRows.map(([, , value]) => Math.round(value));
+  const bucketSection = fit
+    ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority. ${hours(Math.round(fit.reserveHours))} hours of the entitlement are held in reserve until month 6.</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.</p>`
+    : "";
+
   // ---- Customer effort
   const peak = customerEffort.peak;
   const customerEffortSection = customerEffort.phases.length
@@ -383,6 +396,7 @@ ${situation.length ? `<h3>Situation</h3><ul>${situation.map(item => `<li>${item}
 
 ${burndownSection}
 ${scopedEffort}
+${bucketSection}
 ${followOnSection}
 ${customerEffortSection}
 ${personnel}
