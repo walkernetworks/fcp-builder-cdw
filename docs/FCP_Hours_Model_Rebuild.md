@@ -348,27 +348,30 @@ Anything that lowers a coefficient without changing scope is compression and sho
 
 ## 7.8 Worked example at $100k
 
-Assumptions: $250/hour blended (400 loaded hours), 40 hosts, 1 site, 1 vCenter, 800 VMs, converge pathway, customer selected Operations, segmentation, and VM self-service, all requested at Tier 2. No prior assessment.
+Assumptions: $250/hour blended (400 loaded hours), 40 hosts, 1 site, 1 vCenter, 800 VMs, converge pathway, customer selected Operations (lifecycle and health), segmentation, and VM self-service, all requested at Tier 2. No prior assessment.
 
-| Step | Line | Loaded hours | Running total | Bucket |
-|---|---|---|---|---|
-| 1 | DD (24 + 6 + 6) | 46 | 46 | E1 |
-| 1 | DX (ops 8, security 12, automation shared) | 20 | 66 | E1 |
-| 2 | A (64 + 16 + 2) | 105 | 171 | E1 |
-| 3 | C1 (40 + 12 + 10 + 8) | 90 | 261 | E1 |
-| 5 | X4 Tier 1 (16 + 4 + 8 + 12) | 51 | 312 | E1 |
-| 6 | X11 Stages 1 to 3, 4 zones (8 + 16 + 8 + 16) at Tier 1 | 62 | 374 | E2 |
-| 6 | X_VCFA platform + X2 (32 + 24 + 8) | 82 | 456 | Over |
+The 8% reserve (32 hours) is held out first, so the fillable budget is 368 hours. Loaded hours follow Section 6: 1.265x base on standard lines, 1.38x on X11, 1.15x on DX. Values are the implementation's, unrounded until shown.
 
-E2 stops at 374. The remaining 26 hours go to reserve (about 8%). Displaced work:
+| Step | Line | Base | Loaded hours | Running total | Bucket |
+|---|---|---|---|---|---|
+| 1 | DD (24 + 6 + 6) | 36 | 45.5 | 45.5 | E1 |
+| 1 | DX (Operations and automation 8, security 12) | 20 | 23.0 | 68.5 | E1 |
+| 2 | A (64 + 16 + 2) | 82 | 103.7 | 172.3 | E1 |
+| 3 | C1 (40 + 12 + 10 + 8) | 70 | 88.6 | 260.8 | E1 |
+| 5 | X4 Tier 1 (16 + 4 + 8 + 12) | 40 | 50.6 | 311.4 | E1 |
+| 6 | X11 stages 1 and 2 (8 + 16) at Tier 1 | 24 | 33.1 | 344.5 | E2 |
+| 6 | X11 stage 3 base | 8 | 11.0 | 355.6 | E2 |
+| 6 | X11 zones 1 and 2 (4 each) | 8 | 11.0 | 366.6 | E2 |
+| 6 | X11 zone 3 | 4 | 5.5 | 372.1 | Over |
 
-- VCF Automation platform and VM self-service: full line to F. The 25% design share (about 16 hours) would push E2 over, so the design share moves to F as well and is flagged.
+E1 is 311.4 hours against the 368-hour fillable budget, so the core fits and the under-funded guardrail does not trigger. E2 stops at 366.6. Entitlement remaining after the fill is 1.4 hours; the reserve stays at 32. Displaced work, all to F:
 
-- X11 Stage 4 applications and Tier 2 uplift on all three outcomes: F.
-
+- X11 zones 3 and 4, and stage 4 (5 applications).
+- VCF Automation platform and VM self-service (82 loaded hours at Tier 1). Their 25% design shares (about 10 loaded hours each) do not fit, so they move to F with the line and are flagged.
+- The Tier 2 uplift on all three outcomes.
 - Migration waves: not applicable on converge.
 
-The customer sees a plan that delivers a supported VCF 9.1 platform, Operations running, and segmentation zones enforced inside the window, with automation and depth as a named, costed year-two scope. If they want automation this year, it is a customer-funded line of about 82 hours through CDW, and the account team has a documented reason to quote it.
+The customer sees a plan that delivers a supported VCF 9.1 platform, Operations running, and the first segmentation zones enforced inside the window, with automation and depth as a named, costed year-two scope. If they want automation this year, it is a customer-funded line of about 82 hours through CDW, and the account team has a documented reason to quote it.
 
 ## 7.9 What the plan output should show
 
