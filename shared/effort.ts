@@ -114,6 +114,8 @@ export type WorkPackageEffort = RoleHours & {
 
 export type DeferralReason = "not funded" | "after the entitlement window" | "over budget" | "planned for later";
 
+export type FitMoney = { blendedRate: number; rateSource: "rate card" | "planner override"; buckets: Record<"E1" | "E2" | "F" | "C" | "reserve", number> };
+
 export type ScopedEffort = {
   /** Which table the report shows. */
   source: "assignments" | "calculated";
@@ -136,6 +138,8 @@ export type ScopedEffort = {
     headroomHours: number;
     /** v2 only: the Pass 1 scope. */
     pass1?: Pass1;
+    /** v2 only, filled in by the server: the blended rate the fit used and dollars per bucket. Planner screens only. */
+    money?: FitMoney;
     /** v2 only: the entitlement fit (Pass 2), with the month-by-month burn-down. Planner screens only. */
     fit?: FitV2 & { burndown: Array<{ month: string; target: number; actual: number | null }> };
   };

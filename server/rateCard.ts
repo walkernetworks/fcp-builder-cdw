@@ -1,4 +1,4 @@
-import { buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, ROLE_LOADING, type DeferralReason, type RoleHours, type ScopedEffort } from "../shared/effort";
+import { buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, ROLE_LOADING, type DeferralReason, type FitMoney, type RoleHours, type ScopedEffort } from "../shared/effort";
 import type { EngagementDocument } from "../shared/fcp";
 
 /**
@@ -63,10 +63,8 @@ function withinBudget(document: EngagementDocument, effort: ScopedEffort, value:
   return deferWorkPackages(effort, moves);
 }
 
-export type FitMoney = { blendedRate: number; rateSource: "rate card" | "planner override"; buckets: Record<"E1" | "E2" | "F" | "C" | "reserve", number> };
-
 /** v2: the entitlement value turned into hours at the blended rate, fitted by Pass 2 (no squeeze), with dollars per bucket for the planner. */
-function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEffort & { internal: ScopedEffort["internal"] & { money?: FitMoney } } {
+function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEffort {
   const override = document.fields.estimateInputs.blendedRate;
   const blendedRate = override ?? BLENDED_RATE;
   const value = document.fields.entitlementAmount > 0 ? document.fields.entitlementAmount : 0;
