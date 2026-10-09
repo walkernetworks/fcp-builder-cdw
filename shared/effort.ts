@@ -1,5 +1,7 @@
 import { barWindow } from "./buildingBlocks";
 import { canonicalAddOn, completedReport } from "./report";
+import { BUILD_STAGE_WEIGHTS } from "./hoursConfig";
+import { lineRoles, scopeV2, type Pass1, type V2Code } from "./hoursV2";
 import type { Timeline } from "./fcp";
 import { activityOwner, calculateEntitlementEndDate, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
@@ -53,7 +55,8 @@ const ADD_ON_DESIGN_SHARE = 0.25;
 
 export type EffortLine = {
   workstream: string;
-  code: CatalogCode | "FILL";
+  /** A v1 catalog code, the v1 wave line, or a v2 line code. */
+  code: CatalogCode | "FILL" | V2Code;
   kind: LineKind;
   lead: Lead;
   /** Catalog (or default) base hours before any reduction. */
@@ -61,6 +64,8 @@ export type EffortLine = {
   base: number;
   /** Why the line is smaller than its full size, when it is. */
   reduction?: "proving run" | "design only" | "one domain";
+  /** v2: the line's hours by role, with its share of the engagement PM pool, for `base`. */
+  roles?: RoleHours;
 };
 
 export type RoleHours = { architect: number; srConsultant: number; projectManager: number };
@@ -126,6 +131,8 @@ export type ScopedEffort = {
     status: FitStatus;
     shortfallHours: number;
     headroomHours: number;
+    /** v2 only: the Pass 1 scope. */
+    pass1?: Pass1;
   };
 };
 
@@ -137,8 +144,12 @@ export function splitRoles(base: number, lead: Lead, supportShare = 0.15, pmShar
 }
 
 /** A line's hours by role, with its catalog entry's support and PM shares; `base` defaults to the line's current size. */
-function rolesOf(item: Pick<EffortLine, "code" | "base" | "lead">, base = item.base): RoleHours {
-  const entry: { support?: number; pm?: number } = item.code === "FILL" ? {} : CATALOG[item.code] as { support?: number; pm?: number };
+function rolesOf(item: Pick<EffortLine, "code" | "base" | "lead" | "roles">, base = item.base): RoleHours {
+  if (item.roles) {
+    const scale = item.base ? base / item.base : 0;
+    return { architect: item.roles.architect * scale, srConsultant: item.roles.srConsultant * scale, projectManager: item.roles.projectManager * scale };
+  }
+  const entry: { support?: number; pm?: number } = item.code === "FILL" ? {} : (CATALOG[item.code as CatalogCode] ?? {}) as { support?: number; pm?: number };
   return splitRoles(base, item.lead, entry.support, entry.pm);
 }
 
@@ -376,12 +387,12 @@ const BUILD_BARS = /^bar-(management-domain|workload-domain|converge-management-
  * preparation are lighter, handover lighter still, and licensing activation is a few hours.
  */
 const BUILD_WEIGHTS: Array<[RegExp, number]> = [
-  [/^bar-(management-domain|converge-management-domain|vvf-foundation|playbook-adoption-vcf-management|import-workload-domain)$/, 1],
-  [/^bar-workload-domain$/, 0.8],
-  [/^bar-vvf-workload-clusters$/, 0.4],
-  [/^bar-(import-foundation-validation|in-place-preparation)$/, 0.4],
-  [/^bar-platform-handover$/, 0.2],
-  [/^bar-platform-licensing$/, 0.1],
+  [/^bar-(management-domain|converge-management-domain|vvf-foundation|playbook-adoption-vcf-management|import-workload-domain)$/, BUILD_STAGE_WEIGHTS.managementDomain.value],
+  [/^bar-workload-domain$/, BUILD_STAGE_WEIGHTS.workloadDomain.value],
+  [/^bar-vvf-workload-clusters$/, BUILD_STAGE_WEIGHTS.vvfCluster.value],
+  [/^bar-(import-foundation-validation|in-place-preparation)$/, BUILD_STAGE_WEIGHTS.preparation.value],
+  [/^bar-platform-handover$/, BUILD_STAGE_WEIGHTS.handover.value],
+  [/^bar-platform-licensing$/, BUILD_STAGE_WEIGHTS.licensing.value],
 ];
 const buildWeight = (id: string) => BUILD_WEIGHTS.find(([pattern]) => pattern.test(id))?.[1] ?? 0.4;
 /** Work packages each catalog line pays for: the implementation bars, or the component design bar when the line is design only. */
@@ -404,17 +415,30 @@ const ADD_ON_BARS: Partial<Record<CatalogCode, { bars: RegExp; design: string }>
   X15: { bars: /^bar-(cloud-)?(networking-load-balancing|security-waf)/, design: "networking|security" },
   EF: { bars: /^bar-playbook-component-design-efficiency$/, design: "efficiency" },
 };
+/** v2 add-on lines on the same packages as their v1 counterparts; the VCF Automation platform sits on the first automation package. */
+const V2_ADD_ON_BARS: Partial<Record<V2Code, { bars: RegExp; design: string }>> = {
+  ...(ADD_ON_BARS as Partial<Record<V2Code, { bars: RegExp; design: string }>>),
+  X_VCFA_platform: { bars: /^bar-(cloud-)?automation(-(?!data-services).*)?$/, design: "automation" },
+};
+const addOnBars = (code: EffortLine["code"]) => (code === "FILL" ? undefined : (V2_ADD_ON_BARS as Record<string, { bars: RegExp; design: string } | undefined>)[code]);
+/** Lines that carry discovery, architecture, and the build (spread by build weight), in both models. */
+const DISCOVERY_CODES = /^(DD\d?|DX)$/;
+const DESIGN_CODES = /^A\d?$/;
+const BUILD_CODES = /^(D\d|U\d|X1|D|D_VVF|S_storage|U_VVF|C1|R_remed|U3)$/;
 /** The component design package(s) an add-on's design work sits on. */
 const componentDesign = (addOn: { design: string }) => (id: string) => new RegExp(`^bar-playbook-component-design-(${addOn.design})$`).test(id);
 
 function barsForLine(item: EffortLine, discoveryInScope = true): (id: string) => boolean {
   // With a prior assessment there is no discovery line, and the architecture line covers requirements too.
-  if (/^A\d$/.test(item.code)) return id => CORE_DESIGN_BARS.test(id) && !(discoveryInScope && DISCOVERY_BARS.test(id));
-  if (/^(DD\d|DX)$/.test(item.code)) return id => DISCOVERY_BARS.test(id);
-  if (/^(D\d|U\d)$/.test(item.code)) return id => BUILD_BARS.test(id);
-  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain|platform-handover)$/.test(id);
-  if (item.code === "FILL") return id => /^bar-playbook-execution-/.test(id);
-  const addOn = ADD_ON_BARS[item.code];
+  if (DESIGN_CODES.test(item.code)) return id => CORE_DESIGN_BARS.test(id) && !(discoveryInScope && DISCOVERY_BARS.test(id));
+  if (DISCOVERY_CODES.test(item.code)) return id => DISCOVERY_BARS.test(id);
+  if (/^(D\d|U\d|D|D_VVF|S_storage|U_VVF|C1)$/.test(item.code)) return id => BUILD_BARS.test(id);
+  // v2: remediation runs before the converge or upgrade; the VCF upgrade runs on the upgrade packages.
+  if (item.code === "R_remed") return id => /^bar-(in-place-preparation|converge-management-domain|vvf-foundation)$/.test(id);
+  if (item.code === "U3") return id => /^bar-(in-place-preparation|playbook-execution-upgrade-waves|playbook-adoption-vcf-management)$/.test(id);
+  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain|platform-handover|playbook-adoption-vcf-management)$/.test(id);
+  if (item.code === "FILL" || item.code === "FILL_mig" || item.code === "FILL_ip") return id => /^bar-playbook-execution-/.test(id);
+  const addOn = addOnBars(item.code);
   if (!addOn) return () => false;
   if (item.reduction === "design only") return componentDesign(addOn);
   return id => addOn.bars.test(id);
@@ -453,7 +477,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   const overrides = new Map(document.report.workPackageHours.map(item => [item.id, item]));
   const deferred = new Map<string, DeferralReason>();
   for (const item of lines) {
-    const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
+    const addOn = addOnBars(item.code);
     if (addOn && item.reduction === "design only") for (const { bar } of bars) if (addOn.bars.test(bar.id) && !componentDesign(addOn)(bar.id)) deferred.set(bar.id, "not funded");
   }
   for (const { bar } of bars) {
@@ -494,22 +518,27 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   // management is pooled and placed after the lines are spread.
   const governance = live(id => GOVERNANCE_BARS.test(id));
   let designPm = 0;
-  const discoveryInScope = lines.some(item => /^(DD\d|DX)$/.test(item.code));
+  const discoveryInScope = lines.some(item => DISCOVERY_CODES.test(item.code));
   for (const item of lines) {
     let roles = rolesOf(item);
-    if (/^(A\d|DD\d|DX)$/.test(item.code) && governance.length) {
+    if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && governance.length) {
       designPm += roles.projectManager;
       roles = { ...roles, projectManager: 0 };
     }
     // Customer-owned packages keep their share of the line, which then drops out of CDW's hours.
     let matches = bars.filter(({ bar }) => barsForLine(item, discoveryInScope)(bar.id) && activityOwner(bar) !== "checkpoint");
+    // The VCF Automation platform is built once, on the first automation package.
+    if (item.code === "X_VCFA_platform" && matches.length > 1) {
+      const first = matches.reduce((earliest, candidate) => (candidate.bar.startCol < earliest.bar.startCol ? candidate : earliest));
+      matches = [first];
+    }
     // Architecture and discovery fall back to the other design packages, then to any design package, when theirs are not on the plan.
-    if (/^(A\d|DD\d|DX)$/.test(item.code) && !matches.some(({ bar }) => inEntitlement(bar.id))) {
+    if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && !matches.some(({ bar }) => inEntitlement(bar.id))) {
       const core = live(id => CORE_DESIGN_BARS.test(id));
       matches = core.length ? core : live(id => COMPONENT_DESIGN_BARS.test(id));
     }
     // A fully scoped add-on designs its component on the component design package and builds on the rest.
-    const addOnDesign = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
+    const addOnDesign = addOnBars(item.code);
     if (addOnDesign && item.reduction !== "design only") {
       const design = live(componentDesign(addOnDesign));
       if (design.length && matches.some(({ bar }) => inEntitlement(bar.id))) {
@@ -520,13 +549,13 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     // Work the planner placed in the notional keeps its share of the line and takes it out of the entitlement.
     const current = matches.filter(({ bar }) => inEntitlement(bar.id));
     // The deploy line is split by how much work each build package is, not by how long its window is.
-    const weightOf = /^(D\d|U\d|X1)$/.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : lengthWeight;
+    const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : lengthWeight;
     if (current.length) spread(current, roles, () => true, inWindow, weightOf);
     else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     // Deferred packages of the line get their share as a follow-on estimate.
     spread(matches, roles, id => deferred.has(id) && deferred.get(id) !== "planned for later", followOn, weightOf);
     // An add-on cut to its design keeps the rest of its hours on its build packages, as follow-on scope.
-    const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
+    const addOn = addOnBars(item.code);
     if (addOn && item.reduction === "design only" && item.fullBase > item.base) {
       const build = bars.filter(({ bar }) => addOn.bars.test(bar.id) && cdw(bar.id));
       if (build.length) {
@@ -676,9 +705,32 @@ export function buildScopedEffort(document: EngagementDocument, options: ScopedE
   return document.fields.hoursModel === "v2" ? buildScopedEffortV2(document, options) : buildScopedEffortV1(document, options);
 }
 
-/** v2 is built in shared/hoursV2.ts and shared/hoursFit.ts; until it is wired in, it prices like v1. */
+/** v2 Pass 1 lines as effort lines, so they spread across the same stages as v1. */
+export function effortLinesFromPass1(pass1: Pass1): EffortLine[] {
+  return pass1.lines.map(line => ({
+    workstream: line.name,
+    code: line.code,
+    kind: line.code.startsWith("FILL") ? "fill" : line.code.startsWith("X") || line.code === "EF" ? "addon" : "core",
+    lead: line.lead,
+    fullBase: line.computedBase,
+    base: line.computedBase,
+    roles: lineRoles(pass1, line),
+    ...(line.designOnly ? { reduction: "design only" as const } : {}),
+  }));
+}
+
+/** The v2 model: Pass 1 scope spread across the plan's stages. */
 function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffortOptions): ScopedEffort {
-  return buildScopedEffortV1(document, options);
+  const pass1 = scopeV2(document);
+  const lines = effortLinesFromPass1(pass1);
+  return assembleScopedEffort(document, lines, {
+    envelopeHours: document.report.entitlement.hours ?? options.envelopeHours ?? null,
+    envelopeSource: document.report.entitlement.hours !== null ? "entitled hours" : options.envelopeHours != null ? options.envelopeSource ?? "entitlement value" : "none",
+    fullScopeHours: pass1.technical + pass1.pm,
+    status: "no-envelope",
+    shortfallHours: 0,
+    headroomHours: 0,
+  }, { pass1 });
 }
 
 /** The v1 bracket model. */
@@ -687,7 +739,24 @@ export function buildScopedEffortV1(document: EngagementDocument, options: Scope
   const envelopeHours = entitled ?? options.envelopeHours ?? null;
   const envelopeSource = entitled !== null ? "entitled hours" : envelopeHours !== null ? options.envelopeSource ?? "entitlement value" : "none";
   const fitted = fitToEnvelope(scopedEffortLines(document), envelopeHours);
-  const calculatedRows = rowsFromLines(fitted.lines);
+  return assembleScopedEffort(document, fitted.lines, {
+    envelopeHours,
+    envelopeSource,
+    fullScopeHours: fitted.fullScopeHours,
+    status: fitted.status,
+    shortfallHours: fitted.shortfallHours,
+    headroomHours: fitted.headroomHours,
+  });
+}
+
+/** Rows, stage hours and totals from a model's lines. */
+function assembleScopedEffort(
+  document: EngagementDocument,
+  lines: EffortLine[],
+  fit: { envelopeHours: number | null; envelopeSource: ScopedEffort["internal"]["envelopeSource"]; fullScopeHours: number; status: FitStatus; shortfallHours: number; headroomHours: number },
+  extra: Pick<ScopedEffort["internal"], "pass1"> = {},
+): ScopedEffort {
+  const calculatedRows = rowsFromLines(lines);
   const assignments = completedReport(document.report).resourceAssignments.map(item => ({
     workstream: item.workstream,
     architect: item.architect,
@@ -695,7 +764,7 @@ export function buildScopedEffortV1(document: EngagementDocument, options: Scope
     projectManager: item.projectManager,
     total: item.architect + item.srConsultant + item.projectManager,
   }));
-  const workPackages = workPackageEffort(document, fitted.lines, totalsOf(calculatedRows));
+  const workPackages = workPackageEffort(document, lines, totalsOf(calculatedRows));
   const planned = workPackages.filter(row => row.total > 0);
   const rows = assignments.length ? assignments : calculatedRows;
   // The calculated plan is the work packages as adjusted by the planner; it falls back to the catalog lines with no timeline.
@@ -706,15 +775,16 @@ export function buildScopedEffortV1(document: EngagementDocument, options: Scope
     workPackages,
     totals: assignments.length ? totalsOf(assignments) : calculatedTotals,
     internal: {
-      lines: fitted.lines,
+      lines,
       calculatedRows,
-      envelopeHours,
-      envelopeSource,
-      fullScopeHours: Math.round(fitted.fullScopeHours),
+      envelopeHours: fit.envelopeHours,
+      envelopeSource: fit.envelopeSource,
+      fullScopeHours: Math.round(fit.fullScopeHours),
       planHours: calculatedTotals.total,
-      status: fitted.status,
-      shortfallHours: Math.round(fitted.shortfallHours),
-      headroomHours: Math.round(fitted.headroomHours),
+      status: fit.status,
+      shortfallHours: Math.round(fit.shortfallHours),
+      headroomHours: Math.round(fit.headroomHours),
+      ...extra,
     },
   };
 }
