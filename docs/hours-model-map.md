@@ -60,4 +60,6 @@ The sweep behind `FCP Hours Research Reference.html` was a one-off script run fr
 | Inputs and their defaults | `estimateInputs` on the document fields; resolved in `shared/hoursV2.ts` |
 | Pass 1, scope: lines, units, role split, PM pool | `shared/hoursV2.ts` |
 | Pass 2, fit: buckets, reserve, split rules, design share, guardrails | `shared/hoursFit.ts` |
-| Model flag | `fields.hoursModel` (`"v1"` or `"v2"`) |
+| Model flag | `fields.hoursModel` (`"v1"` or `"v2"`). The default is v2; v1 stays selectable on the hours screen for one release. Saved engagements without the field load as v2. |
+| Planner screen | `client/src/components/EntitlementFitPanel.tsx` on the hours screen |
+| Customer document | Scope by Bucket table (hours only) in `server/condensedFcpRenderer.ts` |

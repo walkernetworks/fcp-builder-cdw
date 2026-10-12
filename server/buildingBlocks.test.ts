@@ -4,9 +4,11 @@ import { assessBuildingBlocks, barWindow, BLOCK_CATEGORIES, BLOCK_DEPENDENCIES, 
 import { createDefaultDocument, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
 
-function commercialPlan(): EngagementDocument {
+/** A commercial greenfield plan with operations and DFW; `hoursModel` v1 draws the NSX overlay build for the DFW, v2 does not. */
+function commercialPlan(hoursModel: "v1" | "v2" = "v1"): EngagementDocument {
   const document = createDefaultDocument();
   Object.assign(document.fields, {
+    hoursModel,
     customerName: "Acme",
     customerSegment: "commercial",
     plannedProjectStart: "2026-06-01",
@@ -89,6 +91,13 @@ describe("building blocks assessment", () => {
     expect(byArea.get("NSX Overlay Networking")?.requiredBy).toEqual([]);
     // Blocks the plan covers directly are never marked as pulled in.
     expect(byArea.get("Site Readiness")?.requiredBy).toEqual([]);
+  });
+
+  it("pulls in NSX Overlay and Edge as DFW dependencies when the v2 plan draws no overlay build", () => {
+    const assessments = assessBuildingBlocks(commercialPlan("v2"), "2026-09-23");
+    const byArea = new Map(assessments.map(item => [item.area, item]));
+    expect(byArea.get("NSX Overlay Networking")?.requiredBy).toEqual(expect.arrayContaining(["Distributed Firewall (DFW)"]));
+    expect(byArea.get("NSX Edge Connectivity")?.status).not.toBe("Out of Scope");
   });
 
   it("satisfies an either-or dependency with a block the plan already covers", () => {

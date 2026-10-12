@@ -678,7 +678,7 @@ export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   exportPreferences: exportPreferencesSchema.default({ includeVcfReadiness: true, includeOperationalTimeline: true }),
   compatibilityTargetRelease: z.enum(HCL_CATALOG_RELEASES).default(HCL_TARGET_RELEASE),
   customerSegment: customerSegmentSchema.default("unspecified"),
-  hoursModel: hoursModelSchema.default("v1"),
+  hoursModel: hoursModelSchema.default("v2"),
   estimateInputs: estimateInputsSchema.default({}),
 });
 export type MinimalFields = z.infer<typeof minimalFieldsSchema>;
@@ -1285,7 +1285,7 @@ export function createDefaultFields(): MinimalFields {
     adoptionCadence: "month",
     adoptionDetails: createDefaultAdoptionDetails(),
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
-    hoursModel: "v1",
+    hoursModel: "v2",
     estimateInputs: {},
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
@@ -1884,6 +1884,9 @@ function selectedPlanOutcomeKeys(fields: MinimalFields): PlanOutcomeKey[] {
  * Resolves the outcomes the plan delivers: the selected outcomes the platform edition includes, plus every
  * prerequisite they need (for an either-or requirement, the first listed outcome), in delivery order.
  */
+/** Under the v2 hours model these outcomes do not pull in the NSX overlay build (spec section 4: DFW enforces at the vNIC). */
+const V2_NO_OVERLAY_PREREQUISITE = new Set<PlanOutcomeKey>(["security:segmentation", "platform:ssp"]);
+
 export function resolvePlanOutcomes(fields: MinimalFields): ResolvedPlanOutcomes {
   const edition = effectivePlatformEdition(fields);
   const selected = selectedPlanOutcomeKeys(fields);
@@ -1895,6 +1898,8 @@ export function resolvePlanOutcomes(fields: MinimalFields): ResolvedPlanOutcomes
     const key = pending.shift()!;
     const chosen: PlanOutcomeKey[] = [];
     for (const requirement of PLAN_PREREQUISITES[key] ?? []) {
+      // v2 hours model: the distributed firewall and the SSP need NSX Manager (deployed with VCF), not the overlay build.
+      if (fields.hoursModel === "v2" && V2_NO_OVERLAY_PREREQUISITE.has(key) && requirement.includes("platform:nsx")) continue;
       const options = requirement.filter(option => isPlanOutcomeAvailable(option, edition));
       if (!options.length) continue;
       const dependency = options.find(option => requiredBy.has(option)) ?? options[0];
@@ -3224,7 +3229,7 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
     ...fields,
     adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise" },
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
-    hoursModel: "v1",
+    hoursModel: "v2",
     estimateInputs: {},
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",

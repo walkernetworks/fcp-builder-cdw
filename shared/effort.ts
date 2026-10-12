@@ -536,6 +536,11 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     }
     // Customer-owned packages keep their share of the line, which then drops out of CDW's hours.
     let matches = bars.filter(({ bar }) => barsForLine(item, discoveryInScope)(bar.id) && activityOwner(bar) !== "checkpoint");
+    // Supervisor and VKS required by Private AI sit on the Private AI packages when the plan has no Kubernetes packages.
+    if (item.code === "X9" && !matches.length) {
+      const fallback = item.reduction === "design only" ? /^bar-playbook-component-design-(kubernetes|private-ai)$/ : /^bar-(cloud-)?private-ai/;
+      matches = bars.filter(({ bar }) => fallback.test(bar.id) && activityOwner(bar) !== "checkpoint");
+    }
     // The VCF Automation platform is built once, on the first automation package.
     if (item.code === "X_VCFA_platform" && matches.length > 1) {
       const first = matches.reduce((earliest, candidate) => (candidate.bar.startCol < earliest.bar.startCol ? candidate : earliest));
