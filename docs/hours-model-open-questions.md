@@ -12,6 +12,7 @@ Where a worked example in the spec cannot be reproduced from the Section 6 and 7
 |---|---|
 | Where buckets, dollars and the rate appear | Planner screens only (the entitlement fit panel on the hours screen). Customer documents show hours and buckets, never a rate or dollars. The Condensed FCP adds a Scope by Bucket table in hours. |
 | Default blended rate | The existing rate card's Work Plan blended rate (`server/rateCard.ts`), with a per-engagement override (`estimateInputs.blendedRate`). |
+| DFW and the NSX overlay | Spec wins. Under v2, segmentation and the SSP no longer pull the NSX overlay build onto the timeline, and no X5 is priced for a security outcome. The Building Blocks workbook still lists NSX Overlay Networking and NSX Edge Connectivity as required by DFW (Broadcom's dependency model). v1 plans are unchanged. `shared/fcp.ts` (`V2_NO_OVERLAY_PREREQUISITE`). |
 | The 7.8 worked example | The rules govern. The example used a flat ~1.28x loading, left DX unloaded, and called the leftover 26 hours the reserve. Under the rules: secondary 10% (20% on X11, X12, X16), PM 15% at engagement level, DX loaded at 1.15x, 8% reserve held out before filling. The spec's 7.8 table now shows the values the code produces. |
 
 ## Discrepancies logged under the standing rule
@@ -31,7 +32,7 @@ Where a worked example in the spec cannot be reproduced from the Section 6 and 7
 
 ### Pass 1 (scope)
 
-1. **Security hardening and identity have no line in the spec.** `security:identity-rbac` and `security:hardening-compliance` without segmentation are priced as vDefend stages 1 and 2 (24 base). v1 priced them at 36. `shared/hoursV2.ts`, X11 branch.
+1. **Security hardening and identity have no line in the spec.** `security:identity-rbac`, `security:hardening-compliance`, and security selected with no focus, without segmentation, are priced as vDefend stages 1 and 2 (24 base). v1 priced them at 36. `shared/hoursV2.ts`, X11 branch.
 2. **Security Services Platform deployed once.** When malware prevention needs it, X12 carries the 24-hour deploy and X11 carries none; Security Intelligence alone puts the 16-hour deploy on X11. Security Intelligence counts as an X11 term, not an X12 feature (the spec lists X12 features as IDS/IPS, malware, NTA/NDR and identity firewall).
 3. **Depth multiplier scope.** It applies to X2 to X16 and EF. The VCF Automation platform line (X_VCFA_platform) is not multiplied. Recovery lines (X10, X14) have no depth tier in the app, so they stay at 1.0.
 4. **Design-only share** (25%) also applies to EF and the VCF Automation platform on design-only and undecided pathways, as v1 did.
@@ -42,7 +43,7 @@ Where a worked example in the spec cannot be reproduced from the Section 6 and 7
 9. **Hybrid** is priced like greenfield (D plus migration waves), as in v1. Cohort-specific converge or import is not priced.
 10. **Storage adder** (S_storage) applies only with a platform build (D or D_VVF).
 11. **VPC with a distributed transit gateway** does not add the NSX overlay line. **VDS networking** (X7) is added only when no NSX line covers networking, as in v1.
-12. **Private AI pilot onboarding** no longer adds the VM self-service line (v1 did). Only Private AI, Supervisor and VKS are priced.
+12. **Private AI pilot onboarding** no longer adds the VM self-service line (v1 did). Only Private AI, Supervisor and VKS are priced. When the plan has no Kubernetes stages, the Supervisor and VKS hours sit on the Private AI stages.
 13. **Defaults the spec does not give** (each listed on the plan as an assumption): 1 tenant org, 3 catalog items, 3 templates, 0 management packs, 1 dashboard and 1 event target when selected, 5 segments, 1 Edge cluster, 1 external VLAN, 1 tuning cycle, 1 recovery site pair, 1 recovery plan, 1 exercise and 1 IRE test when selected, 1 Supervisor, 1 VKS cluster, 0 GPU hosts, 1 model, 1 database engine, 0 database templates, 1 Avi cloud, 3 virtual services, 1 WAF policy, 0 tiered hosts, no existing NSX (from the 7.8 example), distributed transit gateway. `shared/hoursConfig.ts` (`defaults`).
 14. **Source on 8.x** is read from the RVTools ESXi versions when present.
 

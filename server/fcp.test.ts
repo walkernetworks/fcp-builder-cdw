@@ -96,9 +96,10 @@ describe("calendar-month adoption plans", () => {
     expect(staffing.assignments.every(assignment => assignment.startLabel.length > 0 && assignment.endLabel.length > 0)).toBe(true);
   });
 
-  it("time-boxes discovery and then sequences the selected implementation workstreams, adding NSX only as the segmentation prerequisite", () => {
+  it("time-boxes discovery and then sequences the selected implementation workstreams, adding NSX only as the segmentation prerequisite (v1 hours model)", () => {
     const document = createDefaultDocument();
     Object.assign(document.fields, {
+      hoursModel: "v1",
       entitlementAmount: 2_500_000,
       entitlementStart: "2027-01-01",
       entitlementEnd: "2027-12-31",

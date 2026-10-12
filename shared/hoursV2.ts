@@ -441,8 +441,8 @@ export function scopeV2(document: EngagementDocument): Pass1 {
       ...Array.from({ length: x.apps }, (_, index) => unit(`X11:app-${index + 1}`, `Application ${index + 1}`, v(H.segmentation.perApp), "app")),
       ...(sspForIntelligence ? [unit("X11:ssp", "Security Services Platform for Security Intelligence", v(H.segmentation.sspDeploy), "module")] : []),
     ], { zones: x.zones, apps: x.apps, sspNew: sspForIntelligence }, { capability: "security" });
-  } else if (has("security:identity-rbac", "security:hardening-compliance")) {
-    // Hardening, identity and access have no line in the spec; priced as vDefend stages 1 and 2 (open question).
+  } else if (has("security:identity-rbac", "security:hardening-compliance", "security:core")) {
+    // Hardening, identity and access, or security with no focus, have no line in the spec; priced as vDefend stages 1 and 2 (open question).
     add("X11", vvf ? "vSphere hardening, identity and access" : "Security hardening, identity and access", "architect", [
       unit("X11:stages-1-2", "Assessment and shared services", v(H.segmentation.stage1Assessment) + v(H.segmentation.stage2SharedServices), "stages-1-2"),
     ], { zones: 0, apps: 0, sspNew: false }, { capability: "security" });

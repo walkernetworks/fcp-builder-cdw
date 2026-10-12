@@ -142,8 +142,9 @@ describe("condensed FCP downloads", () => {
     const { readFileSync } = await import("node:fs");
     const brief = JSON.parse(readFileSync(new URL("../docs/examples/customer-brief.example.json", import.meta.url), "utf8"));
     const row = await getEngagement.getMockImplementation()!(7, 41);
-    // An entitlement large enough for the design work, so the window fits the value.
+    // An entitlement large enough for the core work, so the window fits the value (no signed hours, so the value sets them).
     brief.entitlement.value = 250000;
+    brief.entitlement.hours = null;
     getEngagement.mockResolvedValue({ ...row!, data: applyCustomerBrief(createDefaultDocument(), brief).document });
     const response = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 41, "html", "condensed-fcp")}`);
     expect(response.status).toBe(200);

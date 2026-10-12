@@ -28,7 +28,7 @@ export const AREAS: Record<string, [Capability, string[]]> = {
   privateAi: ["private-ai", ["gpu-capacity", "ai-guardrails", "pilot-onboarding"]],
 };
 
-type Plan = { edition?: "vcf" | "vvf"; path: string; hosts: number; sites?: number; assessment?: boolean; focus?: Record<string, string[]>; depth?: "tier-1" | "tier-2" | "tier-3" };
+type Plan = { edition?: "vcf" | "vvf"; path: string; hosts: number; sites?: number; assessment?: boolean; focus?: Record<string, string[]>; depth?: "tier-1" | "tier-2" | "tier-3"; model?: "v1" | "v2" };
 
 export function plan(input: Plan): EngagementDocument {
   let document = createDefaultDocument();
@@ -36,7 +36,7 @@ export function plan(input: Plan): EngagementDocument {
   const priorities = Object.entries(AREAS).filter(([key]) => (focus[key] ?? []).length).map(([, [capability]]) => capability);
   const depth = input.depth ?? "not-selected";
   Object.assign(document.fields, {
-    customerName: "Sweep", customerSegment: "commercial", entitlementStart: "2027-01-04", plannedProjectStart: "2027-01-04", priorities,
+    customerName: "Sweep", customerSegment: "commercial", entitlementStart: "2027-01-04", plannedProjectStart: "2027-01-04", priorities, hoursModel: input.model ?? "v2",
     adoptionDetails: {
       ...document.fields.adoptionDetails, platformEdition: input.edition ?? "vcf", upgradePath: input.path,
       ...Object.fromEntries(Object.keys(AREAS).map(key => [key, focus[key] ?? []])),
@@ -48,8 +48,9 @@ export function plan(input: Plan): EngagementDocument {
   return refreshDerivedDocument(document);
 }
 
-/** v1 full-scope loaded hours, by line, with no envelope. */
+/** v1 full-scope loaded hours, by line, with no envelope. The plan is rebuilt on the v1 model, whose outcome prerequisites differ. */
 export function v1Total(document: EngagementDocument) {
+  document = refreshDerivedDocument({ ...document, fields: { ...document.fields, hoursModel: "v1" } }, { forceRebuild: true });
   const effort = buildScopedEffortV1(document);
   return { total: effort.internal.fullScopeHours, lines: scopedEffortLines(document).map(line => ({ code: line.code, base: line.base })) };
 }
@@ -70,8 +71,9 @@ function main() {
       const v1 = v1Total(document);
       const v2 = v2Total(document);
       const stages = (effort: ReturnType<typeof buildScopedEffortV1>) => effort.workPackages.filter(row => row.total > 0).map(row => [row.label.replace(/^(Month \d+|Weeks? [\d–-]+): /, ""), row.architect, row.srConsultant, row.projectManager, row.total]);
-      const v2Stages = stages(buildScopedEffort({ ...document, fields: { ...document.fields, hoursModel: "v2" } }));
-      grid.push({ edition, path: pathway, sites, hosts, assessment, v1: v1.total, v2: v2.total, delta: v1.total ? (v2.total - v1.total) / v1.total : null, v1Lines: v1.lines, v2Lines: v2.lines, v1Stages: stages(buildScopedEffortV1(document)), v2Stages });
+      const v2Stages = stages(buildScopedEffort(document));
+      const v1Document = plan({ edition, path: pathway, hosts, sites, assessment, model: "v1" });
+      grid.push({ edition, path: pathway, sites, hosts, assessment, v1: v1.total, v2: v2.total, delta: v1.total ? (v2.total - v1.total) / v1.total : null, v1Lines: v1.lines, v2Lines: v2.lines, v1Stages: stages(buildScopedEffortV1(v1Document)), v2Stages });
     }
   }
   const outcomes: Array<Record<string, unknown>> = [];
