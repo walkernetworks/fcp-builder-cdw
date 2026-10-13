@@ -122,7 +122,7 @@ function futureReleaseSupport(partnerName: string, model: string, verifiedThroug
     unsupportedFromRelease: "ESXi 9.2 / VCF 9.2",
     vendorHardwareSupportEnd: "2028-10-31",
     detail: `Cisco's current UCS Hardware and Software Compatibility matrix lists this M5 family through ${HCL_TARGET_RELEASE} and does not list an ESXi 9.2 pairing. Broadcom states that hardware not listed for a desired ESXi release is not officially compatible and can have VMware support limitations; treat ${m5Match[1]} M5 hosts as supported through ${HCL_TARGET_RELEASE} and not officially supported from ESXi or VCF 9.2. Cisco publishes a separate hardware support end date of October 31, 2028 for this M5 family.`,
-    nextAction: `Do not select ESXi or VCF 9.2 for this ${m5Match[1]} M5 cohort. Keep the cohort on ${HCL_TARGET_RELEASE} or plan a supported hardware refresh before a 9.2 adoption; recheck the current Cisco and Broadcom compatibility matrices if either vendor publishes a revised listing.`,
+    nextAction: `Do not select ESXi or VCF 9.2 for these ${m5Match[1]} M5 servers. Keep them on ${HCL_TARGET_RELEASE} or plan a supported hardware refresh before a 9.2 adoption; recheck the current Cisco and Broadcom compatibility matrices if either vendor publishes a revised listing.`,
     source: `${CISCO_M5_VMWARE_COMPATIBILITY_SOURCE}; ${HCL_SNAPSHOT.source}; ${source}`,
   };
 }

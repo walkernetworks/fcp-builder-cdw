@@ -96,7 +96,7 @@ describe("signed binary export downloads", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - Compatibility Handoff.html"');
     expect(content).toContain("VCF Compatibility Delivery Handoff");
-    expect(content).toContain("Every observed server and CPU cohort");
+    expect(content).toContain("Every observed server and CPU model");
     expect(content).toContain("Compatibility action register");
   });
 

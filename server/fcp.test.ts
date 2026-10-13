@@ -224,7 +224,7 @@ describe("calendar-month adoption plans", () => {
     expect(plans.adoptionTimeline.columns[4]).toBe("Feb 14–Feb 20, 27");
     expect(plans.adoptionTimeline.columns.length).toBeGreaterThanOrEqual(5);
     expect(labels).toEqual(expect.arrayContaining([
-      "Cohort Migration Waves",
+      "Delivery Waves by Pathway",
       "VM Self-Service Catalog",
       "Infrastructure-as-Code Blueprints",
       "Dashboards and Service Measures",
@@ -259,7 +259,7 @@ describe("calendar-month adoption plans", () => {
     const mobilization = refreshedActivities.find(activity => activity.id === "bar-platform-plan");
     const labels = refreshedActivities.map(activity => activity.label);
 
-    expect(upgrade).toMatchObject({ label: "Cohort Migration Waves" });
+    expect(upgrade).toMatchObject({ label: "Delivery Waves by Pathway" });
     expect(upgrade?.dependsOn).toContain("Pilot the first two application cohorts");
     expect(upgrade?.dependsOn).toContain("No production cutovers during the final two weeks of March");
     expect(mobilization?.label).toBe("Weeks 1–2: Kickoff and Delivery Plan");
@@ -696,7 +696,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).toContain("3,423 server records across 74 manufacturers");
     expect(html).toContain("Target release listed");
     expect(html).toContain("Not listed for target release");
-    expect(html).toContain("Every observed server and CPU cohort");
+    expect(html).toContain("Every observed server and CPU model");
     expect(html).toContain("Compatibility action register");
     expect(html).toContain("Conditions that affect sequencing or build readiness");
     expect(html).toContain("Fewer than two physical NICs");
@@ -975,7 +975,7 @@ describe("planning considerations, exports, and access boundary", () => {
     });
     expect(readiness.items.find(item => item.id === "management-domain-cohort-uniformity")).toMatchObject({
       status: "attention",
-      title: "Management-Domain Cohort Uniformity",
+      title: "Management-Domain Hardware Uniformity",
       detail: expect.stringContaining("more than one hardware vendor"),
       evidence: "DC1 / Mgmt: 6 hosts",
     });
@@ -1210,7 +1210,7 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(html).not.toContain("HCL Server + CPU Evidence");
     expect(html).not.toContain("Physical cores");
     expect(html).toContain("Priority delivery actions");
-    expect(html).toContain("standalone compatibility deliverable contains the complete cohort evidence and action register");
+    expect(html).toContain("standalone compatibility deliverable contains the complete server model evidence and action register");
     expect(html).toContain("Migration Waves");
     expect(html).toContain('<div class="timeline-corner">Delivery Category</div>');
     expect(html).toContain("timeline-category-lane");
@@ -1414,13 +1414,13 @@ describe("HCL 2.0 estate evidence", () => {
     const activities = plans.adoptionTimeline.lanes.flatMap(lane => lane.bars);
     const byId = (id: string) => activities.find(activity => activity.id === id);
     expect(activities.map(activity => activity.label)).toEqual(expect.arrayContaining([
-      "Upgrade Requirements",
+      "Upgrade Discovery Sessions and Requirements",
       "VCF 9.1 Target-State Design",
       "Management Domain Design",
       "Upgrade Runbook and Change Windows",
       "In-Place Upgrade Waves",
     ]));
-    expect(byId("bar-playbook-design-requirements")?.outcome).toContain("Agree support boundaries, rollback limits");
+    expect(byId("bar-playbook-design-requirements")?.outcome).toContain("agree support boundaries, rollback limits");
     expect(byId("bar-playbook-design-target-state")?.startCol).toBeGreaterThanOrEqual(byId("bar-playbook-design-requirements")?.endCol ?? 0);
     expect(byId("bar-playbook-design-platform-design")?.dependsOn).toContain("Target-state");
     expect(byId("bar-playbook-design-upgrade-runbook")?.outcome).toContain("upgrade runbook");
