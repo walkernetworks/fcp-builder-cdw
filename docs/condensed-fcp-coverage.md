@@ -2,6 +2,39 @@
 
 The Condensed FCP (`server/condensedFcpRenderer.ts`, with `shared/reportView.ts`) is planned to replace the full FCP (`server/fcpRenderer.ts`). Every field the app collects should reach it, or be removed. This is the audit of what it shows today, from the code (October 2026).
 
+## Status
+
+The Condensed FCP is treated as the only FCP. Every field below now reaches it, except where noted.
+
+| Item | Where it appears |
+|---|---|
+| Compatibility posture: hosts by decision, ESXi versions, top actions, planning considerations (`readiness.items`) | ESXi target-release Compatibility section, shown when "Compatibility summary in the FCP" is on |
+| Entitlement adoption timeline | Shown when "Delivery adoption timeline" is on; when it is off, the Two-Year Notional covers the whole plan from the project start |
+| Discovery answers (`shared/deliveryBriefing.ts`), including new hosts purchased | What We Know About the Estate |
+| Calendar constraints, planning notes, hardware lead time, implementation start | Sequencing Constraints |
+| Implementation start, target completion | Key Dates |
+| Location, industry | Header pills |
+| Primary contact, contacts from the brief (customer, CDW, Broadcom) | Who Is Involved |
+| Playbook decisions for the pathway | Design Profile introduction |
+| RVTools estate: cores, vCPU, VM memory, storage used, powered-off VMs, snapshots, hosts in maintenance or disconnected, high CPU and memory hosts, overcommitted datastores, guest operating systems | Situation (estate size and estate health) |
+| RVTools source files | Sources |
+| Estate drivers and v2 estimating defaults, in hours | Estimating Basis |
+
+Not shown, on purpose:
+
+- **Customer segment.** It is a Broadcom pricing tier; the content checks block segment names. It still decides VVF eligibility and the Building Blocks workbook.
+- **Rates and dollars**, other than the entitlement value.
+- **The detailed compatibility evidence** (server-model cards, release matrices, all findings and coverage gaps). It stays in the Compatibility Delivery Handoff, marked Presales-to-Delivery.
+
+Still open:
+
+- **Hardware lead time** is shown but does not move the platform build on the timeline.
+- **The full FCP** (`server/fcpRenderer.ts`) is still generated. The Condensed FCP imports `selectedScopeSummary` from it; move that to `shared/` before the full FCP is removed. The uncalled renderers in it have been deleted.
+
+## Audit at the start of this work
+
+The audit below is from October 2026, before these changes.
+
 ## Compatibility Delivery Handoff
 
 The Condensed FCP does not use the handoff. It never calls `summarizeCompatibilityHandoff` and never reads `document.readiness`. HCL work reaches it only indirectly:
@@ -42,7 +75,7 @@ The server-model decisions, the action register, findings, coverage gaps and the
 | Industry template (`adoptionDetails.industryTemplate`) | Service Plan; discovery prompts in the app only |
 | Uncalled renderers in `server/fcpRenderer.ts`: `renderObservedInventory`, `renderHclEstateEvidence`, `renderPlanOutputHtml`, `renderLegacyHclCompatibilityPlanOutputHtml` | Code |
 
-## Proposed order
+## Proposed order (done)
 
 1. **Compatibility posture section** in the Condensed FCP: host counts by decision, reconciliation, catalog snapshot date and the top actions (port `renderReadinessExecutiveSnapshot`). Decide whether the full action register, findings and coverage gaps join it as an appendix or stay in the handoff, which is marked Presales-to-Delivery.
 2. **Discovery answers** (`shared/deliveryBriefing.ts`) as a short table, at least the answers shown nowhere else.

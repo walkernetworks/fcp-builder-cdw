@@ -1,7 +1,9 @@
 import { barWindow } from "../shared/buildingBlocks";
 import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
-import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
+import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
 import { effectiveReport, platformName } from "../shared/reportView";
+import { deliveryBriefing } from "../shared/deliveryBriefing";
+import { getIndustryDiscoveryTemplate } from "../shared/industryDiscovery";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { selectedScopeSummary } from "./fcpRenderer";
 import { projectOperationalTimelineToMonths, renderTimeline, sliceTimeline } from "./timelineHtml";
@@ -127,7 +129,7 @@ const UNDECIDED_DEPTH = / — depth to be confirmed$/;
 const customerFacing = (timeline: Timeline): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, label: bar.label.replace(UNDECIDED_DEPTH, "") })) })) });
 
 /** The entitlement window and the two-year notional, drawn with the same category Gantt as the full FCP. */
-function timelineSheets(document: EngagementDocument, windowStart: string, windowEnd: string, termEnd: string | null): { entitlement: string; notional: string } {
+function timelineSheets(document: EngagementDocument, windowStart: string, windowEnd: string, termEnd: string | null, includeEntitlement = true): { entitlement: string; notional: string } {
   const sheet = (eyebrow: string, heading: string, intro: string, timeline: Timeline, empty: string) =>
     `<section class="tl-sheet"><div class="tl-head"><span>${esc(eyebrow)}</span><h2>${esc(heading)}</h2><p>${intro}</p></div>${renderTimeline(timeline, empty)}</section>`;
   const operational = projectOperationalTimelineToMonths(customerFacing(document.adoptionTimeline));
@@ -137,7 +139,7 @@ function timelineSheets(document: EngagementDocument, windowStart: string, windo
   const opEnd = termEnd ? /^(\d{4})-(\d{2})/.exec(termEnd) : null;
   const termColumns = opStart && opEnd ? (Number(opEnd[1]) - Number(opStart[1])) * 12 + Number(opEnd[2]) - Number(opStart[2]) + 1 : 13;
   const entitlementWindow = sliceTimeline(operational, 1, Math.max(1, Math.min(13, termColumns, operational.columns.length)));
-  const entitlement = document.adoptionTimeline.lanes.length
+  const entitlement = includeEntitlement && document.adoptionTimeline.lanes.length
     ? sheet("Adoption Timeline · entitlement window", "Private Cloud Adoption Timeline", `${esc(windowStart)} through ${esc(windowEnd)}. The entitlement-funded delivery sequence by month, under the five standard categories; work after the entitlement ends is carried in the Two-Year Notional. ◆ marks key delivered functionality.`, entitlementWindow, "No activities are scheduled in the entitlement window.")
     : "";
   const plan = customerFacing(document.twoYearPlan);
@@ -145,7 +147,8 @@ function timelineSheets(document: EngagementDocument, windowStart: string, windo
   // An entitlement that started mid-year or ends early leaves more than 12 notional months; they run over more sheets.
   const start = /^(\d{4})-(\d{2})/.exec(plan.startDate);
   const end = termEnd ? /^(\d{4})-(\d{2})/.exec(termEnd) : null;
-  const firstAfter = start && end ? Math.max(1, (Number(end[1]) - Number(start[1])) * 12 + Number(end[2]) - Number(start[2]) + 2) : 13;
+  // Without the entitlement sheet (the delivery adoption timeline checkbox is off), the notional covers the whole horizon.
+  const firstAfter = !includeEntitlement ? 1 : start && end ? Math.max(1, (Number(end[1]) - Number(start[1])) * 12 + Number(end[2]) - Number(start[2]) + 2) : 13;
   const sheets: Timeline[] = [];
   for (let from = firstAfter; from <= plan.columns.length; from += 12) sheets.push(sliceTimeline(plan, from, Math.min(from + 11, plan.columns.length)));
   const notional = plan.lanes.length && sheets.length
@@ -154,10 +157,12 @@ function timelineSheets(document: EngagementDocument, windowStart: string, windo
       const last = part.columns[part.columns.length - 1] || "";
       return sheet(
         `Two-Year Notional · ${first} to ${last}`,
-        index ? "After the Entitlement, Continued" : "After the Entitlement",
+        !includeEntitlement ? (index ? "Two-Year Notional, Continued" : "Two-Year Notional") : index ? "After the Entitlement, Continued" : "After the Entitlement",
         index
           ? `${esc(first)} through ${esc(last)}. Lifecycle, adoption and expansion direction that may need future scope or funding.`
-          : `${esc(first)} through ${esc(last)}, after the entitlement ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""}. Directional work that is not funded by the current entitlement and may need future scope or funding.`,
+          : !includeEntitlement
+            ? `A directional roadmap from ${esc(first)} through ${esc(last)}. Work after the entitlement ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""} is not funded by the current entitlement.`
+            : `${esc(first)} through ${esc(last)}, after the entitlement ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""}. Directional work that is not funded by the current entitlement and may need future scope or funding.`,
         part,
         `No notional activities are scheduled from ${esc(first)} to ${esc(last)}.`,
       );
@@ -269,7 +274,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const customerEffort = buildCustomerEffort(planned);
   const items = [...planItems(document, customer), ...deadlines(document, termEnd)].sort((left, right) => left.start.localeCompare(right.start));
   const platform = platformName(document);
-  const timelines = timelineSheets(document, longDate(fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate) || "Plan start", termEnd ? longDate(termEnd) : document.adoptionTimeline.columns.at(-1) || "plan end", termEnd);
+  const timelines = timelineSheets(document, longDate(fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate) || "Plan start", termEnd ? longDate(termEnd) : document.adoptionTimeline.columns.at(-1) || "plan end", termEnd, fields.exportPreferences.includeOperationalTimeline);
   const deliveryModel = report.deliveryModel || "CDW";
   const outcomes = resolvePlanOutcomes(fields).outcomes;
   const strip = `<div class="strip"><span>${cdwLogoSvg("logo")}Consulting Solution Architecture</span><span>Functional Consumption Plan — Condensed | Prepared for ${esc(customer)} | ${esc(stamp)}</span></div>`;
@@ -370,6 +375,43 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ? `<h3>Target Personnel by Work Stream</h3>${table(["Work Stream", "CDW", ...(withBroadcom ? ["Broadcom"] : []), customer], named.map(row => [esc(row.workstream), people(row.cdw), ...(withBroadcom ? [people(row.broadcom)] : []), people(row.customer)]))}`
     : "";
 
+  // ---- Who is involved: the primary contact and the contacts from the brief
+  const industry = fields.adoptionDetails.industryTemplate !== "general-enterprise" ? getIndustryDiscoveryTemplate(fields.adoptionDetails.industryTemplate).label : "";
+  const contactRows = [
+    ...(fields.primaryContact.trim() ? [[esc(fields.primaryContact.split(",")[0].trim()), esc(fields.primaryContact.split(",").slice(1).join(",").trim() || "Primary contact"), esc(customer)]] : []),
+    ...report.contacts.customer.filter(item => item.name.trim() && item.name.trim() !== fields.primaryContact.split(",")[0].trim()).map(item => [esc(item.name), esc(item.role), esc(customer)]),
+    ...report.contacts.cdw.filter(item => item.name.trim()).map(item => [esc(item.name), esc(item.role), "CDW"]),
+    ...report.contacts.broadcom.filter(item => item.name.trim()).map(item => [esc(item.name), esc(item.role), "Broadcom"]),
+  ];
+  const contacts = contactRows.length ? `<h3>Who Is Involved</h3>${table(["Name", "Role", "Organization"], contactRows)}` : "";
+
+  // ---- What we know about the estate: every discovery answer on record, and why it matters
+  const briefing = deliveryBriefing(document);
+  const discoveryAnswers = briefing.length ? `<h3>What We Know About the Estate</h3><p class="lead">Answers from discovery, with what each one means for this plan.</p>${table(["Topic", "Answer", "Why It Matters"], briefing.map(item => [esc(item.topic), esc(item.detail), esc(item.why)]))}` : "";
+
+  // ---- Compatibility (the "Compatibility summary in the FCP" checkbox): hosts by decision, the top actions,
+  // and the planning considerations. The detailed evidence stays in the Compatibility Delivery Handoff.
+  const handoff = summarizeCompatibilityHandoff(document.readiness.hardwarePlatforms, document.inventory.hosts);
+  const considerations = document.readiness.items.filter(item => item.status === "attention" || item.status === "unknown");
+  const compatibility = fields.exportPreferences.includeVcfReadiness
+    ? `<h2>${esc(handoff.targetRelease)} Compatibility</h2><p class="lead">Server and CPU evidence from RVTools against the offline compatibility snapshot (captured ${esc(shortDate(handoff.catalog.capturedAt.slice(0, 10)))}). This is planning evidence, not a certification; the Compatibility Delivery Handoff carries the full evidence.</p>`
+      + (handoff.estateHosts
+        ? `${table(["Decision", "Hosts"], [["Target release listed", hours(handoff.supportedHosts)], ["Evidence still required", hours(handoff.unresolvedHosts)], ["Blocked or not listed", hours(handoff.blockedHosts)]], { numeric: [1] })}<p>${handoff.allHostsAccountedFor ? `All ${hours(handoff.estateHosts)} imported hosts are matched to a server model.` : `${hours(handoff.unaccountedHosts)} of ${hours(handoff.estateHosts)} imported hosts are not matched to a server model yet.`} ESXi versions in use: ${esc(document.inventory.esxiVersions.map(item => `${item.version} (${item.hosts})`).join(", ") || "not reported")}.</p>`
+          + (handoff.actions.length ? `<h3>Compatibility Actions</h3><ol>${handoff.actions.slice(0, 5).map(action => `<li><b>${hours(action.affectedHosts)} host${action.affectedHosts === 1 ? "" : "s"} · ${esc(action.owner)}:</b> ${esc(action.title)}</li>`).join("")}</ol>` : "")
+        : `<div class="note">No host evidence yet. Import an RVTools export to establish the compatibility posture.</div>`)
+      + (considerations.length ? `<h3>Planning Considerations</h3>${table(["Consideration", "What It Means"], considerations.map(item => [esc(item.title), esc(item.detail)]))}` : "")
+    : "";
+
+  // ---- Estimating basis (v2): the estate facts and the defaults the hours were built on, in hours only
+  const pass1 = effort.internal.pass1;
+  const estimatingBasis = pass1
+    ? `<h3>Estimating Basis</h3><p class="lead">The hours are built from the estate and scope below. Values marked as assumed were not stated and use the planning default; a confirmed value replaces it.</p>${table(["Driver", "Value", "Basis"], [
+      ...[["ESX hosts", pass1.inputs.hosts], ["Clusters", pass1.inputs.clusters], ["VMs", pass1.inputs.vms], ["vCenters", pass1.inputs.vcenters], ["Sites", pass1.inputs.sites], ["VCF instances", pass1.inputs.instances], ["Workload domains", pass1.inputs.workloadDomains]]
+        .map(([label, value]) => { const assumed = pass1.assumptions.find(item => item.label.toLowerCase() === String(label).toLowerCase()); return [esc(label), esc(value), esc(assumed ? `Assumed: ${assumed.source}` : "From RVTools or the brief")]; }),
+      ...pass1.assumptions.filter(item => !["hosts", "clusters", "vms", "vcenters", "sites", "instances", "workloadDomains"].includes(item.key)).map(item => [esc(item.label), esc(typeof item.value === "boolean" ? (item.value ? "Yes" : "No") : item.value), esc(`Assumed: ${item.source}`)]),
+    ])}`
+    : "";
+
   // ---- Design
   const profileRows = PROFILE_CATEGORIES.filter(([key]) => report.designProfile[key]?.trim()).map(([key, label]) => [esc(label), esc(report.designProfile[key] ?? "")]);
   const elementRows = report.designElements.map(item => [esc(item.component), esc(item.requirement), `${esc(item.recommendation)}${item.gate ? ` <b>Gate:</b> ${esc(item.gate)}.` : ""}`]);
@@ -384,7 +426,9 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const milestones = report.milestonesToDate.length
     ? `<h3>Engagement Milestones to Date</h3>${report.milestonesToDate.map(item => `<div class="ms"><b>${esc(shortDate(item.date))}</b><span><b>${esc(item.event)}</b>${item.detail ? ` — ${esc(item.detail)}` : ""}</span></div>`).join("")}`
     : "";
-  const forward = (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption — all hours consumed ahead of expiry.</span></div>` : "")
+  const forward = (fields.plannedImplementationStart ? `<div class="ms"><b>${esc(shortDate(fields.plannedImplementationStart))}</b><span>Implementation services start: build, upgrade and migration work begins.</span></div>` : "")
+    + (fields.targetComplete ? `<div class="ms"><b>${esc(shortDate(fields.targetComplete))}</b><span>${esc(customer)}'s target completion.</span></div>` : "")
+    + (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption: all hours consumed ahead of expiry.</span></div>` : "")
     + (deferredWork.length ? `<div class="ms"><b>After ${esc(termEnd ? shortDate(termEnd) : "the entitlement")}</b><span>${esc(deferredWork.map(row => row.label.replace(UNDECIDED_DEPTH, "")).join("; "))} — shown in the Two-Year Notional as follow-on scope.</span></div>` : "");
 
   // ---- Adoption plan & recommendation
@@ -407,12 +451,13 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const openItems = report.openItems.length ? `<h3>Open Items</h3>${table(["Item", "What It Gates", ...(withOwner ? ["Owner"] : [])], report.openItems.map(item => [esc(item.item), esc(item.gates), ...(withOwner ? [esc(item.owner)] : [])]))}` : "";
   const pulledIn = outcomes.filter(item => item.requiredBy.length);
 
-  const sources = report.sources.length ? report.sources.map(item => `${esc(item.title)}${item.date ? ` (${esc(shortDate(item.date))})` : ""}`).join("; ") : "Engagement plan and RVTools estate data";
+  const rvtools = document.inventorySources.map(item => `RVTools: ${esc(item.filename)}${item.importedAt ? ` (imported ${esc(shortDate(item.importedAt.slice(0, 10)))})` : ""}`);
+  const sources = [...report.sources.map(item => `${esc(item.title)}${item.date ? ` (${esc(shortDate(item.date))})` : ""}`), ...rvtools].join("; ") || "Engagement plan and RVTools estate data";
 
   const body = `
 <h1 class="title">${esc(platform.startsWith("VVF") ? "VMware vSphere Foundation" : "VMware Cloud Foundation")} Adoption — ${esc(customer)}</h1>
 <p class="lead-in">${lead}</p>
-<div class="pills">Platform: <b>${esc(platform)}</b> • Path: <b>${esc(plan.label)}</b> • Delivery: <b>${esc(deliveryModel)}</b></div>
+<div class="pills">Platform: <b>${esc(platform)}</b> • Path: <b>${esc(plan.label)}</b> • Delivery: <b>${esc(deliveryModel)}</b>${industry ? ` • Industry: <b>${esc(industry)}</b>` : ""}${fields.location ? ` • Location: <b>${esc(fields.location)}</b>` : ""}</div>
 <div class="kpis">${kpis}</div>
 
 <h2>Executive Summary</h2>
@@ -426,16 +471,20 @@ ${burndownSection}
 ${scopedEffort}
 ${bucketSection}
 ${followOnSection}
+${estimatingBasis}
 ${customerEffortSection}
 ${personnel}
+${contacts}
 
+${discoveryAnswers}
 ${profileRows.length ? `<h2>${esc(platform.split(" ")[0])} Design Profile</h2>
-<p class="lead">Architecture summarized across the standard design profile categories. Decisions marked for design are set in the design sessions.</p>
+<p class="lead">Architecture summarized across the standard design profile categories. Decisions marked for design are set in the design sessions${plan.decisions.length ? `; for this pathway they include ${esc(plan.decisions.join(", ").toLowerCase())}` : ""}.</p>
 ${table(["Profile Category", `${customer} Design Decision`], profileRows)}` : ""}
 ${elementRows.length ? `<h3>Design Elements — Requirements &amp; Recommendations</h3>
 <p class="lead">Per-component requirements with the recommendation for ${esc(customer)}. Gates are called out.</p>
 ${table(["Component", "Requirement", "Recommendation"], elementRows)}` : ""}
 ${deliverables}
+${compatibility}
 
 <h2>Adoption Timeline</h2>
 <p class="lead">The delivery sequence by calendar month, grouped under the five standard categories. Each work package is described in Work Packages and Scoped Effort.</p>

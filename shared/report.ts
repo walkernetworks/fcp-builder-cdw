@@ -52,6 +52,8 @@ export const discoveryAnswersSchema = z.object({
   drSolution: optionalText,
   backup: optionalText,
   hyperscalers: z.array(z.string().max(200)).default([]),
+  /** New hosts the customer has bought for the build, from the brief. */
+  newHostsPurchased: z.object({ management: optionalNumber, workload: optionalNumber }).default({ management: null, workload: null }),
 });
 
 const rowSchemas = {
