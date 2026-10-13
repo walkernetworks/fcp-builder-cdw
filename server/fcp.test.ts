@@ -555,8 +555,9 @@ describe("planning considerations, exports, and access boundary", () => {
     expect(exact.releaseEvidence.map(item => [item.release, item.status])).toEqual([["ESXi 9.0", "listed"], ["ESXi 9.1", "listed"]]);
     expect(exact.requiredEvidence).toContain("firmware and driver alignment");
     expect(cpuMismatch).toMatchObject({ status: "cpu-not-certified", matchedModel: "PowerEdge R760" });
-    expect(digitGuard).toMatchObject({ status: "unknown", modelMatchMethod: "none" });
-    expect(digitGuard.detail).toContain("different model-number identity");
+    // The digit guard keeps R7600 from matching the R760; a model from a known vendor that is not on the 9.x list is not listed.
+    expect(digitGuard).toMatchObject({ status: "not-supported", evidenceState: "verified-not-listed", modelMatchMethod: "none", matchedModel: "" });
+    expect(digitGuard.detail).toContain("is not in the Broadcom server list");
     expect(nativeCiscoBlade).toMatchObject({ status: "supported", matchedPartnerName: "Cisco", matchedModel: "Cisco UCS B200 M6" });
     expect(nativeCiscoRack).toMatchObject({ status: "supported", matchedPartnerName: "Cisco", matchedModel: "Cisco UCS-C220-M5SX" });
     expect(nativeCiscoRack.futureReleaseSupport).toMatchObject({

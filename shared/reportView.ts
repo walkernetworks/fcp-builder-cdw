@@ -2,6 +2,7 @@ import { barWindow } from "./buildingBlocks";
 import { buildCustomerEffort, buildScopedEffort, withOwnership } from "./effort";
 import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, serverLabel, summarizeVcfCompatibility, type EngagementDocument } from "./fcp";
 import { renewalStartsCurrentTerm } from "./deliveryBriefing";
+import { backInTime } from "./hclCorpus";
 import { ADD_ON_OUTCOMES, canonicalAddOn, completedReport, type ReportContent } from "./report";
 
 /**
@@ -47,8 +48,17 @@ const monthYear = (value: string) => {
 const keyOf = (section: GeneratedSection, value: string) => `${section}:${value.trim().toLowerCase()}`;
 
 export function platformName(document: EngagementDocument): string {
-  const release = document.fields.compatibilityTargetRelease.replace(/^ESXi\s*/, "");
+  const release = minimumTargetRelease(document)?.minimum ?? document.fields.compatibilityTargetRelease.replace(/^ESXi\s*/, "");
   return `${effectivePlatformEdition(document.fields) === "vvf" ? "VVF" : "VCF"} ${release}`;
+}
+
+/** Hosts on builds newer than the target's first release (8.0 U3j and later) need a later release to upgrade or converge (KB 450972, 454369). */
+export function minimumTargetRelease(document: EngagementDocument): { minimum: string; hosts: number; sources: string[] } | null {
+  const target = document.fields.compatibilityTargetRelease;
+  const late = document.inventory.hclEvidence.hosts.map(host => backInTime(host.esxiVersion, target)).filter((item): item is NonNullable<typeof item> => Boolean(item));
+  if (!late.length) return null;
+  const minimum = late.map(item => item.minimum).sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))[0];
+  return { minimum, hosts: late.length, sources: Array.from(new Set(late.map(item => item.source))) };
 }
 
 /** The entitlement end the report works to: the stated term end, or start + 12 months. */
