@@ -290,7 +290,8 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   // ---- Executive summary
   const situation = report.situation.map(esc);
   const planOnPage = FIXED_GANTT_CATEGORIES.map(category => {
-    const work = items.filter(item => item.category === category && !item.customerOwned && item.swatch !== "muted").map(item => item.label);
+    // CDW work on the entitlement timeline in this category, governance and design stages included.
+    const work = document.adoptionTimeline.lanes.filter(lane => lane.category === category).flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "cdw").map(bar => bar.label.replace(UNDECIDED_DEPTH, "").replace(/^(Month \d+|Weeks? [\d–-]+): /, ""));
     const later = deferredWork.filter(row => row.category === category).map(row => row.label.replace(UNDECIDED_DEPTH, ""));
     const text = `${work.length ? esc(Array.from(new Set(work)).slice(0, 4).join("; ")) : later.length ? "nothing in the entitlement window" : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; after the entitlement: ${esc(later.join("; "))}` : ""}`;
     return `<li><b>${esc(category)}</b> — ${text}</li>`;
@@ -307,8 +308,13 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const fundedPackages = effort.workPackages.filter(row => row.total > 0);
   let scopedEffort: string;
   if (effort.source === "assignments" || !fundedPackages.length) {
-    const effortRows = effort.rows.map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), hours(row.architect), hours(row.srConsultant), hours(row.projectManager), hours(row.total)]);
-    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by workstream and role${effort.source === "assignments" ? ", from the signed resource assignments for this entitlement" : ", estimated from this plan; the signed resource assignments replace these figures"}.</p>${table(["Workstream", "Architect", "Sr. Consultant", "Sr. Project Manager", "Total Hours"], effortRows, { numeric: [1, 2, 3, 4], foot: true, total: effortTotal })}`;
+    // A signed work plan can also carry Senior Architect and Offshore PM hours; their columns appear only when used.
+    const senior = effort.rows.some(row => row.seniorArchitect);
+    const offshore = effort.rows.some(row => row.offshoreProjectManager);
+    const headers = ["Workstream", "Architect", ...(senior ? ["Sr. Architect"] : []), "Sr. Consultant", "Sr. Project Manager", ...(offshore ? ["Offshore PM"] : []), "Total Hours"];
+    const cells = (values: { architect: number; srConsultant: number; projectManager: number; seniorArchitect?: number; offshoreProjectManager?: number; total: number }) => [hours(values.architect), ...(senior ? [hours(values.seniorArchitect ?? 0)] : []), hours(values.srConsultant), hours(values.projectManager), ...(offshore ? [hours(values.offshoreProjectManager ?? 0)] : []), hours(values.total)];
+    const effortRows = effort.rows.map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), ...cells(row)]);
+    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by workstream and role${effort.source === "assignments" ? ", from the signed resource assignments for this entitlement" : ", estimated from this plan; the signed resource assignments replace these figures"}.</p>${table(headers, effortRows, { numeric: headers.slice(1).map((_, index) => index + 1), foot: true, total: ["Total CDW-delivered hours", ...cells(effort.totals)] })}`;
   } else {
     // One table per work package: window, lead role and hours, with what it delivers, how it is accepted, and what it starts after.
     const numeric = (value: number) => `<td class="num">${hours(value)}</td>`;

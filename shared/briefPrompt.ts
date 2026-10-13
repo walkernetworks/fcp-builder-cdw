@@ -52,7 +52,7 @@ What each section is for
 - openItems: every item still outstanding, what it gates, and the owner.
 - personnel: for each work stream, the named CDW, Broadcom and customer people.
 - milestonesToDate: what has already happened, with dates (entitlement start, discovery sessions, assessment delivered, kickoff).
-- resourceAssignments: ONLY if signed resource assignments exist, hours by work stream for Architect, Sr. Consultant and Project Manager; otherwise null.
+- resourceAssignments: ONLY if signed resource assignments or the Broadcom work plan exist, hours by work stream for architect, srConsultant, projectManager, seniorArchitect and offshoreProjectManager (0 for a role the plan does not use); otherwise null.
 - sources: the documents you used, with their dates.
 - headline: one cover line that starts "Amazing happens when" and states the customer's outcome in their terms.
 - revision: one or two sentences saying what this brief was built from and the date of the newest source.

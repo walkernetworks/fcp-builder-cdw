@@ -1,4 +1,4 @@
-import { buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, ROLE_LOADING, type DeferralReason, type FitMoney, type RoleHours, type ScopedEffort } from "../shared/effort";
+import { buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, ROLE_LOADING, type DeferralReason, type FitMoney, type RoleHours, type ScopedEffort, type WorkPlanRoles } from "../shared/effort";
 import type { EngagementDocument } from "../shared/fcp";
 
 /**
@@ -18,7 +18,8 @@ export function fundedHoursFromValue(value: number): number | null {
   return value > 0 ? value / BLENDED_RATE : null;
 }
 
-const costOf = (roles: RoleHours) => roles.architect * RATE.architect + roles.srConsultant * RATE.srConsultant + roles.projectManager * RATE.projectManager;
+const costOf = (roles: RoleHours & WorkPlanRoles) => roles.architect * RATE.architect + roles.srConsultant * RATE.srConsultant + roles.projectManager * RATE.projectManager
+  + (roles.seniorArchitect ?? 0) * RATE.seniorArchitect + (roles.offshoreProjectManager ?? 0) * RATE.offshoreProjectManager;
 
 /**
  * Squeezes as much of the plan into the entitlement as it can carry: while the plan costs more than the

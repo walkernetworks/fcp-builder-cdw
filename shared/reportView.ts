@@ -1,6 +1,6 @@
 import { barWindow } from "./buildingBlocks";
 import { buildCustomerEffort, buildScopedEffort, withOwnership } from "./effort";
-import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument } from "./fcp";
+import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, summarizeVcfCompatibility, type EngagementDocument } from "./fcp";
 import { ADD_ON_OUTCOMES, canonicalAddOn, completedReport, type ReportContent } from "./report";
 
 /**
@@ -141,17 +141,36 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     designElements.push({
       component: "Licensing",
       requirement: "16-core-per-CPU minimum per licensed core.",
+      // Licensed cores beyond what the imported hosts need are only unmatched: they may cover hosts in a vCenter that was not exported.
       recommendation: licensed
-        ? `${licensed.toLocaleString("en-US")} licensed cores on record against ${required.toLocaleString("en-US")} required for the ${inventory.hosts} hosts (${licensed >= required ? `${(licensed - required).toLocaleString("en-US")} spare` : `${(required - licensed).toLocaleString("en-US")} short`}).`
+        ? licensed >= required
+          ? `${licensed.toLocaleString("en-US")} licensed cores on record; the ${inventory.hosts} hosts in these RVTools exports require ${required.toLocaleString("en-US")}. The other ${(licensed - required).toLocaleString("en-US")} are not matched to these hosts; confirm which hosts they cover before treating any as available.`
+          : `${licensed.toLocaleString("en-US")} licensed cores on record against ${required.toLocaleString("en-US")} required for the ${inventory.hosts} hosts in these RVTools exports (${(required - licensed).toLocaleString("en-US")} short).`
         : `${required.toLocaleString("en-US")} cores required for the ${inventory.hosts} hosts; licensed core count to be confirmed.`,
-      gate: licensed ? null : "licensed core count confirmed",
+      gate: !licensed ? "licensed core count confirmed" : licensed > required ? "licensed cores reconciled to every in-scope host" : null,
     });
   }
   const oldHardware = vmsBelowHardware19(document);
   if (oldHardware) designElements.push({ component: "Workloads", requirement: "Supported guest operating systems and VM hardware.", recommendation: `Remediate ${oldHardware.toLocaleString("en-US")} VMs below hardware version 19 ahead of their migration waves.`, gate: null });
 
   // Discovery answers that change the design, only where the plan makes them matter.
-  if (builds && discovery.serverVendor) designElements.push({ component: "Hardware lifecycle", requirement: `Hosts are ${discovery.serverVendor}; vLCM images manage firmware and drivers with the ESX image.`, recommendation: `Build the cluster images with the ${discovery.serverVendor} vendor add-on and hardware support manager.`, gate: null });
+  const serverModels = summarizeVcfCompatibility(document.readiness.hardwarePlatforms);
+  if (builds && (discovery.serverVendor || serverModels.length)) {
+    // Images are built only for the server models the compatibility check lists; the rest are a gate.
+    const listed = serverModels.filter(item => item.decision === "eligible");
+    const notListed = serverModels.filter(item => item.decision !== "eligible");
+    const names = (items: typeof serverModels) => Array.from(new Set(items.map(item => `${item.vendor} ${item.model}`.trim()))).join(", ");
+    const hostCount = (items: typeof serverModels) => items.reduce((sum, item) => sum + item.hosts, 0);
+    const vendor = discovery.serverVendor || Array.from(new Set(serverModels.map(item => item.vendor))).join(" and ");
+    designElements.push({
+      component: "Hardware lifecycle",
+      requirement: `Hosts are ${vendor}; vLCM images manage firmware and drivers with the ESX image.`,
+      recommendation: !serverModels.length
+        ? `Build the cluster images with the ${vendor} vendor add-on and hardware support manager once the compatibility check confirms the host models.`
+        : `${listed.length ? `Build the cluster images with the vendor add-on and hardware support manager for the models the compatibility check lists: ${names(listed)}.` : "No host model is confirmed for the target release yet."}${notListed.length ? ` ${names(notListed)} (${hostCount(notListed)} host${hostCount(notListed) === 1 ? "" : "s"}) ${notListed.length === 1 ? "is" : "are"} not confirmed for the target release: replace or confirm support before ${notListed.length === 1 ? "it joins" : "they join"} a cluster.` : ""}`,
+      gate: !serverModels.length ? "compatibility check run on a current RVTools export" : notListed.length ? "support confirmed or hardware replaced for every host model" : null,
+    });
+  }
   if (moves && discovery.backup) designElements.push({ component: "Backup", requirement: `${discovery.backup} protects the workloads moving to the new platform.`, recommendation: `Confirm ${discovery.backup} supports the target vSphere and VCF release before the first wave; re-point jobs as each wave lands.`, gate: "backup support confirmed" });
   if (inScope("resilience") && discovery.drSolution) designElements.push({ component: "Disaster recovery", requirement: `Recovery runs on ${discovery.drSolution} today.`, recommendation: "The recovery design decides whether VMware Live Recovery replaces it or runs alongside, and sets the recovery objectives.", gate: null });
   if (inScope("security") && discovery.securityTooling) designElements.push({ component: "Security tooling", requirement: `${discovery.securityTooling} stays in place.`, recommendation: "Design vDefend policy alongside the existing tooling so controls do not overlap or conflict.", gate: null });
@@ -176,7 +195,9 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     constraints.push({ constraint: `${planOutcomeLabel(outcome.key)} before ${outcome.requiredBy.map(key => planOutcomeLabel(key)).join(" and ")}`, imposedBy: "Platform", effect: "Sequenced as a prerequisite" });
   }
   if ((path === "converge" || path === "import-workload-domain") && discovery.enhancedLinkedMode === true) constraints.push({ constraint: "Enhanced Linked Mode split before convergence", imposedBy: "Platform", effect: "vCenters leave the linked group before they join VCF" });
-  if (discovery.renewalDate) constraints.push({ constraint: `Subscription renewal ${shortDate(discovery.renewalDate)}`, imposedBy: "Licensing", effect: "Licensing activated and the renewal sized before that date" });
+  const today = report.asOf || new Date().toISOString().slice(0, 10);
+  const renewalPassed = Boolean(discovery.renewalDate && discovery.renewalDate < today);
+  if (discovery.renewalDate && !renewalPassed) constraints.push({ constraint: `Subscription renewal ${shortDate(discovery.renewalDate)}`, imposedBy: "Licensing", effect: "Licensing activated and the renewal sized before that date" });
   if (fields.hardwareAvailability === "new" && fields.hardwareLeadWeeks > 0) constraints.push({ constraint: `New hardware lead time of ${fields.hardwareLeadWeeks} week${fields.hardwareLeadWeeks === 1 ? "" : "s"}`, imposedBy: "Hardware", effect: "The platform build waits for delivery, rack and stack" });
   if (fields.plannedImplementationStart) constraints.push({ constraint: `Implementation services start ${shortDate(fields.plannedImplementationStart)}`, imposedBy: customer, effect: "Design runs from the project start; build, upgrade and migration begin on this date" });
   if (fields.timelineNotes.trim()) constraints.push({ constraint: fields.timelineNotes.trim(), imposedBy: "Calendar", effect: "Applied to the schedule of every affected work package" });
@@ -212,6 +233,11 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     if (!planned) openItems.push({ item: `${addOn?.label ?? purchased} is purchased but not in this plan`, gates: "Scope: add it or record why it waits", owner: "" });
   }
   if (!report.entitlement.hours) openItems.push({ item: "Entitled hours from the signed resource assignments", gates: "Burndown and weekly pace", owner: "" });
+  if (renewalPassed) openItems.push({ item: `The subscription renewal date on record (${shortDate(discovery.renewalDate!)}) has passed: confirm the renewal and the new term`, gates: "Licensing activation and core sizing", owner: "" });
+  // Licensed cores the imported hosts do not account for usually mean an estate that was not exported.
+  if (required && licensed && licensed > required) openItems.push({ item: `${(licensed - required).toLocaleString("en-US")} licensed cores are not matched to the hosts in these RVTools exports`, gates: "Licensing sizing; confirm whether another vCenter needs an RVTools export", owner: "" });
+  const exported = document.inventorySources.filter(source => /\.xlsx?$/i.test(source.filename)).length;
+  if (discovery.vcenters && exported && exported < discovery.vcenters) openItems.push({ item: `RVTools exports for ${exported} of ${discovery.vcenters} vCenters`, gates: "Sizing, compatibility and licensing for the vCenters not exported", owner: "" });
 
   // ---- Milestones from the engagement dates
   const milestonesToDate: Array<Row<"milestonesToDate">> = [];

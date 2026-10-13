@@ -188,6 +188,58 @@ describe("Condensed FCP as the only FCP", () => {
   });
 });
 
+describe("Condensed FCP review fixes", () => {
+  it("does not call licensed cores beyond the imported hosts spare, and asks which hosts they cover", () => {
+    const document = withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true });
+    document.report.discovery.licensedCores = 20_000;
+    document.inventory.hclEvidence.hosts = Array.from({ length: 6 }, (_, index) => ({ name: `esx${index}`, cluster: "DC1 / Prod", vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6430", esxiVersion: "8.0.3", socketCount: 2, coresPerSocket: 16, biosVersion: "", biosDate: "" }));
+    const visible = text(render(document));
+    expect(visible).toContain("the 6 hosts in these RVTools exports require 192");
+    expect(visible).not.toMatch(/\bspare\b/);
+    expect(visible).toContain("are not matched to these hosts");
+    expect(visible).toMatch(/licensed cores are not matched to the hosts in these RVTools exports/);
+  });
+
+  it("turns a renewal date that has passed into an open item", () => {
+    const document = withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true });
+    document.report.discovery.renewalDate = "2026-01-15";
+    const visible = text(render(document));
+    expect(visible).not.toContain("Subscription renewal 15 Jan 2026");
+    expect(visible).toMatch(/subscription renewal date on record \(15 Jan 2026\) has passed/);
+  });
+
+  it("lists the governance stages on the Plan on a Page", () => {
+    const visible = text(render(withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true })));
+    const governance = /Program Management & Governance — ([^.]*?)(?= Modernize| Operations)/.exec(visible)?.[1] ?? "";
+    expect(governance).not.toContain("no work in scope");
+    expect(governance).toMatch(/Discovery Sessions/);
+  });
+
+  it("builds lifecycle images only for the host models the compatibility check lists", () => {
+    const document = withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true });
+    document.inventory.hostModels.push({ vendor: "Dell Inc.", model: "PowerEdge R730", cpuModel: "Intel(R) Xeon(R) CPU E5-2697A v4 @ 2.60GHz", hosts: 7, physicalCores: 224, esxiVersions: [{ version: "7.0.3", hosts: 7 }], esxiCorrelation: "per-platform", clusterMembership: [], minimumMemoryGiB: 256, maximumMemoryGiB: 256 } as never);
+    document.inventory.hosts += 7;
+    const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
+    const lifecycle = /Hardware lifecycle (.*?)(?= Disaster recovery| Principal storage| Backup| Licensing| Workloads| Adoption Timeline)/.exec(visible)?.[1] ?? "";
+    expect(lifecycle).toContain("Build the cluster images");
+    expect(lifecycle).toMatch(/Dell Inc\. PowerEdge R730 \(7 hosts\) is not confirmed for the target release/);
+    expect(lifecycle).toContain("Gate: support confirmed or hardware replaced for every host model");
+  });
+
+  it("shows Senior Architect and Offshore PM hours from a signed work plan", () => {
+    const document = engagement(raw => { raw.resourceAssignments = [{ workstream: "Design and build", architect: 180, srConsultant: 900, projectManager: 190, seniorArchitect: 62, offshoreProjectManager: 113 }]; });
+    const effort = scopedEffortForDocument(document);
+    expect(effort.source).toBe("assignments");
+    expect(effort.totals.total).toBe(1_445);
+    const html = renderCondensedFcpHtml("Acme Health", document, { effort, today: "2026-09-30" });
+    const visible = text(html);
+    expect(visible).toContain("Sr. Architect");
+    expect(visible).toContain("Offshore PM");
+    expect(visible).toContain("1,445");
+    expect(checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount }).filter(item => !/costs more/.test(item))).toEqual([]);
+  });
+});
+
 describe("Condensed FCP gates", () => {
   const document = engagement();
   const html = render(document);

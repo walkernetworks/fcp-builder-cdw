@@ -72,7 +72,9 @@ export type EffortLine = {
 };
 
 export type RoleHours = { architect: number; srConsultant: number; projectManager: number };
-export type EffortRow = RoleHours & { workstream: string; total: number; note?: string };
+/** Signed work plans can also carry these roles; calculated hours never do. */
+export type WorkPlanRoles = { seniorArchitect?: number; offshoreProjectManager?: number };
+export type EffortRow = RoleHours & WorkPlanRoles & { workstream: string; total: number; note?: string };
 
 /** Plan cost against the entitlement value: within up to 90%, near up to 100%, over beyond it. */
 export const COST_THRESHOLDS = { near: 0.9, over: 1 } as const;
@@ -122,7 +124,7 @@ export type ScopedEffort = {
   rows: EffortRow[];
   /** The calculated hours spread over the timeline work packages that deliver them; columns foot to the calculated totals. */
   workPackages: WorkPackageEffort[];
-  totals: RoleHours & { total: number };
+  totals: RoleHours & WorkPlanRoles & { total: number };
   /** INTERNAL: the calculated lines and the fit against the envelope. Never rendered in the report. */
   internal: {
     lines: EffortLine[];
@@ -316,13 +318,17 @@ function rowsFromLines(lines: EffortLine[]): EffortRow[] {
   });
 }
 
-function totalsOf(rows: EffortRow[]): RoleHours & { total: number } {
-  return rows.reduce((sum, row) => ({
+function totalsOf(rows: EffortRow[]): RoleHours & WorkPlanRoles & { total: number } {
+  const totals = rows.reduce((sum, row) => ({
     architect: sum.architect + row.architect,
     srConsultant: sum.srConsultant + row.srConsultant,
     projectManager: sum.projectManager + row.projectManager,
+    seniorArchitect: sum.seniorArchitect + (row.seniorArchitect ?? 0),
+    offshoreProjectManager: sum.offshoreProjectManager + (row.offshoreProjectManager ?? 0),
     total: sum.total + row.total,
-  }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
+  }), { architect: 0, srConsultant: 0, projectManager: 0, seniorArchitect: 0, offshoreProjectManager: 0, total: 0 });
+  const { seniorArchitect, offshoreProjectManager, ...rest } = totals;
+  return { ...rest, ...(seniorArchitect ? { seniorArchitect } : {}), ...(offshoreProjectManager ? { offshoreProjectManager } : {}) };
 }
 
 /**
@@ -837,12 +843,14 @@ function assembleScopedEffort(
   extra: Pick<ScopedEffort["internal"], "pass1" | "fit"> = {},
 ): ScopedEffort {
   const calculatedRows = rowsFromLines(lines);
-  const assignments = completedReport(document.report).resourceAssignments.map(item => ({
+  const assignments: EffortRow[] = completedReport(document.report).resourceAssignments.map(item => ({
     workstream: item.workstream,
     architect: item.architect,
     srConsultant: item.srConsultant,
     projectManager: item.projectManager,
-    total: item.architect + item.srConsultant + item.projectManager,
+    ...(item.seniorArchitect ? { seniorArchitect: item.seniorArchitect } : {}),
+    ...(item.offshoreProjectManager ? { offshoreProjectManager: item.offshoreProjectManager } : {}),
+    total: item.architect + item.srConsultant + item.projectManager + (item.seniorArchitect ?? 0) + (item.offshoreProjectManager ?? 0),
   }));
   const workPackages = workPackageEffort(document, lines, totalsOf(calculatedRows));
   const planned = workPackages.filter(row => row.total > 0);
