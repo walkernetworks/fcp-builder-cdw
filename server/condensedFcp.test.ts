@@ -182,7 +182,8 @@ describe("Condensed FCP as the only FCP", () => {
     expect(visible).toContain("30 powered-off VMs");
     expect(visible).toContain("41 VM snapshots");
     expect(visible).toContain("Microsoft Windows Server 2019 (120)");
-    expect(visible).toContain("RVTools: rvtools-dc1.xlsx");
+    expect(visible).not.toContain("rvtools-dc1.xlsx");
+    expect(visible).not.toContain("Sources:");
     // Hours basis (v2)
     expect(visible).toContain("Estimating Basis");
   });

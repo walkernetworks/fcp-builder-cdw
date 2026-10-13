@@ -17,13 +17,13 @@ The Condensed FCP is treated as the only FCP. Every field below now reaches it, 
 | Primary contact, contacts from the brief (customer, CDW, Broadcom) | Who Is Involved |
 | Playbook decisions for the pathway | Design Profile introduction |
 | RVTools estate: cores, vCPU, VM memory, storage used, powered-off VMs, snapshots, hosts in maintenance or disconnected, high CPU and memory hosts, overcommitted datastores, guest operating systems | Situation (estate size and estate health) |
-| RVTools source files | Sources |
 | Estate drivers and v2 estimating defaults, in hours | Estimating Basis |
 
 Not shown, on purpose:
 
 - **Customer segment.** It is a Broadcom pricing tier; the content checks block segment names. It still decides VVF eligibility and the Building Blocks workbook.
 - **Rates and dollars**, other than the entitlement value.
+- **Source file names** (RVTools exports and source documents). The document is customer facing; the files stay on the planner screens.
 - **The detailed compatibility evidence** (server-model cards, release matrices, all findings and coverage gaps). It stays in the Compatibility Delivery Handoff, marked Presales-to-Delivery.
 
 Still open:
