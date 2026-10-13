@@ -34,6 +34,9 @@ export function deliveryBriefing(document: EngagementDocument): BriefingItem[] {
   add("Security tooling", discovery.securityTooling, inScope("security") ? "Design vDefend policy alongside it to avoid conflicting controls." : "Agents and integrations must support the target release.");
   add("Container platform", discovery.containerPlatform, inScope("kubernetes") ? "Decide which clusters move to the Supervisor and VKS." : "Out of scope; confirm nothing on it depends on the hosts being rebuilt.");
   add("Public cloud", discovery.hyperscalers.join(", "), "Existing cloud connectivity and workloads that the design must account for.");
+  const bought = discovery.newHostsPurchased;
+  const newHosts = [bought.management ? `${bought.management} for management` : "", bought.workload ? `${bought.workload} for workloads` : ""].filter(Boolean).join(", ");
+  add("New hosts purchased", newHosts, "Sized into the design; the build waits for their delivery, rack and stack.");
   add("VCF licensed", discovery.vcfLicensed === null ? null : yesNo(discovery.vcfLicensed), "Licensing must be activated before the evaluation period on the new platform ends.");
   add("Licensed cores", discovery.licensedCores ? discovery.licensedCores.toLocaleString("en-US") : null, "Compared with the cores the hosts require at the 16-core-per-CPU minimum.");
   add("Subscription renewal", discovery.renewalDate, "Licensing activation and the renewal sizing land before this date.");

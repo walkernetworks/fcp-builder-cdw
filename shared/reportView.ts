@@ -95,6 +95,26 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     const oldHardware = vmsBelowHardware19(document);
     if (oldHardware) situation.push(`${oldHardware.toLocaleString("en-US")} VMs below VM hardware version 19`);
     if (onVsphere8(document)) situation.push("vSphere 8 reaches end of general support on 11 October 2027");
+    // Estate health from RVTools: compute, memory, capacity and hosts that need attention before the work starts.
+    const compute = [
+      inventory.physicalCores ? `${inventory.physicalCores.toLocaleString("en-US")} physical cores` : "",
+      inventory.vCpu ? `${inventory.vCpu.toLocaleString("en-US")} vCPU${inventory.physicalCores ? ` (${(inventory.vCpu / inventory.physicalCores).toFixed(1)} per core)` : ""}` : "",
+      inventory.vmMemoryGiB ? `${Math.round(inventory.vmMemoryGiB).toLocaleString("en-US")} GiB VM memory` : "",
+      inventory.datastoreUsedTiB ? `${inventory.datastoreUsedTiB.toLocaleString("en-US")} TiB of storage used` : "",
+    ].filter(Boolean);
+    if (compute.length) situation.push(`Estate size: ${compute.join(", ")}`);
+    const attention = [
+      inventory.poweredOffVms ? `${inventory.poweredOffVms.toLocaleString("en-US")} powered-off VMs to confirm or retire` : "",
+      inventory.snapshotCount ? `${inventory.snapshotCount.toLocaleString("en-US")} VM snapshots to clear before migration` : "",
+      inventory.maintenanceHosts ? `${inventory.maintenanceHosts} host${inventory.maintenanceHosts === 1 ? "" : "s"} in maintenance mode` : "",
+      inventory.disconnectedHosts ? `${inventory.disconnectedHosts} disconnected host${inventory.disconnectedHosts === 1 ? "" : "s"}` : "",
+      inventory.highCpuHosts ? `${inventory.highCpuHosts} host${inventory.highCpuHosts === 1 ? "" : "s"} running high on CPU` : "",
+      inventory.highMemoryHosts ? `${inventory.highMemoryHosts} host${inventory.highMemoryHosts === 1 ? "" : "s"} running high on memory` : "",
+      inventory.overcommittedDatastores ? `${inventory.overcommittedDatastores} overcommitted datastore${inventory.overcommittedDatastores === 1 ? "" : "s"}` : "",
+    ].filter(Boolean);
+    if (attention.length) situation.push(`Estate health: ${attention.join("; ")}`);
+    const guests = inventory.guestOperatingSystems.slice().sort((left, right) => right.vms - left.vms).slice(0, 3).map(item => `${item.name} (${item.vms.toLocaleString("en-US")})`);
+    if (guests.length) situation.push(`Most common guest operating systems: ${guests.join(", ")}`);
   }
 
   // ---- Design elements
@@ -157,6 +177,10 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   }
   if ((path === "converge" || path === "import-workload-domain") && discovery.enhancedLinkedMode === true) constraints.push({ constraint: "Enhanced Linked Mode split before convergence", imposedBy: "Platform", effect: "vCenters leave the linked group before they join VCF" });
   if (discovery.renewalDate) constraints.push({ constraint: `Subscription renewal ${shortDate(discovery.renewalDate)}`, imposedBy: "Licensing", effect: "Licensing activated and the renewal sized before that date" });
+  if (fields.hardwareAvailability === "new" && fields.hardwareLeadWeeks > 0) constraints.push({ constraint: `New hardware lead time of ${fields.hardwareLeadWeeks} week${fields.hardwareLeadWeeks === 1 ? "" : "s"}`, imposedBy: "Hardware", effect: "The platform build waits for delivery, rack and stack" });
+  if (fields.plannedImplementationStart) constraints.push({ constraint: `Implementation services start ${shortDate(fields.plannedImplementationStart)}`, imposedBy: customer, effect: "Design runs from the project start; build, upgrade and migration begin on this date" });
+  if (fields.timelineNotes.trim()) constraints.push({ constraint: fields.timelineNotes.trim(), imposedBy: "Calendar", effect: "Applied to the schedule of every affected work package" });
+  if (fields.adoptionDetails.notes.trim()) constraints.push({ constraint: fields.adoptionDetails.notes.trim(), imposedBy: "Planning note", effect: "Applied to the design and the work packages it affects" });
   if (termEnd) constraints.push({ constraint: `Entitlement expiry ${shortDate(termEnd)}`, imposedBy: "Entitlement term", effect: handoverWindow ? `Handover completes in ${monthYear(handoverWindow.end)}` : "All hours consumed before expiry" });
 
   // ---- Asks of the customer's team

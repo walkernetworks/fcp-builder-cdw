@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { exportFilename } from "../shared/exportFilename";
-import { createDefaultDocument, FIXED_GANTT_CATEGORIES, type EngagementDocument } from "../shared/fcp";
+import { createDefaultDocument, FIXED_GANTT_CATEGORIES, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { scopedEffortForDocument } from "./rateCard";
@@ -117,6 +117,74 @@ describe("Condensed FCP", () => {
     expect(visible).toContain("Accepted when:");
     expect(visible).not.toContain("What CDW Delivers");
     expect(visible).not.toContain("Adoption Sequence & Dependencies");
+  });
+});
+
+/** The example brief with an RVTools estate, so the compatibility and estate sections have evidence to show. */
+function withEstate(preferences: { includeVcfReadiness: boolean; includeOperationalTimeline: boolean }): EngagementDocument {
+  const document = engagement(raw => { raw.discovery.newHostsPurchased = { management: 4, workload: 8 }; raw.contacts.cdw = [{ name: "Jordan Blake", role: "Architect" }]; });
+  Object.assign(document.inventory, {
+    hosts: 6, clusters: 2, datacenters: 1, vmCount: 220, poweredOnVms: 190, poweredOffVms: 30, physicalCores: 192, vCpu: 640, vmMemoryGiB: 2400, snapshotCount: 41,
+    esxiVersions: [{ version: "8.0.3", hosts: 4 }, { version: "7.0.3", hosts: 2 }],
+    clusterProfiles: [{ name: "DC1 / Prod", hosts: 4 }, { name: "DC1 / Mgmt", hosts: 2 }],
+    guestOperatingSystems: [{ name: "Microsoft Windows Server 2019", vms: 120 }],
+    hostModels: [
+      { vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6430", hosts: 4, physicalCores: 128, esxiVersions: [{ version: "8.0.3", hosts: 4 }], esxiCorrelation: "per-platform", clusterMembership: [{ name: "DC1 / Prod", hosts: 4 }], minimumMemoryGiB: 512, maximumMemoryGiB: 512 },
+      { vendor: "Cisco Systems Inc", model: "UCSC-C240-M5SX", cpuModel: "Intel(R) Xeon(R) Gold 6130", hosts: 2, physicalCores: 64, esxiVersions: [{ version: "7.0.3", hosts: 2 }], esxiCorrelation: "per-platform", clusterMembership: [{ name: "DC1 / Mgmt", hosts: 2 }], minimumMemoryGiB: 384, maximumMemoryGiB: 384 },
+    ],
+  });
+  document.inventorySources = [{ id: "rv-1", filename: "rvtools-dc1.xlsx", byteSize: 1, sheets: ["vHost"], importedAt: "2026-09-20T10:00:00Z", warnings: [] }];
+  Object.assign(document.fields, { location: "Columbus, OH", primaryContact: "Pat Rivera, IT Director", targetComplete: "2027-04-15", hardwareAvailability: "new", hardwareLeadWeeks: 8, timelineNotes: "No changes during the December freeze.", exportPreferences: preferences });
+  document.fields.adoptionDetails = { ...document.fields.adoptionDetails, industryTemplate: "healthcare-life-sciences", notes: "Keep the DR site on its own workload domain." };
+  return refreshDerivedDocument(document, { forceRebuild: true });
+}
+
+describe("Condensed FCP as the only FCP", () => {
+  it("shows the compatibility posture, actions and planning considerations when the compatibility checkbox is on", () => {
+    const document = withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true });
+    const html = render(document);
+    const visible = text(html);
+    expect(visible).toMatch(/ESXi 9\.1 Compatibility/);
+    expect(visible).toContain("Target release listed");
+    expect(visible).toContain("Compatibility Actions");
+    expect(visible).toContain("Planning Considerations");
+    expect(visible).toContain("ESXi versions in use: 8.0.3 (4), 7.0.3 (2)");
+    expect(checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount })).toEqual([]);
+  });
+
+  it("leaves compatibility out, and draws the notional from the project start, when both checkboxes are off", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: false });
+    const visible = text(render(document));
+    expect(visible).not.toContain("Compatibility Actions");
+    expect(visible).not.toContain("Private Cloud Adoption Timeline");
+    expect(visible).toContain("Two-Year Notional");
+    expect(visible).not.toContain("After the Entitlement");
+  });
+
+  it("includes every field the engagement collects", () => {
+    const visible = text(render(withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true })));
+    // Engagement fields
+    expect(visible).toContain("Location: Columbus, OH");
+    expect(visible).toContain("Industry: Healthcare and life sciences");
+    expect(visible).toContain("Pat Rivera");
+    expect(visible).toContain("IT Director");
+    expect(visible).toContain("Jordan Blake");
+    expect(visible).toContain("Implementation services start");
+    expect(visible).toContain("target completion");
+    expect(visible).toContain("New hardware lead time of 8 weeks");
+    expect(visible).toContain("No changes during the December freeze.");
+    expect(visible).toContain("Keep the DR site on its own workload domain.");
+    // Discovery answers
+    expect(visible).toContain("What We Know About the Estate");
+    expect(visible).toContain("4 for management, 8 for workloads");
+    // RVTools estate
+    expect(visible).toContain("192 physical cores");
+    expect(visible).toContain("30 powered-off VMs");
+    expect(visible).toContain("41 VM snapshots");
+    expect(visible).toContain("Microsoft Windows Server 2019 (120)");
+    expect(visible).toContain("RVTools: rvtools-dc1.xlsx");
+    // Hours basis (v2)
+    expect(visible).toContain("Estimating Basis");
   });
 });
 
