@@ -40,6 +40,8 @@ export type FitV2 = {
   entitlementRemaining: number;
   /** Loaded hours of fill steps 1 to 5. */
   coreRequiredHours: number;
+  /** The core (steps 1 to 5) by line, largest first: what to look at when the core does not fit. */
+  coreByLine: Array<{ code: V2Code; line: string; loaded: number; step: number }>;
   underFunded: { gapHours: number } | null;
   monthsRemaining: number;
   requiredMonthlyBurn: number;
@@ -120,7 +122,13 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   const fillableHours = entitlementHours - reserveHours;
   const loaded = (line: V2Line, base: number) => loadedOf(pass1, line, base);
   const items = fillOrder(pass1, options);
-  const coreRequiredHours = items.filter(item => item.step <= 5).reduce((sum, item) => sum + loaded(item.line, item.unit.base), 0);
+  const coreItems = items.filter(item => item.step <= 5);
+  const coreRequiredHours = coreItems.reduce((sum, item) => sum + loaded(item.line, item.unit.base), 0);
+  const coreByLine = Array.from(coreItems.reduce((map, item) => {
+    const row = map.get(item.line.code) ?? { code: item.line.code, line: item.line.name, loaded: 0, step: item.step };
+    row.loaded += loaded(item.line, item.unit.base);
+    return map.set(item.line.code, row);
+  }, new Map<V2Code, { code: V2Code; line: string; loaded: number; step: number }>()).values()).sort((left, right) => right.loaded - left.loaded);
   const underFunded = fillableHours < coreRequiredHours ? { gapHours: coreRequiredHours - fillableHours } : null;
   const wantThisYear = new Set(options.wantThisYear ?? []);
   const displacedBucket = (line: V2Line): "F" | "C" => (line.capability && wantThisYear.has(line.capability) ? "C" : "F");
@@ -210,7 +218,7 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   return {
     entitlementHours, reserveHours, fillableHours, placements, buckets,
     entitlementRemaining: Math.max(0, fillableHours - used),
-    coreRequiredHours, underFunded, monthsRemaining,
+    coreRequiredHours, coreByLine, underFunded, monthsRemaining,
     requiredMonthlyBurn: entitlementHours / monthsRemaining,
     designShareFlags, notFunded, warnings, notes,
   };

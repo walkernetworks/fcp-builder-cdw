@@ -12,6 +12,7 @@ const BUCKETS: Array<["E1" | "E2" | "F" | "C", string, string]> = [
   ["F", "Follow-on entitlement", "Year two; depends on a future VCF purchase or renewal with entitlement"],
   ["C", "Customer-funded", "Work the customer wants this year beyond the entitlement, through CDW"],
 ];
+const CORE_STEP: Record<number, string> = { 1: "Discovery", 2: "Design", 3: "Pathway build or upgrade", 4: "Dated migration waves", 5: "Operations Tier 1" };
 const editable = new Set(Object.keys(estimateInputsSchema.shape));
 
 /**
@@ -65,6 +66,15 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
               Under-funded: the core work needs {hours(fit.coreRequiredHours)} hours, {hours(fit.underFunded.gapHours)} more than the {hours(fit.fillableHours)} fillable hours
               {money ? ` (${dollars(fit.underFunded.gapHours * money.blendedRate)} at ${dollars(money.blendedRate)}/hr)` : ""}. The plan keeps the whole core and nothing else; raise the entitlement or change the pathway.
             </p>
+          )}
+          {fit.underFunded && (
+            <div className="overflow-x-auto">
+              <p className="mb-1 font-semibold">Core work by line (what has to fit first)</p>
+              <table className="w-full min-w-[420px] border-collapse">
+                <thead><tr className="text-left text-[10px] uppercase tracking-[.1em] text-slate-500"><th className="py-1 pr-2">Line</th><th className="py-1 pr-2 text-right">Hours</th><th className="py-1">Fill step</th></tr></thead>
+                <tbody>{fit.coreByLine.map(row => <tr key={row.code} className="border-t border-slate-200"><td className="py-1 pr-2"><b>{row.code}</b> {row.line}</td><td className="py-1 pr-2 text-right tabular-nums">{hours(row.loaded)}</td><td className="py-1">{CORE_STEP[row.step] ?? row.step}</td></tr>)}</tbody>
+              </table>
+            </div>
           )}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse">
