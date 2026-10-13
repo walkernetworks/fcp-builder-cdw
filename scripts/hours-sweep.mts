@@ -44,7 +44,8 @@ export function plan(input: Plan): EngagementDocument {
     },
   });
   Object.assign(document.inventory, { hosts: input.hosts, vmCount: input.hosts * 20, poweredOnVms: input.hosts * 18, datacenters: input.sites ?? 1, clusters: Math.max(1, Math.ceil(input.hosts / 16)) });
-  document.report.discovery = { ...document.report.discovery, assessmentCompleted: input.assessment ?? false };
+  // Sites are stated in the brief; RVTools datacenter objects are not used as sites by v2.
+  document.report.discovery = { ...document.report.discovery, datacenters: input.sites ?? 1, assessmentCompleted: input.assessment ?? false };
   return refreshDerivedDocument(document);
 }
 

@@ -117,10 +117,17 @@ export function resolveInputs(document: EngagementDocument) {
   const fromDefault = (key: keyof typeof H.defaults) => ({ value: v(H.defaults[key]), source: H.defaults[key].source });
 
   const hosts = inventory.hosts || report.discovery.esxHosts || assume("hosts", "ESX hosts", 0, "No RVTools inventory or host count in the brief");
-  const sites = inventory.datacenters || report.discovery.datacenters || assume("sites", "Sites", 1, "No data center count in RVTools or the brief");
+  // Sites come from the planner or the brief. RVTools datacenter objects are vCenter inventory folders, often not physical sites.
+  const sites = given.sites ?? (report.discovery.datacenters || assume("sites", "Physical sites", 1, inventory.datacenters > 1
+    ? `Not stated. RVTools lists ${inventory.datacenters} vCenter datacenter objects, which are not necessarily physical sites; confirm the number of sites in scope`
+    : "Not stated in the brief"));
   const vcenters = report.discovery.vcenters || assume("vcenters", "vCenters", 1, "No vCenter count in the brief");
   const instances = report.discovery.vcfInstances || assume("instances", "VCF instances", 1, "No VCF instance count in the brief");
-  const clusters = inventory.clusters || assume("clusters", "Clusters", Math.max(1, Math.ceil(hosts / v(H.defaults.hostsPerCluster))), H.defaults.hostsPerCluster.source);
+  const clusters = inventory.clusters || assume("clusters", "Existing clusters", Math.max(1, Math.ceil(hosts / v(H.defaults.hostsPerCluster))), H.defaults.hostsPerCluster.source);
+  // Converge, import and in-place work on the existing clusters; a build or a design sizes the new platform's clusters.
+  const existingPlatform = ["converge", "import-workload-domain", "in-place"].includes(effectiveDeliveryPath(fields));
+  const platformClusters = existingPlatform ? clusters : given.targetClusters ?? assume("targetClusters", "Clusters on the new platform", Math.max(1, Math.ceil(hosts / v(H.defaults.hostsPerCluster))),
+    `${H.defaults.hostsPerCluster.source}${inventory.clusters ? `; the ${inventory.clusters} existing clusters are consolidated` : ""}`);
   const vms = inventory.vmCount || assume("vms", "VMs", hosts * v(H.defaults.vmsPerHost), H.defaults.vmsPerHost.source);
   const topology = fields.adoptionDetails.domainTopology;
   const consolidated = topology === "consolidated" || (topology === "undecided" && hosts > 0 && hosts <= 10);
@@ -128,11 +135,11 @@ export function resolveInputs(document: EngagementDocument) {
   const source8xFromInventory = inventory.esxiVersions.some(item => /^8\./.test(item.version.trim()));
 
   const values = {
-    hosts, sites, vcenters, instances, clusters, vms, consolidated,
+    hosts, sites, vcenters, instances, clusters, platformClusters, vms, consolidated,
     workloadDomains: pick("workloadDomains", "Workload domains", () => ({ value: consolidated ? 0 : 1, source: consolidated ? "Consolidated topology (or 10 hosts or fewer with topology undecided)" : "One workload domain unless the topology is consolidated" })),
     stretchedClusters: pick("stretchedClusters", "Stretched clusters", () => ({ value: 0, source: "None stated" })),
     storageTypes: pick("storageTypes", "Principal storage types", () => ({ value: 1, source: "One principal storage type" })),
-    clustersOnFcOrNfs: pick("clustersOnFcOrNfs", "Clusters on FC or NFS principal storage", () => ({ value: storage === "vmfs-fc" || storage === "nfs-v3" ? clusters : 0, source: `Principal storage is ${storage}` })),
+    clustersOnFcOrNfs: pick("clustersOnFcOrNfs", "Clusters on FC or NFS principal storage", () => ({ value: storage === "vmfs-fc" || storage === "nfs-v3" ? platformClusters : 0, source: `Principal storage is ${storage}` })),
     mixedStorage: pick("mixedStorage", "Mixed principal storage", () => ({ value: false, source: "None stated" })),
     dedicatedNsxWorkloadDomains: pick("dedicatedNsxWorkloadDomains", "Workload domains with dedicated NSX", () => ({ value: 0, source: "None stated" })),
     noExistingNsx: pick("noExistingNsx", "No NSX in the existing estate", () => ({ value: v(H.defaults.noExistingNsx) === 1, source: H.defaults.noExistingNsx.source })),
@@ -308,14 +315,14 @@ export function scopeV2(document: EngagementDocument): Pass1 {
   };
   const deploy = () => {
     if (vvf) {
-      const d = v(H.deployVvf.base) + v(H.deployVvf.handover) + v(H.deployVvf.perExtraCluster) * (x.clusters - 1) + v(H.deployVvf.perHost) * x.hosts;
-      add("D_VVF", "VVF foundation build", "srConsultant", [unit("D_VVF", "VVF foundation build", d, "platform")], { clusters: x.clusters, hosts: x.hosts });
+      const d = v(H.deployVvf.base) + v(H.deployVvf.handover) + v(H.deployVvf.perExtraCluster) * (x.platformClusters - 1) + v(H.deployVvf.perHost) * x.hosts;
+      add("D_VVF", "VVF foundation build", "srConsultant", [unit("D_VVF", "VVF foundation build", d, "platform")], { clusters: x.platformClusters, hosts: x.hosts });
     } else {
       const wld = x.workloadDomains * v(H.deploy.perWorkloadDomain) + x.dedicatedNsxWorkloadDomains * v(H.deploy.perDedicatedNsx);
       const d = v(H.deploy.managementDomain) + v(H.deploy.handover) + v(H.deploy.managementServices) + v(H.deploy.perExtraInstance) * (x.instances - 1) + wld
-        + v(H.deploy.perExtraCluster) * Math.max(0, x.clusters - 1 - x.workloadDomains) + v(H.deploy.perStretchedCluster) * x.stretchedClusters
+        + v(H.deploy.perExtraCluster) * Math.max(0, x.platformClusters - 1 - x.workloadDomains) + v(H.deploy.perStretchedCluster) * x.stretchedClusters
         + v(H.deploy.perHostFirst) * Math.min(x.hosts, v(H.deploy.firstHostBand)) + v(H.deploy.perHostAbove) * Math.max(0, x.hosts - v(H.deploy.firstHostBand));
-      add("D", path === "hybrid" ? "Shared foundation build" : "Management and workload domain build", "srConsultant", [unit("D", "Platform deploy", d, "platform")], { instances: x.instances, workloadDomains: x.workloadDomains, dedicatedNsx: x.dedicatedNsxWorkloadDomains, clusters: x.clusters, stretchedClusters: x.stretchedClusters, hosts: x.hosts });
+      add("D", path === "hybrid" ? "Shared foundation build" : "Management and workload domain build", "srConsultant", [unit("D", "Platform deploy", d, "platform")], { instances: x.instances, workloadDomains: x.workloadDomains, dedicatedNsx: x.dedicatedNsxWorkloadDomains, clusters: x.platformClusters, stretchedClusters: x.stretchedClusters, hosts: x.hosts });
     }
     add("S_storage", "Principal storage adder", "srConsultant", [unit("S_storage", "Principal storage adder", storageAdder)], { clustersOnFcOrNfs: x.clustersOnFcOrNfs, mixedStorage: x.mixedStorage });
   };
@@ -408,9 +415,9 @@ export function scopeV2(document: EngagementDocument): Pass1 {
   if (overlay) {
     const extraSegments = Math.max(0, x.segments - v(H.overlay.freeSegments));
     add("X5", "NSX overlay", "srConsultant", [
-      unit("X5:platform", "NSX overlay", v(H.overlay.base) + v(H.overlay.perCluster) * x.clusters, "platform"),
+      unit("X5:platform", "NSX overlay", v(H.overlay.base) + v(H.overlay.perCluster) * x.platformClusters, "platform"),
       ...Array.from({ length: extraSegments }, (_, index) => unit(`X5:segment-${index + 1}`, `Segment ${index + 1 + v(H.overlay.freeSegments)}`, v(H.overlay.perSegmentAboveFree), "module")),
-    ], { clusters: x.clusters, segments: x.segments }, { capability: "networking" });
+    ], { clusters: x.platformClusters, segments: x.segments }, { capability: "networking" });
   }
   if (edge) {
     add("X6", "NSX Edge and routing", "architect", [
@@ -427,7 +434,7 @@ export function scopeV2(document: EngagementDocument): Pass1 {
     ], { transitGateway: x.transitGateway, externalVlans: distributed ? x.externalVlans : 0, vna: distributed && x.virtualNetworkAppliance }, { capability: "networking", requires: edge && !distributed ? ["X6"] : [] });
   }
   if (has("networking:physical-fabric") && !overlay && !edge && !vpc) {
-    add("X7", "VDS networking", "architect", [unit("X7", "VDS networking", v(H.vds.base) + v(H.vds.perCluster) * x.clusters, "platform")], { clusters: x.clusters }, { capability: "networking" });
+    add("X7", "VDS networking", "architect", [unit("X7", "VDS networking", v(H.vds.base) + v(H.vds.perCluster) * x.platformClusters, "platform")], { clusters: x.platformClusters }, { capability: "networking" });
   }
   // The Security Services Platform is deployed once: on the threat-prevention line when it needs it, else for Security Intelligence.
   const atpFeatures = ["security:ids-ips", "security:malware-prevention", "security:identity-firewall"].filter(key => outcomes.has(key)).length;
@@ -521,6 +528,7 @@ export function scopeV2(document: EngagementDocument): Pass1 {
 
 /** The lines each defaulted input feeds; an assumption is listed only when one of them is in the plan. Inputs not listed here feed every plan. */
 const ASSUMPTION_USERS: Record<string, V2Code[]> = {
+  targetClusters: ["D", "D_VVF", "S_storage", "X5", "X7"],
   stretchedClusters: ["A", "D"], storageTypes: ["A"], clustersOnFcOrNfs: ["S_storage", "D", "D_VVF"], mixedStorage: ["S_storage", "D", "D_VVF"],
   dedicatedNsxWorkloadDomains: ["D"], noExistingNsx: ["C1", "X1"], enhancedLinkedMode: ["X1"], source8x: ["X1"], sourceIsVcf: ["C1"],
   clustersOnVum: ["C1", "U_VVF"], vcentersWithIwa: ["C1", "U_VVF"], clustersOnVss: ["C1", "U_VVF"], legacyLogs: ["C1", "U_VVF"],
