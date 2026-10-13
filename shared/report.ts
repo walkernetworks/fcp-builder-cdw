@@ -69,7 +69,8 @@ const rowSchemas = {
   milestone: z.object({ date: dateOrBlank, event: text, detail: z.string().max(4000).default("") }),
   /** Planner-adjusted hours for one timeline work package; a null role keeps the calculated baseline. */
   workPackageHours: z.object({ id: z.string().max(300), architect: hours.nullable().default(null), srConsultant: hours.nullable().default(null), projectManager: hours.nullable().default(null), placement: z.enum(["auto", "entitlement", "notional"]).default("auto"), owner: z.enum(["auto", "cdw", "customer", "checkpoint"]).default("auto") }),
-  assignment: z.object({ workstream: text, architect: hours.default(0), srConsultant: hours.default(0), projectManager: hours.default(0) }),
+  /** Hours by role from the signed Broadcom work plan; Senior Architect and Offshore PM are roles the work plan can carry. */
+  assignment: z.object({ workstream: text, architect: hours.default(0), srConsultant: hours.default(0), projectManager: hours.default(0), seniorArchitect: hours.default(0), offshoreProjectManager: hours.default(0) }),
   source: z.object({ title: text, date: optionalDate }),
 };
 
@@ -191,7 +192,7 @@ export function completedReport(report: ReportContent): ReportContent {
     openItems: report.openItems.filter(item => filled(item.item)),
     personnel: report.personnel.filter(item => filled(item.workstream)),
     milestonesToDate: report.milestonesToDate.filter(item => filled(item.date) && filled(item.event)),
-    resourceAssignments: report.resourceAssignments.filter(item => filled(item.workstream) && item.architect + item.srConsultant + item.projectManager > 0),
+    resourceAssignments: report.resourceAssignments.filter(item => filled(item.workstream) && item.architect + item.srConsultant + item.projectManager + (item.seniorArchitect ?? 0) + (item.offshoreProjectManager ?? 0) > 0),
     sources: report.sources.filter(item => filled(item.title)),
   };
 }
