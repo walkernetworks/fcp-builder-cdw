@@ -127,7 +127,7 @@ export function resolveInputs(document: EngagementDocument) {
   // Converge, import and in-place work on the existing clusters; a build or a design sizes the new platform's clusters.
   const existingPlatform = ["converge", "import-workload-domain", "in-place"].includes(effectiveDeliveryPath(fields));
   const platformClusters = existingPlatform ? clusters : given.targetClusters ?? assume("targetClusters", "Clusters on the new platform", Math.max(1, Math.ceil(hosts / v(H.defaults.hostsPerCluster))),
-    `${H.defaults.hostsPerCluster.source}${inventory.clusters ? `; the ${inventory.clusters} existing clusters are consolidated` : ""}`);
+    `Up to ${v(H.defaults.hostsPerCluster)} hosts per cluster on the new platform${inventory.clusters ? `, against ${inventory.clusters} clusters today` : ""}; the cluster layout is set in design`);
   const vms = inventory.vmCount || assume("vms", "VMs", hosts * v(H.defaults.vmsPerHost), H.defaults.vmsPerHost.source);
   const topology = fields.adoptionDetails.domainTopology;
   const consolidated = topology === "consolidated" || (topology === "undecided" && hosts > 0 && hosts <= 10);

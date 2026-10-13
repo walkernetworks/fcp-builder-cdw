@@ -1,6 +1,7 @@
 import { barWindow } from "./buildingBlocks";
 import { buildCustomerEffort, buildScopedEffort, withOwnership } from "./effort";
-import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, summarizeVcfCompatibility, type EngagementDocument } from "./fcp";
+import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, serverLabel, summarizeVcfCompatibility, type EngagementDocument } from "./fcp";
+import { renewalStartsCurrentTerm } from "./deliveryBriefing";
 import { ADD_ON_OUTCOMES, canonicalAddOn, completedReport, type ReportContent } from "./report";
 
 /**
@@ -87,7 +88,7 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   if (inventory.hosts) {
     const vcenters = report.discovery.vcenters;
     situation.push(`${inventory.hosts} ESXi hosts · ${inventory.vmCount.toLocaleString("en-US")} VMs (${inventory.poweredOnVms.toLocaleString("en-US")} powered on)${vcenters ? ` across ${vcenters} vCenter${vcenters === 1 ? "" : "s"}` : ""}${inventory.clusters ? ` and ${inventory.clusters} cluster${inventory.clusters === 1 ? "" : "s"}` : ""}`);
-    const models = inventory.hostModels.slice(0, 3).map(model => `${model.hosts} ${`${model.vendor} ${model.model}`.trim()}`);
+    const models = inventory.hostModels.slice(0, 3).map(model => `${model.hosts} ${serverLabel(model.vendor, model.model)}`);
     if (models.length) situation.push(`Host platforms: ${models.join("; ")}`);
     const versions = inventory.esxiVersions.slice(0, 3).map(item => `${item.version} (${item.hosts})`);
     if (versions.length) situation.push(`ESXi versions in use: ${versions.join(", ")}`);
@@ -143,7 +144,9 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
       requirement: "16-core-per-CPU minimum per licensed core.",
       // Licensed cores beyond what the imported hosts need are only unmatched: they may cover hosts in a vCenter that was not exported.
       recommendation: licensed
-        ? licensed >= required
+        ? licensed === required
+          ? `${licensed.toLocaleString("en-US")} licensed cores on record, matching the ${required.toLocaleString("en-US")} the ${inventory.hosts} hosts in these RVTools exports require.`
+          : licensed > required
           ? `${licensed.toLocaleString("en-US")} licensed cores on record; the ${inventory.hosts} hosts in these RVTools exports require ${required.toLocaleString("en-US")}. The other ${(licensed - required).toLocaleString("en-US")} are not matched to these hosts; confirm which hosts they cover before treating any as available.`
           : `${licensed.toLocaleString("en-US")} licensed cores on record against ${required.toLocaleString("en-US")} required for the ${inventory.hosts} hosts in these RVTools exports (${(required - licensed).toLocaleString("en-US")} short).`
         : `${required.toLocaleString("en-US")} cores required for the ${inventory.hosts} hosts; licensed core count to be confirmed.`,
@@ -156,18 +159,27 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   // Discovery answers that change the design, only where the plan makes them matter.
   const serverModels = summarizeVcfCompatibility(document.readiness.hardwarePlatforms);
   if (builds && (discovery.serverVendor || serverModels.length)) {
-    // Images are built only for the server models the compatibility check lists; the rest are a gate.
-    const listed = serverModels.filter(item => item.decision === "eligible");
-    const notListed = serverModels.filter(item => item.decision !== "eligible");
-    const names = (items: typeof serverModels) => Array.from(new Set(items.map(item => `${item.vendor} ${item.model}`.trim()))).join(", ");
-    const hostCount = (items: typeof serverModels) => items.reduce((sum, item) => sum + item.hosts, 0);
-    const vendor = discovery.serverVendor || Array.from(new Set(serverModels.map(item => item.vendor))).join(" and ");
+    // Images are built only for the server models the compatibility check lists for every host; the rest are a gate.
+    // A model can split by CPU, so it counts as listed only when all of its hosts are.
+    const models = new Map<string, { label: string; hosts: number; listedHosts: number }>();
+    for (const item of serverModels) {
+      const label = serverLabel(item.vendor, item.model);
+      const entry = models.get(label.toLowerCase()) ?? { label, hosts: 0, listedHosts: 0 };
+      entry.hosts += item.hosts;
+      if (item.decision === "eligible") entry.listedHosts += item.hosts;
+      models.set(label.toLowerCase(), entry);
+    }
+    const listed = Array.from(models.values()).filter(item => item.listedHosts === item.hosts);
+    const notListed = Array.from(models.values()).filter(item => item.listedHosts < item.hosts);
+    const unlisted = (item: { hosts: number; listedHosts: number }) => item.hosts - item.listedHosts;
+    const notListedNames = notListed.map(item => `${item.label} (${item.listedHosts ? `${unlisted(item)} of ${item.hosts} hosts, by CPU` : `${item.hosts} host${item.hosts === 1 ? "" : "s"}`})`).join(", ");
+    const vendor = discovery.serverVendor || Array.from(new Set(serverModels.map(item => serverLabel(item.vendor, "")))).join(" and ");
     designElements.push({
       component: "Hardware lifecycle",
       requirement: `Hosts are ${vendor}; vLCM images manage firmware and drivers with the ESX image.`,
       recommendation: !serverModels.length
         ? `Build the cluster images with the ${vendor} vendor add-on and hardware support manager once the compatibility check confirms the host models.`
-        : `${listed.length ? `Build the cluster images with the vendor add-on and hardware support manager for the models the compatibility check lists: ${names(listed)}.` : "No host model is confirmed for the target release yet."}${notListed.length ? ` ${names(notListed)} (${hostCount(notListed)} host${hostCount(notListed) === 1 ? "" : "s"}) ${notListed.length === 1 ? "is" : "are"} not confirmed for the target release: replace or confirm support before ${notListed.length === 1 ? "it joins" : "they join"} a cluster.` : ""}`,
+        : `${listed.length ? `Build the cluster images with the vendor add-on and hardware support manager for the models the compatibility check lists: ${listed.map(item => item.label).join(", ")}.` : "No host model is confirmed for the target release yet."}${notListed.length ? ` Not confirmed for the target release: ${notListedNames}. Replace these hosts or confirm support before they join a cluster.` : ""}`,
       gate: !serverModels.length ? "compatibility check run on a current RVTools export" : notListed.length ? "support confirmed or hardware replaced for every host model" : null,
     });
   }
@@ -196,8 +208,10 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   }
   if ((path === "converge" || path === "import-workload-domain") && discovery.enhancedLinkedMode === true) constraints.push({ constraint: "Enhanced Linked Mode split before convergence", imposedBy: "Platform", effect: "vCenters leave the linked group before they join VCF" });
   const today = report.asOf || new Date().toISOString().slice(0, 10);
-  const renewalPassed = Boolean(discovery.renewalDate && discovery.renewalDate < today);
-  if (discovery.renewalDate && !renewalPassed) constraints.push({ constraint: `Subscription renewal ${shortDate(discovery.renewalDate)}`, imposedBy: "Licensing", effect: "Licensing activated and the renewal sized before that date" });
+  // A renewal that opened the current term is neither a deadline nor a lapsed renewal.
+  const termRenewal = renewalStartsCurrentTerm(document);
+  const renewalPassed = Boolean(discovery.renewalDate && discovery.renewalDate < today && !termRenewal);
+  if (discovery.renewalDate && !renewalPassed && !termRenewal) constraints.push({ constraint: `Subscription renewal ${shortDate(discovery.renewalDate)}`, imposedBy: "Licensing", effect: "Licensing activated and the renewal sized before that date" });
   if (fields.hardwareAvailability === "new" && fields.hardwareLeadWeeks > 0) constraints.push({ constraint: `New hardware lead time of ${fields.hardwareLeadWeeks} week${fields.hardwareLeadWeeks === 1 ? "" : "s"}`, imposedBy: "Hardware", effect: "The platform build waits for delivery, rack and stack" });
   if (fields.plannedImplementationStart) constraints.push({ constraint: `Implementation services start ${shortDate(fields.plannedImplementationStart)}`, imposedBy: customer, effect: "Design runs from the project start; build, upgrade and migration begin on this date" });
   if (fields.timelineNotes.trim()) constraints.push({ constraint: fields.timelineNotes.trim(), imposedBy: "Calendar", effect: "Applied to the schedule of every affected work package" });

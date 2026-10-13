@@ -9,6 +9,13 @@ export type BriefingItem = { topic: string; detail: string; why: string };
 
 const yesNo = (value: boolean) => (value ? "Yes" : "No");
 
+/** A renewal date within a month of the entitlement start is the renewal that opened this term, not a deadline still ahead. */
+export function renewalStartsCurrentTerm(document: EngagementDocument): boolean {
+  const renewal = Date.parse(document.report.discovery.renewalDate ?? "");
+  const start = Date.parse(document.fields.entitlementStart ?? "");
+  return Number.isFinite(renewal) && Number.isFinite(start) && Math.abs(renewal - start) <= 31 * 86_400_000;
+}
+
 export function deliveryBriefing(document: EngagementDocument): BriefingItem[] {
   const { fields, inventory, report } = document;
   const discovery = report.discovery;
@@ -39,9 +46,9 @@ export function deliveryBriefing(document: EngagementDocument): BriefingItem[] {
   add("New hosts purchased", newHosts, "Sized into the design; the build waits for their delivery, rack and stack.");
   add("VCF licensed", discovery.vcfLicensed === null ? null : yesNo(discovery.vcfLicensed), "Licensing must be activated before the evaluation period on the new platform ends.");
   add("Licensed cores", discovery.licensedCores ? discovery.licensedCores.toLocaleString("en-US") : null, "Compared with the cores the hosts require at the 16-core-per-CPU minimum.");
-  add("Subscription renewal", discovery.renewalDate, "Licensing activation and the renewal sizing land before this date.");
+  if (!renewalStartsCurrentTerm(document)) add("Subscription renewal", discovery.renewalDate, "Licensing activation and the renewal sizing land before this date.");
   const purchased = discovery.addOnsPurchased.map(value => ADD_ON_OUTCOMES[canonicalAddOn(value) ?? ""]?.label ?? value);
   add("Add-ons purchased", purchased.join(", "), "Anything purchased but not in this plan is raised as an open item for a scope decision.");
-  add("Prior assessment", discovery.assessmentCompleted === null ? null : yesNo(discovery.assessmentCompleted), discovery.assessmentCompleted ? "Design builds on the existing assessment; no separate discovery is scoped." : "Design discovery is scoped ahead of architecture and design.");
+  add("Prior assessment", discovery.assessmentCompleted === null ? null : yesNo(discovery.assessmentCompleted), discovery.assessmentCompleted ? "Design builds on the existing assessment; the discovery sessions confirm and extend it rather than repeat it." : "Design discovery is scoped ahead of architecture and design.");
   return items;
 }

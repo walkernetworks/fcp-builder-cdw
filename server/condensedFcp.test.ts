@@ -223,8 +223,43 @@ describe("Condensed FCP review fixes", () => {
     const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
     const lifecycle = /Hardware lifecycle (.*?)(?= Disaster recovery| Principal storage| Backup| Licensing| Workloads| Adoption Timeline)/.exec(visible)?.[1] ?? "";
     expect(lifecycle).toContain("Build the cluster images");
-    expect(lifecycle).toMatch(/Dell Inc\. PowerEdge R730 \(7 hosts\) is not confirmed for the target release/);
+    expect(lifecycle).toContain("Not confirmed for the target release: Dell PowerEdge R730 (7 hosts)");
+    expect(lifecycle).not.toContain("Dell Inc.");
     expect(lifecycle).toContain("Gate: support confirmed or hardware replaced for every host model");
+  });
+
+  it("names a server model once and keeps a CPU-split model out of the image list", () => {
+    const document = withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true });
+    document.inventory.hostModels.push(
+      { vendor: "HPE", model: "HPE Synergy 480 Gen10", cpuModel: "Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz", hosts: 5, physicalCores: 200, esxiVersions: [{ version: "8.0.3", hosts: 5 }], esxiCorrelation: "per-platform", clusterMembership: [], minimumMemoryGiB: 512, maximumMemoryGiB: 512 } as never,
+      { vendor: "Dell Inc.", model: "PowerEdge R730", cpuModel: "Intel(R) Xeon(R) CPU E5-2697A v4 @ 2.60GHz", hosts: 3, physicalCores: 96, esxiVersions: [{ version: "7.0.3", hosts: 3 }], esxiCorrelation: "per-platform", clusterMembership: [], minimumMemoryGiB: 256, maximumMemoryGiB: 256 } as never,
+      { vendor: "Dell Inc.", model: "PowerEdge R730", cpuModel: "Intel(R) Xeon(R) Gold 6248 CPU @ 2.50GHz", hosts: 2, physicalCores: 80, esxiVersions: [{ version: "7.0.3", hosts: 2 }], esxiCorrelation: "per-platform", clusterMembership: [], minimumMemoryGiB: 256, maximumMemoryGiB: 256 } as never,
+    );
+    document.inventory.hosts += 10;
+    const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
+    expect(visible).not.toMatch(/HPE HPE|Dell Inc\./);
+    const lifecycle = /Hardware lifecycle (.*?)(?= Disaster recovery| Principal storage| Backup| Licensing| Workloads| Adoption Timeline)/.exec(visible)?.[1] ?? "";
+    const images = /the compatibility check lists: (.*?)\./.exec(lifecycle)?.[1] ?? "";
+    expect(images).not.toContain("R730");
+    expect(lifecycle).toMatch(/Dell PowerEdge R730 \((\d+ of 5 hosts, by CPU|5 hosts)\)/);
+  });
+
+  it("treats a renewal on the entitlement start as the current term, not a lapsed renewal", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.entitlementStart = "2026-09-01";
+    document.report.discovery.renewalDate = "2026-09-01";
+    const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
+    expect(visible).not.toContain("has passed");
+    expect(visible).not.toContain("Subscription renewal");
+    // A renewal well before the term started is still raised.
+    document.report.discovery.renewalDate = "2026-03-01";
+    expect(text(render(refreshDerivedDocument(document, { forceRebuild: true })))).toContain("has passed");
+  });
+
+  it("keeps internal estimating references and doubled full stops out of the document", () => {
+    const visible = text(render(refreshDerivedDocument(withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true }), { forceRebuild: true })));
+    expect(visible).not.toMatch(/\bSpec\b|worked example|consolidated/);
+    expect(visible).not.toMatch(/[a-z]\.\./);
   });
 
   it("shows Senior Architect and Offshore PM hours from a signed work plan", () => {
