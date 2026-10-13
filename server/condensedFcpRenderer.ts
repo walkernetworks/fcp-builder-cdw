@@ -457,9 +457,6 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const openItems = report.openItems.length ? `<h3>Open Items</h3>${table(["Item", "What It Gates", ...(withOwner ? ["Owner"] : [])], report.openItems.map(item => [esc(item.item), esc(item.gates), ...(withOwner ? [esc(item.owner)] : [])]))}` : "";
   const pulledIn = outcomes.filter(item => item.requiredBy.length);
 
-  const rvtools = document.inventorySources.map(item => `RVTools: ${esc(item.filename)}${item.importedAt ? ` (imported ${esc(shortDate(item.importedAt.slice(0, 10)))})` : ""}`);
-  const sources = [...report.sources.map(item => `${esc(item.title)}${item.date ? ` (${esc(shortDate(item.date))})` : ""}`), ...rvtools].join("; ") || "Engagement plan and RVTools estate data";
-
   const body = `
 <h1 class="title">${esc(platform.startsWith("VVF") ? "VMware vSphere Foundation" : "VMware Cloud Foundation")} Adoption — ${esc(customer)}</h1>
 <p class="lead-in">${lead}</p>
@@ -515,7 +512,7 @@ ${openItems}
 
 <div class="closer red">Make Amazing Happen.</div>
 ${report.revision ? `<div class="revision">Revision: ${esc(report.revision)}</div>` : ""}
-<p class="sources">Prepared by CDW Consulting Solution Architecture for ${esc(customer)} — Functional Consumption Plan (Condensed) · ${esc(stamp)}. Sources: ${sources}.</p>`;
+<p class="sources">Prepared by CDW Consulting Solution Architecture for ${esc(customer)} — Functional Consumption Plan (Condensed) · ${esc(stamp)}.</p>`;
 
   const cover = `<section class="cover">${cdwLogoSvg("logo")}${cdwLogoSvg("orbit", "")}<div class="eyebrow">Functional Consumption Plan · ${esc(customer)}</div><h1>${esc(report.headline ?? "")}</h1><div class="sign">Make Amazing Happen.</div><div class="meta"><div><b>Prepared for</b>${esc(customer)}</div><div><b>Date</b>${esc(longDate(asOf))}</div><div><b>Prepared by</b>CDW Consulting Solution Architecture</div></div><div class="legend">${esc(LEGEND)}</div></section>`;
 
