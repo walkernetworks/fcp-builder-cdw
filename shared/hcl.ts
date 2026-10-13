@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { HCL_SERVER_CATALOG, HCL_SNAPSHOT, type HclCatalogRecord } from "./hclCatalog";
+import { backInTime, cpuBlockReason, cpuDeprecation, cpuGeneration, kb, vendorServerNote } from "./hclCorpus";
+import { VCF_CORPUS } from "./vcfCorpus";
 export { HCL_SNAPSHOT };
 
 export const HCL_EVALUATION_VERSION = "2.0.0" as const;
@@ -511,7 +513,57 @@ function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolutio
   };
 }
 
+/**
+ * The server-and-CPU assessment, with the VCF corpus applied: a CPU the Compatibility Guide does not list for the
+ * target release, or that KB 318697 lists as Discontinued, is not supported whatever the server model; a server
+ * model absent from the 9.x server list is not listed rather than unknown; a Deprecated CPU carries its end of support.
+ */
 export function assessHclPlatform(vendor: string, model: string, cpuModel: string, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HclPlatformAssessment {
+  const cpu = resolveCpuSeries(cpuModel);
+  const generation = cpuGeneration(cpuModel, cpu.series);
+  const blocked = generation ? cpuBlockReason(generation, targetRelease) : null;
+  const base = assessServerAndCpu(vendor, model, cpuModel, targetRelease);
+  if (blocked) {
+    return {
+      ...base,
+      status: "not-supported",
+      evidenceState: "explicit-exclusion",
+      evidenceConfidence: "high",
+      matchedCpuSeries: generation!.label,
+      detail: `${blocked} Hosts with this CPU cannot run ${targetRelease}, whatever the server model.`,
+      nextAction: `Replace these hosts, or keep them on vSphere 8 outside the VCF 9 estate until they are retired. Source: ${kb("318697").url}`,
+      requiredEvidence: [],
+    };
+  }
+  if (base.status === "unknown" && base.vendorResolved) {
+    // The server list covers every model listed for ESXi 9.0 and 9.1, so a model the vendor's list does not have is not listed.
+    const nearest = base.candidateModels.slice(0, 3).map(item => item.model).filter(Boolean);
+    return {
+      ...base,
+      status: "not-supported",
+      evidenceState: "verified-not-listed",
+      detail: `${vendor} ${model} is not in the Broadcom server list for ESXi 9.0 or 9.1 (catalog ${HCL_CATALOG_METADATA.id}).${nearest.length ? ` Closest listed models: ${nearest.join(", ")}.` : ""} Treat it as not supported unless the vendor shows a current listing.`,
+      nextAction: "Confirm the exact model name with the vendor; if it is not listed for the target release, replace the hosts before they join a VCF 9 cluster.",
+    };
+  }
+  const deprecation = generation ? cpuDeprecation(generation) : null;
+  if (deprecation && (base.status === "supported" || base.status === "supported-cpu-unverified") && base.futureReleaseSupport.status !== "unsupported-from-release") {
+    return {
+      ...base,
+      futureReleaseSupport: {
+        ...base.futureReleaseSupport,
+        status: "unsupported-from-release",
+        unsupportedFromRelease: "the next major VCF release",
+        detail: deprecation.detail,
+        nextAction: deprecation.nextAction,
+        source: deprecation.kbIds.map(id => kb(id).url).join("; "),
+      },
+    };
+  }
+  return base;
+}
+
+function assessServerAndCpu(vendor: string, model: string, cpuModel: string, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HclPlatformAssessment {
   const modelMatch = resolveModel(vendor, model);
   const cpu = resolveCpuSeries(cpuModel);
   if (!modelMatch.entries.length) {
@@ -944,6 +996,55 @@ function hclHardwareFindings(evidence: HclInventoryEvidence, targetRelease: HclC
       assessment.nextAction,
       { cluster: host.cluster || undefined, releases: [targetRelease], source: assessment.detailUrl || HCL_SNAPSHOT.source },
     ));
+  }
+  return findings;
+}
+
+/**
+ * Checks from the VCF 9.1 corpus KB rules that RVTools can observe: CPU deprecation (KB 318697, 428874),
+ * back-in-time host builds (KB 450972, 454369), hosts still on 7.x (KB 415405), adapters on drivers the KBs name
+ * (KB 442745, 391170, 444031), OEM image sources (KB 452689, 442436) and partner listings that stop short of Broadcom's.
+ */
+function hclCorpusFindings(evidence: HclInventoryEvidence, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HclFinding[] {
+  const findings: HclFinding[] = [];
+  const hostByName = new Map(evidence.hosts.map(host => [host.name, host]));
+  for (const host of evidence.hosts) {
+    const cluster = host.cluster || undefined;
+    const generation = cpuGeneration(host.cpuModel, resolveCpuSeries(host.cpuModel).series);
+    const deprecation = generation && !cpuBlockReason(generation, targetRelease) ? cpuDeprecation(generation) : null;
+    if (deprecation) findings.push(hclFinding("HW.CPU_DEPRECATED", "WARNING", "CPU is Deprecated for VCF 9.x", "host", hclHostLabel(host), deprecation.detail, deprecation.nextAction, { cluster, releases: [targetRelease], source: deprecation.kbIds.map(id => kb(id).url).join("; ") }));
+    const major = hclMajorVersion(host.esxiVersion);
+    if (major !== null && major <= 7) {
+      findings.push(hclFinding("ESX.VERSION_7", "WARNING", "Host is on ESXi 7.x, past end of general support", "host", hclHostLabel(host), `${host.esxiVersion}. KB 415405: vSphere 7.0 reached end of general support on 2 October 2025.`, "Bring the host to ESXi 8.0 before any VCF 9 path, or replace it; a 7.x host cannot move straight to 9.x.", { cluster, releases: [targetRelease], source: kb("415405").url }));
+    }
+    const late = backInTime(host.esxiVersion, targetRelease);
+    if (late) {
+      findings.push(hclFinding("ESX.BACK_IN_TIME", "WARNING", `Host build is newer than ${targetRelease}.0: upgrade or converge needs ${late.minimum} or later`, "host", hclHostLabel(host), `${late.source} shipped ${late.sourceDate}, after ESX ${targetRelease.replace(/^ESXi /, "")}.0 (${late.targetDate}). KB 450972 and KB 454369: a back-in-time upgrade is not supported.`, `Target VCF ${late.minimum} or later for an upgrade or converge, or use Import, which works on either.`, { cluster, releases: [targetRelease], source: `${kb("450972").url}; ${kb("454369").url}` }));
+    }
+    if (/\bHPE?\b|HEWLETT/i.test(host.vendor) && /PROLIANT/i.test(host.model)) {
+      findings.push(hclFinding("HW.OEM_IMAGE_HPE", "ADVISORY", "Confirm the HPE custom image for the target build", "host", hclModelLabel(host), "KB 452689: HPE custom images can trail the ESX release.", "Check HPE custom-image availability for the target ESX build before scheduling; if it is missing, build a vLCM custom image or hold the hosts.", { cluster, releases: [targetRelease], source: kb("452689").url }));
+    }
+    if (/CISCO/i.test(host.vendor)) {
+      findings.push(hclFinding("HW.OEM_IMAGE_CISCO", "ADVISORY", "Take the ESX image and firmware baseline from Cisco", "host", hclModelLabel(host), "KB 442436: Cisco UCS custom images, drivers and firmware baselines come from Cisco.", "Take the ESX 9.x custom image, drivers and firmware from Cisco Software Download or Intersight, not the Broadcom portal.", { cluster, releases: [targetRelease], source: kb("442436").url }));
+    }
+    const note = vendorServerNote(host.vendor, host.model);
+    if (note) {
+      findings.push(hclFinding("HW.VENDOR_LISTING", "ADVISORY", `${note.vendor} does not list this model for ${note.release}`, "host", hclModelLabel(host), `${note.vendor}: ${note.notes} Broadcom's listing governs; this is a partner statement.`, `Confirm with ${note.vendor} that it supports this model on the target release before the hosts join a VCF 9 cluster.`, { cluster, releases: [targetRelease], source: `VCF corpus vendor-compat (${VCF_CORPUS.refreshed})` }));
+    }
+  }
+  // Adapters on the drivers the KBs name. RVTools gives the driver, not the card, so the model is confirmed on site.
+  const adapters: Array<{ rows: Array<{ host: string; cluster: string; device: string; driver: string }>; driver: RegExp; checkId: string; severity: HclFindingSeverity; title: string; evidence: string; remediation: string; kbId: string }> = [
+    { rows: evidence.nics, driver: /^qfle3$/i, checkId: "NET.NIC_QFLE3", severity: "BLOCKER", title: "NIC on the qfle3 driver (QLogic BCM57810 is end of life on ESX 9.x)", evidence: "KB 442745: the BCM57810 or its qfle3 driver was removed from ESX 9.x; upgrading can leave the host with no network and a lost configuration.", remediation: "Confirm the adapter model. Replace any BCM57810 with a certified 10/25 Gb NIC before the host moves to ESX 9.x.", kbId: "442745" },
+    { rows: evidence.hbas, driver: /^brcmfcoe$/i, checkId: "STO.HBA_BRCMFCOE", severity: "WARNING", title: "Adapter on the brcmfcoe (Emulex FCoE) driver", evidence: "KB 391170: devices on the end-of-life list are not claimed by ESX 9.x, and an upgrade can lose datastore access. The list is a KB attachment not held in the corpus.", remediation: "Check the adapter against the KB 391170 end-of-life list and replace it before the host moves to ESX 9.x if it is listed.", kbId: "391170" },
+    { rows: evidence.hbas, driver: /^qedf$/i, checkId: "STO.HBA_QEDF", severity: "ADVISORY", title: "QLogic FastLinQ FCoE adapter on the qedf driver", evidence: "KB 444031: QL45xxx HBAs are not detected after an ESXi 9.1 install with the inbox image.", remediation: "Build the ESX 9.1 image with the vendor qedf async driver before upgrading.", kbId: "444031" },
+  ];
+  for (const adapter of adapters) {
+    const byHost = new Map<string, string[]>();
+    for (const row of adapter.rows) if (adapter.driver.test(row.driver.trim())) byHost.set(row.host, [...(byHost.get(row.host) ?? []), row.device]);
+    for (const [name, devices] of Array.from(byHost.entries())) {
+      const host = hostByName.get(name);
+      findings.push(hclFinding(adapter.checkId, adapter.severity, adapter.title, "host", host ? hclHostLabel(host) : name, `${hclTextList(devices)}. ${adapter.evidence}`, adapter.remediation, { cluster: host?.cluster || adapter.rows.find(row => row.host === name)?.cluster || undefined, releases: [targetRelease], source: kb(adapter.kbId).url }));
+    }
   }
   return findings;
 }
@@ -1402,9 +1503,9 @@ function hclCoverageGaps(evidence: HclInventoryEvidence): HclCoverageGap[] {
     else if (!rowCounts[tab]) gaps.push({ kind: "empty-tab", subject: tab, impact: `No usable rows were available: ${impact}.` });
   }
   gaps.push(
-    { kind: "missing-dataset", subject: "I/O driver compatibility dataset", impact: "Unavailable: the supplied offline archive does not contain a driver-to-device compatibility dataset, so NIC/HBA driver support cannot be verified." },
+    { kind: "missing-dataset", subject: "I/O driver compatibility dataset", impact: "Partial: drivers named in KB 442745 (qfle3), KB 391170 (brcmfcoe) and KB 444031 (qedf) are checked; other NIC and HBA drivers need the Compatibility Guide I/O list." },
     { kind: "missing-dataset", subject: "Guest OS compatibility dataset", impact: "Unavailable: the supplied offline archive does not contain a guest-OS compatibility dataset, so guest OS support cannot be verified." },
-    { kind: "not-in-rvtools", subject: "TPM 2.0, boot device, and firmware levels", impact: "RVTools does not provide TPM status, boot-media type or size, or sufficient firmware evidence; collect PowerCLI/esxcli and OEM evidence." },
+    { kind: "not-in-rvtools", subject: "TPM 2.0, boot device, and firmware levels", impact: "RVTools does not provide TPM status, boot-media type or size, or sufficient firmware evidence; collect PowerCLI/esxcli and OEM evidence. KB 317631: ESX 9.x needs a boot device of at least 128 GB, and USB or SD boot needs a separate persistent OSDATA device." },
     { kind: "not-in-rvtools", subject: "PCI vendor/device identifiers", impact: "RVTools does not provide PCI VID/DID/SVID/SSID, so individual NIC/HBA cards cannot be matched exactly to the Compatibility Guide." },
   );
   return gaps;
@@ -1418,6 +1519,7 @@ function hclCoverageGaps(evidence: HclInventoryEvidence): HclCoverageGap[] {
 export function assessHclEstate(evidence: HclInventoryEvidence, now: Date = new Date(), targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HclAssessment {
   const findings = [
     ...hclHardwareFindings(evidence, targetRelease),
+    ...hclCorpusFindings(evidence, targetRelease),
     ...hclHostCapacityFindings(evidence, now),
     ...hclNicLayoutFindings(evidence),
     ...hclClusterFindings(evidence),

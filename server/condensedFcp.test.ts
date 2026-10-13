@@ -262,6 +262,16 @@ describe("Condensed FCP review fixes", () => {
     expect(visible).not.toMatch(/[a-z]\.\./);
   });
 
+  it("targets 9.1.1 when hosts run 8.0 U3j or later builds", () => {
+    const document = withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true });
+    document.inventory.hclEvidence.hosts = [
+      { name: "esx01", cluster: "DC1 / Prod", vendor: "Dell Inc.", model: "PowerEdge R760", cpuModel: "Intel(R) Xeon(R) Gold 6430", esxiVersion: "VMware ESXi 8.0.3 build-25429389", socketCount: 2, coresPerSocket: 32, biosVersion: "", biosDate: "" },
+    ];
+    const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
+    expect(visible).toContain("VCF 9.1.1");
+    expect(visible).toContain("must target 9.1.1 or later (KB 450972, KB 454369)");
+  });
+
   it("shows Senior Architect and Offshore PM hours from a signed work plan", () => {
     const document = engagement(raw => { raw.resourceAssignments = [{ workstream: "Design and build", architect: 180, srConsultant: 900, projectManager: 190, seniorArchitect: 62, offshoreProjectManager: 113 }]; });
     const effort = scopedEffortForDocument(document);
