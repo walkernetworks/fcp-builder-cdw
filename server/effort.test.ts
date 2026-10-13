@@ -317,7 +317,7 @@ describe("entitlement budget limit", () => {
   it("keeps pinned work in and stays over when only design and pinned work remain", () => {
     const tiny = scopedEffortForDocument(planned(1_000));
     expect(tiny.internal.cost!.status).toBe("over");
-    expect(tiny.workPackages.filter(row => row.total > 0).every(row => /design|requirements|mobilize|plan/i.test(row.label) || row.placement === "entitlement")).toBe(true);
+    expect(tiny.workPackages.filter(row => row.total > 0).every(row => /design|discovery|requirements|mobilize|plan/i.test(row.label) || row.placement === "entitlement")).toBe(true);
 
     const document = planned(1_000);
     const build = scopedEffortForDocument(planned(10_000_000)).workPackages.find(row => row.id === "bar-management-domain")!;
