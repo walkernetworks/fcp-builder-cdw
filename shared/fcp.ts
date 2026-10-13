@@ -957,6 +957,17 @@ function compatibilityDecision(hcl: HclPlatformAssessment): Pick<VcfCompatibilit
   };
 }
 
+/** A server model as people say it: "Dell PowerEdge R640", not "Dell Inc. PowerEdge R640" or "HPE HPE Synergy 480 Gen10". */
+export function serverLabel(vendor: string, model: string): string {
+  const name = model.trim();
+  const raw = vendor.trim();
+  const short = raw.replace(/,?\s+(inc\.?|incorporated|corporation|corp\.?|co\.?|ltd\.?|llc)$/i, "").replace(/^hewlett[- ]packard enterprise$/i, "HPE").trim();
+  if (!short) return name;
+  const first = (name.split(/\s+/)[0] ?? "").toLowerCase();
+  if (first && (first === short.toLowerCase() || first === raw.split(/\s+/)[0].toLowerCase())) return name;
+  return `${short} ${name}`.trim();
+}
+
 /**
  * Produces one concise planning server model for each observed server/CPU pairing.
  * This supports delivery planning only and must not be interpreted as an
