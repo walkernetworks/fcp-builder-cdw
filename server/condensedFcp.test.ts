@@ -29,7 +29,7 @@ describe("Condensed FCP", () => {
     const html = render(document);
     expect(check(html, document)).toEqual([]);
     const visible = text(html);
-    for (const heading of ["Executive Summary", "Situation", "Plan on a Page", "Entitlement Burndown", "Scoped Effort", "Customer Effort by Week & Work Stream", "Target Personnel by Work Stream", "VCF Design Profile", "Design Elements — Requirements & Recommendations", "Adoption Sequence & Dependencies", "Private Cloud Adoption Timeline", "Engagement Milestones to Date", "Forward Delivery Plan", "Adoption Plan & Recommendation", "Summary", "What we heard, and what we have built to", "Customer Problems", "Open Questions", "The technical items to confirm early", "Sequencing Constraints", "Customer Team Commitments", "Open Items"]) {
+    for (const heading of ["Executive Summary", "Situation", "Plan on a Page", "Entitlement Burndown", "Scoped Effort", "Customer Effort by Week & Work Stream", "Target Personnel by Work Stream", "VCF Design Profile", "Design Elements — Requirements & Recommendations", "Private Cloud Adoption Timeline", "Engagement Milestones to Date", "Key Dates", "Adoption Plan & Recommendation", "Summary", "What we heard, and what we have built to", "Customer Problems", "Open Questions", "The technical items to confirm early", "Sequencing Constraints", "Customer Team Commitments", "Open Items"]) {
       expect(visible, heading).toContain(heading);
     }
     for (const category of FIXED_GANTT_CATEGORIES) expect(visible).toContain(category);
@@ -88,8 +88,35 @@ describe("Condensed FCP", () => {
   it("draws the entitlement timeline and the two-year notional with the full FCP's category Gantt", () => {
     const html = render(engagement());
     const visible = text(html);
-    for (const heading of ["Private Cloud Adoption Timeline", "Two-Year Notional · Months 1–12", "Year 1 Adoption Outlook", "Delivery workstream key", "What CDW Delivers"]) expect(visible, heading).toContain(heading);
+    for (const heading of ["Private Cloud Adoption Timeline", "After the Entitlement", "Delivery workstream key", "Work Packages and Scoped Effort"]) expect(visible, heading).toContain(heading);
     expect(html.match(/class="timeline-grid"/g)!.length).toBeGreaterThanOrEqual(2);
+    // The entitlement year is drawn once; the notional picks up after it.
+    expect(visible).not.toContain("Year 1 Adoption Outlook");
+  });
+
+  it("starts the notional after the entitlement ends, and stops the entitlement sheet at the term end when less than a year is left", () => {
+    const document = engagement();
+    document.fields.entitlementStart = "2026-04-01";
+    document.report.entitlement.termStart = "2026-04-01";
+    document.report.entitlement.termEnd = "2026-12-31";
+    const html = render(document);
+    const sheets = Array.from(html.matchAll(/<section class="tl-sheet"><div class="tl-head"><span>([^<]*)<\/span><h2>([^<]*)<\/h2>[\s\S]*?<\/section>/g)).map(match => ({ eyebrow: match[1], heading: match[2], months: (match[0].match(/class="timeline-head"/g) ?? []).length }));
+    const entitlement = sheets.find(item => item.heading === "Private Cloud Adoption Timeline")!;
+    const after = sheets.filter(item => item.heading.startsWith("After the Entitlement"));
+    expect(after[0].eyebrow).toMatch(/^Two-Year Notional · Jan 2027 to /);
+    expect(entitlement.months + after.reduce((sum, item) => sum + item.months, 0)).toBeLessThanOrEqual(24 + 1);
+    expect(after.every(item => item.months <= 12)).toBe(true);
+  });
+
+  it("describes each work package once, with its hours, what it delivers and how it is accepted", () => {
+    const document = engagement();
+    document.report.resourceAssignments = [];
+    const visible = text(render(document));
+    expect(visible).toContain("Work Packages and Scoped Effort");
+    expect(visible).toContain("Run the design discovery sessions to");
+    expect(visible).toContain("Accepted when:");
+    expect(visible).not.toContain("What CDW Delivers");
+    expect(visible).not.toContain("Adoption Sequence & Dependencies");
   });
 });
 
