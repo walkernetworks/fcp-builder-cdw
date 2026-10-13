@@ -11,6 +11,7 @@ type Options = {
   clusters?: number;
   vms?: number;
   sites?: number;
+  rvtoolsDatacenters?: number;
   vcenters?: number;
   instances?: number;
   elm?: boolean;
@@ -44,8 +45,9 @@ function doc(options: Options = {}): EngagementDocument {
     },
   });
   const hosts = options.hosts ?? 40;
-  Object.assign(document.inventory, { hosts, clusters: options.clusters ?? 0, vmCount: options.vms ?? 0, datacenters: options.sites ?? 1 });
-  document.report.discovery = { ...document.report.discovery, vcenters: options.vcenters ?? 1, vcfInstances: options.instances ?? null, enhancedLinkedMode: options.elm ?? null, assessmentCompleted: options.prior ?? false };
+  Object.assign(document.inventory, { hosts, clusters: options.clusters ?? 0, vmCount: options.vms ?? 0, datacenters: options.rvtoolsDatacenters ?? 1 });
+  // Sites come from the brief (or the planner), never from RVTools datacenter objects.
+  document.report.discovery = { ...document.report.discovery, datacenters: options.sites ?? null, vcenters: options.vcenters ?? 1, vcfInstances: options.instances ?? null, enhancedLinkedMode: options.elm ?? null, assessmentCompleted: options.prior ?? false };
   return refreshDerivedDocument(document);
 }
 
@@ -72,6 +74,25 @@ describe("v2 Pass 1 formulas (spec section 6)", () => {
     // 64 + 16 x 2 WLDs + 24 extra instance + 32 extra site + 24 stretched + 8 extra storage type + min(40, 0.25 x 68)
     expect(base(doc({ hosts: 100, sites: 2, instances: 2, inputs: { workloadDomains: 2, stretchedClusters: 1, storageTypes: 2 } }), "A")).toBeCloseTo(201);
     expect(base(doc({ hosts: 400 }), "A")).toBe(64 + 16 + 40);
+  });
+
+  it("does not count RVTools datacenter objects as sites", () => {
+    const pass1 = scopeV2(doc({ path: "design-only", hosts: 72, clusters: 29, rvtoolsDatacenters: 24, focus: { operations: ["lifecycle"] } }));
+    expect(pass1.inputs.sites).toBe(1);
+    expect(lineOf(pass1, "A")!.computedBase).toBeCloseTo(64 + 16 + 10);
+    expect(pass1.assumptions.find(item => item.key === "sites")!.source).toMatch(/24 vCenter datacenter objects/);
+    expect(scopeV2(doc({ path: "design-only", hosts: 72, rvtoolsDatacenters: 24, inputs: { sites: 3 } })).inputs.sites).toBe(3);
+  });
+
+  it("sizes a build by the new platform's clusters, and converge or import by the existing ones", () => {
+    const build = scopeV2(doc({ path: "greenfield", hosts: 144, clusters: 36, storage: "vmfs-fc" }));
+    expect(build.inputs.platformClusters).toBe(9);
+    expect(lineOf(build, "S_storage")!.computedBase).toBe(72);
+    expect(lineOf(build, "D")!.computedBase).toBeCloseTo(84 + 24 + 8 * 7 + 48 + 0.5 * 80);
+    expect(scopeV2(doc({ path: "greenfield", hosts: 144, clusters: 36, inputs: { targetClusters: 12 } })).inputs.platformClusters).toBe(12);
+    const converge = scopeV2(doc({ path: "converge", hosts: 144, clusters: 36 }));
+    expect(converge.inputs.platformClusters).toBe(36);
+    expect(lineOf(converge, "C1")!.computedBase).toBeCloseTo(40 + 4 * 36 + 0.25 * 144 + 8);
   });
 
   it("prices the VCF deploy continuously", () => {

@@ -593,6 +593,10 @@ const estimateFlag = z.boolean().optional();
  */
 export const estimateInputsSchema = z.object({
   // Topology
+  /** Physical sites in scope. RVTools datacenter objects are inventory folders, so they are not used as sites. */
+  sites: z.number().int().min(1).max(1_000).optional(),
+  /** Clusters on the platform CDW builds (greenfield, hybrid, design); the existing RVTools clusters size converge, import and upgrade work. */
+  targetClusters: z.number().int().min(1).max(10_000).optional(),
   workloadDomains: estimateCount,
   stretchedClusters: estimateCount,
   storageTypes: estimateCount,
