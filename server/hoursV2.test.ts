@@ -438,3 +438,42 @@ describe("entitlement ceiling and the reserve field", () => {
     expect(share(0)).toBe(0);
   });
 });
+
+describe("work moved to the Two-Year Notional keeps its order", () => {
+  const domainPlan = (entitlementAmount: number) => {
+    const document = createDefaultDocument();
+    Object.assign(document.fields, { customerName: "Test", entitlementStart: "2026-10-11", entitlementAmount, plannedProjectStart: "2026-10-16", plannedImplementationStart: "2026-10-16", hardwareAvailability: "new", priorities: ["networking", "operations"], hoursModel: "v2" });
+    document.inventory.hosts = 313;
+    document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid", domainTopology: "standard", networking: ["overlay-transport", "edge-cluster-routing"], domains: [
+      { name: "Lifeline", kind: "management", pathway: "greenfield", instance: "Lifeline", hosts: 4, notes: "" },
+      { name: "Randalia", kind: "management", pathway: "greenfield", instance: "Randalia", hosts: 4, notes: "" },
+      { name: "Citrix VDI", kind: "workload", pathway: "greenfield", instance: "Lifeline", hosts: 80, notes: "" },
+      { name: "Epic", kind: "workload", pathway: "import", instance: "Lifeline", hosts: 40, notes: "" },
+    ] } as never;
+    return refreshDerivedDocument(document, { forceRebuild: true });
+  };
+
+  it("leaves no stage, or checkpoint, starting before its prerequisite ends", async () => {
+    const { scopedEffortForDocument } = await import("./rateCard");
+    const { timelinesWithDeferrals, withOwnership } = await import("../shared/effort");
+    const { validateTimelineSequence } = await import("../shared/fcp");
+    for (const value of [120_000, 200_000, 300_000]) {
+      const document = domainPlan(value);
+      const deferred = scopedEffortForDocument(document).workPackages.filter(row => row.deferred).map(row => row.id);
+      expect(validateTimelineSequence(timelinesWithDeferrals(withOwnership(document), deferred).notional)).toEqual([]);
+    }
+  });
+
+  it("starts moved work after a prerequisite that stayed but runs past the entitlement end", async () => {
+    const { timelinesWithDeferrals, withOwnership } = await import("../shared/effort");
+    const { validateTimelineSequence } = await import("../shared/fcp");
+    const document = domainPlan(10_000_000);
+    // NSX stays in the entitlement but is stretched past its end; only the workload domain moves.
+    const lanes = document.twoYearPlan.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => (bar.id === "bar-vcf-networking-nsx" ? { ...bar, endCol: bar.endCol + 14 } : bar)) }));
+    const stretched = { ...document, twoYearPlan: { ...document.twoYearPlan, lanes } };
+    const notional = timelinesWithDeferrals(withOwnership(stretched), ["bar-workload-domain"]).notional;
+    const bars = new Map(notional.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
+    expect(bars.get("bar-workload-domain")!.startCol).toBeGreaterThanOrEqual(bars.get("bar-vcf-networking-nsx")!.endCol);
+    expect(validateTimelineSequence(notional).filter(item => /Citrix VDI/.test(item))).toEqual([]);
+  });
+});
