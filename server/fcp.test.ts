@@ -406,6 +406,9 @@ describe("calendar-month adoption plans", () => {
     expect(normalizeActivityLabel("network workshop")).toBe("Network Plan");
     expect(normalizeActivityLabel("DR design")).toBe("DR Design");
     expect(normalizeWorkstreamLabel("platform readiness")).toBe("Platform Plan");
+    // Names are kept: capitals, numbers and build stages are not turned into a "Plan".
+    expect(normalizeActivityLabel("Citrix VDI Workload Domain – Lifeline")).toBe("Citrix VDI Workload Domain – Lifeline");
+    expect(normalizeActivityLabel("server workload domain (SVRA 0470)")).toBe("Server Workload Domain (SVRA 0470)");
   });
 
   it("applies month drag and edge resize gestures while allowing bounded overlapping work within one category", () => {
