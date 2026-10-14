@@ -189,4 +189,17 @@ describe("plan inputs from the brief", () => {
     brief.discovery = { ...brief.discovery, jumboFrames: "Mixed: Citrix and Epic switches run 9000" };
     expect(applyCustomerBrief(createDefaultDocument(), brief).document.report.discovery.jumboFrames).toBe("mixed");
   });
+  it("reads the domain list, coercing loose phrasing", () => {
+    const brief = example() as Record<string, any>;
+    brief.discovery = { ...brief.discovery, plannedPath: "hybrid", domains: [
+      { name: "Lifeline", kind: "Management Domain", pathway: "Greenfield build", instance: "Lifeline", hosts: "4", notes: "Move the SVRA 600 workloads first" },
+      { name: "Epic", kind: "Workload", pathway: "Import existing vCenter", instance: "Lifeline", hosts: null, notes: null },
+      { name: "", kind: "workload", pathway: "import" },
+    ] };
+    const result = applyCustomerBrief(createDefaultDocument(), brief);
+    expect(result.document.fields.adoptionDetails.domains).toEqual([
+      { name: "Lifeline", kind: "management", pathway: "greenfield", instance: "Lifeline", hosts: 4, notes: "Move the SVRA 600 workloads first" },
+      { name: "Epic", kind: "workload", pathway: "import", instance: "Lifeline", hosts: null, notes: "" },
+    ]);
+  });
 });

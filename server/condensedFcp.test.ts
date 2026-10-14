@@ -310,6 +310,30 @@ describe("Condensed FCP review fixes", () => {
     expect(text(render(refreshDerivedDocument(document, { forceRebuild: true })))).not.toContain("to be confirmed");
   });
 
+  it("gives each domain from the brief its own work package, after its own management domain", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid", domainTopology: "standard", domains: [
+      { name: "Lifeline", kind: "management", pathway: "greenfield", instance: "Lifeline", hosts: 4, notes: "Move the SVRA 600 workloads first" },
+      { name: "Randalia", kind: "management", pathway: "greenfield", instance: "Randalia", hosts: 4, notes: "" },
+      { name: "Citrix VDI", kind: "workload", pathway: "greenfield", instance: "Randalia", hosts: 169, notes: "" },
+      { name: "Epic", kind: "workload", pathway: "import", instance: "Lifeline", hosts: 40, notes: "" },
+    ] } as never;
+    document.report.designProfile.availability = "";
+    const refreshed = refreshDerivedDocument(document, { forceRebuild: true });
+    const bars = new Map(refreshed.adoptionTimeline.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
+    expect(bars.get("bar-management-domain")?.label).toBe("Lifeline Management Domain");
+    expect(bars.get("bar-management-domain-2")?.prerequisites).toEqual(["bar-management-domain"]);
+    expect(bars.get("bar-workload-domain")).toMatchObject({ label: "Citrix VDI Workload Domain", prerequisites: ["bar-management-domain-2"] });
+    expect(bars.get("bar-import-domain-1")).toMatchObject({ label: "Import Epic as a Workload Domain", prerequisites: ["bar-management-domain"] });
+    const effort = scopedEffortForDocument(refreshed);
+    for (const id of ["bar-management-domain", "bar-management-domain-2", "bar-workload-domain", "bar-import-domain-1"]) expect(effort.workPackages.find(row => row.id === id)?.total ?? 0).toBeGreaterThan(0);
+    expect(effort.internal.pass1?.inputs).toMatchObject({ workloadDomains: 2, instances: 2 });
+    const visible = text(render(refreshed));
+    expect(visible).toContain("Import Epic as a Workload Domain");
+    expect(visible).toContain("Move the SVRA 600 workloads first, then deploy the Lifeline management domain (4 hosts)");
+    expect(visible).toContain("Management domains: Lifeline (Lifeline), built new; Randalia (Randalia), built new.");
+  });
+
   it("raises the work plan hours item only once", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];

@@ -287,7 +287,14 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     switch (key) {
       case "consumption": return `${platformName(document)} with VCF Operations as the daily operations console${outcomes.some(item => item.key.startsWith("automation:")) ? "; self-service through VCF Automation" : "; automation evaluated later"}.`;
       case "physicalSite": return sites ? `${sites} site${sites === 1 ? "" : "s"}${inventory.hosts ? `, ${inventory.hosts} hosts in the current estate` : ""}.` : "Sites to be confirmed in design.";
-      case "availability": return fields.adoptionDetails.domainTopology === "consolidated" ? "Consolidated management domain: management components and workloads share the cluster; HA and fully automated DRS retained." : fields.adoptionDetails.domainTopology === "standard" ? "Standard architecture: a dedicated management domain and separate workload domains." : "Management domain topology to be decided in design.";
+      case "availability": if (fields.adoptionDetails.domains.length) {
+        // The domains from the brief, by instance: what is built, imported or converged.
+        const how = (domain: (typeof fields.adoptionDetails.domains)[number]) => (domain.pathway === "import" ? "imported" : domain.pathway === "converge" ? "converged" : "built new");
+        const list = (kind: "management" | "workload") => fields.adoptionDetails.domains.filter(domain => domain.kind === kind).map(domain => `${domain.name}${domain.instance ? ` (${domain.instance})` : ""}, ${how(domain)}`).join("; ");
+        const workloads = list("workload");
+        return `Management domains: ${list("management") || "to be confirmed in design"}.${workloads ? ` Workload domains: ${workloads}.` : ""} HA and fully automated DRS on every cluster.`;
+      }
+      return fields.adoptionDetails.domainTopology === "consolidated" ? "Consolidated management domain: management components and workloads share the cluster; HA and fully automated DRS retained." : fields.adoptionDetails.domainTopology === "standard" ? "Standard architecture: a dedicated management domain and separate workload domains." : "Management domain topology to be decided in design.";
       case "isolation": return vvf ? "vSphere Distributed Switch networking; no NSX overlay in VVF." : outcomeKeys.has("networking:overlay-transport") || outcomeKeys.has("networking:vpc") ? "NSX deployed with VCF, with overlay networking in scope." : "NSX deployed with VCF, VLAN-backed at first; no network redesign on day one.";
       case "recoverability": return outcomes.some(item => item.key.startsWith("resilience:")) ? "Recovery design with VMware Live Recovery; recovery objectives set in design." : "Recovery approach to be confirmed in design.";
       default: return "Capacity added wave by wave as hosts are evacuated and rebuilt into the platform.";

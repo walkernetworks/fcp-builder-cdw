@@ -451,7 +451,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ? `<h3>Engagement Milestones to Date</h3>${report.milestonesToDate.map(item => `<div class="ms"><b>${esc(shortDate(item.date))}</b><span><b>${esc(item.event)}</b>${item.detail ? ` — ${esc(item.detail)}` : ""}</span></div>`).join("")}`
     : "";
   // The build starts with the foundation build or the first execution stage, which can be months after services start.
-  const buildStart = customerTimelines.adoption.lanes.flatMap(lane => lane.bars).filter(bar => bar.id === "bar-management-domain" || bar.id === "bar-workload-domain" || bar.id.startsWith("bar-playbook-execution-")).map(bar => barWindow(customerTimelines.adoption, bar)?.start).filter((start): start is string => Boolean(start)).sort()[0];
+  const buildStart = customerTimelines.adoption.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-(management-domain|workload-domain|import-domain)(-\d+)?$/.test(bar.id) || bar.id.startsWith("bar-playbook-execution-")).map(bar => barWindow(customerTimelines.adoption, bar)?.start).filter((start): start is string => Boolean(start)).sort()[0];
   const implementationStart = fields.plannedImplementationStart;
   const buildLater = Boolean(buildStart && implementationStart && buildStart.slice(0, 7) > implementationStart.slice(0, 7));
   const forward = (implementationStart ? `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>` : "")
