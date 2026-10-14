@@ -1533,9 +1533,11 @@ function titleCase(value: string): string {
   return value
     .trim()
     .replace(/\s+/g, " ")
-    .toLowerCase()
     .split(" ")
-    .map((word, index) => {
+    .map((original, index) => {
+      // Words already written in capitals or with digits (VDI, CORE, 0470, vSAN-style names) are kept as typed.
+      if (/^[(["']?[A-Z0-9][A-Z0-9&/().,'"\]-]+$/.test(original) || /\d/.test(original) || /^[a-z]+[A-Z]/.test(original)) return original;
+      const word = original.toLowerCase();
       if (index > 0 && minorWords.has(word)) return word;
       if (/^(vcf|nsx|dr|hcx|tanzu|kubernetes|ai)$/.test(word)) return word.toUpperCase();
       return word.charAt(0).toUpperCase() + word.slice(1);
@@ -1545,8 +1547,8 @@ function titleCase(value: string): string {
 
 export function normalizeActivityLabel(value: string): string {
   const cleaned = value.trim().replace(/\b(workshop|readiness|assessment|validation)\b/gi, "plan");
-  const titled = titleCase(cleaned || "Custom Plan");
-  return /\b(plan|design|upgrade)\b/i.test(titled) ? titled : `${titled} Plan`;
+  // Banned framing becomes "plan"; the name is otherwise kept, so a build stage is not renamed into a plan.
+  return titleCase(cleaned || "Custom Plan");
 }
 
 export function normalizeWorkstreamLabel(value: string): string {
