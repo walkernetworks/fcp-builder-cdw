@@ -4,6 +4,7 @@ import { applyScheduleFieldPatch, applyTimelineGesture, assessReadiness, buildAd
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryTemplate, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "../shared/industryDiscovery";
 import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, summarizeHclFindings } from "../shared/hcl";
 import type { TrpcContext } from "./_core/context";
+import { VOCABULARY } from "./condensedFcpChecks";
 import { renderFcpHtml, renderHclCompatibilityPlanOutputHtml } from "./fcpRenderer";
 import { appRouter } from "./routers";
 
@@ -1509,4 +1510,36 @@ describe("HCL 2.0 estate evidence", () => {
     expect(html).toContain("break-inside:avoid;page-break-inside:avoid");
     expect(html).not.toContain("Release support register");
   });
+});
+
+describe("stage names on the Condensed FCP", () => {
+  const paths = ["undecided", "in-place", "converge", "import-workload-domain", "greenfield", "hybrid", "design-only"] as const;
+  const outcomes = {
+    operations: ["lifecycle", "observability", "capacity-cost", "custom-dashboards", "identity-certificates", "event-integration"],
+    automation: ["vm-self-service", "infrastructure-as-code", "day-2-automation", "governance", "application-provisioning", "data-services"],
+    networking: ["physical-fabric", "edge-cluster-routing", "overlay-transport", "vpc", "load-balancing", "network-operations"],
+    security: ["segmentation", "identity-rbac", "hardening-compliance", "ids-ips", "malware-prevention", "identity-firewall", "security-intelligence", "waf"],
+    resilience: ["recovery-architecture", "recovery-exercises", "cyber-recovery", "cloud-cyber-recovery"],
+    kubernetes: ["workload-domains", "platform-operations", "developer-experience"],
+    privateAi: ["gpu-capacity", "ai-guardrails", "pilot-onboarding"],
+  };
+
+  it("never uses the framing the Condensed FCP check bans", () => {
+    for (const edition of ["vcf", "vvf"] as const) for (const path of paths) {
+      const document = createDefaultDocument();
+      Object.assign(document.fields, {
+        customerSegment: "commercial",
+        entitlementAmount: 5_000_000,
+        entitlementStart: "2027-01-01",
+        entitlementEnd: "2027-12-31",
+        priorities: ["operations", "automation", "networking", "security", "resilience", "kubernetes", "private-ai"],
+        adoptionDetails: { ...document.fields.adoptionDetails, platformEdition: edition, upgradePath: path, ...outcomes },
+      });
+      Object.assign(document.inventory, { vmCount: 1000, poweredOnVms: 900, hosts: 24 });
+      const plans = buildAdoptionPlans(document.fields, document.inventory);
+      const labels = [...plans.adoptionTimeline.lanes, ...plans.twoYearPlan.lanes].flatMap(lane => lane.bars.map(bar => bar.label));
+      expect(labels.filter(label => VOCABULARY.test(label)), `${edition} ${path}`).toEqual([]);
+    }
+  });
+
 });

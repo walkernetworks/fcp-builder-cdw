@@ -2421,7 +2421,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     });
     const [readinessStart, readinessEnd] = range(designEnd, windowEnd + 1 - designEnd);
     operationsBars.push({
-      ...bar("bar-platform-operating-readiness", readinessStart, readinessEnd, colorForWorkstreamType("Operating Model / Platform"), "Team and Operating Model Readiness", false, false, "Begin after the design package is accepted.", "Prepare platform ownership, skills, support model, and operational runbooks so implementation can start without delay once approved."),
+      ...bar("bar-platform-operating-readiness", readinessStart, readinessEnd, colorForWorkstreamType("Operating Model / Platform"), "Operating Model, Skills, and Runbooks", false, false, "Begin after the design package is accepted.", "Prepare platform ownership, skills, support model, and operational runbooks so implementation can start without delay once approved."),
       ...(lastDesignPackage ? { prerequisites: [`bar-playbook-design-${lastDesignPackage.id}`] } : {}),
     });
   }
@@ -3300,7 +3300,7 @@ const LEGACY_GENERATED_LABELS: Array<[RegExp, string]> = [
   [/^Provision and Validate Greenfield Hardware Baseline$/, "Greenfield Hardware Setup"],
   [/^Delivery Governance and Value Tracking$/, "Governance and Value Reviews"],
   [/^Maintain Design Authority and Entitlement Governance$/, "Design Authority and Entitlement Tracking"],
-  [/^Prepare Operating Model, Skills, and Runbooks for Implementation$/, "Team and Operating Model Readiness"],
+  [/^(Prepare Operating Model, Skills, and Runbooks for Implementation|Team and Operating Model Readiness)$/, "Operating Model, Skills, and Runbooks"],
   [/^Approve the VCF Adoption Pathway and Execution Funding$/, "Pathway and Funding Approval"],
   [/^Approve Implementation Funding and Delivery Window$/, "Funding and Delivery Window Approval"],
   [/^Platform Operating Model and Lifecycle Adoption$/, "Operating Model and Lifecycle"],
