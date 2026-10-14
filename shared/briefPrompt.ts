@@ -31,6 +31,7 @@ What each section is for
   - industry: one of general-enterprise, healthcare-life-sciences, financial-services-insurance, manufacturing-retail-distributed, public-sector-education, digital-products-technology.
   - targetRelease: the ESXi release the platform should land on, "ESXi 9.0" or "ESXi 9.1", when stated.
   - planningNotes: anything else that shapes the plan and has no other field, in one to three sentences.
+  - domains: every VCF domain the plan delivers, one row each. kind is management or workload. pathway is greenfield (built new), import (an existing vCenter imported as a workload domain) or converge (an existing vCenter converged into a management domain). instance names the VCF instance or site the domain belongs to, so each workload domain follows its own management domain. hosts is the host count when known. notes holds what must happen first or what is special (for example "move the CORE 600 workloads first"). Leave [] when the domains are not yet decided.
   - outcomesWanted: what the customer wants from each area once the platform is in, which builds the adoption plan. List only outcomes the customer asked for or agreed to, using these names:
     - operations: lifecycle (lifecycle, certificates, passwords), observability (health, logs, diagnostics), capacity-cost (capacity and cost visibility, chargeback), custom-dashboards, identity-certificates (identity and privileged-access runbooks), event-integration (alerts into incident or ticketing tools)
     - automation: vm-self-service (VM catalog), infrastructure-as-code, day-2-automation (remediation and maintenance), governance (projects, quotas, policy), application-provisioning, data-services (database self-service)
@@ -78,6 +79,7 @@ JSON shape (fill every key; keep the structure exactly)
     "addOnsConsidered": [], "notInterested": [],
     "sitePrerequisitesOpen": [], "componentDepth": { "operations": null, "automation": null, "networkingSecurity": null, "kubernetesAi": null, "efficiency": null },
     "industry": null, "targetRelease": null, "planningNotes": null,
+    "domains": [{ "name": "", "kind": "management | workload", "pathway": "greenfield | import | converge", "instance": "", "hosts": null, "notes": "" }],
     "outcomesWanted": { "operations": [], "automation": [], "networking": [], "security": [], "resilience": [], "kubernetes": [], "privateAi": [] }
   },
   "situation": [],

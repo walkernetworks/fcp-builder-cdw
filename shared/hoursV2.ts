@@ -122,7 +122,12 @@ export function resolveInputs(document: EngagementDocument) {
     ? `Not stated. RVTools lists ${inventory.datacenters} vCenter datacenter objects, which are not necessarily physical sites; confirm the number of sites in scope`
     : "Not stated in the brief"));
   const vcenters = report.discovery.vcenters || assume("vcenters", "vCenters", 1, "No vCenter count in the brief");
-  const instances = report.discovery.vcfInstances || assume("instances", "VCF instances", 1, "No VCF instance count in the brief");
+  // The brief's domain list, when it has one, gives the workload domains and the instances (one per management domain).
+  const domainList = fields.adoptionDetails.domains;
+  const managementDomains = domainList.filter(domain => domain.kind === "management").length;
+  const workloadDomainList = domainList.filter(domain => domain.kind === "workload").length;
+  // Each VCF instance has one management domain, so the list can raise the brief's instance count but never lower it.
+  const instances = Math.max(report.discovery.vcfInstances ?? 0, managementDomains) || assume("instances", "VCF instances", 1, "No VCF instance count in the brief");
   const clusters = inventory.clusters || assume("clusters", "Existing clusters", Math.max(1, Math.ceil(hosts / v(H.defaults.hostsPerCluster))), H.defaults.hostsPerCluster.source);
   // Converge, import and in-place work on the existing clusters; a build or a design sizes the new platform's clusters.
   const existingPlatform = ["converge", "import-workload-domain", "in-place"].includes(effectiveDeliveryPath(fields));
@@ -136,7 +141,7 @@ export function resolveInputs(document: EngagementDocument) {
 
   const values = {
     hosts, sites, vcenters, instances, clusters, platformClusters, vms, consolidated,
-    workloadDomains: pick("workloadDomains", "Workload domains", () => ({ value: consolidated ? 0 : 1, source: consolidated ? "Consolidated topology (or 10 hosts or fewer with topology undecided)" : "One workload domain unless the topology is consolidated" })),
+    workloadDomains: pick("workloadDomains", "Workload domains", () => workloadDomainList ? workloadDomainList : ({ value: consolidated ? 0 : 1, source: consolidated ? "Consolidated topology (or 10 hosts or fewer with topology undecided)" : "One workload domain unless the topology is consolidated" })),
     stretchedClusters: pick("stretchedClusters", "Stretched clusters", () => ({ value: 0, source: "None stated" })),
     storageTypes: pick("storageTypes", "Principal storage types", () => ({ value: 1, source: "One principal storage type" })),
     clustersOnFcOrNfs: pick("clustersOnFcOrNfs", "Clusters on FC or NFS principal storage", () => ({ value: storage === "vmfs-fc" || storage === "nfs-v3" ? platformClusters : 0, source: `Principal storage is ${storage}` })),

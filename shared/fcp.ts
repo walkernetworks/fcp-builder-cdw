@@ -538,8 +538,30 @@ const adoptionDetailsV6Schema = z.object({
   notes: z.string().max(5000),
 });
 
+/**
+ * One VCF domain the plan delivers, from the brief. Management domains are built first; each workload domain
+ * follows the management domain of its instance. The pathway sets how it is delivered: built new, an existing
+ * vCenter imported as a workload domain, or an existing vCenter converged into a management domain.
+ */
+export const vcfDomainSchema = z.object({
+  name: z.string().min(1).max(120),
+  kind: z.enum(["management", "workload"]),
+  pathway: z.enum(["greenfield", "import", "converge"]).default("greenfield"),
+  instance: z.string().max(120).default(""),
+  hosts: z.number().int().nonnegative().nullable().default(null),
+  notes: z.string().max(500).default(""),
+});
+export type VcfDomain = z.infer<typeof vcfDomainSchema>;
+
+/** A domain's outcome led by its note from the brief ("Move the CORE 600 workloads first, then deploy ..."). */
+function withDomainNote(domain: VcfDomain, outcome: string): string {
+  const note = domain.notes.trim().replace(/[.\s]+$/, "");
+  return note ? `${note}, then ${outcome.charAt(0).toLowerCase()}${outcome.slice(1)}` : outcome;
+}
+
 export const adoptionDetailsSchema = adoptionDetailsV6Schema.extend({
   industryTemplate: industryTemplateSchema,
+  domains: z.array(vcfDomainSchema).default([]),
 });
 export type AdoptionDetails = z.infer<typeof adoptionDetailsSchema>;
 
@@ -1256,6 +1278,7 @@ export function emptyInventory(): InventorySummary {
 
 export function createDefaultAdoptionDetails(): AdoptionDetails {
   return {
+    domains: [],
     upgradePath: "undecided",
     platformEdition: "vcf",
     domainTopology: "undecided",
@@ -2378,6 +2401,46 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     migrationBars.push({ ...bar("bar-import-workload-domain", importStart, importEnd, colorForWorkstreamType("Migration Waves"), "Import vCenter as a Workload Domain", false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after destination-foundation acceptance."), implementationPackage?.outcome || "Import and validate the approved workload domain."), prerequisites: [foundationId] });
     platformReadyId = "bar-import-workload-domain";
     directMigrationExecutionEnd = importEnd;
+  } else if ((playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid") && !vvf && fields.adoptionDetails.domains.some(domain => domain.kind === "management")) {
+    // Domains from the brief: each management domain in turn, the shared networking, then each workload domain after
+    // its own instance's management domain. The first of each keeps the standard id so licensing and hours attach to it.
+    const domains = fields.adoptionDetails.domains;
+    const instanceKey = (domain: VcfDomain) => (domain.instance || domain.name).trim().toLowerCase();
+    const managementByInstance = new Map<string, string>();
+    let previous = "";
+    domains.filter(domain => domain.kind === "management").forEach((domain, index) => {
+      const id = index === 0 ? "bar-management-domain" : `bar-management-domain-${index + 1}`;
+      const title = domain.pathway === "converge" ? `Converge ${domain.name} into a Management Domain` : `${domain.name} Management Domain`;
+      const first = index === 0
+        ? (playbookPlan.path === "greenfield" ? "Begin only after separately funded hardware, rack, network, storage, DNS, NTP, and IP prerequisites are accepted." : "Begin after the pathway decisions and shared target-state design are approved.")
+        : `Begin after the ${domains.find(item => item.kind === "management")!.name} management domain is accepted.`;
+      const end = addInfrastructurePackage(id, title, foundationEnd, managementDuration, first,
+        withDomainNote(domain, `${domain.pathway === "converge" ? "Converge the existing vCenter into" : "Deploy"} the ${domain.name} management domain${domain.hosts ? ` (${domain.hosts} hosts)` : ""} with its fleet services and validate core platform health.`),
+        index === 0 ? buildPrerequisites : [previous]);
+      if (index === 0) { foundationId = id; licenseFrom = end; }
+      managementByInstance.set(instanceKey(domain), id);
+      previous = id;
+      foundationEnd = end;
+    });
+    let networkingId = "";
+    if (nsxScheduledWithFoundation) {
+      networkingId = "bar-vcf-networking-nsx";
+      foundationEnd = addInfrastructurePackage(networkingId, planOutcomeLabel("platform:nsx"), foundationEnd, networkingDuration, "Coordinate physical-fabric VLANs, MTU, routing handoffs, transport zones, and Edge placement from the approved network design.", "Deliver the selected networking depth without implying unselected security-policy scope.", [previous, ...(sitePrerequisiteIds.includes("bar-networking-physical-fabric") ? ["bar-networking-physical-fabric"] : [])]);
+    }
+    workloadEnd = foundationEnd;
+    const used = new Map<string, number>();
+    for (const domain of domains.filter(item => item.kind === "workload")) {
+      const base = domain.pathway === "import" ? "bar-import-domain" : "bar-workload-domain";
+      const n = (used.get(base) ?? 0) + 1;
+      used.set(base, n);
+      const id = base === "bar-workload-domain" && n === 1 ? base : `${base}-${n}`;
+      const management = managementByInstance.get(instanceKey(domain)) ?? previous;
+      const title = domain.pathway === "import" ? `Import ${domain.name} as a Workload Domain` : `${domain.name} Workload Domain`;
+      workloadEnd = addInfrastructurePackage(id, title, workloadEnd, workloadDuration,
+        `${domain.pathway === "import" ? "Begin after the destination management domain and the complete source-vCenter inventory are accepted; the whole vCenter is imported." : "Begin after management-domain health and the approved network and storage prerequisites are validated."}`,
+        withDomainNote(domain, domain.pathway === "import" ? `Bring the existing ${domain.name} vCenter${domain.hosts ? ` (${domain.hosts} hosts)` : ""} under VCF fleet management as a workload domain and validate it.` : `Create the ${domain.name} workload domain${domain.hosts ? ` (${domain.hosts} hosts)` : ""} with vLCM images and validate it before workloads move.`),
+        [management, ...(networkingId ? [networkingId] : [])]);
+    }
   } else if (playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid") {
     const foundationTitle = playbookPlan.path === "greenfield" ? implementationPackage?.title || "Greenfield VCF Foundation Build" : "Shared VCF Foundation Build";
     foundationId = vvf ? "bar-vvf-foundation" : "bar-management-domain";
@@ -2396,6 +2459,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const executionPackage = playbookPlan.path === "greenfield"
     ? playbookPlan.implementationPackages.at(-1)
     : playbookPlan.implementationPackages[0];
+  const lastBuildId = platformReadyId;
   const migrationRange = migrationDuration && executionPackage ? range(workloadEnd, migrationDuration) : null;
   const migrationEnd = Math.max(migrationRange?.[1] ?? workloadEnd, directMigrationExecutionEnd);
   if (migrationRange && executionPackage) {
@@ -2422,7 +2486,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const migratesOntoNewPlatform = playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid";
   const deliveryCompleteId = platformReadyId;
   const platformReadyEnd = migratesOntoNewPlatform ? workloadEnd : migrationEnd;
-  if (migratesOntoNewPlatform) platformReadyId = vvf ? "bar-vvf-workload-clusters" : "bar-workload-domain";
+  // The platform is ready when the last build package is accepted (the first workload domain on a standard plan).
+  if (migratesOntoNewPlatform) platformReadyId = vvf ? "bar-vvf-workload-clusters" : lastBuildId;
   const implementationApproved = playbookPlan.path !== "undecided" && playbookPlan.path !== "design-only";
   const operationsBars: TimelineBar[] = [...designBars.operations];
   const cloudBars: TimelineBar[] = [...designBars.cloud];
@@ -3259,7 +3324,7 @@ function migrateFieldsToV6(fields: z.infer<typeof minimalFieldsV5Schema>): z.inf
 function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): MinimalFields {
   return {
     ...fields,
-    adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise" },
+    adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise", domains: [] },
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
     hoursModel: "v2",
     estimateInputs: {},
