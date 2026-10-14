@@ -374,7 +374,13 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ["Follow-on entitlement", "Year two, with design already complete; depends on a future purchase", fit.buckets.F],
     ["Customer-funded", "Work wanted this year beyond the entitlement, through CDW", fit.buckets.C],
   ] : [];
-  const roundedBuckets = bucketRows.map(([, , value]) => Math.round(value));
+  // Rounded to agree with the work package tables: the two entitlement buckets foot to the entitlement total, and
+  // follow-on to the follow-on table, whenever they differ from them only by rounding.
+  const inEntitlementTotal = Math.round(effort.totals.total);
+  const depthShown = fit ? Math.round(fit.buckets.E2) : 0;
+  const coreShown = fit && Math.abs(fit.buckets.E1 + fit.buckets.E2 - inEntitlementTotal) < 2 ? inEntitlementTotal - depthShown : Math.round(fit?.buckets.E1 ?? 0);
+  const followOnShown = fit && followOnRows.length && Math.abs(fit.buckets.F - followOnTotals.total) < 2 ? Math.round(followOnTotals.total) : Math.round(fit?.buckets.F ?? 0);
+  const roundedBuckets = fit ? [coreShown, depthShown, followOnShown, Math.round(fit.buckets.C)] : [];
   const bucketSection = fit
     ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority.${fit.reserveHours >= 1 ? ` ${hours(Math.round(fit.reserveHours))} hours of the entitlement are held in reserve until month 6.` : ""}</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.</p>`
     : "";

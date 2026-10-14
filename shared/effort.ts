@@ -395,6 +395,17 @@ const LEAD_ROLE_BY_BAR: Record<string, string> = {
   "bar-design-edge-sites": "VCF Architect with the customer site owners",
 };
 
+/**
+ * The lane's lead role, unless the package's hours say otherwise: a package in the governance lane whose hours are
+ * mostly architect or consultant work (the discovery and pathway sessions) is led by the architect, not the PM.
+ */
+function leadRoleFor(laneRole: string, roles: RoleHours): string {
+  const pmLed = laneRole === DELIVERY_ROLE_BY_WORKSTREAM.Governance;
+  const technical = Math.max(roles.architect, roles.srConsultant);
+  if (!pmLed || technical <= roles.projectManager) return laneRole;
+  return roles.architect >= roles.srConsultant ? "VCF Architect" : "Senior Consultant";
+}
+
 /** Program management and steering: these carry the plan's project-manager hours, not technical hours. */
 const GOVERNANCE_BARS = /^bar-(platform-plan|platform-execution-decision|platform-design-authority)$/;
 /** Requirements and discovery packages carry the discovery line; the other design packages carry architecture and design. */
@@ -640,7 +651,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       label: placed?.bar.label ?? entry?.row.label ?? id,
       category: lane?.category ?? null,
       workstreamType: lane?.workstreamType ?? null,
-      leadRole: LEAD_ROLE_BY_BAR[id] ?? (lane ? DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType] : ""),
+      leadRole: LEAD_ROLE_BY_BAR[id] ?? leadRoleFor(lane ? DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType] : "", roles),
       start: window?.start ?? null,
       end: window?.end ?? null,
       ...(reason ? { architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: reason, followOn: { ...roles, total: sum } } : { ...roles, total: sum }),
@@ -663,7 +674,9 @@ export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, Defer
   const workPackages = effort.workPackages.map(row => {
     const reason = moves.get(row.id);
     if (!reason || row.deferred) return row;
-    return { ...row, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: reason, followOn: { architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager, total: row.total } };
+    // The package's year-one hours join whatever follow-on hours it already carried (for example the remaining waves).
+    const prior = row.followOn ?? { architect: 0, srConsultant: 0, projectManager: 0, total: 0 };
+    return { ...row, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: reason, followOn: { architect: prior.architect + row.architect, srConsultant: prior.srConsultant + row.srConsultant, projectManager: prior.projectManager + row.projectManager, total: prior.total + row.total } };
   });
   if (effort.source === "assignments") return { ...effort, workPackages };
   const totals = workPackages.reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });

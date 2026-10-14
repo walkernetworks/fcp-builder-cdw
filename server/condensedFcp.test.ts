@@ -453,6 +453,27 @@ describe("Condensed FCP review fixes", () => {
     expect(refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline.lanes.flatMap(lane => lane.bars).some(item => item.id === "bar-hardware-delivery")).toBe(false);
   });
 
+  it("foots the buckets to the work package tables and names the lead by the hours", () => {
+    for (const entitlementAmount of [120_000, 400_000]) {
+      const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+      document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid" } as never;
+      document.fields.entitlementAmount = entitlementAmount;
+      document.report.entitlement.hours = null;
+      const refreshed = refreshDerivedDocument(document, { forceRebuild: true });
+      const visible = text(render(refreshed));
+      const number = (pattern: RegExp) => Number((pattern.exec(visible)?.[1] ?? "").replace(/,/g, ""));
+      const core = number(/VCF Operations at Tier 1 ([\d,]+)/);
+      const depth = number(/in priority order ([\d,]+)/);
+      expect(core + depth).toBe(number(/Total CDW-delivered hours (?:[\d,]+ ){3}([\d,]+)/));
+      const followOn = number(/depends on a future purchase ([\d,]+)/);
+      if (/Total follow-on hours/.test(visible)) expect(followOn).toBe(number(/Total follow-on hours (?:[\d,]+ ){3}([\d,]+)/));
+      // Discovery and pathway sessions carry architect hours, so the architect leads them.
+      const discovery = scopedEffortForDocument(refreshed).workPackages.find(row => row.id === "bar-playbook-design-requirements")!;
+      if (discovery.architect > discovery.projectManager) expect(discovery.leadRole).toBe("VCF Architect");
+      expect(scopedEffortForDocument(refreshed).workPackages.find(row => row.id === "bar-platform-plan")?.leadRole).toBe("Engagement Manager / Project Manager");
+    }
+  });
+
   it("raises the work plan hours item only once", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];
