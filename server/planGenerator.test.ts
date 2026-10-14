@@ -393,4 +393,14 @@ describe("loading saved plans", () => {
     expect(label("bar-playbook-component-design-resilience")).toBe("Recovery and Resilience Design — Tier 2 · Operationalized");
     expect(label("bar-operations-observability")).toBe("Health, Logs, and Diagnostics");
   });
+
+  it("renames the operating-model stage saved with a banned word", async () => {
+    const { migrateDocument } = await import("../shared/fcp");
+    const edited = structuredClone(plan({ upgradePath: "design-only" }));
+    edited.planAuthority = "manual";
+    const stage = activities(edited.adoptionTimeline).find(item => item.id === "bar-platform-operating-readiness")!;
+    stage.label = "Team and Operating Model Readiness";
+    const after = activities(migrateDocument(edited).adoptionTimeline);
+    expect(after.find(item => item.id === "bar-platform-operating-readiness")?.label).toBe("Operating Model, Skills, and Runbooks");
+  });
 });
