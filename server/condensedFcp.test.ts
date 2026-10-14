@@ -436,6 +436,23 @@ describe("Condensed FCP review fixes", () => {
     for (const id of ["bar-import-workload-domain", "bar-import-workload-domain-2"]) { const row = effort.workPackages.find(item => item.id === id); expect((row?.total ?? 0) + (row?.followOn?.total ?? 0)).toBeGreaterThan(0); }
   });
 
+  it("starts the build only after new hardware is delivered and racked", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "greenfield" } as never;
+    document.fields.hardwareLeadWeeks = 12;
+    const timeline = refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline;
+    const bars = timeline.lanes.flatMap(lane => lane.bars);
+    const delivered = bars.find(item => item.id === "bar-hardware-delivery")!;
+    const build = bars.find(item => item.id === "bar-management-domain")!;
+    // 12 weeks plus two to rack and stack is four months from the project start.
+    expect(delivered.endCol).toBe(5);
+    expect(build.startCol).toBeGreaterThanOrEqual(delivered.endCol);
+    expect(build.prerequisites).toContain("bar-hardware-delivery");
+    // Existing hardware does not wait.
+    document.fields.hardwareAvailability = "existing";
+    expect(refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline.lanes.flatMap(lane => lane.bars).some(item => item.id === "bar-hardware-delivery")).toBe(false);
+  });
+
   it("raises the work plan hours item only once", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];
