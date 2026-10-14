@@ -1326,7 +1326,7 @@ function hclStorageFindings(evidence: HclInventoryEvidence): HclFinding[] {
         "datastore",
         datastore.name || "Unnamed datastore",
         `${freePct.toFixed(1)}% free capacity is reported.`,
-        "Free capacity or add storage headroom before rolling upgrades, host evacuation, and snapshot growth.",
+        "Free capacity or add storage before rolling upgrades, host evacuation, and snapshot growth.",
       ));
     }
     if (/nfs[\s-]*3/i.test(text)) {

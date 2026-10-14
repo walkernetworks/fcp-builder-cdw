@@ -70,3 +70,17 @@ describe("compatibility rules from the VCF 9.1 corpus", () => {
     expect(assessHclEstate(evidence).findings.filter(item => item.checkId === "NET.NIC_QFLE3")).toHaveLength(1);
   });
 });
+
+describe("checker text in the customer document", () => {
+  it("uses no term the Condensed FCP export blocks", async () => {
+    // Findings, actions and decisions print in the compatibility section, so their text must pass the export checks.
+    const { readFileSync } = await import("node:fs");
+    const path = await import("node:path");
+    const { SCRUB, VOCABULARY } = await import("./condensedFcpChecks");
+    const sources = ["../shared/hcl.ts", "../shared/hclCorpus.ts"].map(file => readFileSync(path.resolve(import.meta.dirname, file), "utf8"));
+    // String literals only, not identifiers or comments.
+    const literals = sources.flatMap(source => Array.from(source.matchAll(/"([^"\\\n]{12,})"|`([^`]{12,})`/g), match => match[1] ?? match[2]));
+    const hits = literals.filter(text => SCRUB.some(term => text.toLowerCase().includes(term.toLowerCase())) || VOCABULARY.test(text));
+    expect(hits).toEqual([]);
+  });
+});
