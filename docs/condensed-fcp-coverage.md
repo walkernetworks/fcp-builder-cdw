@@ -29,7 +29,6 @@ Not shown, on purpose:
 
 Still open:
 
-- **Hardware lead time** is shown but does not move the platform build on the timeline.
 - **The full FCP** (`server/fcpRenderer.ts`) is still generated. The Condensed FCP imports `selectedScopeSummary` from it; move that to `shared/` before the full FCP is removed. The uncalled renderers in it have been deleted.
 
 ## Audit at the start of this work

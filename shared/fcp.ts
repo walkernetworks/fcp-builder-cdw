@@ -147,7 +147,7 @@ const DEFAULT_CUSTOMER_OWNED = /^bar-(hcl-(remediation|procurement|greenfield)|s
 /** Who carries a work package: the planner's choice when stamped on the bar, otherwise the defaults. */
 export function activityOwner(bar: Pick<TimelineBar, "id" | "color" | "owner">): ActivityOwner {
   if (bar.owner) return bar.owner;
-  if (bar.color === "gate" || bar.id === "bar-hcl-gate" || bar.id === "bar-backup-gate") return "checkpoint";
+  if (bar.color === "gate" || bar.id === "bar-hcl-gate" || bar.id === "bar-backup-gate" || bar.id === "bar-hardware-delivery") return "checkpoint";
   return DEFAULT_CUSTOMER_OWNED.test(bar.id) ? "customer" : "cdw";
 }
 
@@ -2368,7 +2368,17 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   const pathwayDesignEnd = playbookPlan.designPackages.length ? pathwayDesignCursor : hclGateEnd;
   const infrastructureDesignEnd = Math.max(pathwayDesignEnd, componentDesignCursors.infrastructureBuild, componentDesignCursors.infrastructureWaves);
-  const deliveryStart = Math.max(hclGateEnd, implementationStartColumn, infrastructureDesignEnd, sitePrerequisiteEnd);
+  // New hardware ordered at the project start arrives after its lead time plus about two weeks to rack and stack;
+  // the build waits for it.
+  const hardwareLead = fields.hardwareAvailability === "new" && fields.hardwareLeadWeeks > 0
+    ? (cadence === "week" ? fields.hardwareLeadWeeks + 2 : Math.ceil((fields.hardwareLeadWeeks + 2) / 4.345))
+    : 0;
+  const hardwareReady = hardwareLead ? 1 + hardwareLead : 0;
+  if (hardwareReady) {
+    const [deliveredStart, deliveredEnd] = range(Math.max(1, hardwareReady - 1), 1);
+    infrastructureBars.push(bar("bar-hardware-delivery", deliveredStart, deliveredEnd, "gate", "New Hardware Delivered and Racked", true, false, `Ordered at the project start; ${fields.hardwareLeadWeeks}-week lead time plus rack and stack.`, "The platform build starts only once the new hosts are delivered, racked and cabled."));
+  }
+  const deliveryStart = Math.max(hclGateEnd, implementationStartColumn, infrastructureDesignEnd, sitePrerequisiteEnd, hardwareReady);
   let foundationEnd = deliveryStart;
   // Licensing activates once VCF Operations is up with the management domain, inside the build rather than after it.
   let licenseFrom = deliveryStart;
@@ -2379,7 +2389,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   let foundationId = "bar-hcl-gate";
   const vvf = edition === "vvf";
   const migrationBars: TimelineBar[] = [...designBars.infrastructureWaves];
-  const buildPrerequisites = ["bar-hcl-gate", ...sitePrerequisiteIds];
+  const buildPrerequisites = ["bar-hcl-gate", ...sitePrerequisiteIds, ...(hardwareReady ? ["bar-hardware-delivery"] : [])];
   const addInfrastructurePackage = (id: string, title: string, start: number, duration: number, dependsOn: string, outcome: string, prerequisites: string[]) => {
     const [taskStart, taskEnd] = range(start, duration);
     infrastructureBars.push({ ...bar(id, taskStart, taskEnd, colorForWorkstreamType("Infrastructure Build"), title, false, false, appendDeliveryContext(dependsOn), outcome), prerequisites });
