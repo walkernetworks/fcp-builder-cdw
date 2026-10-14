@@ -376,7 +376,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   ] : [];
   const roundedBuckets = bucketRows.map(([, , value]) => Math.round(value));
   const bucketSection = fit
-    ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority. ${hours(Math.round(fit.reserveHours))} hours of the entitlement are held in reserve until month 6.</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.</p>`
+    ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority.${fit.reserveHours >= 1 ? ` ${hours(Math.round(fit.reserveHours))} hours of the entitlement are held in reserve until month 6.` : ""}</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.</p>`
     : "";
 
   // ---- Customer effort

@@ -654,7 +654,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
 
 /** Work packages that are design work; the budget limit never moves them out of the entitlement. */
 /** Design and governance work stays in the entitlement; operating readiness for a later implementation can move. */
-export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || /^bar-playbook-(component-)?design-/.test(id);
+export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || /^bar-playbook-(component-)?design-/.test(id) || /^bar-(hcl-review|design-access-mapping)$/.test(id);
 
 /** Moves work packages out of the entitlement into follow-on scope and recalculates the entitlement totals. */
 export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, DeferralReason>): ScopedEffort {
@@ -794,6 +794,7 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
     ranking: inputs.outcomeRanking,
     wantThisYear: inputs.wantThisYear,
     datedWaves: pass1.inputs.datedWaves,
+    ...(inputs.reservePercent !== undefined ? { reserveShare: inputs.reservePercent / 100 } : {}),
   });
   const fundedBases = new Map<V2Code, number>();
   const displacedBases = new Map<V2Code, number>();

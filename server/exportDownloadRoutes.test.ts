@@ -157,10 +157,27 @@ describe("condensed FCP downloads", () => {
     const { readFileSync } = await import("node:fs");
     const brief = JSON.parse(readFileSync(new URL("../docs/examples/customer-brief.example.json", import.meta.url), "utf8"));
     const row = await getEngagement.getMockImplementation()!(7, 41);
-    getEngagement.mockResolvedValue({ ...row!, data: applyCustomerBrief(createDefaultDocument(), brief).document });
+    // v1 can still go over: design and pinned work never move. v2 always fits (see below).
+    const base = createDefaultDocument();
+    base.fields.hoursModel = "v1";
+    const document = applyCustomerBrief(base, brief).document;
+    // Too small for even the design work, which never moves.
+    document.fields.entitlementAmount = 5_000;
+    document.report.entitlement.hours = null;
+    getEngagement.mockResolvedValue({ ...row!, data: document });
     const response = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 41, "html", "condensed-fcp")}`);
     expect(response.status).toBe(409);
     expect(await response.text()).toContain("costs more than the entitlement value");
+  });
+
+  it("exports a v2 plan whose core needed more than the entitlement, with the overflow moved to the follow-on", async () => {
+    const { applyCustomerBrief } = await import("../shared/briefImport");
+    const { readFileSync } = await import("node:fs");
+    const brief = JSON.parse(readFileSync(new URL("../docs/examples/customer-brief.example.json", import.meta.url), "utf8"));
+    const row = await getEngagement.getMockImplementation()!(7, 41);
+    getEngagement.mockResolvedValue({ ...row!, data: applyCustomerBrief(createDefaultDocument(), brief).document });
+    const response = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 41, "html", "condensed-fcp")}`);
+    expect(response.status).toBe(200);
   });
 
   it("refuses the Condensed FCP and lists the failed checks", async () => {

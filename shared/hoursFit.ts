@@ -43,6 +43,8 @@ export type FitV2 = {
   /** The core (steps 1 to 5) by line, largest first: what to look at when the core does not fit. */
   coreByLine: Array<{ code: V2Code; line: string; loaded: number; step: number }>;
   underFunded: { gapHours: number } | null;
+  /** Set by the server when the core did not fit: the hours and work packages moved to the Two-Year Notional. */
+  movedToFollowOn?: { hours: number; packages: string[] };
   monthsRemaining: number;
   requiredMonthlyBurn: number;
   /** Displaced lines whose design share did not fit in E2 and moved with the line. */
@@ -61,6 +63,8 @@ export type FitOptions = {
   wantThisYear?: Capability[];
   /** Migration waves with a date behind them, filled in E1 (step 4); the rest wait for step 7. */
   datedWaves: number;
+  /** Share of the entitlement held back, 0 to 0.5; the 8% default when unset. */
+  reserveShare?: number;
 };
 
 /** Spec 7.4 step 6 default order when the customer has not ranked outcomes. Operations modules beyond Tier 1 come last. */
@@ -118,7 +122,7 @@ const ADD_ON = /^(X|EF$)/;
 /** Pass 2: the buckets. Reads Pass 1 and never writes to it. */
 export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   const entitlementHours = options.entitlementHours;
-  const reserveHours = entitlementHours * H.fit.reserveShare.value;
+  const reserveHours = entitlementHours * (options.reserveShare ?? H.fit.reserveShare.value);
   const fillableHours = entitlementHours - reserveHours;
   const loaded = (line: V2Line, base: number) => loadedOf(pass1, line, base);
   const items = fillOrder(pass1, options);
