@@ -184,4 +184,22 @@ describe("plan inputs from the brief", () => {
     expect(applyCustomerBrief(document, { schemaVersion: 1, contacts: { customer: [{ name: "Pat Rivera", role: "" }] } }).document.fields.primaryContact).toBe("Set by hand");
     expect(applyCustomerBrief(document, { schemaVersion: 1, customer: { primaryContact: "Sam Lee, CIO" } }).document.fields.primaryContact).toBe("Sam Lee, CIO");
   });
+  it("reads mixed jumbo frames", () => {
+    const brief = example() as Record<string, any>;
+    brief.discovery = { ...brief.discovery, jumboFrames: "Mixed: Citrix and Epic switches run 9000" };
+    expect(applyCustomerBrief(createDefaultDocument(), brief).document.report.discovery.jumboFrames).toBe("mixed");
+  });
+  it("reads the domain list, coercing loose phrasing", () => {
+    const brief = example() as Record<string, any>;
+    brief.discovery = { ...brief.discovery, plannedPath: "hybrid", domains: [
+      { name: "North", kind: "Management Domain", pathway: "Greenfield build", instance: "North", hosts: "4", notes: "Move the CORE 600 workloads first" },
+      { name: "Epic", kind: "Workload", pathway: "Import existing vCenter", instance: "North", hosts: null, notes: null },
+      { name: "", kind: "workload", pathway: "import" },
+    ] };
+    const result = applyCustomerBrief(createDefaultDocument(), brief);
+    expect(result.document.fields.adoptionDetails.domains).toEqual([
+      { name: "North", kind: "management", pathway: "greenfield", instance: "North", hosts: 4, notes: "Move the CORE 600 workloads first" },
+      { name: "Epic", kind: "workload", pathway: "import", instance: "North", hosts: null, notes: "" },
+    ]);
+  });
 });

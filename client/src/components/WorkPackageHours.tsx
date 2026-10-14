@@ -1,4 +1,5 @@
 import { AdoptionTimelineEditor } from "@/components/AdoptionTimelineEditor";
+import { EntitlementFitPanel } from "@/components/EntitlementFitPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
@@ -40,8 +41,10 @@ const COST_STYLE: Record<PlanCost["status"], { bar: string; box: string; text: s
 };
 
 /** INTERNAL: the plan's cost at the rate card against the entitlement value. Never printed in a document. */
-export function CostMeter({ cost, hours, assignments = false }: { cost: PlanCost; hours: number; assignments?: boolean }) {
-  const style = COST_STYLE[cost.status];
+export function CostMeter({ cost, hours, assignments = false, fit }: { cost: PlanCost; hours: number; assignments?: boolean; fit?: ScopedEffort["internal"]["fit"] }) {
+  // Under-funded only because of the reserve: the plan costs less than the entitlement value but more than what is left after it.
+  const reserveOnly = cost.status === "over" && Boolean(fit?.underFunded) && !assignments && cost.planCost <= cost.entitlementValue;
+  const style = reserveOnly ? { ...COST_STYLE.over, text: "Over the hours left after the reserve" } : COST_STYLE[cost.status];
   const percent = cost.ratio === null ? 0 : Math.round(cost.ratio * 100);
   return (
     <div className={`rounded-xl border p-3 text-xs ${style.box}`}>
@@ -51,9 +54,15 @@ export function CostMeter({ cost, hours, assignments = false }: { cost: PlanCost
       </div>
       <p className="mt-1 text-sm font-bold">
         {dollars(cost.planCost)} for {hours.toLocaleString("en-US")} hours
-        {cost.entitlementValue > 0 && <> of {dollars(cost.entitlementValue)} ({percent}%){cost.status === "over" ? ` · over by ${dollars(cost.planCost - cost.entitlementValue)}` : ` · ${dollars(cost.entitlementValue - cost.planCost)} left`}</>}
+        {cost.entitlementValue > 0 && <> of {dollars(cost.entitlementValue)} ({percent}%){cost.status === "over" && !reserveOnly ? ` · over by ${dollars(cost.planCost - cost.entitlementValue)}` : ` · ${dollars(cost.entitlementValue - cost.planCost)} left`}</>}
       </p>
-      {cost.status === "over" && <p className="mt-1 font-semibold">{assignments
+      {fit?.movedToFollowOn && fit.movedToFollowOn.hours > 0 && !assignments && <p className="mt-1 font-semibold">The core work needed {Math.round(fit.coreRequiredHours).toLocaleString("en-US")} hours against {Math.round(fit.fillableHours).toLocaleString("en-US")} left after the reserve, so the latest work moved to the Two-Year Notional as follow-on: {fit.movedToFollowOn.packages.join(", ")} ({Math.round(fit.movedToFollowOn.hours).toLocaleString("en-US")} h).</p>}
+      {cost.status === "over" && fit?.underFunded && !assignments && <div className="mt-1 space-y-1">
+        <p className="font-semibold">Under-funded: the entitlement funds {Math.round(fit.fillableHours).toLocaleString("en-US")} hours after the reserve, and the design and governance work alone is {Math.round(fit.underFunded.gapHours).toLocaleString("en-US")} hours over it. Build and later work has already moved to the Two-Year Notional; design work never moves, so the Condensed FCP will not export until it fits.</p>
+        <p>The core is discovery, design, the pathway build or upgrade, the dated migration waves and VCF Operations Tier 1. Largest parts: {fit.coreByLine.slice(0, 4).map(row => `${row.line} ${Math.round(row.loaded).toLocaleString("en-US")} h`).join("; ")}.</p>
+        <p>To close the gap, change the scope rather than the estimate: correct the estate facts the hours are built from (see Assumptions below), mark a prior assessment if one was delivered, lower the dated migration waves, choose a smaller pathway, or raise the entitlement or the rate used.</p>
+      </div>}
+      {cost.status === "over" && !(fit?.underFunded && !assignments) && <p className="mt-1 font-semibold">{assignments
         ? "The signed resource assignments cost more than the entitlement value, and the Condensed FCP will not export. Replace them with the plan or correct them in the report content."
         : "The entitlement window cannot go over the entitlement value, and the Condensed FCP will not export. Only design and work pinned to the entitlement are left to cut: reduce their hours or move work to the Two-Year Notional."}</p>}
       {cost.followOnCost > 0 && <p className="mt-1">Follow-on scope in the Two-Year Notional: {dollars(cost.followOnCost)} (no limit; not drawn from the entitlement).</p>}
@@ -131,7 +140,7 @@ export function RoleHoursEditor({ document, effort, barId, onChange }: { documen
       </div>
       <div className="space-y-2">
         <AssignmentsInForce document={document} effort={effort} onChange={onChange} />
-        {cost && <CostMeter cost={cost} hours={effort.totals.total} assignments={effort.source === "assignments"} />}
+        {cost && <CostMeter cost={cost} hours={effort.totals.total} assignments={effort.source === "assignments"} fit={effort.internal.fit} />}
       </div>
     </div>
   );
@@ -180,7 +189,8 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
           Baseline hours come from the services catalog for this plan, placed on the work packages that deliver them; adjusted rows are marked. The entitlement window is held to the entitlement value; work beyond it moves to the Two-Year Notional as follow-on scope. The Condensed FCP and the Delivery Package show this same table.
         </p>
         {effort && <div className="mt-3"><AssignmentsInForce document={document} effort={effort} onChange={onChange} /></div>}
-        {effort?.internal.cost && <div className="mt-3"><CostMeter cost={effort.internal.cost} hours={effort.totals.total} assignments={effort.source === "assignments"} /></div>}
+        {effort?.internal.cost && <div className="mt-3"><CostMeter cost={effort.internal.cost} hours={effort.totals.total} assignments={effort.source === "assignments"} fit={effort.internal.fit} /></div>}
+        <div className="mt-3"><EntitlementFitPanel document={document} effort={effort} onChange={onChange} /></div>
         {effort ? <div className="mt-4"><WorkPackageTable effort={effort} /></div> : <p className="mt-4 text-xs text-slate-500">Calculating…</p>}
       </section>
     </div>

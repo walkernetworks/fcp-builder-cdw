@@ -68,7 +68,7 @@ export function CondensedReportPanel({ document, onChange }: Props) {
         <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_1fr]">
           <div className="overflow-x-auto">
             {data.source === "assignments" ? <>
-              <div className="mb-3 space-y-2"><AssignmentsInForce document={document} effort={data} onChange={onChange} />{data.internal.cost && <CostMeter cost={data.internal.cost} hours={data.totals.total} assignments />}</div>
+              <div className="mb-3 space-y-2"><AssignmentsInForce document={document} effort={data} onChange={onChange} />{data.internal.cost && <CostMeter fit={data.internal.fit} cost={data.internal.cost} hours={data.totals.total} assignments />}</div>
               <p className="mb-1 text-xs font-semibold text-slate-600">Signed resource assignments (shown in the report)</p>
               <table className="w-full text-xs">
                 <thead><tr className="bg-slate-100 text-left text-[10px] uppercase tracking-wide text-slate-500"><th className="p-2">Workstream</th><th className="p-2 text-right">Architect</th><th className="p-2 text-right">Sr. Consultant</th><th className="p-2 text-right">PM</th><th className="p-2 text-right">Total</th></tr></thead>
@@ -79,7 +79,7 @@ export function CondensedReportPanel({ document, onChange }: Props) {
               </table>
             </> : <>
               <p className="mb-1 text-xs font-semibold text-slate-600">Calculated from the plan, by work package: the same table as stage 03 and the report, until assignments are entered</p>
-              {data.internal.cost && <div className="mb-3"><CostMeter cost={data.internal.cost} hours={data.totals.total} /></div>}
+              {data.internal.cost && <div className="mb-3"><CostMeter fit={data.internal.fit} cost={data.internal.cost} hours={data.totals.total} /></div>}
               <WorkPackageTable effort={data} />
             </>}
           </div>

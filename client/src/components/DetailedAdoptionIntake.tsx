@@ -118,7 +118,7 @@ const upgradeOptions: Array<{ value: UpgradePath; label: string; description: st
   { value: "converge", label: "Converge existing vCenter", description: "Convert a healthy existing vCenter and cluster into the VCF management domain." },
   { value: "import-workload-domain", label: "Import as workload domain", description: "Import a complete existing vCenter and all of its clusters into an established VCF instance." },
   { value: "greenfield", label: "Greenfield with staging hardware", description: "Build a new VCF foundation on separately funded hardware, then migrate workloads in controlled waves." },
-  { value: "hybrid", label: "Hybrid / multiple pathways", description: "Assign the correct pathway to each estate cohort and coordinate them through one decision register and execution plan." },
+  { value: "hybrid", label: "Hybrid / multiple pathways", description: "Assign the right pathway to each vCenter, cluster or site and coordinate them through one decision register and execution plan." },
   { value: "design-only", label: "Architecture and implementation-ready design", description: "Deliver the complete requirements, decisions, logical/physical design, runbook, and acceptance package without execution." },
 ];
 

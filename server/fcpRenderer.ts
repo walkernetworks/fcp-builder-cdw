@@ -1,4 +1,5 @@
 import type { EngagementDocument, HardwarePlatformAssessment, Timeline } from "../shared/fcp";
+import { selectedScopeSummary } from "../shared/reportView";
 import { calculateEntitlementEndDate, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, getHclSchedulePath, effectiveDeliveryPath, getVcfPlaybookWorkPackageOwnership, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, summarizeCompatibilityHandoff, summarizeDeliveryStaffing, summarizeVcfCompatibility, validateTimeline } from "../shared/fcp";
 import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings } from "../shared/hcl";
 import { renderCompatibilityHandoffHtml } from "./compatibilityHandoffRenderer";
@@ -100,155 +101,23 @@ function renderDeliveryStaffingSummary(timeline: Timeline) {
   return `<div class="staffing-summary"><div class="staffing-facts"><div><span>Lead delivery roles</span><strong>${number(staffing.assignments.length, "0")}</strong></div><div><span>Work packages</span><strong>${number(staffing.workPackageCount, "0")}</strong></div><div><span>Peak concurrent packages</span><strong>${number(staffing.peakConcurrentPackages, "0")}</strong></div></div><table class="staffing-table"><thead><tr><th>Lead Delivery Role</th><th>Workstream</th><th>Delivery Window</th><th>Packages</th><th>Planned Work</th></tr></thead><tbody>${rows}</tbody></table><p class="staffing-boundary">Resource guidance supports delivery planning. Delivery leadership must confirm named resources, effort, utilization, regional availability, customer responsibilities, commercial rates, and formal acceptance criteria before work begins.</p></div>`;
 }
 
-function renderHclEstateEvidence(document: EngagementDocument) {
-  const assessment = document.readiness.hcl;
-  const path = document.readiness.hclSchedulePath || getHclSchedulePath(document.inventory);
-  const pathDetail = {
-    green: "No blocker or warning was identified in imported RVTools-observable evidence; explicit coverage gaps still require follow-up.",
-    yellow: "Remediation or verification work must be completed before platform build.",
-    red: "A blocker requires a procurement, migration, or design decision before platform build.",
-    unresolved: "Collect RVTools evidence to establish the estate-level HCL delivery path.",
-  }[path];
-  const severityStyle = (severity: string) => ({
-    BLOCKER: "background:#fef2f2;color:#991b1b;border-color:#fecaca",
-    WARNING: "background:#fffbeb;color:#92400e;border-color:#fde68a",
-    ADVISORY: "background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe",
-    INFO: "background:#f8fafc;color:#475569;border-color:#cbd5e1",
-  })[severity] || "background:#f8fafc;color:#475569;border-color:#cbd5e1";
-  const findingRows = assessment.findings.length
-    ? assessment.findings.map(finding => `<tr><td><span class="readiness-status" style="${severityStyle(finding.severity)}">${esc(hclFindingSeverityLabel(finding.severity))}</span><br><small>${esc(finding.checkId)} · ${esc(finding.scope)}</small></td><td><strong>${esc(finding.title)}</strong><br><small>${esc(finding.subject)}${finding.cluster ? ` · ${esc(finding.cluster)}` : ""}</small></td><td>${esc(finding.evidence)}${finding.source ? `<br><small>Source: ${esc(finding.source)}</small>` : ""}</td><td>${esc(finding.remediation)}</td></tr>`).join("")
-    : '<tr><td colspan="4">No detailed estate evidence is available. Upload the applicable RVTools worksheets to evaluate the supported HCL 2.0 check families.</td></tr>';
-  const coverageRows = assessment.coverageGaps.length
-    ? assessment.coverageGaps.map(gap => `<tr><td><strong>${esc(gap.kind.replace(/-/g, " "))}</strong></td><td>${esc(gap.subject)}</td><td>${esc(gap.impact)}</td></tr>`).join("")
-    : '<tr><td colspan="3">No coverage gaps were recorded from the supplied estate evidence.</td></tr>';
-  const blockers = assessment.findings.filter(finding => finding.severity === "BLOCKER").length;
-  const warnings = assessment.findings.filter(finding => finding.severity === "WARNING").length;
-  return `<div class="hardware-table-panel hcl-estate-evidence"><div class="table-heading"><h4>HCL 2.0 Estate Evidence and Findings</h4><p>Every RVTools-observable check family is shown with its evidence, action, and explicit coverage status.</p></div><div class="hardware-snapshot" style="margin-top:12px"><div><span>Estate delivery path</span><strong>${esc(path.toUpperCase())}</strong><small>${esc(pathDetail)}</small></div><div><span>Blockers</span><strong>${number(blockers, "0")}</strong></div><div><span>Warnings</span><strong>${number(warnings, "0")}</strong></div><div><span>Coverage gaps</span><strong>${number(assessment.coverageGaps.length, "0")}</strong></div></div><table class="compact-table hardware-table" style="margin-top:12px"><thead><tr><th>Severity / check</th><th>Finding</th><th>Observed evidence</th><th>Required action</th></tr></thead><tbody>${findingRows}</tbody></table><div class="table-heading" style="margin-top:18px"><h4>Coverage Gaps and Evidence Required</h4><p>A gap is not a passing result; it identifies a check unavailable from the import or supplied offline archive.</p></div><table class="compact-table hardware-table"><thead><tr><th>Gap category</th><th>Subject</th><th>Impact / next evidence</th></tr></thead><tbody>${coverageRows}</tbody></table><p style="margin:12px 0 0;font-size:10px;line-height:1.5;color:#475569">Estate HCL limitation: ${esc(HCL_ESTATE_LIMITATION)}</p></div>`;
-}
 
 function renderReadinessExecutiveSnapshot(document: EngagementDocument) {
   const inventory = document.inventory;
   const handoff = summarizeCompatibilityHandoff(document.readiness.hardwarePlatforms, inventory.hosts);
   const actionContent = handoff.actions.length
     ? `<ol style="margin:10px 0 0;padding-left:18px;color:#405066;font-size:11px;line-height:1.5">${handoff.actions.slice(0, 5).map(action => `<li><strong>${number(action.affectedHosts)} host${action.affectedHosts === 1 ? "" : "s"} · ${esc(action.owner)}</strong><br>${esc(action.title)}</li>`).join("")}</ol>`
-    : `<p>No cohort action was derived because no host evidence is available.</p>`;
+    : `<p>No server model action was derived because no host evidence is available.</p>`;
   const esxiSummary = inventory.esxiVersions.length
     ? inventory.esxiVersions.map(row => `${row.version} · ${row.hosts} host${row.hosts === 1 ? "" : "s"}`).join("; ")
     : "Not reported";
   const reconciliation = handoff.allHostsAccountedFor
-    ? `${number(handoff.assessedHosts)} of ${number(handoff.estateHosts)} imported hosts are reconciled to a compatibility cohort.`
-    : `${number(handoff.unaccountedHosts)} imported hosts are not represented in the compatibility cohorts and must be resolved before handoff.`;
-  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Presales-to-delivery handoff</span><h3>${esc(handoff.targetRelease)} compatibility posture</h3></div><p>Catalog-versioned server and CPU evidence, current-estate context, release disposition, and owned delivery actions.</p></div><div class="hardware-snapshot"><div><span>Target release listed</span><strong>${number(handoff.supportedHosts)}</strong><small>hosts</small></div><div><span>Blocked / not listed</span><strong>${number(handoff.blockedHosts)}</strong><small>hosts</small></div><div><span>Evidence required</span><strong>${number(handoff.unresolvedHosts)}</strong><small>hosts</small></div><div><span>Estate reconciliation</span><strong>${handoff.allHostsAccountedFor ? "Complete" : "Gap"}</strong><small>${esc(reconciliation)}</small></div></div><div class="grid2" style="margin-top:16px"><div class="card"><h4 style="margin:0;color:#10233f">Maintained evidence baseline</h4><p><strong>${esc(handoff.catalog.id)}</strong><br>${number(handoff.catalog.reportedCount)} server records across ${number(handoff.catalog.vendorCount)} manufacturers; release scope ${esc(handoff.catalog.releaseScope.join(" and "))}; captured ${esc(handoff.catalog.capturedAt)}.</p><p><strong>Observed ESXi:</strong> ${esc(esxiSummary)}</p></div><div class="card"><h4 style="margin:0;color:#10233f">Priority delivery actions</h4>${actionContent}</div></div><p style="margin:14px 0 0;font-size:10px;line-height:1.5;color:#64748b">Server-and-CPU support is one check. Delivery must also validate NICs, HBAs/controllers, firmware, drivers, OEM image or add-on, boot, storage, vSAN/ReadyNode where applicable, and cluster topology. The standalone compatibility deliverable contains the complete cohort evidence and action register.</p></section>`;
+    ? `${number(handoff.assessedHosts)} of ${number(handoff.estateHosts)} imported hosts are reconciled to a server model.`
+    : `${number(handoff.unaccountedHosts)} imported hosts are not represented in the server models and must be resolved before handoff.`;
+  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Presales-to-delivery handoff</span><h3>${esc(handoff.targetRelease)} compatibility posture</h3></div><p>Catalog-versioned server and CPU evidence, current-estate context, release disposition, and owned delivery actions.</p></div><div class="hardware-snapshot"><div><span>Target release listed</span><strong>${number(handoff.supportedHosts)}</strong><small>hosts</small></div><div><span>Blocked / not listed</span><strong>${number(handoff.blockedHosts)}</strong><small>hosts</small></div><div><span>Evidence required</span><strong>${number(handoff.unresolvedHosts)}</strong><small>hosts</small></div><div><span>Estate reconciliation</span><strong>${handoff.allHostsAccountedFor ? "Complete" : "Gap"}</strong><small>${esc(reconciliation)}</small></div></div><div class="grid2" style="margin-top:16px"><div class="card"><h4 style="margin:0;color:#10233f">Maintained evidence baseline</h4><p><strong>${esc(handoff.catalog.id)}</strong><br>${number(handoff.catalog.reportedCount)} server records across ${number(handoff.catalog.vendorCount)} manufacturers; release scope ${esc(handoff.catalog.releaseScope.join(" and "))}; captured ${esc(handoff.catalog.capturedAt)}.</p><p><strong>Observed ESXi:</strong> ${esc(esxiSummary)}</p></div><div class="card"><h4 style="margin:0;color:#10233f">Priority delivery actions</h4>${actionContent}</div></div><p style="margin:14px 0 0;font-size:10px;line-height:1.5;color:#64748b">Server-and-CPU support is one check. Delivery must also validate NICs, HBAs/controllers, firmware, drivers, OEM image or add-on, boot, storage, vSAN/ReadyNode where applicable, and cluster topology. The standalone compatibility deliverable contains the complete server model evidence and action register.</p></section>`;
 }
 
-function renderObservedInventory(document: EngagementDocument) {
-  const inventory = document.inventory;
-  const path = getHclSchedulePath(inventory);
-  const pathDetail = { green: "Green baseline alignment", yellow: "Yellow remediation and verification", red: "Red procurement or greenfield provisioning", unresolved: "Unresolved evidence collection" }[path];
-  const groups = new Map<string, {
-    vendor: string;
-    model: string;
-    hosts: number;
-    physicalCores: number;
-    cpuModels: Set<string>;
-    esxiVersions: Map<string, number>;
-    clusters: Map<string, number>;
-    minimumMemoryGiB: number | null;
-    maximumMemoryGiB: number | null;
-    statuses: Set<string>;
-    hclChecks: Map<string, { status: HardwarePlatformAssessment["hcl"]["status"]; hosts: number; cpuSeries: string; detailUrl: string; matchedPartnerName: string; matchedModel: string; detail: string }>;
-  }>();
 
-  for (const platform of document.readiness.hardwarePlatforms) {
-    const vendor = normalizeHostGroupText(platform.vendor) || "Unknown vendor";
-    const model = normalizeHostGroupText(platform.model) || "Unknown model";
-    const key = `${vendor}::${model}`.toLowerCase();
-    const group = groups.get(key) || {
-      vendor,
-      model,
-      hosts: 0,
-      physicalCores: 0,
-      cpuModels: new Set<string>(),
-      esxiVersions: new Map<string, number>(),
-      clusters: new Map<string, number>(),
-      minimumMemoryGiB: null,
-      maximumMemoryGiB: null,
-      statuses: new Set<string>(),
-      hclChecks: new Map(),
-    };
-    group.hosts += platform.hosts;
-    group.physicalCores += platform.physicalCores;
-    if (platform.cpuModel && platform.cpuModel !== "Unknown CPU") group.cpuModels.add(platform.cpuModel);
-    for (const version of platform.esxiVersions) group.esxiVersions.set(version.version, (group.esxiVersions.get(version.version) || 0) + version.hosts);
-    for (const cluster of platform.clusterMembership) group.clusters.set(cluster.name, (group.clusters.get(cluster.name) || 0) + cluster.hosts);
-    if (platform.minimumMemoryGiB > 0) {
-      group.minimumMemoryGiB = group.minimumMemoryGiB === null ? platform.minimumMemoryGiB : Math.min(group.minimumMemoryGiB, platform.minimumMemoryGiB);
-      group.maximumMemoryGiB = Math.max(group.maximumMemoryGiB || 0, platform.maximumMemoryGiB || platform.minimumMemoryGiB);
-    }
-    group.statuses.add(platform.status);
-    const hclKey = [platform.hcl.status, platform.hcl.matchedCpuSeries, platform.hcl.matchedPartnerName, platform.hcl.matchedModel, platform.hcl.detailUrl].join("|");
-    const hclCheck = group.hclChecks.get(hclKey) || { status: platform.hcl.status, hosts: 0, cpuSeries: platform.hcl.matchedCpuSeries, detailUrl: platform.hcl.detailUrl, matchedPartnerName: platform.hcl.matchedPartnerName, matchedModel: platform.hcl.matchedModel, detail: platform.hcl.detail };
-    hclCheck.hosts += platform.hosts;
-    group.hclChecks.set(hclKey, hclCheck);
-    groups.set(key, group);
-  }
-
-  const platformRows = Array.from(groups.values())
-    .sort((left, right) => right.hosts - left.hosts || left.model.localeCompare(right.model))
-    .map(group => {
-      const esxiEvidence = Array.from(group.esxiVersions.entries()).map(([version, hosts]) => `${version}: ${hosts}`).join("; ") || "Not reported";
-      const clusterEvidence = Array.from(group.clusters.entries()).map(([name, hosts]) => `${name}: ${hosts}`).join("; ") || "Not reported";
-      const memoryEvidence = group.minimumMemoryGiB !== null ? `${group.minimumMemoryGiB.toLocaleString()}–${(group.maximumMemoryGiB || group.minimumMemoryGiB).toLocaleString()} GiB per host` : "Not reported";
-      const cpuEvidence = Array.from(group.cpuModels).join("; ") || "CPU model not reported";
-      const deliveryContext = group.statuses.has("upgrade-required")
-        ? "Plan refresh or exception work before platform services."
-        : group.statuses.has("unavailable")
-          ? "Capture missing server and CPU details from the source estate."
-          : "Use the observed model and configuration details in delivery design.";
-      const hclEvidence = Array.from(group.hclChecks.values()).map(check => {
-        const matched = check.matchedPartnerName && check.matchedModel ? `${check.matchedPartnerName} ${check.matchedModel}` : "No deterministic HCL model match";
-        const series = check.cpuSeries ? ` · ${check.cpuSeries}` : "";
-        const link = check.detailUrl ? `<br><a href="${esc(check.detailUrl)}">Open matched HCL record</a>` : "";
-        return `<strong>${esc(hclStatusLabel(check.status))}</strong><br><small>${check.hosts} host${check.hosts === 1 ? "" : "s"} · ${esc(matched + series)}</small>${link}`;
-      }).join("<hr style=\"border:0;border-top:1px solid #e2e8f0;margin:7px 0\">") || "No HCL evidence";
-      return `<tr><td><strong>${esc(`${group.vendor} ${group.model}`)}</strong><br><small>${esc(cpuEvidence)}</small></td><td>${group.hosts} host${group.hosts === 1 ? "" : "s"}</td><td>${esc(esxiEvidence)}</td><td>${esc(clusterEvidence)}<br><small>${esc(memoryEvidence)}</small></td><td>${hclEvidence}</td><td>${esc(deliveryContext)}</td></tr>`;
-    }).join("") || '<tr><td colspan="6">No usable host vendor and model data were found in the RVTools export.</td></tr>';
-  const esxiRows = inventory.esxiVersions.length
-    ? inventory.esxiVersions.map(row => `<tr><td>${esc(row.version)}</td><td>${row.hosts}</td></tr>`).join("")
-    : '<tr><td colspan="2">Not reported</td></tr>';
-  return `<section class="hardware-evidence"><div class="hardware-heading"><div><span class="hardware-eyebrow">Current estate and offline HCL evidence</span><h3>Observed host inventory</h3></div><p>Consolidated RVTools host, software, cluster, and memory fields, with a local ESXi 9.1 server-and-CPU snapshot precheck.</p></div><div class="hardware-snapshot"><div><span>${esc(HCL_EVALUATION_VERSION)} delivery path</span><strong>${esc(path.toUpperCase())}</strong><small>${esc(pathDetail)}</small></div><div><span>Observed ESXi hosts</span><strong>${number(inventory.hosts)}</strong></div><div><span>Host groups</span><strong>${number(groups.size, "0")}</strong></div><div><span>Reported ESXi releases</span><strong>${number(inventory.esxiVersions.length, "0")}</strong></div></div><div class="hardware-tables"><div class="hardware-table-panel"><div class="table-heading"><h4>Reported ESXi Versions</h4><p>Imported from RVTools</p></div><table class="compact-table esxi-table"><thead><tr><th>Reported Version</th><th>Hosts</th></tr></thead><tbody>${esxiRows}</tbody></table></div><div class="hardware-table-panel"><div class="table-heading"><h4>VCF 9.1 Delivery Inventory</h4><p>Consolidated host groups with offline HCL server-and-CPU evidence</p></div><table class="compact-table hardware-table"><thead><tr><th>Observed Host Group</th><th>Estate</th><th>Reported ESXi</th><th>Cluster / Memory</th><th>HCL Server + CPU Evidence</th><th>Delivery Context</th></tr></thead><tbody>${platformRows}</tbody></table><p style="margin:12px 0 0;font-size:10px;line-height:1.5;color:#475569">Offline HCL limitation: ${esc(HCL_OFFLINE_LIMITATION)}</p></div></div>${renderHclEstateEvidence(document)}</section>`;
-}
-
-export function selectedScopeSummary(document: EngagementDocument) {
-  const { priorities, adoptionDetails } = document.fields;
-  const resolved = resolvePlanOutcomes(document.fields);
-  const vvf = resolved.edition === "vvf";
-  const scope: string[] = [];
-  if (priorities.includes("operations") || adoptionDetails.operations.length) scope.push("operations and lifecycle management");
-  if (priorities.includes("automation") || adoptionDetails.automation.length) scope.push("automation and self-service foundations");
-  if (priorities.includes("networking") || adoptionDetails.networking.length) scope.push(vvf ? "the explicitly selected networking and load-balancing scope" : "the explicitly selected VCF networking and NSX scope");
-  if (priorities.includes("security") || adoptionDetails.security.length) scope.push("security and segmentation controls");
-  if (priorities.includes("resilience") || adoptionDetails.resilience.length) scope.push("resilience and recovery planning");
-  if (priorities.includes("kubernetes") || adoptionDetails.kubernetes.length) scope.push("Kubernetes and workload-domain enablement");
-  if (priorities.includes("private-ai") || adoptionDetails.privateAi.length) scope.push("private AI enablement");
-
-  const deliveryPath = {
-    "migration-waves": "controlled migration waves",
-    "new-build": "a new platform build",
-    "in-place": "an in-place modernization path",
-    converge: "convergence of an existing vCenter into the VCF management domain",
-    "import-workload-domain": "import of an existing vCenter as a VCF workload domain",
-    greenfield: "a separately funded greenfield VCF foundation and workload migration path",
-    hybrid: "a cohort-based combination of approved VCF adoption pathways",
-    "design-only": "architecture and implementation-ready design work",
-    undecided: "a delivery path still to be confirmed",
-  }[vvf ? effectiveDeliveryPath(document.fields) : adoptionDetails.upgradePath];
-
-  const selected = scope.length ? scope.join(", ").replace(/, ([^,]*)$/, " and $1") : "the selected operational priorities";
-  const edition = vvf ? " on VMware vSphere Foundation (VVF)" : "";
-  const excluded = resolved.excluded.length ? ` Outcomes that require VCF are not included: ${resolved.excluded.map(key => planOutcomeLabel(key)).join("; ")}.` : "";
-  return `The plan is framed around ${selected}, with ${vvf ? deliveryPath.replace(/VCF/g, "VVF") : deliveryPath}${edition}.${excluded}`;
-}
 
 function renderPlanSummary(document: EngagementDocument, includeOperationalTimeline = document.fields.exportPreferences.includeOperationalTimeline) {
   const f = document.fields;
@@ -329,46 +198,7 @@ export function renderFcpHtml(title: string, document: EngagementDocument) {
     .replaceAll(/\[\[[^\]]+\]\]/g, "Not Yet Confirmed");
 }
 
-function renderPlanOutputSequence(document: EngagementDocument) {
-  const timeline = document.twoYearPlan;
-  const activities = timeline.lanes
-    .flatMap(lane => lane.bars.map(activity => ({ lane, activity })))
-    .sort((left, right) => left.activity.startCol - right.activity.startCol || left.activity.endCol - right.activity.endCol || left.activity.label.localeCompare(right.activity.label));
-  if (!activities.length) return '<p class="empty">No entitlement-period delivery activities are currently scheduled.</p>';
-  return `<table class="sequence-table"><thead><tr><th>Category</th><th>Service activity</th><th>Delivery window</th><th>Outcome</th></tr></thead><tbody>${activities.map(({ lane, activity }) => `<tr><td><span class="workstream">${esc(lane.workstreamType)}</span><br><small>${esc(lane.category)}</small></td><td><strong>${esc(activity.label)}</strong></td><td>${esc(timelineWindow(timeline, activity.startCol))} – ${esc(timelineWindow(timeline, activity.endCol, true))}</td><td>${esc(activity.outcome || "Delivery activity sequenced in the entitlement plan.")}</td></tr>`).join("")}</tbody></table>`;
-}
 
-/** A separate delivery brief, intentionally narrower than the complete FCP export. */
-export function renderPlanOutputHtml(title: string, document: EngagementDocument) {
-  const f = document.fields;
-  const path = document.readiness.hclSchedulePath || getHclSchedulePath(document.inventory);
-  const cohorts = summarizeVcfCompatibility(document.readiness.hardwarePlatforms);
-  const totalHosts = cohorts.reduce((total, cohort) => total + cohort.hosts, 0);
-  const eligible = cohorts.filter(cohort => cohort.decision === "eligible");
-  const validationRequired = cohorts.filter(cohort => cohort.decision === "validation-required");
-  const actionRequired = cohorts.filter(cohort => cohort.decision === "action-required");
-  const countHosts = (items: typeof cohorts) => items.reduce((total, cohort) => total + cohort.hosts, 0);
-  const decisionStyle = (decision: string) => decision === "eligible" ? "eligible" : decision === "action-required" ? "action" : "validate";
-  const pathCopy = {
-    green: "The imported evidence does not show a blocker or warning. Eligible cohorts may proceed to final validation before platform build.",
-    yellow: "One or more cohorts need validation or remediation before platform build. Continue delivery preparation in parallel where the plan allows.",
-    red: "One or more cohorts require an alternate path, remediation, or procurement decision before those hosts are used for the VCF 9.1 platform build.",
-    unresolved: "Imported evidence is not sufficient to confirm these hosts for platform build. Collect the required host identity and configuration evidence first.",
-  }[path];
-  const plannedStart = f.plannedProjectStart || f.targetStart || f.entitlementStart || "TBD";
-  const entitlementEnd = calculateEntitlementEndDate(f.entitlementStart) || f.entitlementEnd || "TBD";
-  const cohortRows = cohorts.length
-    ? cohorts.map(cohort => `<tr><td><span class="decision ${decisionStyle(cohort.decision)}">${esc(cohort.decisionLabel)}</span></td><td><strong>${esc(`${cohort.vendor} ${cohort.model}`)}</strong><br><small>${esc(cohort.cpuModel)}</small></td><td>${cohort.hosts} host${cohort.hosts === 1 ? "" : "s"}</td><td>${esc(cohort.reason)}${cohort.matchedModel ? `<br><small>Snapshot model: ${esc(cohort.matchedModel)}${cohort.matchedCpuSeries ? ` · ${esc(cohort.matchedCpuSeries)}` : ""}</small>` : ""}</td><td>${esc(cohort.nextAction)}</td></tr>`).join("")
-    : '<tr><td colspan="5">No host cohorts are available. Upload RVTools vHost data to establish VCF 9.1 planning evidence.</td></tr>';
-  const actions = [...actionRequired, ...validationRequired].slice(0, 6);
-  const actionList = actions.length
-    ? `<ul>${actions.map(cohort => `<li><strong>${esc(`${cohort.vendor} ${cohort.model}`)} · ${cohort.hosts} host${cohort.hosts === 1 ? "" : "s"}</strong> — ${esc(cohort.nextAction)}</li>`).join("")}</ul>`
-    : "<p>All observed cohorts have a pairing in the supplied snapshot. Continue with the planned validation and configuration checks.</p>";
-  const source = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} Plan Output</title><style>
-:root{--cdw:#c8102e;--navy:#10233f;--ink:#172033;--muted:#64748b;--line:#dbe2ea;--surface:#f5f7fa}*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink);font-family:Arial,"Helvetica Neue",sans-serif;line-height:1.45}.mast{height:58px;padding:0 30px;border-bottom:1px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:space-between}.brand{font-size:27px;font-weight:900;letter-spacing:-2px;color:var(--cdw)}.conf{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.hero{background:linear-gradient(125deg,#08182c 0%,#102f50 68%,#193d63 100%);color:#fff;padding:52px max(30px,calc((100vw - 1180px)/2 + 30px));border-bottom:5px solid var(--cdw)}.hero .eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#d7e5f3}.hero h1{max-width:850px;margin:12px 0;font-size:39px;line-height:1.08;letter-spacing:-.03em}.hero p{max-width:830px;margin:0;color:#dce7f2;font-size:16px;line-height:1.5}.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.meta span{border:1px solid #ffffff35;border-radius:999px;background:#ffffff0d;padding:6px 10px;font-size:11px}main{max-width:1180px;margin:0 auto;padding:30px}.panel{margin:0 0 22px;padding:26px 28px;border:1px solid var(--line);background:#fff;box-shadow:0 10px 28px #0f233e0b}.eyebrow{display:block;margin-bottom:7px;color:var(--cdw);font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}h2{margin:0;color:var(--navy);font-size:23px;letter-spacing:-.02em}h3{margin:0;color:var(--navy);font-size:15px}p{color:#405066}.intro{max-width:880px;margin:10px 0 0;font-size:13px}.facts{display:grid;grid-template-columns:repeat(4,1fr);margin:23px 0 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.facts>div{padding:14px;border-right:1px solid var(--line)}.facts>div:last-child{border-right:0}.facts span,.facts small{display:block;color:var(--muted);font-size:10px}.facts span{font-weight:800;letter-spacing:.08em;text-transform:uppercase}.facts strong{display:block;margin-top:5px;color:var(--navy);font-size:20px;line-height:1.1}.decision-note{margin-top:20px;padding:14px 16px;border-left:4px solid var(--cdw);background:#fff7f8;color:#405066;font-size:13px}.summary-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:18px;margin-top:20px}.card{padding:18px;border:1px solid var(--line);background:#fff}.card p{margin:8px 0 0;font-size:13px}.card ul{margin:10px 0 0;padding-left:18px;color:#405066;font-size:12px;line-height:1.55}.card li+li{margin-top:6px}table{width:100%;border-collapse:collapse;margin-top:18px;font-size:11px}th{padding:9px;text-align:left;background:#eef2f6;color:#334155;font-size:9px;letter-spacing:.05em;text-transform:uppercase}td{padding:10px 9px;border-top:1px solid #e9eef3;vertical-align:top;color:#405066}small{color:var(--muted);font-size:10px;line-height:1.3}.decision{display:inline-block;border-radius:999px;padding:4px 6px;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}.decision.eligible{background:#ecfdf3;color:#166534}.decision.validate{background:#fffbeb;color:#92400e}.decision.action{background:#fff1f2;color:#be123c}.workstream{font-size:10px;font-weight:800;color:var(--cdw)}.sequence-table td:nth-child(1){width:22%}.sequence-table td:nth-child(2){width:26%}.sequence-table td:nth-child(3){width:19%}.empty{padding:18px;border:1px dashed var(--line);background:#f8fafc;font-size:13px}.note{margin-top:18px;color:var(--muted);font-size:10px;line-height:1.5}.foot{padding:20px 30px;background:#0b1f37;color:#cad7e6;font-size:10px;display:flex;justify-content:space-between}@media(max-width:760px){.hero{padding:34px 24px}.hero h1{font-size:30px}main{padding:18px 12px}.panel{padding:20px}.facts,.summary-grid{grid-template-columns:1fr}.facts>div{border-right:0;border-bottom:1px solid var(--line)}.facts>div:last-child{border-bottom:0}.mast{padding:0 18px}.conf{display:none}table{display:block;overflow-x:auto;white-space:normal}}@media print{html,body{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.mast,.foot{display:none}.hero{height:8.5in;min-height:8.5in;padding:.72in .72in;border:0;border-bottom:5px solid var(--cdw);page-break-after:always;break-after:page;display:flex;flex-direction:column;justify-content:center}.hero h1{font-size:40px}.hero p{font-size:16px}.hero .meta{margin-top:.3in}main{max-width:none;margin:0;padding:0}.panel{margin:0;border:0;box-shadow:none;padding:.44in .55in .5in;page-break-before:always;break-before:page}.panel:first-child{page-break-before:auto;break-before:auto}.panel,.card,tr{page-break-inside:avoid;break-inside:avoid}.facts{grid-template-columns:repeat(4,minmax(0,1fr))}.facts>div{border-right:1px solid var(--line);border-bottom:0}.facts>div:last-child{border-right:0}table{font-size:8px}th{padding:5px;font-size:7px}td{padding:5px;line-height:1.22}.summary-grid{gap:12px}.card{padding:12px}.decision{padding:3px 4px;font-size:7px}@page{size:letter landscape;margin:0}}
-</style></head><body><header class="mast"><span class="brand">CDW</span><span class="conf">Confidential · Delivery Planning Output</span></header><section class="hero"><span class="eyebrow">VCF 9.1 Delivery Planning Output</span><h1>${value(f.customerName, title)}</h1><p>A focused delivery brief that links the selected entitlement plan to cohort-level evidence for confirming host platforms are ready for the VCF 9.1 platform build.</p><div class="meta"><span>Planned start: ${value(plannedStart)}</span><span>Entitlement through: ${value(entitlementEnd)}</span><span>Delivery path: ${esc(path.toUpperCase())}</span><span>${number(document.inventory.hosts)} ESXi hosts observed</span></div></section><main><section class="panel"><span class="eyebrow">Delivery decision</span><h2>Plan basis and build readiness</h2><p class="intro">${esc(selectedScopeSummary(document))} The entitlement sequence below remains the delivery recommendation; the compatibility cohort view identifies which observed hosts can advance to the next validation step and which require action first.</p><div class="facts"><div><span>Eligible to progress</span><strong>${countHosts(eligible)}</strong><small>${eligible.length} observed cohort${eligible.length === 1 ? "" : "s"}</small></div><div><span>Validate before build</span><strong>${countHosts(validationRequired)}</strong><small>${validationRequired.length} observed cohort${validationRequired.length === 1 ? "" : "s"}</small></div><div><span>Action required</span><strong>${countHosts(actionRequired)}</strong><small>${actionRequired.length} observed cohort${actionRequired.length === 1 ? "" : "s"}</small></div><div><span>Observed host evidence</span><strong>${totalHosts}</strong><small>${cohorts.length} server / CPU pairing${cohorts.length === 1 ? "" : "s"}</small></div></div><div class="decision-note"><strong>${esc(path.toUpperCase())} delivery path:</strong> ${esc(pathCopy)}</div><div class="summary-grid"><article class="card"><span class="eyebrow">Selected delivery scope</span><h3>What this plan delivers</h3><p>${esc(selectedScopeSummary(document))}</p></article><article class="card"><span class="eyebrow">Priority follow-up</span><h3>Actions before platform build</h3>${actionList}</article></div></section><section class="panel"><span class="eyebrow">Cohort eligibility</span><h2>Observed host groups for VCF 9.1 planning</h2><p class="intro">“Eligible” means the observed server-and-CPU pairing appears in the supplied offline ESXi 9.1 snapshot and may proceed to the next delivery validation step. It is not an official VMware or Broadcom compatibility certification.</p><table><thead><tr><th>Planning decision</th><th>Observed platform and CPU</th><th>Hosts</th><th>Why</th><th>Required next step</th></tr></thead><tbody>${cohortRows}</tbody></table><p class="note">Offline snapshot evidence is used for delivery planning only. Validate final configuration, firmware, driver, and software compatibility in the authoritative configuration reference before production implementation.</p></section><section class="panel"><span class="eyebrow">Entitlement delivery sequence</span><h2>Scheduled delivery activities</h2><p class="intro">The following activities are taken directly from the editable entitlement-aligned plan. Dates and sequencing remain subject to confirmed scope, prerequisites, and customer approvals.</p>${renderPlanOutputSequence(document)}</section></main><footer class="foot"><span>CDW · VCF 9.1 Delivery Planning Output</span><span>${value(f.accountId, "Customer")}</span></footer></body></html>`;
-  return source.replaceAll(/\[\[[^\]]+\]\]/g, "Not Yet Confirmed");
-}
 
 /**
  * A detailed technical companion to the FCP.  It deliberately excludes adoption
@@ -379,55 +209,3 @@ export function renderHclCompatibilityPlanOutputHtml(title: string, document: En
   return renderCompatibilityHandoffHtml(title, document);
 }
 
-function renderLegacyHclCompatibilityPlanOutputHtml(title: string, document: EngagementDocument) {
-  const f = document.fields;
-  const path = document.readiness.hclSchedulePath || getHclSchedulePath(document.inventory);
-  const cohorts = summarizeVcfCompatibility(document.readiness.hardwarePlatforms);
-  const findings = summarizeHclFindings(document.readiness.hcl.findings);
-  const coverageGaps = document.readiness.hcl.coverageGaps;
-  const totalHosts = cohorts.reduce((total, cohort) => total + cohort.hosts, 0);
-  const eligible = cohorts.filter(cohort => cohort.decision === "eligible");
-  const validationRequired = cohorts.filter(cohort => cohort.decision === "validation-required");
-  const actionRequired = cohorts.filter(cohort => cohort.decision === "action-required");
-  const countHosts = (items: typeof cohorts) => items.reduce((total, cohort) => total + cohort.hosts, 0);
-  const findingCount = (severity: "BLOCKER" | "WARNING" | "ADVISORY" | "INFO") => findings.filter(finding => finding.severity === severity).length;
-  const decisionStyle = (decision: string) => decision === "eligible" ? "eligible" : decision === "action-required" ? "action" : "validate";
-  const findingStyle = (severity: string) => severity === "BLOCKER" ? "blocker" : severity === "WARNING" ? "warning" : severity === "ADVISORY" ? "advisory" : "info";
-  const pathCopy = {
-    green: "No blocker or warning was derived from the imported RVTools-observable evidence. Complete configuration, firmware, and driver confirmation before implementation.",
-    yellow: "At least one compatibility cohort or HCL finding requires validation before the VCF 9.1 platform build.",
-    red: "At least one compatibility cohort or HCL finding requires remediation, an alternate technical path, or a procurement decision before affected hosts can proceed.",
-    unresolved: "The available RVTools evidence is not sufficient to decide which hosts are ready for platform build. Collect the missing host identity and configuration evidence first.",
-  }[path];
-  const cohortRows = cohorts.length
-    ? cohorts.map(cohort => {
-      const lifecycle = cohort.futureReleaseSupport;
-      const lifecycleFlag = lifecycle.status === "unsupported-from-release"
-        ? `<small><strong>VMware support boundary:</strong> supported through ${esc(lifecycle.verifiedThroughRelease)}; not officially supported from ${esc(lifecycle.unsupportedFromRelease)}.${lifecycle.vendorHardwareSupportEnd ? ` Separate Cisco hardware support ends ${esc(lifecycle.vendorHardwareSupportEnd)}.` : ""}</small>`
-        : lifecycle.status === "revalidation-required"
-          ? `<small><strong>Future-release boundary:</strong> verified through ${esc(lifecycle.verifiedThroughRelease)}; revalidate before a later ESXi or VCF release.</small>`
-          : "";
-      return `<tr><td><span class="decision ${decisionStyle(cohort.decision)}">${esc(cohort.decisionLabel)}</span><small>${esc(hclStatusLabel(cohort.hclStatus))}</small>${lifecycleFlag}</td><td><strong>${esc(`${cohort.vendor} ${cohort.model}`)}</strong><small>${esc(cohort.cpuModel)}</small></td><td>${cohort.hosts} host${cohort.hosts === 1 ? "" : "s"}</td><td>${esc(cohort.reason)}${cohort.matchedModel ? `<small>Offline snapshot pairing: ${esc(cohort.matchedModel)}${cohort.matchedCpuSeries ? ` · ${esc(cohort.matchedCpuSeries)}` : ""}</small>` : ""}</td><td>${esc(cohort.nextAction)}</td></tr>`;
-    }).join("")
-    : '<tr><td colspan="5">No host cohorts are available. Upload RVTools vHost data to establish VCF 9.1 compatibility evidence.</td></tr>';
-  const findingRows = findings.length
-    ? findings.map(summary => {
-      const sampleSubjects = summary.subjects.slice(0, 5).join(", ");
-      const remainingSubjects = summary.subjects.length > 5 ? ` (+${summary.subjects.length - 5} more)` : "";
-      const examples = summary.findings.slice(0, 2).map(finding => `<div><strong>${esc(finding.subject)}${finding.cluster ? ` · ${finding.cluster}` : ""}:</strong> ${esc(finding.evidence)}</div>`).join("");
-      const remainingEvidence = summary.findings.length > 2 ? `<small>${summary.findings.length - 2} additional evidence entr${summary.findings.length - 2 === 1 ? "y" : "ies"} are grouped under this finding.</small>` : "";
-      return `<article class="finding"><div class="finding-head"><div><span class="severity ${findingStyle(summary.severity)}">${esc(hclFindingSeverityLabel(summary.severity))}</span><span class="check">${esc(summary.checkId)}</span><h3>${esc(summary.title)}</h3></div><strong class="affected">${summary.affectedCount}<small>affected ${esc(summary.scope)}${summary.affectedCount === 1 ? "" : "s"}</small></strong></div><div class="finding-grid"><div><span class="label">Affected subjects</span><p>${esc(sampleSubjects || "Estate-level evidence")}${esc(remainingSubjects)}</p>${summary.clusters.length ? `<small>Clusters: ${esc(summary.clusters.join(", "))}</small>` : ""}</div><div><span class="label">Evidence observed</span><div class="evidence-examples">${examples}</div>${remainingEvidence}</div><div><span class="label">Required action</span><p class="action-text">${esc(summary.remediation)}</p></div></div></article>`;
-    }).join("")
-    : '<p class="empty">No HCL 2.0 finding rows were derived from the imported RVTools evidence. This does not establish complete configuration compatibility; review the coverage boundary below.</p>';
-  const coverageRows = coverageGaps.length
-    ? coverageGaps.map(gap => `<tr><td>${esc(gap.kind.replace(/-/g, " "))}</td><td><strong>${esc(gap.subject)}</strong></td><td>${esc(gap.impact)}</td></tr>`).join("")
-    : '<tr><td colspan="3">No coverage gaps were recorded from the available evidence.</td></tr>';
-  const actionList = [...actionRequired, ...validationRequired].slice(0, 8);
-  const nextActions = actionList.length
-    ? `<ol>${actionList.map(cohort => `<li><strong>${esc(`${cohort.vendor} ${cohort.model}`)} · ${cohort.hosts} host${cohort.hosts === 1 ? "" : "s"}</strong><span>${esc(cohort.nextAction)}</span></li>`).join("")}</ol>`
-    : "<p>All observed cohorts have an offline snapshot pairing. Continue with final configuration, firmware, driver, and supported-component confirmation.</p>";
-  const source = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} HCL and Compatibility Plan Output</title><style>
-:root{--cdw:#c8102e;--navy:#10233f;--ink:#172033;--muted:#64748b;--line:#dbe2ea;--soft:#f5f7fa;--paper:#fff}*{box-sizing:border-box}body{margin:0;background:var(--soft);color:var(--ink);font-family:Arial,"Helvetica Neue",sans-serif;line-height:1.45}.mast{height:58px;padding:0 30px;border-bottom:1px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:space-between}.brand{font-size:27px;font-weight:900;letter-spacing:-2px;color:var(--cdw)}.conf{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.hero{background:linear-gradient(125deg,#08182c 0%,#102f50 68%,#193d63 100%);color:#fff;padding:52px max(30px,calc((100vw - 1180px)/2 + 30px));border-bottom:5px solid var(--cdw)}.hero .eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#d7e5f3}.hero h1{max-width:850px;margin:12px 0;font-size:39px;line-height:1.08;letter-spacing:-.03em}.hero p{max-width:830px;margin:0;color:#dce7f2;font-size:16px;line-height:1.5}.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}.meta span{border:1px solid #ffffff35;border-radius:999px;background:#ffffff0d;padding:6px 10px;font-size:11px}main{max-width:1180px;margin:0 auto;padding:30px}.panel{margin:0 0 22px;padding:26px 28px;border:1px solid var(--line);background:var(--paper);box-shadow:0 10px 28px #0f233e0b}.eyebrow{display:block;margin-bottom:7px;color:var(--cdw);font-size:10px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}h2{margin:0;color:var(--navy);font-size:23px;letter-spacing:-.02em}h3{margin:0;color:var(--navy);font-size:15px}p{color:#405066}.intro{max-width:900px;margin:10px 0 0;font-size:13px}.facts{display:grid;grid-template-columns:repeat(4,1fr);margin:23px 0 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.facts>div{padding:14px;border-right:1px solid var(--line)}.facts>div:last-child{border-right:0}.facts span,.facts small{display:block;color:var(--muted);font-size:10px}.facts span{font-weight:800;letter-spacing:.08em;text-transform:uppercase}.facts strong{display:block;margin-top:5px;color:var(--navy);font-size:20px;line-height:1.1}.decision-note{margin-top:20px;padding:14px 16px;border-left:4px solid var(--cdw);background:#fff7f8;color:#405066;font-size:13px}.summary-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:20px}.card{padding:18px;border:1px solid var(--line);background:#fff}.card p{margin:8px 0 0;font-size:13px}.card ol{margin:10px 0 0;padding-left:21px;color:#405066;font-size:12px;line-height:1.55}.card li+li{margin-top:7px}.card li span{display:block;margin-top:2px}.label{display:block;color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}.decision{display:inline-block;border-radius:999px;padding:4px 6px;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}.decision.eligible{background:#ecfdf3;color:#166534}.decision.validate{background:#fffbeb;color:#92400e}.decision.action{background:#fff1f2;color:#be123c}table{width:100%;border-collapse:collapse;margin-top:18px;font-size:11px}th{padding:9px;text-align:left;background:#eef2f6;color:#334155;font-size:9px;letter-spacing:.05em;text-transform:uppercase}td{padding:10px 9px;border-top:1px solid #e9eef3;vertical-align:top;color:#405066}td small{display:block;margin-top:4px;color:var(--muted);font-size:10px;line-height:1.35}.finding-stack{display:grid;gap:12px;margin-top:18px}.finding{border:1px solid var(--line);border-top:3px solid var(--navy);padding:16px}.finding-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.severity{display:inline-block;border-radius:999px;padding:3px 6px;font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.severity.blocker{background:#fff1f2;color:#be123c}.severity.warning{background:#fffbeb;color:#92400e}.severity.advisory{background:#eff6ff;color:#1d4ed8}.severity.info{background:#f1f5f9;color:#475569}.check{margin-left:7px;color:var(--muted);font-size:10px;font-family:monospace;font-weight:700}.finding h3{margin-top:9px}.affected{min-width:74px;text-align:right;color:var(--navy);font-size:19px;line-height:1}.affected small{display:block;margin-top:4px;color:var(--muted);font-size:8px;font-weight:700;line-height:1.25;text-transform:uppercase}.finding-grid{display:grid;grid-template-columns:.8fr 1.45fr 1.1fr;gap:16px;margin-top:14px;padding-top:13px;border-top:1px solid var(--line)}.finding-grid p{margin:5px 0 0;font-size:11px;line-height:1.4}.finding-grid small{display:block;margin-top:5px;color:var(--muted);font-size:9px;line-height:1.35}.evidence-examples{display:grid;gap:5px;margin-top:5px;color:#405066;font-size:10px;line-height:1.35}.action-text{font-weight:700;color:#25364d!important}.boundary{margin-top:18px;padding:14px 16px;border-left:4px solid var(--cdw);background:#fff7f8;font-size:11px;line-height:1.5;color:#405066}.empty{padding:18px;border:1px dashed var(--line);background:#f8fafc;font-size:13px}.foot{padding:20px 30px;background:#0b1f37;color:#cad7e6;font-size:10px;display:flex;justify-content:space-between}@media(max-width:760px){.hero{padding:34px 24px}.hero h1{font-size:30px}main{padding:18px 12px}.panel{padding:20px}.facts,.summary-grid,.finding-grid{grid-template-columns:1fr}.facts>div{border-right:0;border-bottom:1px solid var(--line)}.facts>div:last-child{border-bottom:0}.mast{padding:0 18px}.conf{display:none}.finding-head{display:block}.affected{text-align:left;margin-top:10px}table{display:block;overflow-x:auto;white-space:normal}}@media print{html,body{background:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.mast,.foot{display:none}.hero{height:8.5in;min-height:8.5in;padding:.72in .72in;border:0;border-bottom:5px solid var(--cdw);page-break-after:always;break-after:page;display:flex;flex-direction:column;justify-content:center}.hero h1{font-size:40px}.hero p{font-size:16px}.hero .meta{margin-top:.3in}main{max-width:none;margin:0;padding:0}.panel{margin:0;border:0;box-shadow:none;padding:.42in .55in .48in;page-break-before:always;break-before:page}.panel:first-child{page-break-before:auto;break-before:auto}.panel,.card,.finding,tr{page-break-inside:avoid;break-inside:avoid}.facts{grid-template-columns:repeat(4,minmax(0,1fr))}.facts>div{border-right:1px solid var(--line);border-bottom:0}.facts>div:last-child{border-right:0}table{font-size:8px}th{padding:5px;font-size:7px}td{padding:5px;line-height:1.22}.summary-grid{gap:12px}.card{padding:12px}.finding{padding:11px}.finding-grid{gap:10px;margin-top:10px;padding-top:9px}.finding-grid p{font-size:8px}.evidence-examples{font-size:7.5px}.finding-grid small{font-size:7px}.finding h3{font-size:10px}.affected{font-size:15px}.decision,.severity{padding:3px 4px;font-size:7px}@page{size:letter landscape;margin:0}}
-</style></head><body><header class="mast"><span class="brand">CDW</span><span class="conf">Confidential · Technical Planning Evidence</span></header><section class="hero"><span class="eyebrow">VCF 9.1 HCL and Compatibility Plan Output</span><h1>${value(f.customerName, title)}</h1><p>A technical planning companion focused on imported HCL 2.0 evidence, observed host compatibility cohorts, build-readiness decisions, evidence boundaries, and required remediation actions.</p><div class="meta"><span>${HCL_EVALUATION_VERSION} evidence model</span><span>Delivery path: ${esc(path.toUpperCase())}</span><span>${number(totalHosts || document.inventory.hosts)} ESXi hosts observed</span><span>${coverageGaps.length} coverage gap${coverageGaps.length === 1 ? "" : "s"}</span></div></section><main><section class="panel"><span class="eyebrow">Build-readiness decision</span><h2>VCF 9.1 progression posture</h2><p class="intro">This document is a delivery-planning evidence pack, not an official certification. It identifies which observed server-and-CPU cohorts may proceed to final validation, which require confirmation, and which require action before platform build.</p><div class="facts"><div><span>Eligible to progress</span><strong>${countHosts(eligible)}</strong><small>${eligible.length} cohort${eligible.length === 1 ? "" : "s"}</small></div><div><span>Validate before build</span><strong>${countHosts(validationRequired)}</strong><small>${validationRequired.length} cohort${validationRequired.length === 1 ? "" : "s"}</small></div><div><span>Action required</span><strong>${countHosts(actionRequired)}</strong><small>${actionRequired.length} cohort${actionRequired.length === 1 ? "" : "s"}</small></div><div><span>HCL finding types</span><strong>${findings.length}</strong><small>${findingCount("BLOCKER")} blocker · ${findingCount("WARNING")} warning</small></div></div><div class="decision-note"><strong>${esc(path.toUpperCase())} build readiness:</strong> ${esc(pathCopy)}</div><div class="summary-grid"><article class="card"><span class="eyebrow">Priority compatibility actions</span><h3>What must be resolved or confirmed</h3>${nextActions}</article><article class="card"><span class="eyebrow">Evidence boundary</span><h3>What this imported evidence establishes</h3><p>${esc(HCL_ESTATE_LIMITATION)}</p><p>${esc(HCL_OFFLINE_LIMITATION)}</p></article></div></section><section class="panel"><span class="eyebrow">Compatibility cohort evidence</span><h2>Observed host groups for VCF 9.1 planning</h2><p class="intro">Each row represents an observed server-and-CPU cohort. The decision and reason are derived from the imported host data and the supplied offline ESXi 9.1 snapshot. Review the required action before that cohort is used for platform build.</p><table><thead><tr><th>Decision / snapshot status</th><th>Observed platform and CPU</th><th>Hosts</th><th>Why this decision</th><th>Required next step</th></tr></thead><tbody>${cohortRows}</tbody></table></section><section class="panel"><span class="eyebrow">HCL 2.0 findings</span><h2>Consolidated technical findings and remediation</h2><p class="intro">Repeated host-level evidence is grouped by HCL check and shared remediation. Each finding retains its affected-subject count and representative imported evidence so the document remains detailed without duplicating the same action once per host.</p><div class="finding-stack">${findingRows}</div></section><section class="panel"><span class="eyebrow">Evidence coverage</span><h2>Coverage gaps and additional information required</h2><p class="intro">A coverage gap is not a passing result. It identifies a compatibility or configuration check that could not be established from the current RVTools export or offline snapshot.</p><table><thead><tr><th>Gap type</th><th>Evidence area</th><th>Planning impact</th></tr></thead><tbody>${coverageRows}</tbody></table></section></main><footer class="foot"><span>CDW · VCF 9.1 HCL and Compatibility Plan Output</span><span>${value(f.accountId, "Customer")}</span></footer></body></html>`;
-  return source.replaceAll(/\[\[[^\]]+\]\]/g, "Not Yet Confirmed");
-}

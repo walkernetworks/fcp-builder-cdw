@@ -1,9 +1,12 @@
 import { barWindow } from "../shared/buildingBlocks";
 import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
-import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
-import { effectiveReport, platformName } from "../shared/reportView";
+import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
+import { effectiveReport, minimumTargetRelease, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
+import { VCF_CORPUS } from "../shared/vcfCorpus";
+import { summarizeHclFindings } from "../shared/hcl";
+import { deliveryBriefing, renewalStartsCurrentTerm } from "../shared/deliveryBriefing";
+import { getIndustryDiscoveryTemplate } from "../shared/industryDiscovery";
 import { cdwLogoSvg } from "./brand/cdwLogo";
-import { selectedScopeSummary } from "./fcpRenderer";
 import { projectOperationalTimelineToMonths, renderTimeline, sliceTimeline } from "./timelineHtml";
 
 /**
@@ -93,11 +96,17 @@ function planItems(document: EngagementDocument, customer: string): PlanItem[] {
   return items.sort((left, right) => left.start.localeCompare(right.start) || left.label.localeCompare(right.label));
 }
 
+/** Text that ends in exactly one full stop, whatever the source text ended with. */
+function sentence(text: string): string {
+  const trimmed = text.trim();
+  return /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 function deadlines(document: EngagementDocument, termEnd: string | null): PlanItem[] {
   const out: PlanItem[] = [];
-  if (termEnd) out.push({ category: "Program Management & Governance", label: `Expiry ${shortDate(termEnd).replace(/ \d{4}$/, "")}`, start: termEnd, end: termEnd, swatch: "muted", milestone: true, outcome: "Unconsumed hours are not refunded.", dependsOn: [] });
+  if (termEnd) out.push({ category: "Program Management & Governance", label: `Expiry ${shortDate(termEnd).replace(/ \d{4}$/, "")}${termEndAssumed(document) ? " (to confirm)" : ""}`, start: termEnd, end: termEnd, swatch: "muted", milestone: true, outcome: "Unconsumed hours are not refunded.", dependsOn: [] });
   const renewal = document.report.discovery.renewalDate;
-  if (renewal) out.push({ category: "Program Management & Governance", label: `Subscription renewal ${shortDate(renewal).replace(/ \d{4}$/, "")}`, start: renewal, end: renewal, swatch: "muted", milestone: true, outcome: "Licensing activated and the renewal sized before this date.", dependsOn: [] });
+  if (renewal && !renewalStartsCurrentTerm(document)) out.push({ category: "Program Management & Governance", label: `Subscription renewal ${shortDate(renewal).replace(/ \d{4}$/, "")}`, start: renewal, end: renewal, swatch: "muted", milestone: true, outcome: "Licensing activated and the renewal sized before this date.", dependsOn: [] });
   const onVsphere8 = document.inventory.esxiVersions.some(item => /\b8\.\d/.test(item.version));
   if (onVsphere8) out.push({ category: "Program Management & Governance", label: "vSphere 8 end of support", start: "2027-10-11", end: "2027-10-11", swatch: "muted", milestone: true, outcome: "vSphere 8 reaches end of general support on 11 October 2027.", dependsOn: [] });
   return out;
@@ -127,23 +136,44 @@ const UNDECIDED_DEPTH = / — depth to be confirmed$/;
 const customerFacing = (timeline: Timeline): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, label: bar.label.replace(UNDECIDED_DEPTH, "") })) })) });
 
 /** The entitlement window and the two-year notional, drawn with the same category Gantt as the full FCP. */
-function timelineSheets(document: EngagementDocument, windowStart: string, windowEnd: string): { entitlement: string; notional: string } {
+function timelineSheets(document: EngagementDocument, windowStart: string, windowEnd: string, termEnd: string | null, includeEntitlement = true): { entitlement: string; notional: string } {
   const sheet = (eyebrow: string, heading: string, intro: string, timeline: Timeline, empty: string) =>
     `<section class="tl-sheet"><div class="tl-head"><span>${esc(eyebrow)}</span><h2>${esc(heading)}</h2><p>${intro}</p></div>${renderTimeline(timeline, empty)}</section>`;
   const operational = projectOperationalTimelineToMonths(customerFacing(document.adoptionTimeline));
-  // The entitlement window spans up to 13 calendar months when it starts and ends mid-month.
-  const entitlementWindow = sliceTimeline(operational, 1, Math.min(13, operational.columns.length));
-  const entitlement = document.adoptionTimeline.lanes.length
+  // The entitlement window spans up to 13 calendar months when it starts and ends mid-month, and stops at the end of
+  // the term when less than a year is left.
+  const opStart = /^(\d{4})-(\d{2})/.exec(operational.startDate);
+  const opEnd = termEnd ? /^(\d{4})-(\d{2})/.exec(termEnd) : null;
+  const termColumns = opStart && opEnd ? (Number(opEnd[1]) - Number(opStart[1])) * 12 + Number(opEnd[2]) - Number(opStart[2]) + 1 : 13;
+  const entitlementWindow = sliceTimeline(operational, 1, Math.max(1, Math.min(13, termColumns, operational.columns.length)));
+  const entitlement = includeEntitlement && document.adoptionTimeline.lanes.length
     ? sheet("Adoption Timeline · entitlement window", "Private Cloud Adoption Timeline", `${esc(windowStart)} through ${esc(windowEnd)}. The entitlement-funded delivery sequence by month, under the five standard categories; work after the entitlement ends is carried in the Two-Year Notional. ◆ marks key delivered functionality.`, entitlementWindow, "No activities are scheduled in the entitlement window.")
     : "";
   const plan = customerFacing(document.twoYearPlan);
-  const notionalStart = plan.columns[0] || windowStart;
-  const notionalEnd = plan.columns[plan.columns.length - 1] || "";
-  const years = [sliceTimeline(plan, 1, Math.min(12, plan.columns.length)), plan.columns.length > 12 ? sliceTimeline(plan, 13, Math.min(24, plan.columns.length)) : null];
-  const notional = plan.lanes.length
-    ? years.map((year, index) => year && sheet(`Two-Year Notional · Months ${index ? "13–24" : "1–12"}`, index ? "Year 2 Continuation" : "Year 1 Adoption Outlook", index
-      ? `${esc(year.columns[0] || "")} through ${esc(year.columns[year.columns.length - 1] || "")}. Lifecycle, adoption and expansion direction that may need future scope or funding.`
-      : `A directional 24-month roadmap from ${esc(notionalStart)} through ${esc(notionalEnd)}. It is not a commitment that all of this work is funded by the current entitlement.`, year, `No notional activities are scheduled in months ${index ? "13–24" : "1–12"}.`)).filter(Boolean).join("")
+  // The notional picks up the month after the entitlement ends, so the entitlement year is not drawn twice.
+  // An entitlement that started mid-year or ends early leaves more than 12 notional months; they run over more sheets.
+  const start = /^(\d{4})-(\d{2})/.exec(plan.startDate);
+  const end = termEnd ? /^(\d{4})-(\d{2})/.exec(termEnd) : null;
+  // Without the entitlement sheet (the delivery adoption timeline checkbox is off), the notional covers the whole horizon.
+  const firstAfter = !includeEntitlement ? 1 : start && end ? Math.max(1, (Number(end[1]) - Number(start[1])) * 12 + Number(end[2]) - Number(start[2]) + 2) : 13;
+  const sheets: Timeline[] = [];
+  for (let from = firstAfter; from <= plan.columns.length; from += 12) sheets.push(sliceTimeline(plan, from, Math.min(from + 11, plan.columns.length)));
+  const notional = plan.lanes.length && sheets.length
+    ? sheets.map((part, index) => {
+      const first = part.columns[0] || "";
+      const last = part.columns[part.columns.length - 1] || "";
+      return sheet(
+        `Two-Year Notional · ${first} to ${last}`,
+        !includeEntitlement ? (index ? "Two-Year Notional, Continued" : "Two-Year Notional") : index ? "After the Entitlement, Continued" : "After the Entitlement",
+        index
+          ? `${esc(first)} through ${esc(last)}. Lifecycle, adoption and expansion direction that may need future scope or funding.`
+          : !includeEntitlement
+            ? `A directional roadmap from ${esc(first)} through ${esc(last)}. Work after the entitlement ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""} is not funded by the current entitlement.`
+            : `${esc(first)} through ${esc(last)}, after the entitlement ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""}. Directional work that is not funded by the current entitlement and may need future scope or funding.`,
+        part,
+        `No notional activities are scheduled from ${esc(first)} to ${esc(last)}.`,
+      );
+    }).join("")
     : "";
   return { entitlement, notional };
 }
@@ -178,6 +208,7 @@ html,body{margin:0;background:#fff;color:var(--ink);font:12.5px/1.5 -apple-syste
 .kpi .v{font-size:19px;font-weight:900;color:var(--red)}
 .kpi .l{font-size:11px;font-weight:800;margin-top:2px}
 .kpi .sub{font-size:9.5px;color:var(--muted);margin-top:2px}
+.wp-detail{font-size:9px;line-height:1.35;color:var(--muted);margin-top:2px;font-weight:400}
 h2{font-size:19px;font-weight:800;margin:20px 0 4px;break-after:avoid}
 h3{font-size:14px;font-weight:800;margin:14px 0 4px;break-after:avoid}
 p.lead{color:var(--muted);margin:0 0 8px}
@@ -245,12 +276,14 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const plan = playbookPlanForFields(fields);
   const burndown: Burndown | null = buildBurndown(document, today);
   const termEnd = burndown?.termEnd || report.entitlement.termEnd || calculateEntitlementEndDate(fields.entitlementStart) || null;
+  const assumedEnd = termEndAssumed(document);
   const termStart = burndown?.termStart || report.entitlement.termStart || fields.entitlementStart || null;
   const effort = options.effort;
-  const customerEffort = buildCustomerEffort(planned);
+  // The report as it prints, so customer-run waves the plan generated count toward the customer's effort.
+  const customerEffort = buildCustomerEffort(document);
   const items = [...planItems(document, customer), ...deadlines(document, termEnd)].sort((left, right) => left.start.localeCompare(right.start));
   const platform = platformName(document);
-  const timelines = timelineSheets(document, longDate(fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate) || "Plan start", termEnd ? longDate(termEnd) : document.adoptionTimeline.columns.at(-1) || "plan end");
+  const timelines = timelineSheets(document, longDate(fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate) || "Plan start", termEnd ? longDate(termEnd) : document.adoptionTimeline.columns.at(-1) || "plan end", termEnd, fields.exportPreferences.includeOperationalTimeline);
   const deliveryModel = report.deliveryModel || "CDW";
   const outcomes = resolvePlanOutcomes(fields).outcomes;
   const strip = `<div class="strip"><span>${cdwLogoSvg("logo")}Consulting Solution Architecture</span><span>Functional Consumption Plan — Condensed | Prepared for ${esc(customer)} | ${esc(stamp)}</span></div>`;
@@ -261,17 +294,18 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     : `<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">No entitlement booked yet</div></div>`;
   const kpis = burndown
     ? `${valueTile}<div class="kpi"><div class="v">${hours(burndown.remainingHours)} hrs</div><div class="l">Hours Remaining</div><div class="sub">${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} hours delivered${report.entitlement.consumedAsOf ? ` (as of ${esc(shortDate(report.entitlement.consumedAsOf))})` : ""}</div></div><div class="kpi"><div class="v">${burndown.daysToExpiry} days</div><div class="l">Days to Expiry</div><div class="sub">Expires ${esc(shortDate(burndown.termEnd))}</div></div><div class="kpi"><div class="v">${burndown.expiryPace} hrs/wk</div><div class="l">Required Weekly Pace</div><div class="sub">To consume by expiry · ~${burndown.expiryPaceFte} FTE from ${esc(shortDate(burndown.asOf))}</div></div>`
-    : `${valueTile}<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">${effort.source === "assignments" ? "Signed resource assignments" : "Estimated from the plan"}</div></div><div class="kpi"><div class="v">${esc(termEnd ? shortDate(termEnd) : shortDate(items.at(-1)?.end ?? asOf))}</div><div class="l">${termEnd ? "Delivery Window Ends" : "Planned Completion"}</div><div class="sub">No consumption data yet</div></div><div class="kpi"><div class="v">${esc(platform)}</div><div class="l">Target Platform</div><div class="sub">${esc(plan.label)}</div></div>`;
+    : `${valueTile}<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">${effort.source === "assignments" ? "Signed resource assignments" : "Estimated from the plan"}</div></div><div class="kpi"><div class="v">${esc(termEnd ? shortDate(termEnd) : shortDate(items.at(-1)?.end ?? asOf))}</div><div class="l">${termEnd ? "Delivery Window Ends" : "Planned Completion"}</div><div class="sub">${termEnd && assumedEnd ? "12 months from the start; to be confirmed" : "No consumption data yet"}</div></div><div class="kpi"><div class="v">${esc(platform)}</div><div class="l">Target Platform</div><div class="sub">${esc(plan.label)}</div></div>`;
 
   // ---- Executive summary
   const situation = report.situation.map(esc);
   const planOnPage = FIXED_GANTT_CATEGORIES.map(category => {
-    const work = items.filter(item => item.category === category && !item.customerOwned && item.swatch !== "muted").map(item => item.label);
+    // CDW work on the entitlement timeline in this category, governance and design stages included.
+    const work = document.adoptionTimeline.lanes.filter(lane => lane.category === category).flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "cdw").map(bar => bar.label.replace(UNDECIDED_DEPTH, "").replace(/^(Month \d+|Weeks? [\d–-]+): /, ""));
     const later = deferredWork.filter(row => row.category === category).map(row => row.label.replace(UNDECIDED_DEPTH, ""));
     const text = `${work.length ? esc(Array.from(new Set(work)).slice(0, 4).join("; ")) : later.length ? "nothing in the entitlement window" : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; after the entitlement: ${esc(later.join("; "))}` : ""}`;
     return `<li><b>${esc(category)}</b> — ${text}</li>`;
   }).join("");
-  const lead = `A design-led plan to move ${esc(customer)} onto ${esc(platform)} — ${esc(plan.label.toLowerCase())}${termEnd ? ` — consuming the services entitlement before it lapses on ${esc(longDate(termEnd))}` : ""}.`;
+  const lead = `A design-led plan to move ${esc(customer)} onto ${esc(platform)} — ${esc(plan.label.toLowerCase())}${termEnd ? ` — consuming the services entitlement before it ends on ${esc(longDate(termEnd))}${assumedEnd ? " (12 months from the start; to be confirmed)" : ""}` : ""}.`;
 
   // ---- Burndown
   const burndownSection = burndown
@@ -283,17 +317,38 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const fundedPackages = effort.workPackages.filter(row => row.total > 0);
   let scopedEffort: string;
   if (effort.source === "assignments" || !fundedPackages.length) {
-    const effortRows = effort.rows.map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), hours(row.architect), hours(row.srConsultant), hours(row.projectManager), hours(row.total)]);
-    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by workstream and role${effort.source === "assignments" ? ", from the signed resource assignments for this entitlement" : ", estimated from this plan; the signed resource assignments replace these figures"}.</p>${table(["Workstream", "Architect", "Sr. Consultant", "Sr. Project Manager", "Total Hours"], effortRows, { numeric: [1, 2, 3, 4], foot: true, total: effortTotal })}`;
+    // A signed work plan can also carry Senior Architect and Offshore PM hours; their columns appear only when used.
+    const senior = effort.rows.some(row => row.seniorArchitect);
+    const offshore = effort.rows.some(row => row.offshoreProjectManager);
+    const headers = ["Workstream", "Architect", ...(senior ? ["Sr. Architect"] : []), "Sr. Consultant", "Sr. Project Manager", ...(offshore ? ["Offshore PM"] : []), "Total Hours"];
+    const cells = (values: { architect: number; srConsultant: number; projectManager: number; seniorArchitect?: number; offshoreProjectManager?: number; total: number }) => [hours(values.architect), ...(senior ? [hours(values.seniorArchitect ?? 0)] : []), hours(values.srConsultant), hours(values.projectManager), ...(offshore ? [hours(values.offshoreProjectManager ?? 0)] : []), hours(values.total)];
+    const effortRows = effort.rows.map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), ...cells(row)]);
+    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by workstream and role${effort.source === "assignments" ? ", from the signed resource assignments for this entitlement" : ", estimated from this plan; the signed resource assignments replace these figures"}.</p>${table(headers, effortRows, { numeric: headers.slice(1).map((_, index) => index + 1), foot: true, total: ["Total CDW-delivered hours", ...cells(effort.totals)] })}`;
   } else {
-    // Hours by work package, in the windows and under the lead roles the adoption timeline shows.
+    // One table per work package: window, lead role and hours, with what it delivers, how it is accepted, and what it starts after.
     const numeric = (value: number) => `<td class="num">${hours(value)}</td>`;
+    const bars = new Map(document.adoptionTimeline.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
+    const acceptance = new Map<string, (typeof plan.designPackages)[number]>([...plan.designPackages.map(item => [`bar-playbook-design-${item.id}`, item] as [string, typeof item]), ...plan.implementationPackages.map(item => [`bar-playbook-execution-${item.id}`, item] as [string, typeof item])]);
+    const detail = (row: (typeof effort.workPackages)[number]) => {
+      const bar = bars.get(row.id);
+      const playbook = acceptance.get(row.id);
+      const after = Array.from(new Set((bar?.prerequisites ?? []).flatMap(id => (bars.has(id) ? [bars.get(id)!.label.replace(UNDECIDED_DEPTH, "")] : []))));
+      const parts = [
+        sentence(playbook?.outcome ?? firstSentence(bar?.outcome, 400) ?? "").replace(/^\.$/, ""),
+        playbook?.acceptance ? sentence(`Accepted when: ${playbook.acceptance}`) : "",
+        after.length ? sentence(`Starts after: ${after.slice(0, 3).map(item => item.replace(/[.\s]+$/, "")).join("; ")}`) : "",
+      ].filter(Boolean);
+      return parts.length ? `<div class="wp-detail">${parts.map(part => esc(part)).join(" ")}</div>` : "";
+    };
+    // CDW packages with hours, and customer-owned packages the plan depends on.
+    const shown = effort.workPackages.filter(row => !row.deferred && (row.total > 0 || row.note === "customer-owned"));
+    const label = (row: (typeof effort.workPackages)[number]) => `${esc(row.label.replace(UNDECIDED_DEPTH, ""))}${row.note === "customer-owned" ? " <b>(customer)</b>" : ""}`;
     const body = FIXED_GANTT_CATEGORIES.flatMap(category => {
-      const rows = fundedPackages.filter(row => row.category === category);
-      return rows.length ? [`<tr class="cat"><td colspan="7">${esc(category)}</td></tr>`, ...rows.map(row => `<tr><td>${esc(row.label.replace(UNDECIDED_DEPTH, ""))}</td><td>${row.start && row.end ? esc(formatWindow(row.start, row.end)) : ""}</td><td>${esc(row.leadRole)}</td>${numeric(row.architect)}${numeric(row.srConsultant)}${numeric(row.projectManager)}${numeric(row.total)}</tr>`)] : [];
+      const rows = shown.filter(row => row.category === category);
+      return rows.length ? [`<tr class="cat"><td colspan="7">${esc(category)}</td></tr>`, ...rows.map(row => `<tr><td>${label(row)}${detail(row)}</td><td>${row.start && row.end ? esc(formatWindow(row.start, row.end)) : ""}</td><td>${esc(row.note === "customer-owned" ? `${customer} team` : row.leadRole)}</td>${numeric(row.architect)}${numeric(row.srConsultant)}${numeric(row.projectManager)}${numeric(row.total)}</tr>`)] : [];
     });
-    const other = fundedPackages.filter(row => !row.category).map(row => `<tr><td>${esc(row.label)}</td><td></td><td></td>${numeric(row.architect)}${numeric(row.srConsultant)}${numeric(row.projectManager)}${numeric(row.total)}</tr>`);
-    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by work package and role, in the windows of the adoption timeline. Estimated from this plan; the signed resource assignments replace these figures.</p><table data-foot="sum"><thead><tr><th>Work Package</th><th>Window</th><th>Lead Delivery Role</th><th class="num">Architect</th><th class="num">Sr. Consultant</th><th class="num">Sr. Project Manager</th><th class="num">Total Hours</th></tr></thead><tbody>${body.join("")}${other.join("")}<tr class="total"><td>${effortTotal[0]}</td><td></td><td></td>${effortTotal.slice(1).map(value => `<td class="num">${value}</td>`).join("")}</tr></tbody></table>`;
+    const other = shown.filter(row => !row.category).map(row => `<tr><td>${label(row)}</td><td></td><td></td>${numeric(row.architect)}${numeric(row.srConsultant)}${numeric(row.projectManager)}${numeric(row.total)}</tr>`);
+    scopedEffort = `<h2>Work Packages and Scoped Effort</h2><p class="lead">${esc(plan.label)}: ${esc(plan.description)} Each work package with its window, lead role and CDW hours, what it delivers and how it is accepted. Design decisions are made with ${esc(customer)} in design sessions. Estimated from this plan; the signed resource assignments replace these figures.</p><table data-foot="sum"><thead><tr><th>Work Package</th><th>Window</th><th>Lead Delivery Role</th><th class="num">Architect</th><th class="num">Sr. Consultant</th><th class="num">Sr. Project Manager</th><th class="num">Total Hours</th></tr></thead><tbody>${body.join("")}${other.join("")}<tr class="total"><td>${effortTotal[0]}</td><td></td><td></td>${effortTotal.slice(1).map(value => `<td class="num">${value}</td>`).join("")}</tr></tbody></table>`;
   }
 
   // ---- Follow-on scope: work planned after the entitlement, in hours (no limit; a follow-on services scope)
@@ -304,14 +359,40 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ? `<h3>Follow-on Scope — Two-Year Notional</h3><p class="lead">Work planned after the entitlement, estimated in hours for a follow-on services scope. It is not drawn from the current entitlement.</p>${table(["Work Package", "Planned Window", "Lead Delivery Role", "Architect", "Sr. Consultant", "Sr. Project Manager", "Total Hours"], followOnRows.map(row => {
       const bar = notionalBars.get(row.id);
       const window = bar ? barWindow(customerTimelines.notional, bar) : null;
-      return [esc(row.label.replace(UNDECIDED_DEPTH, "")), window ? esc(formatWindow(window.start, window.end)) : "", esc(row.leadRole), hours(row.followOn!.architect), hours(row.followOn!.srConsultant), hours(row.followOn!.projectManager), hours(row.followOn!.total)];
+      // Follow-on work runs after the entitlement; a window inside the term would read as funded work.
+      const afterTerm = window && (!termEnd || window.start > termEnd) ? formatWindow(window.start, window.end) : termEnd ? `After ${shortDate(termEnd)}` : "After the entitlement";
+      const split = row.total > 0 && !row.deferred;
+      return [`${esc(row.label.replace(UNDECIDED_DEPTH, ""))}${split ? " <i>(remaining hours)</i>" : ""}`, esc(afterTerm), esc(row.leadRole), hours(row.followOn!.architect), hours(row.followOn!.srConsultant), hours(row.followOn!.projectManager), hours(row.followOn!.total)];
     }), { numeric: [3, 4, 5, 6], foot: true, total: ["Total follow-on hours", "", "", hours(followOnTotals.architect), hours(followOnTotals.srConsultant), hours(followOnTotals.projectManager), hours(followOnTotals.total)] })}`
+    : "";
+
+  // ---- Scope by bucket (v2 hours model): hours only, never rates or dollars
+  const fit = effort.internal.fit;
+  const bucketRows: Array<[string, string, number]> = fit ? [
+    ["This entitlement: core", "Discovery, design, the pathway build, dated migration waves and VCF Operations at Tier 1", fit.buckets.E1],
+    ["This entitlement: depth", "Selected outcomes, remaining waves and depth tiers, in priority order", fit.buckets.E2],
+    ["Follow-on entitlement", "Year two, with design already complete; depends on a future purchase", fit.buckets.F],
+    ["Customer-funded", "Work wanted this year beyond the entitlement, through CDW", fit.buckets.C],
+  ] : [];
+  // Rounded to agree with the work package tables: the two entitlement buckets foot to the entitlement total, and
+  // follow-on to the follow-on table, whenever they differ from them only by rounding.
+  const inEntitlementTotal = Math.round(effort.totals.total);
+  const depthShown = fit ? Math.round(fit.buckets.E2) : 0;
+  const coreShown = fit && Math.abs(fit.buckets.E1 + fit.buckets.E2 - inEntitlementTotal) < 2 ? inEntitlementTotal - depthShown : Math.round(fit?.buckets.E1 ?? 0);
+  const followOnShown = fit && followOnRows.length && Math.abs(fit.buckets.F - followOnTotals.total) < 2 ? Math.round(followOnTotals.total) : Math.round(fit?.buckets.F ?? 0);
+  const roundedBuckets = fit ? [coreShown, depthShown, followOnShown, Math.round(fit.buckets.C)] : [];
+  const bucketSection = fit
+    ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority.${fit.reserveHours >= 1 ? ` ${hours(Math.round(fit.reserveHours))} hours of the entitlement are held in reserve until month 6.` : ""}</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.</p>`
     : "";
 
   // ---- Customer effort
   const peak = customerEffort.peak;
   const customerEffortSection = customerEffort.phases.length
     ? `<h2>Customer Effort by Week &amp; Work Stream</h2><p class="lead">CDW planning estimate of ${esc(customer)} team time, by phase.${peak ? ` Peak demand is <b>${peak.total} hours per week (${peak.fte} FTE)</b> during ${esc(peak.phase.toLowerCase())} (${esc(peak.window)}).` : ""}</p>${table(["Phase", "Window", "Platform Lead hrs/wk", "Operations hrs/wk", "Network hrs/wk", "Total hrs/wk", "FTE"], customerEffort.phases.map(phase => [esc(phase.phase), esc(phase.window), String(phase.platformLead), String(phase.operations), String(phase.network), String(phase.total), phase.fte.toFixed(2)]), { numeric: [2, 3, 4, 5, 6] })}`
+    : "";
+  // Work the customer's team runs itself, with its months; it carries no CDW hours.
+  const customerWork = report.customerOwnedWork.length
+    ? `<h3>Work Run by ${esc(customer)}</h3>${table(["Work", "Window"], report.customerOwnedWork.map(row => [esc(row.label), esc(formatWindow(row.start.length === 7 ? `${row.start}-01` : row.start, row.end.length === 7 ? `${row.end}-01` : row.end))]))}`
     : "";
 
   // ---- Personnel
@@ -322,28 +403,71 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ? `<h3>Target Personnel by Work Stream</h3>${table(["Work Stream", "CDW", ...(withBroadcom ? ["Broadcom"] : []), customer], named.map(row => [esc(row.workstream), people(row.cdw), ...(withBroadcom ? [people(row.broadcom)] : []), people(row.customer)]))}`
     : "";
 
+  // ---- Who is involved: the primary contact and the contacts from the brief
+  const industry = fields.adoptionDetails.industryTemplate !== "general-enterprise" ? getIndustryDiscoveryTemplate(fields.adoptionDetails.industryTemplate).label : "";
+  const contactRows = [
+    ...(fields.primaryContact.trim() ? [[esc(fields.primaryContact.split(",")[0].trim()), esc(fields.primaryContact.split(",").slice(1).join(",").trim() || "Primary contact"), esc(customer)]] : []),
+    ...report.contacts.customer.filter(item => item.name.trim() && item.name.trim() !== fields.primaryContact.split(",")[0].trim()).map(item => [esc(item.name), esc(item.role), esc(customer)]),
+    ...report.contacts.cdw.filter(item => item.name.trim()).map(item => [esc(item.name), esc(item.role), "CDW"]),
+    ...report.contacts.broadcom.filter(item => item.name.trim()).map(item => [esc(item.name), esc(item.role), "Broadcom"]),
+  ];
+  const contacts = contactRows.length ? `<h3>Who Is Involved</h3>${table(["Name", "Role", "Organization"], contactRows)}` : "";
+
+  // ---- What we know about the estate: every discovery answer on record, and why it matters
+  const briefing = deliveryBriefing(document);
+  const discoveryAnswers = briefing.length ? `<h3>What We Know About the Estate</h3><p class="lead">Answers from discovery, with what each one means for this plan.</p>${table(["Topic", "Answer", "Why It Matters"], briefing.map(item => [esc(item.topic), esc(item.detail), esc(item.why)]))}` : "";
+
+  // ---- Compatibility (the "Compatibility summary in the FCP" checkbox): hosts by decision, the top actions,
+  // and the planning considerations. The detailed evidence stays in the Compatibility Delivery Handoff.
+  const handoff = summarizeCompatibilityHandoff(document.readiness.hardwarePlatforms, document.inventory.hosts);
+  const minimumRelease = minimumTargetRelease(document);
+  // Server and CPU results are in the decision table; these are the other blockers and warnings, grouped by check.
+  const hostFindings = summarizeHclFindings(document.readiness.hcl.findings.filter(item => (item.severity === "BLOCKER" || item.severity === "WARNING") && !item.checkId.startsWith("HW.SERVER_CPU_")));
+  const considerations = document.readiness.items.filter(item => item.status === "attention" || item.status === "unknown");
+  const compatibility = fields.exportPreferences.includeVcfReadiness
+    ? `<h2>${esc(handoff.targetRelease)} Compatibility</h2><p class="lead">Server and CPU evidence from RVTools against the Broadcom server list (captured ${esc(shortDate(handoff.catalog.capturedAt.slice(0, 10)))}), with CPU support, ESX builds and Broadcom KB guidance as of ${esc(shortDate(VCF_CORPUS.refreshed))}. This is planning evidence, not a certification; the Compatibility Delivery Handoff carries the full evidence.</p>`
+      + (minimumRelease ? `<div class="note">${hours(minimumRelease.hosts)} host${minimumRelease.hosts === 1 ? " runs" : "s run"} ${esc(minimumRelease.sources.slice(0, 2).join(", "))}${minimumRelease.sources.length > 2 ? " and later builds" : ""}, released after ${esc(handoff.targetRelease.replace(/^ESXi/, "ESX"))}.0. An upgrade or converge must target ${esc(minimumRelease.minimum)} or later (KB 450972, KB 454369); an import works on either.</div>` : "")
+      + (handoff.estateHosts
+        ? `${table(["Decision", "Hosts"], [["Target release listed", hours(handoff.supportedHosts)], ["Evidence still required", hours(handoff.unresolvedHosts)], ["Blocked or not listed", hours(handoff.blockedHosts)]], { numeric: [1] })}<p>${handoff.allHostsAccountedFor ? `All ${hours(handoff.estateHosts)} imported hosts are matched to a server model.` : `${hours(handoff.unaccountedHosts)} of ${hours(handoff.estateHosts)} imported hosts are not matched to a server model yet.`} ESXi versions in use: ${esc(document.inventory.esxiVersions.map(item => `${item.version} (${item.hosts})`).join(", ") || "not reported")}.</p>`
+          + (handoff.actions.length ? `<h3>Compatibility Actions</h3><ol>${handoff.actions.filter((action, index) => action.priority !== "validation" || index < 5).map(action => `<li><b>${hours(action.affectedHosts)} host${action.affectedHosts === 1 ? "" : "s"} · ${esc(action.owner)}:</b> ${esc(action.title)}</li>`).join("")}</ol>` : "")
+        : `<div class="note">No host evidence yet. Import an RVTools export to establish the compatibility posture.</div>`)
+      + (hostFindings.length ? `<h3>Host Findings</h3><p class="lead">Blockers and warnings beyond the server and CPU listing: adapters, builds and versions that change the upgrade.</p>${table(["Finding", "Affected", "Where", "What To Do"], hostFindings.map(item => [`${esc(item.title)}${item.severity === "BLOCKER" ? " <b>(blocker)</b>" : ""}`, esc(`${hours(item.affectedCount)} ${item.scope === "host" ? (item.affectedCount === 1 ? "host" : "hosts") : item.scope}`), esc(item.clusters.slice(0, 3).join(", ") + (item.clusters.length > 3 ? ` and ${item.clusters.length - 3} more` : "")), esc(item.remediation)]))}` : "")
+      + (considerations.length ? `<h3>Planning Considerations</h3>${table(["Consideration", "What It Means"], considerations.map(item => [esc(item.title), esc(item.detail)]))}` : "")
+    : "";
+
+  // ---- Estimating basis (v2): the estate facts and the defaults the hours were built on, in hours only
+  const pass1 = effort.internal.pass1;
+  const basis = (source: string) => /\bspec\b|worked example|section \d/i.test(source) ? "Assumed: planning default; confirm in design" : `Assumed: ${source}`;
+  const estimatingBasis = pass1
+    ? `<h3>Estimating Basis</h3><p class="lead">The hours are built from the estate and scope below. Values marked as assumed were not stated and use the planning default; a confirmed value replaces it.</p>${table(["Driver", "Value", "Basis"], [
+      ...[["ESX hosts", pass1.inputs.hosts], ["Clusters", pass1.inputs.clusters], ["VMs", pass1.inputs.vms], ["vCenters", pass1.inputs.vcenters], ["Sites", pass1.inputs.sites], ["VCF instances", pass1.inputs.instances], ["Workload domains", pass1.inputs.workloadDomains]]
+        .map(([label, value]) => { const assumed = pass1.assumptions.find(item => item.label.toLowerCase() === String(label).toLowerCase()); return [esc(label), esc(value), esc(assumed ? basis(assumed.source) : "From RVTools or the brief")]; }),
+      ...pass1.assumptions.filter(item => !["hosts", "clusters", "vms", "vcenters", "sites", "instances", "workloadDomains"].includes(item.key)).map(item => [esc(item.label), esc(typeof item.value === "boolean" ? (item.value ? "Yes" : "No") : item.value), esc(basis(item.source))]),
+    ])}`
+    : "";
+
   // ---- Design
   const profileRows = PROFILE_CATEGORIES.filter(([key]) => report.designProfile[key]?.trim()).map(([key, label]) => [esc(label), esc(report.designProfile[key] ?? "")]);
-  const elementRows = report.designElements.map(item => [esc(item.component), esc(item.requirement), `${esc(item.recommendation)}${item.gate ? ` <b>Gate:</b> ${esc(item.gate)}.` : ""}`]);
+  const elementRows = report.designElements.map(item => [esc(item.component), esc(item.requirement), `${esc(sentence(item.recommendation))}${item.gate ? ` <b>Gate:</b> ${esc(sentence(item.gate))}` : ""}`]);
 
   // ---- Deliverables: the playbook work packages for the selected path
   const packages = [...plan.designPackages, ...plan.implementationPackages];
-  const deliverables = packages.length
+  const deliverables = packages.length && (effort.source === "assignments" || !fundedPackages.length)
     ? `<h3>What CDW Delivers</h3><p class="lead">${esc(plan.label)}: ${esc(plan.description)}</p>${table(["Work Package", "Outcome", "Acceptance"], packages.map(item => [esc(item.title), esc(item.outcome), esc(item.acceptance)]))}`
     : "";
 
   // ---- Sequence, timeline, milestones, forward plan
-  const sequenceRows = FIXED_GANTT_CATEGORIES.flatMap(category => {
-    const rows = items.filter(item => item.category === category);
-    if (!rows.length) return [[`<b>${esc(category)}</b>`, "—", `No work in scope${report.declined.length ? ` — ${esc(report.declined.join(", "))} not requested` : ""}.`]];
-    return rows.map((item, index) => [index === 0 ? `<b>${esc(category)}</b>` : "", esc(item.start === item.end ? shortDate(item.start) : formatWindow(item.start, item.end)), `${esc(item.label)}.${item.dependsOn.length ? ` Depends on ${esc(Array.from(new Set(item.dependsOn)).slice(0, 2).join(" and "))}.` : ""}${item.customerOwned ? ` Run by ${esc(customer)}.` : ""}`]);
-  });
   const milestones = report.milestonesToDate.length
     ? `<h3>Engagement Milestones to Date</h3>${report.milestonesToDate.map(item => `<div class="ms"><b>${esc(shortDate(item.date))}</b><span><b>${esc(item.event)}</b>${item.detail ? ` — ${esc(item.detail)}` : ""}</span></div>`).join("")}`
     : "";
-  const forward = items.filter(item => !item.customerOwned && item.swatch !== "muted" && item.category !== "Program Management & Governance")
-    .map(item => `<div class="ms"><b>${esc(formatWindow(item.start, item.end))}</b><span>${esc(item.label)}${item.outcome ? ` — ${esc(item.outcome)}` : ""}</span></div>`).join("")
-    + (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption — all hours consumed ahead of expiry.</span></div>` : "")
+  // The build starts with the foundation build or the first execution stage, which can be months after services start.
+  const buildStart = customerTimelines.adoption.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-(management-domain|workload-domain|import-domain)(-\d+)?$/.test(bar.id) || bar.id.startsWith("bar-playbook-execution-")).map(bar => barWindow(customerTimelines.adoption, bar)?.start).filter((start): start is string => Boolean(start)).sort()[0];
+  const implementationStart = fields.plannedImplementationStart;
+  const buildLater = Boolean(buildStart && implementationStart && buildStart.slice(0, 7) > implementationStart.slice(0, 7));
+  const forward = (implementationStart ? `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>` : "")
+    + (buildLater ? `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.</span></div>` : "")
+    + (fields.targetComplete ? `<div class="ms"><b>${esc(shortDate(fields.targetComplete))}</b><span>${esc(customer)}'s target completion.</span></div>` : "")
+    + (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption: all hours consumed ahead of expiry.${assumedEnd ? " The end date is 12 months from the start and is still to be confirmed." : ""}</span></div>` : "")
     + (deferredWork.length ? `<div class="ms"><b>After ${esc(termEnd ? shortDate(termEnd) : "the entitlement")}</b><span>${esc(deferredWork.map(row => row.label.replace(UNDECIDED_DEPTH, "")).join("; "))} — shown in the Two-Year Notional as follow-on scope.</span></div>` : "");
 
   // ---- Adoption plan & recommendation
@@ -366,12 +490,10 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const openItems = report.openItems.length ? `<h3>Open Items</h3>${table(["Item", "What It Gates", ...(withOwner ? ["Owner"] : [])], report.openItems.map(item => [esc(item.item), esc(item.gates), ...(withOwner ? [esc(item.owner)] : [])]))}` : "";
   const pulledIn = outcomes.filter(item => item.requiredBy.length);
 
-  const sources = report.sources.length ? report.sources.map(item => `${esc(item.title)}${item.date ? ` (${esc(shortDate(item.date))})` : ""}`).join("; ") : "Engagement plan and RVTools estate data";
-
   const body = `
 <h1 class="title">${esc(platform.startsWith("VVF") ? "VMware vSphere Foundation" : "VMware Cloud Foundation")} Adoption — ${esc(customer)}</h1>
 <p class="lead-in">${lead}</p>
-<div class="pills">Platform: <b>${esc(platform)}</b> • Path: <b>${esc(plan.label)}</b> • Delivery: <b>${esc(deliveryModel)}</b></div>
+<div class="pills">Platform: <b>${esc(platform)}</b> • Path: <b>${esc(plan.label)}</b> • Delivery: <b>${esc(deliveryModel)}</b>${industry ? ` • Industry: <b>${esc(industry)}</b>` : ""}${fields.location ? ` • Location: <b>${esc(fields.location)}</b>` : ""}</div>
 <div class="kpis">${kpis}</div>
 
 <h2>Executive Summary</h2>
@@ -383,25 +505,29 @@ ${situation.length ? `<h3>Situation</h3><ul>${situation.map(item => `<li>${item}
 
 ${burndownSection}
 ${scopedEffort}
+${bucketSection}
 ${followOnSection}
+${estimatingBasis}
 ${customerEffortSection}
+${customerWork}
 ${personnel}
+${contacts}
 
+${discoveryAnswers}
 ${profileRows.length ? `<h2>${esc(platform.split(" ")[0])} Design Profile</h2>
-<p class="lead">Architecture summarized across the standard design profile categories. Decisions marked for design are set in the design sessions.</p>
+<p class="lead">Architecture summarized across the standard design profile categories. Decisions marked for design are set in the design sessions${plan.decisions.length ? `; for this pathway they include ${esc(plan.decisions.join(", ").toLowerCase())}` : ""}.</p>
 ${table(["Profile Category", `${customer} Design Decision`], profileRows)}` : ""}
 ${elementRows.length ? `<h3>Design Elements — Requirements &amp; Recommendations</h3>
 <p class="lead">Per-component requirements with the recommendation for ${esc(customer)}. Gates are called out.</p>
 ${table(["Component", "Requirement", "Recommendation"], elementRows)}` : ""}
 ${deliverables}
+${compatibility}
 
 <h2>Adoption Timeline</h2>
-<p class="lead">The delivery sequence by calendar month, grouped under the five standard categories.</p>
-<h3>Adoption Sequence &amp; Dependencies</h3>
-${table(["Category", "Stage", "Activity and Dependency"], sequenceRows)}
+<p class="lead">The delivery sequence by calendar month, grouped under the five standard categories. Each work package is described in Work Packages and Scoped Effort.</p>
 ${timelines.entitlement}
 ${milestones}
-${forward ? `<h3>Forward Delivery Plan</h3>${forward}` : ""}
+${forward ? `<h3>Key Dates</h3>${forward}` : ""}
 ${timelines.notional}
 
 <h2>Adoption Plan &amp; Recommendation</h2>
@@ -420,7 +546,7 @@ ${openItems}
 
 <div class="closer red">Make Amazing Happen.</div>
 ${report.revision ? `<div class="revision">Revision: ${esc(report.revision)}</div>` : ""}
-<p class="sources">Prepared by CDW Consulting Solution Architecture for ${esc(customer)} — Functional Consumption Plan (Condensed) · ${esc(stamp)}. Sources: ${sources}.</p>`;
+<p class="sources">Prepared by CDW Consulting Solution Architecture for ${esc(customer)} — Functional Consumption Plan (Condensed) · ${esc(stamp)}.</p>`;
 
   const cover = `<section class="cover">${cdwLogoSvg("logo")}${cdwLogoSvg("orbit", "")}<div class="eyebrow">Functional Consumption Plan · ${esc(customer)}</div><h1>${esc(report.headline ?? "")}</h1><div class="sign">Make Amazing Happen.</div><div class="meta"><div><b>Prepared for</b>${esc(customer)}</div><div><b>Date</b>${esc(longDate(asOf))}</div><div><b>Prepared by</b>CDW Consulting Solution Architecture</div></div><div class="legend">${esc(LEGEND)}</div></section>`;
 
