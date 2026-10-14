@@ -388,13 +388,19 @@ export function entitlementTermEnd(document: EngagementDocument): string | null 
 // Hours by timeline work package
 // ---------------------------------------------------------------------------------------------
 
+/** Packages whose lead is not the lane's usual delivery role. */
+const LEAD_ROLE_BY_BAR: Record<string, string> = {
+  "bar-hcl-review": "VCF Architect with the customer platform lead",
+  "bar-design-access-mapping": "VCF Architect with the customer identity owner",
+};
+
 /** Program management and steering: these carry the plan's project-manager hours, not technical hours. */
 const GOVERNANCE_BARS = /^bar-(platform-plan|platform-execution-decision|platform-design-authority)$/;
 /** Requirements and discovery packages carry the discovery line; the other design packages carry architecture and design. */
 const DISCOVERY_BARS = /^bar-playbook-design-requirements$/;
-const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$)/;
+const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$|hcl-review$|design-access-mapping$)/;
 const COMPONENT_DESIGN_BARS = /^bar-playbook-component-design-/;
-const BUILD_BARS = /^bar-(management-domain(-\d+)?|workload-domain(-\d+)?|import-domain-\d+|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover|playbook-adoption-vcf-management$)/;
+const BUILD_BARS = /^bar-(management-domain(-\d+)?|workload-domain(-\d+)?|import-domain-\d+|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover|platform-enablement|playbook-adoption-vcf-management$)/;
 /**
  * Relative effort of each build package, used to split the deploy line instead of window length. Sized from the
  * VCF 9.1 Planning and Preparation Workbook: deploying and configuring the management domain with its fleet
@@ -406,7 +412,7 @@ const BUILD_WEIGHTS: Array<[RegExp, number]> = [
   [/^bar-workload-domain(-\d+)?$/, BUILD_STAGE_WEIGHTS.workloadDomain.value],
   [/^bar-vvf-workload-clusters$/, BUILD_STAGE_WEIGHTS.vvfCluster.value],
   [/^bar-(import-foundation-validation|in-place-preparation)$/, BUILD_STAGE_WEIGHTS.preparation.value],
-  [/^bar-platform-handover$/, BUILD_STAGE_WEIGHTS.handover.value],
+  [/^bar-(platform-handover|platform-enablement)$/, BUILD_STAGE_WEIGHTS.handover.value],
   [/^bar-platform-licensing$/, BUILD_STAGE_WEIGHTS.licensing.value],
 ];
 const buildWeight = (id: string) => BUILD_WEIGHTS.find(([pattern]) => pattern.test(id))?.[1] ?? 0.4;
@@ -451,7 +457,7 @@ function barsForLine(item: EffortLine, discoveryInScope = true): (id: string) =>
   // v2: remediation runs before the converge or upgrade; the VCF upgrade runs on the upgrade packages.
   if (item.code === "R_remed") return id => /^bar-(in-place-preparation|converge-management-domain|vvf-foundation)$/.test(id);
   if (item.code === "U3") return id => /^bar-(in-place-preparation|playbook-execution-upgrade-waves|playbook-adoption-vcf-management)$/.test(id);
-  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain|import-domain-\d+|platform-handover|playbook-adoption-vcf-management)$/.test(id);
+  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain|import-domain-\d+|platform-handover|platform-enablement|playbook-adoption-vcf-management)$/.test(id);
   if (item.code === "FILL" || item.code === "FILL_mig" || item.code === "FILL_ip") return id => /^bar-playbook-execution-/.test(id);
   const addOn = addOnBars(item.code);
   if (!addOn) return () => false;
@@ -569,7 +575,8 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     // Work the planner placed in the notional keeps its share of the line and takes it out of the entitlement.
     const current = matches.filter(({ bar }) => inEntitlement(bar.id));
     // The deploy line is split by how much work each build package is, not by how long its window is.
-    const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : lengthWeight;
+    // The hardware review and the access mapping are focused pieces of design: half a design package's share.
+    const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : (bar: TimelineBar) => lengthWeight(bar) * (/^bar-(hcl-review|design-access-mapping)$/.test(bar.id) ? 0.5 : 1);
     if (current.length) spread(current, roles, () => true, inWindow, weightOf);
     else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     // Deferred packages of the line get their share as a follow-on estimate.
@@ -632,7 +639,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       label: placed?.bar.label ?? entry?.row.label ?? id,
       category: lane?.category ?? null,
       workstreamType: lane?.workstreamType ?? null,
-      leadRole: lane ? DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType] : "",
+      leadRole: LEAD_ROLE_BY_BAR[id] ?? (lane ? DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType] : ""),
       start: window?.start ?? null,
       end: window?.end ?? null,
       ...(reason ? { architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: reason, followOn: { ...roles, total: sum } } : { ...roles, total: sum }),

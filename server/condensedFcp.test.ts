@@ -334,6 +334,22 @@ describe("Condensed FCP review fixes", () => {
     expect(visible).toContain("Management domains: Lifeline (Lifeline), built new; Randalia (Randalia), built new.");
   });
 
+  it("plans the hardware review, access mapping, training and a backup check before each wave", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid" } as never;
+    document.fields.entitlementAmount = 400_000;
+    const refreshed = refreshDerivedDocument(document, { forceRebuild: true });
+    const effort = scopedEffortForDocument(refreshed);
+    const row = (id: string) => effort.workPackages.find(item => item.id === id);
+    expect(row("bar-hcl-review")).toMatchObject({ owner: "cdw", leadRole: "VCF Architect with the customer platform lead" });
+    expect(row("bar-hcl-review")!.total + (row("bar-hcl-review")!.followOn?.total ?? 0)).toBeGreaterThan(0);
+    expect(row("bar-design-access-mapping")!.total + (row("bar-design-access-mapping")!.followOn?.total ?? 0)).toBeGreaterThan(0);
+    expect(row("bar-platform-enablement")!.total + (row("bar-platform-enablement")!.followOn?.total ?? 0)).toBeGreaterThan(0);
+    expect(row("bar-backup-gate")).toMatchObject({ owner: "checkpoint", total: 0 });
+    const visible = text(render(refreshed));
+    for (const label of ["Hardware Compatibility Review", "Role and Access Mapping", "Training and Knowledge Transfer", "Backup Validated Before Each Wave"]) expect(visible).toContain(label);
+  });
+
   it("raises the work plan hours item only once", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];
