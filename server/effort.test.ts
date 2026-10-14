@@ -328,8 +328,9 @@ describe("entitlement budget limit", () => {
 
 describe("placing work in the Two-Year Notional", () => {
   it("takes the package's hours out of the entitlement, even for design work", () => {
+    // A larger entitlement, so the plan fits without the budget squeeze refilling what is moved.
     const document = migrateDocument(engagement(document => {
-      Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated" });
+      Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated", entitlementAmount: 400_000 });
     }));
     const before = scopedEffortForDocument(document);
     const design = before.workPackages.find(row => row.id.startsWith("bar-playbook-design-") && row.total > 0)!;
@@ -367,7 +368,9 @@ describe("who owns a work package", () => {
   it("defaults hardware evidence and site work to the customer and the hardware gate to a checkpoint", () => {
     const rows = buildScopedEffort(planned()).workPackages;
     expect(rows.find(row => row.id === "bar-hcl-gate")?.owner).toBe("checkpoint");
-    expect(rows.find(row => row.id.startsWith("bar-hcl-") && row.id !== "bar-hcl-gate")?.owner).toBe("customer");
+    expect(rows.find(row => row.id.startsWith("bar-hcl-") && row.id !== "bar-hcl-gate" && row.id !== "bar-hcl-review")?.owner).toBe("customer");
+    // The review behind the sign-off is CDW's architect's work.
+    expect(rows.find(row => row.id === "bar-hcl-review")?.owner).toBe("cdw");
     expect(rows.find(row => row.id === "bar-management-domain")?.owner).toBe("cdw");
   });
 

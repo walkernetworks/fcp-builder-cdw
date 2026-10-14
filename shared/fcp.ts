@@ -147,7 +147,7 @@ const DEFAULT_CUSTOMER_OWNED = /^bar-(hcl-(remediation|procurement|greenfield)|s
 /** Who carries a work package: the planner's choice when stamped on the bar, otherwise the defaults. */
 export function activityOwner(bar: Pick<TimelineBar, "id" | "color" | "owner">): ActivityOwner {
   if (bar.owner) return bar.owner;
-  if (bar.color === "gate" || bar.id === "bar-hcl-gate") return "checkpoint";
+  if (bar.color === "gate" || bar.id === "bar-hcl-gate" || bar.id === "bar-backup-gate") return "checkpoint";
   return DEFAULT_CUSTOMER_OWNED.test(bar.id) ? "customer" : "cdw";
 }
 
@@ -2358,6 +2358,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   // A gate is a checkpoint, not work: it sits in the last window of the evidence work and adds no time of its own.
   const [hclGateStart, hclGateEnd] = range(Math.max(1, hclBufferEnd - 1), 1);
+  // The review is the work behind the sign-off: CDW's architect takes every host model to listed, to confirm, or replace.
+  programBars.push(bar("bar-hcl-review", hclGateStart, hclGateEnd, colorForWorkstreamType("Governance"), "Hardware Compatibility Review", false, false, "Runs with the compatibility evidence work and ends at the sign-off.", "CDW's architect reviews every host model, CPU, adapter and ESX build against the target release with the customer platform lead, and records each as listed, to confirm, or replace."));
   programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", "Hardware Compatibility Sign-Off", true, false, hclDependency, `Platform build starts only after this milestone. Compatibility check result: ${hclPathLabel(path)}.`));
 
   const pathwayDesignEnd = playbookPlan.designPackages.length ? pathwayDesignCursor : hclGateEnd;
@@ -2479,6 +2481,9 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       prerequisites: [platformReadyId],
     });
     platformReadyId = executionId;
+    // A checkpoint, not work: every wave starts only once backup protection is validated on the target.
+    const [backupStart, backupEnd] = range(migrationRange[0], 1);
+    migrationBars.push({ ...bar("bar-backup-gate", backupStart, backupEnd, "gate", "Backup Validated Before Each Wave", true, false, "Repeats before every wave.", "Before each wave, confirm the backup product supports the target release, protects the moved workloads, and a test restore succeeds."), prerequisites: [lastBuildId] });
   }
 
   // Capability work starts once the platform is accepted. On greenfield and multi-path plans that is the workload
@@ -2490,6 +2495,11 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   if (migratesOntoNewPlatform) platformReadyId = vvf ? "bar-vvf-workload-clusters" : lastBuildId;
   const implementationApproved = playbookPlan.path !== "undecided" && playbookPlan.path !== "design-only";
   const operationsBars: TimelineBar[] = [...designBars.operations];
+  if (executionPathway) {
+    // Role and access mapping is design work every build needs, whether or not identity and RBAC is a selected outcome.
+    const [accessStart, accessEnd] = range(Math.max(mobilizationEnd, pathwayDesignEnd - 1), 1);
+    operationsBars.push(bar("bar-design-access-mapping", accessStart, accessEnd, colorForWorkstreamType("Operating Model / Platform"), "Role and Access Mapping", false, false, "Runs in the design sessions, before the build.", "In design sessions, map the directory groups to vCenter, VCF Operations and SSO roles, with least-privilege service accounts and break-glass access."));
+  }
   const cloudBars: TimelineBar[] = [...designBars.cloud];
   const securityBars: TimelineBar[] = [...designBars.security];
   const endById = new Map([...programBars, ...infrastructureBars, ...migrationBars].map(activity => [activity.id, activity.endCol]));
@@ -2614,6 +2624,9 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   if (implementationApproved) {
     const [handoverStart, handoverEnd] = range(Math.max(migrationEnd, operationsCursor, cloudEnd, securityEnd, networkingEnd), handoverDuration);
+    // Training runs once the platform is accepted, alongside the first waves, so the team runs the later ones.
+    const [trainingStart, trainingEnd] = range(platformReadyEnd, scheduleUnits(cadence, 2, 1));
+    operationsBars.push({ ...bar("bar-platform-enablement", trainingStart, trainingEnd, colorForWorkstreamType("Operating Model / Platform"), "Training and Knowledge Transfer", false, false, "Begin once the platform is accepted.", "Train the platform team on lifecycle, VCF Operations and the migration runbook, with shadowed then reverse-shadowed waves, so the team runs the later waves itself."), prerequisites: [lastBuildId] });
     operationsBars.push({ ...bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Handover and Service Acceptance", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm the operating model, evidence, ownership, and the continuing lifecycle cadence."), prerequisites: [deliveryCompleteId] });
   }
 
