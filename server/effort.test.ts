@@ -219,11 +219,13 @@ describe("scoped effort table", () => {
 });
 
 describe("customer effort", () => {
-  it("builds phases from the plan with the migration phase as the peak", () => {
+  it("builds phases from the plan, with customer-run waves as the peak", () => {
     const { phases, peak } = buildCustomerEffort(engagement());
     expect(phases.map(phase => phase.phase)).toEqual(expect.arrayContaining(["Design sessions and design sign-off", "Platform build", "Migration waves"]));
     expect(phases.map(phase => phase.startDate)).toEqual([...phases.map(phase => phase.startDate)].sort());
-    expect(peak).toMatchObject({ phase: "Migration waves", total: 15, fte: 0.38 });
+    // The brief's customer-owned waves are the customer's own heavier phase, and its peak.
+    expect(phases.find(phase => phase.phase === "Migration waves")).toMatchObject({ total: 15, fte: 0.38 });
+    expect(peak).toMatchObject({ phase: "Customer-run migration waves", total: 30, fte: 0.75 });
     for (const phase of phases) expect(phase.platformLead + phase.operations + phase.network).toBe(phase.total);
   });
 });

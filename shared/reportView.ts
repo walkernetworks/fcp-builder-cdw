@@ -1,5 +1,5 @@
 import { barWindow } from "./buildingBlocks";
-import { buildCustomerEffort, buildScopedEffort, withOwnership } from "./effort";
+import { buildCustomerEffort, buildScopedEffort, customerRemainingWaves, withOwnership } from "./effort";
 import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, serverLabel, summarizeVcfCompatibility, type EngagementDocument } from "./fcp";
 import { renewalStartsCurrentTerm } from "./deliveryBriefing";
 import { backInTime } from "./hclCorpus";
@@ -242,7 +242,9 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   if (termEnd) constraints.push({ constraint: `Entitlement expiry ${shortDate(termEnd)}${termEndAssumed(document) ? " (12 months from the start; to be confirmed)" : ""}`, imposedBy: "Entitlement term", effect: handoverWindow ? `Handover completes in ${monthYear(handoverWindow.end)}` : "All hours consumed before expiry" });
 
   // ---- Asks of the customer's team
-  const { phases, peak } = buildCustomerEffort(document);
+  // The generated customer-run waves count toward the customer's effort too.
+  const generatedWaves = customerRemainingWaves(document);
+  const { phases, peak } = buildCustomerEffort(generatedWaves && !report.customerOwnedWork.some(row => /\bwaves?\b/i.test(row.label)) ? { ...document, report: { ...report, customerOwnedWork: [...report.customerOwnedWork, generatedWaves] } } : document);
   const customerAsks: string[] = [];
   if (peak) customerAsks.push(`Effort: ${Math.min(...phases.map(phase => phase.total))}–${peak.total} hours per week, peaking at ${peak.fte} FTE during ${peak.phase.toLowerCase()}`);
   if (!inventory.hosts) customerAsks.push("Inventory: a current RVTools export");
@@ -258,6 +260,8 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   const customerOwnedWork: Array<Row<"customerOwnedWork">> = [
     ...(siteWindows.length ? [{ label: SITE_PREREQUISITES_LABEL, start: siteWindows.map(window => window.start).sort()[0].slice(0, 7), end: siteWindows.map(window => window.end).sort().at(-1)!.slice(0, 7) }] : []),
     ...customerBars.filter(bar => !SITE_ID.test(bar.id)).flatMap(bar => { const window = barWindow(timeline, bar); return window ? [{ label: bar.label, start: window.start.slice(0, 7), end: window.end.slice(0, 7) }] : []; }),
+    // CDW proves the runbook on the first waves; the customer's team runs the rest, unless the planner already planned them.
+    ...(() => { const waves = customerRemainingWaves(document); return waves && !report.customerOwnedWork.some(row => /\bwaves?\b/i.test(row.label)) ? [waves] : []; })(),
   ];
 
   // ---- Open items for what is still missing

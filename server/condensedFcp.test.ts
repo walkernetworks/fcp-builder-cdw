@@ -354,6 +354,20 @@ describe("Condensed FCP review fixes", () => {
     for (const label of ["Hardware Compatibility Review", "Role and Access Mapping", "Training and Knowledge Transfer", "Backup Validated Before Each Wave"]) expect(visible).toContain(label);
   });
 
+  it("gives the customer's team the remaining waves, with dates and their effort", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid" } as never;
+    document.report.customerOwnedWork = [];
+    document.inventory.vmCount = 1_100;
+    const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
+    expect(visible).toContain("Remaining migration waves, run by Acme Health with the proven runbook");
+    // 1,100 VMs at about 250 a month is five months of customer-run waves.
+    expect(visible).toMatch(/Customer-run migration waves \w{3}( \d{4})? – \w{3} \d{4} 16 10 4 30 0\.75/);
+    // A wave row the planner wrote replaces the generated one.
+    document.report.customerOwnedWork = [{ label: "Remaining waves (Riverbend team)", start: "2027-09", end: "2028-03" }];
+    expect(text(render(refreshDerivedDocument(document, { forceRebuild: true })))).not.toContain("with the proven runbook");
+  });
+
   it("raises the work plan hours item only once", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];
