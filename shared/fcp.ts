@@ -2395,18 +2395,47 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     workloadEnd = foundationEnd;
   } else if (playbookPlan.path === "converge") {
     foundationId = vvf ? "bar-vvf-foundation" : "bar-converge-management-domain";
-    foundationEnd = addInfrastructurePackage(foundationId, implementationPackage?.title || "Converge vCenter into VCF", deliveryStart, managementDuration, implementationPackage?.dependsOn || "Begin after the convergence runbook is approved.", implementationPackage?.outcome || "Establish the VCF management domain from the accepted existing environment.", buildPrerequisites);
+    const convergedDomain = fields.adoptionDetails.domains.find(domain => domain.kind === "management");
+    foundationEnd = addInfrastructurePackage(foundationId, convergedDomain && !vvf ? `Converge ${convergedDomain.name} into a Management Domain` : implementationPackage?.title || "Converge vCenter into VCF", deliveryStart, managementDuration, implementationPackage?.dependsOn || "Begin after the convergence runbook is approved.", implementationPackage?.outcome || "Establish the VCF management domain from the accepted existing environment.", buildPrerequisites);
     licenseFrom = foundationEnd;
     workloadEnd = foundationEnd;
+    // Workload domains from the brief follow the converged management domain, each imported or built in turn.
+    let previousDomain = foundationId;
+    fields.adoptionDetails.domains.filter(domain => domain.kind === "workload" && !vvf).forEach((domain, index) => {
+      const imported = domain.pathway !== "greenfield";
+      const id = imported ? `bar-import-domain-${index + 1}` : index === 0 ? "bar-workload-domain" : `bar-workload-domain-${index + 1}`;
+      workloadEnd = addInfrastructurePackage(id, imported ? `Import ${domain.name} as a Workload Domain` : `${domain.name} Workload Domain`, workloadEnd, workloadDuration,
+        imported ? "Begin after the converged management domain and the complete source-vCenter inventory are accepted; the whole vCenter is imported." : "Begin after management-domain health and the approved network and storage prerequisites are validated.",
+        withDomainNote(domain, imported ? `Bring the existing ${domain.name} vCenter${domain.hosts ? ` (${domain.hosts} hosts)` : ""} under VCF fleet management as a workload domain and validate it.` : `Create the ${domain.name} workload domain${domain.hosts ? ` (${domain.hosts} hosts)` : ""} with vLCM images and validate it before workloads move.`),
+        [previousDomain]);
+      previousDomain = id;
+    });
   } else if (playbookPlan.path === "import-workload-domain") {
     foundationId = "bar-import-foundation-validation";
     foundationEnd = addInfrastructurePackage(foundationId, "Ready the VCF Foundation for Import", deliveryStart, managementDuration, "Begin after the destination VCF instance, capacity, networking, storage, and lifecycle health are accepted.", "Confirm the destination foundation can receive the complete source vCenter as a workload domain.", buildPrerequisites);
     licenseFrom = foundationEnd;
     workloadEnd = foundationEnd;
+    const imports = fields.adoptionDetails.domains.filter(domain => domain.kind === "workload");
+    if (imports.length) {
+      // One import per vCenter from the brief, in turn; the first keeps the standard id so the import line attaches to it.
+      let cursor = foundationEnd;
+      let previousImport = foundationId;
+      imports.forEach((domain, index) => {
+        const id = index === 0 ? "bar-import-workload-domain" : `bar-import-workload-domain-${index + 1}`;
+        const [start, end] = range(cursor, workloadDuration);
+        migrationBars.push({ ...bar(id, start, end, colorForWorkstreamType("Migration Waves"), `Import ${domain.name} as a Workload Domain`, false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after the destination foundation is accepted."), withDomainNote(domain, `Bring the existing ${domain.name} vCenter${domain.hosts ? ` (${domain.hosts} hosts)` : ""} and all of its clusters under VCF fleet management as a workload domain and validate it.`)), prerequisites: [previousImport] });
+        cursor = end;
+        previousImport = id;
+      });
+      platformReadyId = previousImport;
+      directMigrationExecutionEnd = cursor;
+    }
     const [importStart, importEnd] = range(foundationEnd, workloadDuration);
-    migrationBars.push({ ...bar("bar-import-workload-domain", importStart, importEnd, colorForWorkstreamType("Migration Waves"), "Import vCenter as a Workload Domain", false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after destination-foundation acceptance."), implementationPackage?.outcome || "Import and validate the approved workload domain."), prerequisites: [foundationId] });
-    platformReadyId = "bar-import-workload-domain";
-    directMigrationExecutionEnd = importEnd;
+    if (!imports.length) migrationBars.push({ ...bar("bar-import-workload-domain", importStart, importEnd, colorForWorkstreamType("Migration Waves"), "Import vCenter as a Workload Domain", false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after destination-foundation acceptance."), implementationPackage?.outcome || "Import and validate the approved workload domain."), prerequisites: [foundationId] });
+    if (!imports.length) {
+      platformReadyId = "bar-import-workload-domain";
+      directMigrationExecutionEnd = importEnd;
+    }
   } else if ((playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid") && !vvf && fields.adoptionDetails.domains.some(domain => domain.kind === "management")) {
     // Domains from the brief: each management domain in turn, the shared networking, then each workload domain after
     // its own instance's management domain. The first of each keeps the standard id so licensing and hours attach to it.
@@ -2435,18 +2464,26 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     }
     workloadEnd = foundationEnd;
     const used = new Map<string, number>();
+    // Each instance is its own track: its workload domains run in turn, and tracks run alongside each other.
+    const trackEnd = new Map<string, number>();
     for (const domain of domains.filter(item => item.kind === "workload")) {
       const base = domain.pathway === "import" ? "bar-import-domain" : "bar-workload-domain";
       const n = (used.get(base) ?? 0) + 1;
       used.set(base, n);
       const id = base === "bar-workload-domain" && n === 1 ? base : `${base}-${n}`;
-      const management = managementByInstance.get(instanceKey(domain)) ?? previous;
+      const track = managementByInstance.has(instanceKey(domain)) ? instanceKey(domain) : "";
+      const management = managementByInstance.get(track) ?? previous;
       const title = domain.pathway === "import" ? `Import ${domain.name} as a Workload Domain` : `${domain.name} Workload Domain`;
-      workloadEnd = addInfrastructurePackage(id, title, workloadEnd, workloadDuration,
+      const end = addInfrastructurePackage(id, title, trackEnd.get(track) ?? foundationEnd, workloadDuration,
         `${domain.pathway === "import" ? "Begin after the destination management domain and the complete source-vCenter inventory are accepted; the whole vCenter is imported." : "Begin after management-domain health and the approved network and storage prerequisites are validated."}`,
         withDomainNote(domain, domain.pathway === "import" ? `Bring the existing ${domain.name} vCenter${domain.hosts ? ` (${domain.hosts} hosts)` : ""} under VCF fleet management as a workload domain and validate it.` : `Create the ${domain.name} workload domain${domain.hosts ? ` (${domain.hosts} hosts)` : ""} with vLCM images and validate it before workloads move.`),
         [management, ...(networkingId ? [networkingId] : [])]);
+      trackEnd.set(track, end);
+      workloadEnd = Math.max(workloadEnd, end);
     }
+    // The last package to finish marks the platform ready.
+    const lastDomain = infrastructureBars.filter(item => /^bar-(workload-domain|import-domain)(-\d+)?$/.test(item.id)).sort((left, right) => right.endCol - left.endCol)[0];
+    if (lastDomain) platformReadyId = lastDomain.id;
   } else if (playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid") {
     const foundationTitle = playbookPlan.path === "greenfield" ? implementationPackage?.title || "Greenfield VCF Foundation Build" : "Shared VCF Foundation Build";
     foundationId = vvf ? "bar-vvf-foundation" : "bar-management-domain";
