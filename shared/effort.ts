@@ -675,7 +675,10 @@ export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, Defer
  */
 export function timelinesWithDeferrals(document: EngagementDocument, deferredIds: string[]): { adoption: Timeline; notional: Timeline } {
   const ids = new Set(deferredIds);
-  const adoption: Timeline = { ...document.adoptionTimeline, lanes: document.adoptionTimeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !ids.has(bar.id)) })) };
+  // Work that stays no longer waits for work that moved out: it goes ahead without it (for example VLAN-backed
+  // workload domains when the NSX build-out moves to the follow-on).
+  const withoutMoved = (bar: TimelineBar) => (bar.prerequisites?.some(id => ids.has(id)) ? { ...bar, prerequisites: bar.prerequisites.filter(id => !ids.has(id)) } : bar);
+  const adoption: Timeline = { ...document.adoptionTimeline, lanes: document.adoptionTimeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !ids.has(bar.id)).map(withoutMoved) })) };
   const notional = document.twoYearPlan;
   const termEnd = entitlementTermEnd(document);
   const start = /^(\d{4})-(\d{2})/.exec(notional.startDate);
@@ -683,21 +686,41 @@ export function timelinesWithDeferrals(document: EngagementDocument, deferredIds
   if (!ids.size || !start || !end) return { adoption, notional };
   // First notional month after the entitlement ends (monthly columns from the notional start).
   const firstAfter = (Number(end[1]) - Number(start[1])) * 12 + Number(end[2]) - Number(start[2]) + 2;
-  const moving = notional.lanes.flatMap(lane => lane.bars).filter(bar => ids.has(bar.id) && bar.startCol < firstAfter);
-  if (!moving.length || firstAfter > notional.columns.length) return { adoption, notional };
-  const earliest = Math.min(...moving.map(bar => bar.startCol));
+  const all = notional.lanes.flatMap(lane => lane.bars);
+  // A checkpoint tied to moved work moves with it.
+  const movedIds = new Set(all.filter(bar => ids.has(bar.id) && bar.startCol < firstAfter).map(bar => bar.id));
+  for (const bar of all) if (activityOwner(bar) === "checkpoint" && (bar.prerequisites ?? []).some(id => movedIds.has(id))) movedIds.add(bar.id);
+  const moving = all.filter(bar => movedIds.has(bar.id));
+  const notionalWithoutMoved: Timeline = { ...notional, lanes: notional.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => (ids.has(bar.id) ? bar : withoutMoved(bar))) })) };
+  if (!moving.length || firstAfter > notional.columns.length) return { adoption, notional: notionalWithoutMoved };
+  const earliest = Math.min(...moving.filter(bar => ids.has(bar.id)).map(bar => bar.startCol));
   const last = notional.columns.length + 1;
+  const placed = new Map(all.map(bar => [bar.id, { startCol: bar.startCol, endCol: bar.endCol }]));
+  for (const bar of moving) {
+    const startCol = Math.min(notional.columns.length, Math.max(firstAfter, firstAfter + bar.startCol - earliest));
+    placed.set(bar.id, { startCol, endCol: Math.min(last, Math.max(startCol + 1, startCol + bar.endCol - bar.startCol)) });
+  }
+  // Moved work starts after its prerequisites end, including work that stayed and runs past the entitlement end.
+  for (let pass = 0; pass < moving.length; pass += 1) {
+    let changed = false;
+    for (const bar of moving) {
+      const current = placed.get(bar.id)!;
+      const after = Math.max(0, ...(bar.prerequisites ?? []).map(id => placed.get(id)?.endCol ?? 0));
+      if (after > current.startCol && current.startCol < notional.columns.length) {
+        const startCol = Math.min(notional.columns.length, after);
+        placed.set(bar.id, { startCol, endCol: Math.min(last, Math.max(startCol + 1, startCol + current.endCol - current.startCol)) });
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
   return {
     adoption,
     notional: {
       ...notional,
       lanes: notional.lanes.map(lane => ({
         ...lane,
-        bars: lane.bars.map(bar => {
-          if (!moving.includes(bar)) return bar;
-          const startCol = Math.min(notional.columns.length, firstAfter + bar.startCol - earliest);
-          return { ...bar, startCol, endCol: Math.min(last, Math.max(startCol + 1, startCol + bar.endCol - bar.startCol)) };
-        }),
+        bars: lane.bars.map(bar => (movedIds.has(bar.id) ? { ...bar, ...placed.get(bar.id)! } : withoutMoved(bar))),
       })),
     },
   };
