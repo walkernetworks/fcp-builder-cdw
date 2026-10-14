@@ -3,6 +3,7 @@ import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferral
 import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
 import { effectiveReport, minimumTargetRelease, platformName } from "../shared/reportView";
 import { VCF_CORPUS } from "../shared/vcfCorpus";
+import { summarizeHclFindings } from "../shared/hcl";
 import { deliveryBriefing, renewalStartsCurrentTerm } from "../shared/deliveryBriefing";
 import { getIndustryDiscoveryTemplate } from "../shared/industryDiscovery";
 import { cdwLogoSvg } from "./brand/cdwLogo";
@@ -99,7 +100,7 @@ function planItems(document: EngagementDocument, customer: string): PlanItem[] {
 /** Text that ends in exactly one full stop, whatever the source text ended with. */
 function sentence(text: string): string {
   const trimmed = text.trim();
-  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+  return /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
 function deadlines(document: EngagementDocument, termEnd: string | null): PlanItem[] {
@@ -332,7 +333,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
       const playbook = acceptance.get(row.id);
       const after = Array.from(new Set((bar?.prerequisites ?? []).flatMap(id => (bars.has(id) ? [bars.get(id)!.label.replace(UNDECIDED_DEPTH, "")] : []))));
       const parts = [
-        sentence(playbook?.outcome ?? firstSentence(bar?.outcome) ?? "").replace(/^\.$/, ""),
+        sentence(playbook?.outcome ?? firstSentence(bar?.outcome, 400) ?? "").replace(/^\.$/, ""),
         playbook?.acceptance ? sentence(`Accepted when: ${playbook.acceptance}`) : "",
         after.length ? sentence(`Starts after: ${after.slice(0, 3).map(item => item.replace(/[.\s]+$/, "")).join("; ")}`) : "",
       ].filter(Boolean);
@@ -409,14 +410,17 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   // and the planning considerations. The detailed evidence stays in the Compatibility Delivery Handoff.
   const handoff = summarizeCompatibilityHandoff(document.readiness.hardwarePlatforms, document.inventory.hosts);
   const minimumRelease = minimumTargetRelease(document);
+  // Server and CPU results are in the decision table; these are the other blockers and warnings, grouped by check.
+  const hostFindings = summarizeHclFindings(document.readiness.hcl.findings.filter(item => (item.severity === "BLOCKER" || item.severity === "WARNING") && !item.checkId.startsWith("HW.SERVER_CPU_")));
   const considerations = document.readiness.items.filter(item => item.status === "attention" || item.status === "unknown");
   const compatibility = fields.exportPreferences.includeVcfReadiness
     ? `<h2>${esc(handoff.targetRelease)} Compatibility</h2><p class="lead">Server and CPU evidence from RVTools against the Broadcom server list (captured ${esc(shortDate(handoff.catalog.capturedAt.slice(0, 10)))}), with CPU support, ESX builds and Broadcom KB guidance as of ${esc(shortDate(VCF_CORPUS.refreshed))}. This is planning evidence, not a certification; the Compatibility Delivery Handoff carries the full evidence.</p>`
       + (minimumRelease ? `<div class="note">${hours(minimumRelease.hosts)} host${minimumRelease.hosts === 1 ? " runs" : "s run"} ${esc(minimumRelease.sources.slice(0, 2).join(", "))}${minimumRelease.sources.length > 2 ? " and later builds" : ""}, released after ${esc(handoff.targetRelease.replace(/^ESXi/, "ESX"))}.0. An upgrade or converge must target ${esc(minimumRelease.minimum)} or later (KB 450972, KB 454369); an import works on either.</div>` : "")
       + (handoff.estateHosts
         ? `${table(["Decision", "Hosts"], [["Target release listed", hours(handoff.supportedHosts)], ["Evidence still required", hours(handoff.unresolvedHosts)], ["Blocked or not listed", hours(handoff.blockedHosts)]], { numeric: [1] })}<p>${handoff.allHostsAccountedFor ? `All ${hours(handoff.estateHosts)} imported hosts are matched to a server model.` : `${hours(handoff.unaccountedHosts)} of ${hours(handoff.estateHosts)} imported hosts are not matched to a server model yet.`} ESXi versions in use: ${esc(document.inventory.esxiVersions.map(item => `${item.version} (${item.hosts})`).join(", ") || "not reported")}.</p>`
-          + (handoff.actions.length ? `<h3>Compatibility Actions</h3><ol>${handoff.actions.slice(0, 5).map(action => `<li><b>${hours(action.affectedHosts)} host${action.affectedHosts === 1 ? "" : "s"} · ${esc(action.owner)}:</b> ${esc(action.title)}</li>`).join("")}</ol>` : "")
+          + (handoff.actions.length ? `<h3>Compatibility Actions</h3><ol>${handoff.actions.filter((action, index) => action.priority !== "validation" || index < 5).map(action => `<li><b>${hours(action.affectedHosts)} host${action.affectedHosts === 1 ? "" : "s"} · ${esc(action.owner)}:</b> ${esc(action.title)}</li>`).join("")}</ol>` : "")
         : `<div class="note">No host evidence yet. Import an RVTools export to establish the compatibility posture.</div>`)
+      + (hostFindings.length ? `<h3>Host Findings</h3><p class="lead">Blockers and warnings beyond the server and CPU listing: adapters, builds and versions that change the upgrade.</p>${table(["Finding", "Affected", "Where", "What To Do"], hostFindings.map(item => [`${esc(item.title)}${item.severity === "BLOCKER" ? " <b>(blocker)</b>" : ""}`, esc(`${hours(item.affectedCount)} ${item.scope === "host" ? (item.affectedCount === 1 ? "host" : "hosts") : item.scope}`), esc(item.clusters.slice(0, 3).join(", ") + (item.clusters.length > 3 ? ` and ${item.clusters.length - 3} more` : "")), esc(item.remediation)]))}` : "")
       + (considerations.length ? `<h3>Planning Considerations</h3>${table(["Consideration", "What It Means"], considerations.map(item => [esc(item.title), esc(item.detail)]))}` : "")
     : "";
 
@@ -445,8 +449,8 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const milestones = report.milestonesToDate.length
     ? `<h3>Engagement Milestones to Date</h3>${report.milestonesToDate.map(item => `<div class="ms"><b>${esc(shortDate(item.date))}</b><span><b>${esc(item.event)}</b>${item.detail ? ` — ${esc(item.detail)}` : ""}</span></div>`).join("")}`
     : "";
-  // The build starts with the first execution stage on the timeline, which can be months after services start.
-  const buildStart = customerTimelines.adoption.lanes.flatMap(lane => lane.bars).filter(bar => bar.id.startsWith("bar-playbook-execution-")).map(bar => barWindow(customerTimelines.adoption, bar)?.start).filter((start): start is string => Boolean(start)).sort()[0];
+  // The build starts with the foundation build or the first execution stage, which can be months after services start.
+  const buildStart = customerTimelines.adoption.lanes.flatMap(lane => lane.bars).filter(bar => bar.id === "bar-management-domain" || bar.id === "bar-workload-domain" || bar.id.startsWith("bar-playbook-execution-")).map(bar => barWindow(customerTimelines.adoption, bar)?.start).filter((start): start is string => Boolean(start)).sort()[0];
   const implementationStart = fields.plannedImplementationStart;
   const buildLater = Boolean(buildStart && implementationStart && buildStart.slice(0, 7) > implementationStart.slice(0, 7));
   const forward = (implementationStart ? `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>` : "")

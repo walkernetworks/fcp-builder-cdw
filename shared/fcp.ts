@@ -2341,6 +2341,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const infrastructureDesignEnd = Math.max(pathwayDesignEnd, componentDesignCursors.infrastructureBuild, componentDesignCursors.infrastructureWaves);
   const deliveryStart = Math.max(hclGateEnd, implementationStartColumn, infrastructureDesignEnd, sitePrerequisiteEnd);
   let foundationEnd = deliveryStart;
+  // Licensing activates once VCF Operations is up with the management domain, inside the build rather than after it.
+  let licenseFrom = deliveryStart;
   let workloadEnd = deliveryStart;
   let directMigrationExecutionEnd = deliveryStart;
   /** The activity whose end marks platform readiness; later capability work names it as a prerequisite. */
@@ -2365,10 +2367,12 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   } else if (playbookPlan.path === "converge") {
     foundationId = vvf ? "bar-vvf-foundation" : "bar-converge-management-domain";
     foundationEnd = addInfrastructurePackage(foundationId, implementationPackage?.title || "Converge vCenter into VCF", deliveryStart, managementDuration, implementationPackage?.dependsOn || "Begin after the convergence runbook is approved.", implementationPackage?.outcome || "Establish the VCF management domain from the accepted existing environment.", buildPrerequisites);
+    licenseFrom = foundationEnd;
     workloadEnd = foundationEnd;
   } else if (playbookPlan.path === "import-workload-domain") {
     foundationId = "bar-import-foundation-validation";
     foundationEnd = addInfrastructurePackage(foundationId, "Ready the VCF Foundation for Import", deliveryStart, managementDuration, "Begin after the destination VCF instance, capacity, networking, storage, and lifecycle health are accepted.", "Confirm the destination foundation can receive the complete source vCenter as a workload domain.", buildPrerequisites);
+    licenseFrom = foundationEnd;
     workloadEnd = foundationEnd;
     const [importStart, importEnd] = range(foundationEnd, workloadDuration);
     migrationBars.push({ ...bar("bar-import-workload-domain", importStart, importEnd, colorForWorkstreamType("Migration Waves"), "Import vCenter as a Workload Domain", false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after destination-foundation acceptance."), implementationPackage?.outcome || "Import and validate the approved workload domain."), prerequisites: [foundationId] });
@@ -2378,6 +2382,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     const foundationTitle = playbookPlan.path === "greenfield" ? implementationPackage?.title || "Greenfield VCF Foundation Build" : "Shared VCF Foundation Build";
     foundationId = vvf ? "bar-vvf-foundation" : "bar-management-domain";
     foundationEnd = addInfrastructurePackage(foundationId, foundationTitle, deliveryStart, managementDuration, playbookPlan.path === "greenfield" ? "Begin only after separately funded hardware, rack, network, storage, DNS, NTP, and IP prerequisites are accepted." : "Begin after the pathway decisions and shared target-state design are approved.", playbookPlan.path === "greenfield" ? (vvf ? "Deploy vCenter, VCF Operations, and management services with the VCF Installer and validate core platform health." : "Deploy the approved management-domain foundation and validate core platform health.") : "Establish the common VCF control plane required by the approved pathways.", buildPrerequisites);
+    licenseFrom = foundationEnd;
     let workloadPrerequisite = foundationId;
     if (nsxScheduledWithFoundation) {
       foundationEnd = addInfrastructurePackage("bar-vcf-networking-nsx", planOutcomeLabel("platform:nsx"), foundationEnd, networkingDuration, "Coordinate physical-fabric VLANs, MTU, routing handoffs, transport zones, and Edge placement from the approved network design.", "Deliver the selected networking depth without implying unselected security-policy scope.", [foundationId, ...(sitePrerequisiteIds.includes("bar-networking-physical-fabric") ? ["bar-networking-physical-fabric"] : [])]);
@@ -2450,7 +2455,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   if (implementationApproved && playbookPlan.path !== "import-workload-domain") {
     // The platform runs on a 90-day evaluation until subscription licensing is activated.
     const anchorId = playbookPlan.path === "in-place" ? platformReadyId : foundationId;
-    const [licenseStart, licenseEnd] = range(playbookPlan.path === "in-place" ? platformReadyEnd : foundationEnd, scheduleUnits(cadence, 2, 1));
+    const [licenseStart, licenseEnd] = range(playbookPlan.path === "in-place" ? platformReadyEnd : licenseFrom, scheduleUnits(cadence, 2, 1));
     operationsBars.push({
       ...bar("bar-platform-licensing", licenseStart, licenseEnd, colorForWorkstreamType("Operating Model / Platform"), "VCF Operations Licensing", false, false, "Complete within the 90-day evaluation period: register VCF Operations in the VCF Business Services console, allocate cores, and apply the license file in connected or disconnected mode. Disconnected sites must report usage at least every 180 days.", "Activate subscription licensing for the deployed platform and its add-ons before the evaluation period ends."),
       prerequisites: [anchorId],
@@ -2924,7 +2929,7 @@ function platformId(vendor: string, model: string, cpuModel: string): string {
   return `${vendor}-${model}-${cpuModel}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
-function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][number], targetRelease: HclCatalogRelease): HardwarePlatformAssessment {
+function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][number], targetRelease: HclCatalogRelease, sockets = 0): HardwarePlatformAssessment {
   const vendor = platform.vendor.trim();
   const model = platform.model.trim();
   const cpuModel = platform.cpuModel.trim();
@@ -2941,7 +2946,7 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
   const missingIdentity = !vendor || !model || /^unknown(?: vendor| model)?$/i.test(vendor) || /^unknown(?: vendor| model)?$/i.test(model);
   const currentDellPowerEdge = /\b(?:r760|r760xa|r760xs|r660|r860|r750|r650)\b/i.test(identifier);
   const legacyDellPowerEdge = /\b(?:r730|r530|r630|r430|r330|r720|r520|m630|m530|t630)\b/i.test(identifier);
-  const hcl = assessHclPlatform(vendor, model, cpuModel, targetRelease);
+  const hcl = assessHclPlatform(vendor, model, cpuModel, targetRelease, sockets);
 
   if (missingIdentity) {
     return {
@@ -3023,7 +3028,14 @@ function hardwarePlatformAssessment(platform: InventorySummary["hostModels"][num
 }
 
 export function assessHardwarePlatforms(inventory: InventorySummary, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HardwarePlatformAssessment[] {
-  return inventory.hostModels.map(platform => hardwarePlatformAssessment(platform, targetRelease));
+  // The most sockets any host of the platform reports; zero when RVTools did not report it.
+  const platformKey = (vendor: string, model: string, cpu: string) => [vendor, model, cpu].map(value => value.trim().toLowerCase()).join("|");
+  const sockets = new Map<string, number>();
+  for (const host of inventory.hclEvidence.hosts) {
+    const key = platformKey(host.vendor, host.model, host.cpuModel);
+    sockets.set(key, Math.max(sockets.get(key) ?? 0, host.socketCount));
+  }
+  return inventory.hostModels.map(platform => hardwarePlatformAssessment(platform, targetRelease, sockets.get(platformKey(platform.vendor, platform.model, platform.cpuModel)) ?? 0));
 }
 
 function extractEsxiMajorVersion(version: string): number | null {
@@ -3080,19 +3092,24 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
   const hclSupportedPlatforms = hardwarePlatforms.filter(platform => platform.hcl.status === "supported");
   const hclBlockingPlatforms = hardwarePlatforms.filter(platform => platform.hcl.status === "cpu-not-certified" || platform.hcl.status === "not-supported");
   const hclReviewPlatforms = hardwarePlatforms.filter(platform => ["supported-cpu-unverified", "review", "unknown"].includes(platform.hcl.status));
+  // Counted from the same compatibility decisions as the handoff and the FCP, so every count agrees.
+  const decisions = summarizeVcfCompatibility(hardwarePlatforms);
+  const decisionHosts = (decision: VcfCompatibilityDecision) => decisions.filter(item => item.decision === decision).reduce((sum, item) => sum + item.hosts, 0);
+  const notSupportedHosts = decisionHosts("action-required");
+  const toConfirmHosts = decisionHosts("validation-required");
   items.push({
     id: "hardware-compatibility",
     category: "hardware",
-    status: !hardwarePlatforms.length ? "attention" : upgradeRequiredPlatforms.length ? "attention" : unavailablePlatforms.length ? "unknown" : "info",
+    status: !hardwarePlatforms.length ? "attention" : notSupportedHosts ? "attention" : toConfirmHosts ? "unknown" : "info",
     title: `${fields.compatibilityTargetRelease} Hardware Platform Evidence`,
     detail: !hardwarePlatforms.length
       ? "Host vendor and model data are missing."
-      : upgradeRequiredPlatforms.length
-        ? `${upgradeRequiredPlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) are on legacy platform generations that need a replacement or formal exception decision for ${fields.compatibilityTargetRelease} planning. ${candidatePlatforms.length ? `${candidatePlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) remain candidate platforms pending exact configuration validation.` : ""}`
-        : candidatePlatforms.length
-          ? `${candidatePlatforms.reduce((sum, platform) => sum + platform.hosts, 0)} host(s) are on candidate platform generation(s); exact configuration validation is still required.`
-          : "Every observed platform has a configuration compatibility confirmation plan; RVTools cannot determine final certification from server identity alone.",
-    evidence: hardwarePlatforms.map(platform => `${platform.vendor} ${platform.model} (${platform.hosts}): ${platform.status}`).join("; ") || "No host model data",
+      : notSupportedHosts
+        ? `${notSupportedHosts} host(s) are blocked or not listed for ${fields.compatibilityTargetRelease} and need replacement or a formal exception decision.${toConfirmHosts ? ` ${toConfirmHosts} host(s) still need CPU or model evidence confirmed.` : ""}`
+        : toConfirmHosts
+          ? `${toConfirmHosts} host(s) still need CPU or model evidence confirmed for ${fields.compatibilityTargetRelease}.`
+          : "Every observed platform is listed for the target release; RVTools cannot determine final certification from server identity alone.",
+    evidence: decisions.map(item => `${item.vendor} ${item.model} (${item.hosts}): ${item.decisionLabel}`).join("; ") || "No host model data",
   });
 
   const hclSupportedHosts = hclSupportedPlatforms.reduce((sum, platform) => sum + platform.hosts, 0);

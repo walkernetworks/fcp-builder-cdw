@@ -7,6 +7,7 @@ import { createDefaultDocument, FIXED_GANTT_CATEGORIES, refreshDerivedDocument, 
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { scopedEffortForDocument } from "./rateCard";
+import { barWindow } from "../shared/buildingBlocks";
 
 const brief = () => JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../docs/examples/customer-brief.example.json"), "utf8"));
 
@@ -223,7 +224,7 @@ describe("Condensed FCP review fixes", () => {
     const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
     const lifecycle = /Hardware lifecycle (.*?)(?= Disaster recovery| Principal storage| Backup| Licensing| Workloads| Adoption Timeline)/.exec(visible)?.[1] ?? "";
     expect(lifecycle).toContain("Build the cluster images");
-    expect(lifecycle).toContain("Not confirmed for the target release: Dell PowerEdge R730 (7 hosts)");
+    expect(lifecycle).toContain("Blocked or not listed for the target release: Dell PowerEdge R730 (7 hosts)");
     expect(lifecycle).not.toContain("Dell Inc.");
     expect(lifecycle).toContain("Gate: support confirmed or hardware replaced for every host model");
   });
@@ -241,7 +242,7 @@ describe("Condensed FCP review fixes", () => {
     const lifecycle = /Hardware lifecycle (.*?)(?= Disaster recovery| Principal storage| Backup| Licensing| Workloads| Adoption Timeline)/.exec(visible)?.[1] ?? "";
     const images = /the compatibility check lists: (.*?)\./.exec(lifecycle)?.[1] ?? "";
     expect(images).not.toContain("R730");
-    expect(lifecycle).toMatch(/Dell PowerEdge R730 \((\d+ of 5 hosts, by CPU|5 hosts)\)/);
+    expect(lifecycle).toMatch(/Blocked or not listed for the target release: .*Dell PowerEdge R730 \((\d+ of 5 hosts, by CPU|5 hosts)\)/);
   });
 
   it("treats a renewal on the entitlement start as the current term, not a lapsed renewal", () => {
@@ -259,7 +260,7 @@ describe("Condensed FCP review fixes", () => {
   it("keeps internal estimating references and doubled full stops out of the document", () => {
     const visible = text(render(refreshDerivedDocument(withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true }), { forceRebuild: true })));
     expect(visible).not.toMatch(/\bSpec\b|worked example|consolidated/);
-    expect(visible).not.toMatch(/[a-z]\.\./);
+    expect(visible).not.toMatch(/[a-z]\.\.|….|…\./);
   });
 
   it("targets 9.1.1 when hosts run 8.0 U3j or later builds", () => {
@@ -270,6 +271,37 @@ describe("Condensed FCP review fixes", () => {
     const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
     expect(visible).toContain("VCF 9.1.1");
     expect(visible).toContain("must target 9.1.1 or later (KB 450972, KB 454369)");
+  });
+
+  it("lists adapter findings in the compatibility section", () => {
+    const document = withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true });
+    document.inventory.hclEvidence = { ...document.inventory.hclEvidence, tabs: { ...document.inventory.hclEvidence.tabs, vhost: true, vnic: true },
+      hosts: [{ name: "rh01", cluster: "Remote Hospitals", vendor: "HPE", model: "ProLiant DL360 Gen10", cpuModel: "Intel(R) Xeon(R) Gold 6230 CPU @ 2.10GHz", esxiVersion: "VMware ESXi 8.0.3 build-24674464", socketCount: 2, coresPerSocket: 20, biosVersion: "", biosDate: "" }],
+      nics: [{ host: "rh01", cluster: "Remote Hospitals", device: "vmnic0", driver: "qfle3", speedMb: 10000, switchName: "" }] };
+    const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
+    expect(visible).toContain("Host Findings");
+    expect(visible).toMatch(/NIC on the qfle3 driver.*\(blocker\) 1 host Remote Hospitals/);
+  });
+
+  it("dates the platform build from the foundation build and starts licensing inside it", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid" } as never;
+    const refreshed = refreshDerivedDocument(document, { forceRebuild: true });
+    const window = (id: string) => { const bar = refreshed.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(item => item.id === id); return bar ? barWindow(refreshed.adoptionTimeline, bar) : null; };
+    const foundation = window("bar-management-domain")!;
+    const licensing = window("bar-platform-licensing")!;
+    expect(licensing.start <= (window("bar-workload-domain")?.end ?? "9999")).toBe(true);
+    expect(licensing.start >= foundation.end.slice(0, 7)).toBe(true);
+    const visible = text(render(refreshed));
+    const month = new Date(`${foundation.start}T00:00:00Z`).toLocaleString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+    expect(visible).toMatch(new RegExp(`\\d{1,2} ${month} Platform build begins`));
+  });
+
+  it("raises the work plan hours item only once", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];
+    const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
+    expect(visible).not.toContain("Entitled hours from the signed resource assignments");
   });
 
   it("shows Senior Architect and Offshore PM hours from a signed work plan", () => {

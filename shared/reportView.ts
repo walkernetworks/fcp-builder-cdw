@@ -169,28 +169,36 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   // Discovery answers that change the design, only where the plan makes them matter.
   const serverModels = summarizeVcfCompatibility(document.readiness.hardwarePlatforms);
   if (builds && (discovery.serverVendor || serverModels.length)) {
-    // Images are built only for the server models the compatibility check lists for every host; the rest are a gate.
-    // A model can split by CPU, so it counts as listed only when all of its hosts are.
-    const models = new Map<string, { label: string; hosts: number; listedHosts: number }>();
+    // Images are built for models listed for the target release, including those whose CPU row still needs
+    // confirming; models that are blocked or not listed are a gate. A model can split by CPU, so it is grouped by its
+    // weakest result and the hosts behind each result are named.
+    const models = new Map<string, { label: string; hosts: number; blocked: number; toConfirm: number }>();
     for (const item of serverModels) {
       const label = serverLabel(item.vendor, item.model);
-      const entry = models.get(label.toLowerCase()) ?? { label, hosts: 0, listedHosts: 0 };
+      const entry = models.get(label.toLowerCase()) ?? { label, hosts: 0, blocked: 0, toConfirm: 0 };
       entry.hosts += item.hosts;
-      if (item.decision === "eligible") entry.listedHosts += item.hosts;
+      if (item.decision === "action-required") entry.blocked += item.hosts;
+      if (item.decision === "validation-required") entry.toConfirm += item.hosts;
       models.set(label.toLowerCase(), entry);
     }
-    const listed = Array.from(models.values()).filter(item => item.listedHosts === item.hosts);
-    const notListed = Array.from(models.values()).filter(item => item.listedHosts < item.hosts);
-    const unlisted = (item: { hosts: number; listedHosts: number }) => item.hosts - item.listedHosts;
-    const notListedNames = notListed.map(item => `${item.label} (${item.listedHosts ? `${unlisted(item)} of ${item.hosts} hosts, by CPU` : `${item.hosts} host${item.hosts === 1 ? "" : "s"}`})`).join(", ");
+    const all = Array.from(models.values());
+    const count = (part: number, whole: number) => (part === whole ? `${whole} host${whole === 1 ? "" : "s"}` : `${part} of ${whole} hosts, by CPU`);
+    const listed = all.filter(item => item.blocked + item.toConfirm === 0);
+    const toConfirm = all.filter(item => item.toConfirm > 0 && item.blocked < item.hosts);
+    const blocked = all.filter(item => item.blocked > 0);
+    const imageModels = [...listed, ...toConfirm.filter(item => !listed.includes(item))];
     const vendor = discovery.serverVendor || Array.from(new Set(serverModels.map(item => serverLabel(item.vendor, "")))).join(" and ");
     designElements.push({
       component: "Hardware lifecycle",
       requirement: `Hosts are ${vendor}; vLCM images manage firmware and drivers with the ESX image.`,
       recommendation: !serverModels.length
         ? `Build the cluster images with the ${vendor} vendor add-on and hardware support manager once the compatibility check confirms the host models.`
-        : `${listed.length ? `Build the cluster images with the vendor add-on and hardware support manager for the models the compatibility check lists: ${listed.map(item => item.label).join(", ")}.` : "No host model is confirmed for the target release yet."}${notListed.length ? ` Not confirmed for the target release: ${notListedNames}. Replace these hosts or confirm support before they join a cluster.` : ""}`,
-      gate: !serverModels.length ? "compatibility check run on a current RVTools export" : notListed.length ? "support confirmed or hardware replaced for every host model" : null,
+        : [
+          imageModels.length ? `Build the cluster images with the vendor add-on and hardware support manager for the models listed for the target release: ${imageModels.map(item => item.label).join(", ")}.` : "No host model is listed for the target release yet.",
+          toConfirm.length ? `Listed, with the CPU row to confirm against the current Compatibility Guide: ${toConfirm.map(item => `${item.label} (${count(item.toConfirm, item.hosts)})`).join(", ")}.` : "",
+          blocked.length ? `Blocked or not listed for the target release: ${blocked.map(item => `${item.label} (${count(item.blocked, item.hosts)})`).join(", ")}. Replace these hosts or confirm support before they join a cluster.` : "",
+        ].filter(Boolean).join(" "),
+      gate: !serverModels.length ? "compatibility check run on a current RVTools export" : blocked.length ? "support confirmed or hardware replaced for every host model" : toConfirm.length ? "CPU rows confirmed for every host model" : null,
     });
   }
   if (moves && discovery.backup) designElements.push({ component: "Backup", requirement: `${discovery.backup} protects the workloads moving to the new platform.`, recommendation: `Confirm ${discovery.backup} supports the target vSphere and VCF release before the first wave; re-point jobs as each wave lands.`, gate: "backup support confirmed" });
@@ -256,7 +264,9 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     const planned = addOn?.priority && addOn.focus ? addOn.focus.some(focus => outcomeKeys.has(`${addOn.priority}:${focus}`)) : false;
     if (!planned) openItems.push({ item: `${addOn?.label ?? purchased} is purchased but not in this plan`, gates: "Scope: add it or record why it waits", owner: "" });
   }
-  if (!report.entitlement.hours) openItems.push({ item: "Entitled hours from the signed resource assignments", gates: "Burndown and weekly pace", owner: "" });
+  // The brief often carries its own item for the work plan hours; raise this one only when nothing covers it.
+  const hoursItemOnRecord = report.openItems.some(item => /resource assignment|work plan|entitled hours/i.test(`${item.item} ${item.gates}`));
+  if (!report.entitlement.hours && !hoursItemOnRecord) openItems.push({ item: "Entitled hours from the signed resource assignments", gates: "Burndown and weekly pace", owner: "" });
   if (renewalPassed) openItems.push({ item: `The subscription renewal date on record (${shortDate(discovery.renewalDate!)}) has passed: confirm the renewal and the new term`, gates: "Licensing activation and core sizing", owner: "" });
   // Licensed cores the imported hosts do not account for usually mean an estate that was not exported.
   if (required && licensed && licensed > required) openItems.push({ item: `${(licensed - required).toLocaleString("en-US")} licensed cores are not matched to the hosts in these RVTools exports`, gates: "Licensing sizing; confirm whether another vCenter needs an RVTools export", owner: "" });
