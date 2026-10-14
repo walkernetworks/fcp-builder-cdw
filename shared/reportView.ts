@@ -266,6 +266,20 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
 
   // ---- Open items for what is still missing
   const openItems: Array<Row<"openItems">> = [];
+  // vSphere 8 end of general support: every host still on 8.x moves to VCF 9 or is upgraded before it.
+  const vsphere8Hosts = inventory.esxiVersions.filter(item => /\b8\.\d/.test(item.version)).reduce((sum, item) => sum + item.hosts, 0);
+  if (vsphere8Hosts && moves) {
+    const clusters = Array.from(new Set(inventory.hclEvidence.hosts.filter(host => /\b8\.\d/.test(host.esxiVersion)).map(host => host.cluster).filter(Boolean)));
+    const where = clusters.length ? ` (${clusters.slice(0, 3).join(", ")}${clusters.length > 3 ? ` and ${clusters.length - 3} more clusters` : ""})` : "";
+    constraints.push({ constraint: `${vsphere8Hosts} host${vsphere8Hosts === 1 ? "" : "s"} on vSphere 8${where} moved or upgraded before 11 Oct 2027`, imposedBy: "Broadcom product lifecycle", effect: "Their waves are planned before vSphere 8 general support ends" });
+    const waveEnds = [
+      ...customerOwnedWork.filter(row => /\bwaves?\b/i.test(row.label)).map(row => row.end),
+      ...report.customerOwnedWork.filter(row => /\bwaves?\b/i.test(row.label)).map(row => row.end),
+      ...timeline.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-playbook-execution-/.test(bar.id)).map(bar => barWindow(timeline, bar)?.end ?? ""),
+    ].filter(Boolean).map(value => value.slice(0, 7)).sort();
+    const lastWave = waveEnds.at(-1);
+    if (lastWave && lastWave > "2027-10") openItems.push({ item: `The waves run to ${monthYear(`${lastWave}-01`)}, after vSphere 8 general support ends on 11 Oct 2027, with ${vsphere8Hosts} host${vsphere8Hosts === 1 ? "" : "s"} still on vSphere 8${where}`, gates: "Supported platform: move those hosts' workloads first, upgrade them in place, or arrange extended support", owner: "" });
+  }
   if (!inventory.hosts) openItems.push({ item: "Current RVTools export", gates: "Design sign-off and sizing", owner: "" });
   for (const purchased of discovery.addOnsPurchased) {
     const key = canonicalAddOn(purchased);

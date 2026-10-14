@@ -368,6 +368,18 @@ describe("Condensed FCP review fixes", () => {
     expect(text(render(refreshDerivedDocument(document, { forceRebuild: true })))).not.toContain("with the proven runbook");
   });
 
+  it("holds hosts on vSphere 8 to its end of support, and raises waves that run past it", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid" } as never;
+    document.report.customerOwnedWork = [{ label: "Remaining migration waves", start: "2027-06", end: "2028-02" }];
+    const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
+    expect(visible).toContain("4 hosts on vSphere 8 moved or upgraded before 11 Oct 2027");
+    expect(visible).toContain("The waves run to Feb 2028, after vSphere 8 general support ends on 11 Oct 2027, with 4 hosts still on vSphere 8");
+    // Waves that finish in time raise no item.
+    document.report.customerOwnedWork = [{ label: "Remaining migration waves", start: "2027-06", end: "2027-09" }];
+    expect(text(render(refreshDerivedDocument(document, { forceRebuild: true })))).not.toContain("after vSphere 8 general support ends");
+  });
+
   it("raises the work plan hours item only once", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];
