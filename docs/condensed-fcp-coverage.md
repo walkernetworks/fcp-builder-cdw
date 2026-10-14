@@ -18,7 +18,7 @@ The Condensed FCP is treated as the only FCP. Every field below now reaches it, 
 | Playbook decisions for the pathway | Design Profile introduction |
 | RVTools estate: cores, vCPU, VM memory, storage used, powered-off VMs, snapshots, hosts in maintenance or disconnected, high CPU and memory hosts, overcommitted datastores, guest operating systems | Situation (estate size and estate health) |
 | Estate drivers and v2 estimating defaults, in hours | Estimating Basis |
-| Domains from the brief (`adoptionDetails.domains`) | One work package per domain on greenfield and hybrid plans, the Availability line of the design profile, and the workload-domain and instance counts in the Estimating Basis. Other pathways keep their single build package. |
+| Domains from the brief (`adoptionDetails.domains`) | One work package per domain: on greenfield and hybrid plans each management domain in turn, then each instance's workload domains in turn, with instances running alongside each other; on converge plans the converged management domain is named and workload domains follow it; on import plans one import per vCenter. Also the Availability line of the design profile and the workload-domain and instance counts in the Estimating Basis. In-place upgrades keep their upgrade packages. |
 
 Not shown, on purpose:
 

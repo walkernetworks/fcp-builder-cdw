@@ -396,6 +396,46 @@ describe("Condensed FCP review fixes", () => {
     expect(refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline.lanes.flatMap(lane => lane.bars).some(bar => bar.id === "bar-design-edge-sites")).toBe(false);
   });
 
+  it("runs each instance's workload domains alongside the other instance's", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid", domainTopology: "standard", domains: [
+      { name: "Lifeline", kind: "management", pathway: "greenfield", instance: "Lifeline", hosts: 4, notes: "" },
+      { name: "Randalia", kind: "management", pathway: "greenfield", instance: "Randalia", hosts: 4, notes: "" },
+      { name: "Epic", kind: "workload", pathway: "import", instance: "Lifeline", hosts: 40, notes: "" },
+      { name: "Server", kind: "workload", pathway: "import", instance: "Lifeline", hosts: 60, notes: "" },
+      { name: "Citrix VDI", kind: "workload", pathway: "greenfield", instance: "Randalia", hosts: 169, notes: "" },
+    ] } as never;
+    const timeline = refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline;
+    const bar = (id: string) => timeline.lanes.flatMap(lane => lane.bars).find(item => item.id === id)!;
+    // Lifeline's imports run in turn; Randalia's Citrix domain runs alongside the first of them.
+    expect(bar("bar-import-domain-2").startCol).toBeGreaterThanOrEqual(bar("bar-import-domain-1").endCol);
+    expect(bar("bar-workload-domain").startCol).toBe(bar("bar-import-domain-1").startCol);
+    expect(bar("bar-workload-domain").prerequisites).toContain("bar-management-domain-2");
+  });
+
+  it("uses the domain list on converge and import plans", () => {
+    const converge = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    converge.fields.adoptionDetails = { ...converge.fields.adoptionDetails, upgradePath: "converge", domains: [
+      { name: "Lifeline", kind: "management", pathway: "converge", instance: "Lifeline", hosts: 6, notes: "" },
+      { name: "Epic", kind: "workload", pathway: "import", instance: "Lifeline", hosts: 40, notes: "" },
+    ] } as never;
+    const convergeBars = refreshDerivedDocument(converge, { forceRebuild: true }).adoptionTimeline.lanes.flatMap(lane => lane.bars);
+    expect(convergeBars.find(item => item.id === "bar-converge-management-domain")?.label).toBe("Converge Lifeline into a Management Domain");
+    expect(convergeBars.find(item => item.id === "bar-import-domain-1")).toMatchObject({ label: "Import Epic as a Workload Domain", prerequisites: ["bar-converge-management-domain"] });
+
+    const imported = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    imported.fields.adoptionDetails = { ...imported.fields.adoptionDetails, upgradePath: "import-workload-domain", domains: [
+      { name: "Epic", kind: "workload", pathway: "import", instance: "", hosts: 40, notes: "" },
+      { name: "Citrix", kind: "workload", pathway: "import", instance: "", hosts: 169, notes: "" },
+    ] } as never;
+    const refreshed = refreshDerivedDocument(imported, { forceRebuild: true });
+    const importBars = refreshed.adoptionTimeline.lanes.flatMap(lane => lane.bars);
+    expect(importBars.find(item => item.id === "bar-import-workload-domain")?.label).toBe("Import Epic as a Workload Domain");
+    expect(importBars.find(item => item.id === "bar-import-workload-domain-2")).toMatchObject({ label: "Import Citrix as a Workload Domain", prerequisites: ["bar-import-workload-domain"] });
+    const effort = scopedEffortForDocument(refreshed);
+    for (const id of ["bar-import-workload-domain", "bar-import-workload-domain-2"]) { const row = effort.workPackages.find(item => item.id === id); expect((row?.total ?? 0) + (row?.followOn?.total ?? 0)).toBeGreaterThan(0); }
+  });
+
   it("raises the work plan hours item only once", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];

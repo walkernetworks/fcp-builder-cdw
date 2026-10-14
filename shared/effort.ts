@@ -409,7 +409,7 @@ const BUILD_BARS = /^bar-(management-domain(-\d+)?|workload-domain(-\d+)?|import
  * preparation are lighter, handover lighter still, and licensing activation is a few hours.
  */
 const BUILD_WEIGHTS: Array<[RegExp, number]> = [
-  [/^bar-(management-domain(-\d+)?|converge-management-domain|vvf-foundation|playbook-adoption-vcf-management|import-workload-domain|import-domain-\d+)$/, BUILD_STAGE_WEIGHTS.managementDomain.value],
+  [/^bar-(management-domain(-\d+)?|converge-management-domain|vvf-foundation|playbook-adoption-vcf-management|import-workload-domain(-\d+)?|import-domain-\d+)$/, BUILD_STAGE_WEIGHTS.managementDomain.value],
   [/^bar-workload-domain(-\d+)?$/, BUILD_STAGE_WEIGHTS.workloadDomain.value],
   [/^bar-vvf-workload-clusters$/, BUILD_STAGE_WEIGHTS.vvfCluster.value],
   [/^bar-(import-foundation-validation|in-place-preparation)$/, BUILD_STAGE_WEIGHTS.preparation.value],
@@ -458,7 +458,7 @@ function barsForLine(item: EffortLine, discoveryInScope = true): (id: string) =>
   // v2: remediation runs before the converge or upgrade; the VCF upgrade runs on the upgrade packages.
   if (item.code === "R_remed") return id => /^bar-(in-place-preparation|converge-management-domain|vvf-foundation)$/.test(id);
   if (item.code === "U3") return id => /^bar-(in-place-preparation|playbook-execution-upgrade-waves|playbook-adoption-vcf-management)$/.test(id);
-  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain|import-domain-\d+|platform-handover|platform-enablement|playbook-adoption-vcf-management)$/.test(id);
+  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain(-\d+)?|import-domain-\d+|platform-handover|platform-enablement|playbook-adoption-vcf-management)$/.test(id);
   if (item.code === "FILL" || item.code === "FILL_mig" || item.code === "FILL_ip") return id => /^bar-playbook-execution-/.test(id);
   const addOn = addOnBars(item.code);
   if (!addOn) return () => false;
@@ -942,7 +942,8 @@ function phaseOf(activity: TimelineBar): PhaseKey | null {
   const id = activity.id;
   if (/^bar-(playbook-design-|playbook-component-design-|platform-plan$)/.test(id)) return "design";
   if (/^bar-(management-domain|vvf-foundation|vvf-workload-clusters|workload-domain|vcf-networking-nsx|converge-management-domain|import-foundation-validation|in-place-preparation|networking-|hcl-|soft-prerequisite-)/.test(id)) return "build";
-  if (/^bar-(playbook-execution-|import-workload-domain$)/.test(id)) return "migration";
+  if (/^bar-(playbook-execution-|import-workload-domain(-\d+)?$)/.test(id)) return "migration";
+  if (/^bar-import-domain-\d+$/.test(id)) return "build";
   if (/^bar-resilience-/.test(id)) return "recovery";
   if (/^bar-(operations-|cloud-|security-|platform-licensing$|playbook-adoption-)/.test(id)) return "capability";
   if (id === "bar-platform-handover") return "handover";
