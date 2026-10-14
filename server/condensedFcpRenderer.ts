@@ -1,13 +1,12 @@
 import { barWindow } from "../shared/buildingBlocks";
 import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
 import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
-import { effectiveReport, minimumTargetRelease, platformName, termEndAssumed } from "../shared/reportView";
+import { effectiveReport, minimumTargetRelease, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
 import { VCF_CORPUS } from "../shared/vcfCorpus";
 import { summarizeHclFindings } from "../shared/hcl";
 import { deliveryBriefing, renewalStartsCurrentTerm } from "../shared/deliveryBriefing";
 import { getIndustryDiscoveryTemplate } from "../shared/industryDiscovery";
 import { cdwLogoSvg } from "./brand/cdwLogo";
-import { selectedScopeSummary } from "./fcpRenderer";
 import { projectOperationalTimelineToMonths, renderTimeline, sliceTimeline } from "./timelineHtml";
 
 /**

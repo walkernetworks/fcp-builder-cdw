@@ -1,4 +1,5 @@
 import type { EngagementDocument, HardwarePlatformAssessment, Timeline } from "../shared/fcp";
+import { selectedScopeSummary } from "../shared/reportView";
 import { calculateEntitlementEndDate, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, getHclSchedulePath, effectiveDeliveryPath, getVcfPlaybookWorkPackageOwnership, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, summarizeCompatibilityHandoff, summarizeDeliveryStaffing, summarizeVcfCompatibility, validateTimeline } from "../shared/fcp";
 import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings } from "../shared/hcl";
 import { renderCompatibilityHandoffHtml } from "./compatibilityHandoffRenderer";
@@ -117,36 +118,6 @@ function renderReadinessExecutiveSnapshot(document: EngagementDocument) {
 }
 
 
-export function selectedScopeSummary(document: EngagementDocument) {
-  const { priorities, adoptionDetails } = document.fields;
-  const resolved = resolvePlanOutcomes(document.fields);
-  const vvf = resolved.edition === "vvf";
-  const scope: string[] = [];
-  if (priorities.includes("operations") || adoptionDetails.operations.length) scope.push("operations and lifecycle management");
-  if (priorities.includes("automation") || adoptionDetails.automation.length) scope.push("automation and self-service foundations");
-  if (priorities.includes("networking") || adoptionDetails.networking.length) scope.push(vvf ? "the explicitly selected networking and load-balancing scope" : "the explicitly selected VCF networking and NSX scope");
-  if (priorities.includes("security") || adoptionDetails.security.length) scope.push("security and segmentation controls");
-  if (priorities.includes("resilience") || adoptionDetails.resilience.length) scope.push("resilience and recovery planning");
-  if (priorities.includes("kubernetes") || adoptionDetails.kubernetes.length) scope.push("Kubernetes and workload-domain enablement");
-  if (priorities.includes("private-ai") || adoptionDetails.privateAi.length) scope.push("private AI enablement");
-
-  const deliveryPath = {
-    "migration-waves": "controlled migration waves",
-    "new-build": "a new platform build",
-    "in-place": "an in-place modernization path",
-    converge: "convergence of an existing vCenter into the VCF management domain",
-    "import-workload-domain": "import of an existing vCenter as a VCF workload domain",
-    greenfield: "a separately funded greenfield VCF foundation and workload migration path",
-    hybrid: "a combination of approved VCF adoption pathways, one for each vCenter or cluster",
-    "design-only": "architecture and implementation-ready design work",
-    undecided: "a delivery path still to be confirmed",
-  }[vvf ? effectiveDeliveryPath(document.fields) : adoptionDetails.upgradePath];
-
-  const selected = scope.length ? scope.join(", ").replace(/, ([^,]*)$/, " and $1") : "the selected operational priorities";
-  const edition = vvf ? " on VMware vSphere Foundation (VVF)" : "";
-  const excluded = resolved.excluded.length ? ` Outcomes that require VCF are not included: ${resolved.excluded.map(key => planOutcomeLabel(key)).join("; ")}.` : "";
-  return `The plan is framed around ${selected}, with ${vvf ? deliveryPath.replace(/VCF/g, "VVF") : deliveryPath}${edition}.${excluded}`;
-}
 
 function renderPlanSummary(document: EngagementDocument, includeOperationalTimeline = document.fields.exportPreferences.includeOperationalTimeline) {
   const f = document.fields;

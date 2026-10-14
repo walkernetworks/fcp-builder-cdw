@@ -29,7 +29,7 @@ Not shown, on purpose:
 
 Still open:
 
-- **The full FCP** (`server/fcpRenderer.ts`) is still generated. The Condensed FCP imports `selectedScopeSummary` from it; move that to `shared/` before the full FCP is removed. The uncalled renderers in it have been deleted.
+- **The full FCP** (`server/fcpRenderer.ts`) is still generated. The Condensed FCP no longer imports anything from it (`selectedScopeSummary` is in `shared/reportView.ts`), so it can be removed on its own.
 
 ## Audit at the start of this work
 
