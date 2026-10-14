@@ -407,7 +407,7 @@ function resolveModel(vendor: string, model: string): ModelResolution {
   return { entries: [], method: "none", score: candidates[0]?.score || 0, vendorResolved: vendorMatch.resolved, candidates, note: digitGuardNote };
 }
 
-function resolveCpuSeries(raw: string): CpuResolution {
+function resolveCpuSeries(raw: string, sockets = 0): CpuResolution {
   const text = String(raw || "").replace(/\((?:R|TM)\)/gi, " ").replace(/\s+/g, " ").trim();
   const upper = text.toUpperCase();
   if (!upper) return { series: "", confidence: "unknown", note: "The vHost row has no usable CPU model string." };
@@ -468,7 +468,10 @@ function resolveCpuSeries(raw: string): CpuResolution {
     if (xeonSix) {
       const value = Number(xeonSix[1]);
       if (value >= 6900 && value <= 6999) return { series: "Intel Xeon 6900P (Granite Rapids-AP) Series", confidence: "exact", note: `Xeon ${xeonSix[1]}${xeonSix[2]}` };
-      if (value >= 6500 && value <= 6799) return { series: "Intel Xeon 6500P/6700P (Granite Rapids-SP) Series", confidence: "inferred", note: `Xeon ${xeonSix[1]}${xeonSix[2]}; four-socket systems require a separate HCL row.` };
+      // Four-socket systems have their own guide row; a reported socket count of one or two settles it.
+      if (value >= 6500 && value <= 6799) return sockets > 0 && sockets <= 2
+        ? { series: "Intel Xeon 6500P/6700P (Granite Rapids-SP) Series", confidence: "exact", note: `Xeon ${xeonSix[1]}${xeonSix[2]}, ${sockets} socket${sockets === 1 ? "" : "s"}` }
+        : { series: "Intel Xeon 6500P/6700P (Granite Rapids-SP) Series", confidence: "inferred", note: `Xeon ${xeonSix[1]}${xeonSix[2]}; four-socket systems require a separate HCL row.` };
       if (value >= 6300 && value <= 6399) return { series: "Intel Xeon E-2400/Xeon 6300 Series", confidence: "exact", note: `Xeon ${xeonSix[1]}${xeonSix[2]}` };
     }
   }
@@ -518,11 +521,11 @@ function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolutio
  * target release, or that KB 318697 lists as Discontinued, is not supported whatever the server model; a server
  * model absent from the 9.x server list is not listed rather than unknown; a Deprecated CPU carries its end of support.
  */
-export function assessHclPlatform(vendor: string, model: string, cpuModel: string, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HclPlatformAssessment {
-  const cpu = resolveCpuSeries(cpuModel);
+export function assessHclPlatform(vendor: string, model: string, cpuModel: string, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE, sockets = 0): HclPlatformAssessment {
+  const cpu = resolveCpuSeries(cpuModel, sockets);
   const generation = cpuGeneration(cpuModel, cpu.series);
   const blocked = generation ? cpuBlockReason(generation, targetRelease) : null;
-  const base = assessServerAndCpu(vendor, model, cpuModel, targetRelease);
+  const base = assessServerAndCpu(vendor, model, cpuModel, targetRelease, sockets);
   if (blocked) {
     return {
       ...base,
@@ -563,9 +566,9 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
   return base;
 }
 
-function assessServerAndCpu(vendor: string, model: string, cpuModel: string, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HclPlatformAssessment {
+function assessServerAndCpu(vendor: string, model: string, cpuModel: string, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE, sockets = 0): HclPlatformAssessment {
   const modelMatch = resolveModel(vendor, model);
-  const cpu = resolveCpuSeries(cpuModel);
+  const cpu = resolveCpuSeries(cpuModel, sockets);
   if (!modelMatch.entries.length) {
     const legacyDetail = cpu.confidence === "legacy" ? ` ${cpu.note}` : "";
     return emptyAssessment(
@@ -974,7 +977,7 @@ function hclTextList(items: string[], limit = 10): string {
 function hclHardwareFindings(evidence: HclInventoryEvidence, targetRelease: HclCatalogRelease = HCL_TARGET_RELEASE): HclFinding[] {
   const findings: HclFinding[] = [];
   for (const host of evidence.hosts) {
-    const assessment = assessHclPlatform(host.vendor, host.model, host.cpuModel, targetRelease);
+    const assessment = assessHclPlatform(host.vendor, host.model, host.cpuModel, targetRelease, host.socketCount);
     const status = assessment.status;
     const severity: HclFindingSeverity = status === "supported"
       ? "INFO"

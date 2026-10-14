@@ -23,6 +23,13 @@ describe("compatibility rules from the VCF 9.1 corpus", () => {
     expect(blade).toMatchObject({ status: "not-supported", evidenceState: "verified-not-listed" });
   });
 
+  it("confirms two-socket Xeon 6 Gen12 hosts instead of leaving the CPU row open", () => {
+    expect(assessHclPlatform("HPE", "Synergy 480 Gen12", "INTEL(R) XEON(R) 6740P", "ESXi 9.1", 2)).toMatchObject({ status: "supported", matchedModel: "Synergy 480 Gen12 Compute Module" });
+    expect(assessHclPlatform("HPE", "ProLiant DL380 Gen12", "INTEL(R) XEON(R) 6740P", "ESXi 9.1", 2).status).toBe("supported");
+    // Without a socket count the four-socket row is still possible.
+    expect(assessHclPlatform("HPE", "ProLiant DL380 Gen12", "INTEL(R) XEON(R) 6740P").status).toBe("supported-cpu-unverified");
+  });
+
   it("keeps Deprecated CPUs supported for 9.x with their end of support", () => {
     const skylake = assessHclPlatform("Dell Inc.", "PowerEdge R640", "Intel(R) Xeon(R) Gold 6130 CPU @ 2.10GHz");
     expect(skylake.status).toBe("supported");
