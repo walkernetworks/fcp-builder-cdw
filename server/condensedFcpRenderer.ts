@@ -280,7 +280,8 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const assumedEnd = termEndAssumed(document);
   const termStart = burndown?.termStart || report.entitlement.termStart || fields.entitlementStart || null;
   const effort = options.effort;
-  const customerEffort = buildCustomerEffort(planned);
+  // The report as it prints, so customer-run waves the plan generated count toward the customer's effort.
+  const customerEffort = buildCustomerEffort(document);
   const items = [...planItems(document, customer), ...deadlines(document, termEnd)].sort((left, right) => left.start.localeCompare(right.start));
   const platform = platformName(document);
   const timelines = timelineSheets(document, longDate(fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate) || "Plan start", termEnd ? longDate(termEnd) : document.adoptionTimeline.columns.at(-1) || "plan end", termEnd, fields.exportPreferences.includeOperationalTimeline);
@@ -383,6 +384,10 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const peak = customerEffort.peak;
   const customerEffortSection = customerEffort.phases.length
     ? `<h2>Customer Effort by Week &amp; Work Stream</h2><p class="lead">CDW planning estimate of ${esc(customer)} team time, by phase.${peak ? ` Peak demand is <b>${peak.total} hours per week (${peak.fte} FTE)</b> during ${esc(peak.phase.toLowerCase())} (${esc(peak.window)}).` : ""}</p>${table(["Phase", "Window", "Platform Lead hrs/wk", "Operations hrs/wk", "Network hrs/wk", "Total hrs/wk", "FTE"], customerEffort.phases.map(phase => [esc(phase.phase), esc(phase.window), String(phase.platformLead), String(phase.operations), String(phase.network), String(phase.total), phase.fte.toFixed(2)]), { numeric: [2, 3, 4, 5, 6] })}`
+    : "";
+  // Work the customer's team runs itself, with its months; it carries no CDW hours.
+  const customerWork = report.customerOwnedWork.length
+    ? `<h3>Work Run by ${esc(customer)}</h3>${table(["Work", "Window"], report.customerOwnedWork.map(row => [esc(row.label), esc(formatWindow(row.start.length === 7 ? `${row.start}-01` : row.start, row.end.length === 7 ? `${row.end}-01` : row.end))]))}`
     : "";
 
   // ---- Personnel
@@ -499,6 +504,7 @@ ${bucketSection}
 ${followOnSection}
 ${estimatingBasis}
 ${customerEffortSection}
+${customerWork}
 ${personnel}
 ${contacts}
 

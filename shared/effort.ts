@@ -923,13 +923,15 @@ export type CustomerEffortPhase = {
   fte: number;
 };
 
-type PhaseKey = "design" | "build" | "migration" | "capability" | "recovery" | "handover";
+type PhaseKey = "design" | "build" | "migration" | "customerWaves" | "capability" | "recovery" | "handover";
 
 /** Default customer hours per week by phase type: platform lead, operations, network. */
 export const CUSTOMER_EFFORT_DEFAULTS: Record<PhaseKey, { phase: string; platformLead: number; operations: number; network: number }> = {
   design: { phase: "Design sessions and design sign-off", platformLead: 3, operations: 2, network: 2 },
   build: { phase: "Platform build", platformLead: 4, operations: 2, network: 2 },
   migration: { phase: "Migration waves", platformLead: 8, operations: 6, network: 1 },
+  // The customer's team runs these waves itself, so it carries the platform and application work CDW carried in the proving waves.
+  customerWaves: { phase: "Customer-run migration waves", platformLead: 16, operations: 10, network: 4 },
   capability: { phase: "Capability enablement", platformLead: 3, operations: 3, network: 1 },
   recovery: { phase: "Recovery design and build", platformLead: 3, operations: 3, network: 2 },
   handover: { phase: "Knowledge transfer and handover", platformLead: 2, operations: 3, network: 1 },
@@ -954,6 +956,23 @@ export function formatWindow(start: string, end: string): string {
   return start.slice(0, 4) === end.slice(0, 4) ? `${monthOnly(start)} – ${monthYear(end)}` : `${monthYear(start)} – ${monthYear(end)}`;
 }
 
+/**
+ * The waves the customer's team runs after CDW's proving waves, with the runbook CDW proved: from the month after
+ * CDW's waves end, about one month per 250 VMs (3 to 12 months). Null when the plan has no waves.
+ */
+export function customerRemainingWaves(document: EngagementDocument): { label: string; start: string; end: string } | null {
+  // CDW's waves in the entitlement, or in the Two-Year Notional when they moved there.
+  const endOf = (timeline: Timeline) => timeline.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-playbook-execution-/.test(bar.id))
+    .map(bar => barWindow(timeline, bar)?.end).filter((end): end is string => Boolean(end)).sort().at(-1);
+  const last = endOf(document.adoptionTimeline) ?? endOf(document.twoYearPlan);
+  if (!last) return null;
+  const upgrade = effectiveDeliveryPath(document.fields) === "in-place";
+  const months = Math.min(12, Math.max(3, Math.ceil((document.inventory.vmCount || 0) / 250)));
+  const month = (iso: string, add: number) => { const date = new Date(`${iso.slice(0, 7)}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + add); return date.toISOString().slice(0, 7); };
+  const customer = document.fields.customerName || "the customer";
+  return { label: `Remaining ${upgrade ? "upgrade" : "migration"} waves, run by ${customer} with the proven runbook`, start: month(last, 1), end: month(last, months) };
+}
+
 /** Customer effort per phase from the plan's windows and the default hours per week. */
 export function buildCustomerEffort(document: EngagementDocument): { phases: CustomerEffortPhase[]; peak: CustomerEffortPhase | null } {
   const timeline = document.adoptionTimeline;
@@ -965,12 +984,13 @@ export function buildCustomerEffort(document: EngagementDocument): { phases: Cus
     const current = windows.get(key);
     windows.set(key, current ? { start: window.start < current.start ? window.start : current.start, end: window.end > current.end ? window.end : current.end } : window);
   }
-  // Customer-run waves extend the migration phase.
+  // Customer-run work: the waves the customer's team runs itself are their own, heavier phase; other customer work extends migration.
   for (const work of completedReport(document.report).customerOwnedWork) {
     const start = work.start.length === 7 ? `${work.start}-01` : work.start;
     const end = work.end.length === 7 ? `${work.end}-28` : work.end;
-    const current = windows.get("migration");
-    windows.set("migration", current ? { start: start < current.start ? start : current.start, end: end > current.end ? end : current.end } : { start, end });
+    const key: PhaseKey = /\bwaves?\b/i.test(work.label) ? "customerWaves" : "migration";
+    const current = windows.get(key);
+    windows.set(key, current ? { start: start < current.start ? start : current.start, end: end > current.end ? end : current.end } : { start, end });
   }
   const phases = Array.from(windows.entries()).map(([key, window]) => {
     const defaults = CUSTOMER_EFFORT_DEFAULTS[key];
