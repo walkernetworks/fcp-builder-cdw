@@ -301,7 +301,12 @@ export function ReportContentEditor({ document, onChange }: Props) {
               <Field label="Server vendor" hint="Sets the vLCM vendor add-on when the plan builds.">{textInput(report.discovery.serverVendor, value => setDiscovery({ serverVendor: value }), "Dell")}</Field>
               <Field label="Storage">{textInput(report.discovery.storage, value => setDiscovery({ storage: value }), "Pure FlashArray over FC")}</Field>
               <Field label="Networking">{textInput(report.discovery.networking, value => setDiscovery({ networking: value }), "Cisco Nexus, VLAN-backed")}</Field>
-              <Field label="Jumbo frames" hint="With overlay networking in scope, changes the MTU gate."><YesNo value={report.discovery.jumboFrames} onChange={value => setDiscovery({ jumboFrames: value })} /></Field>
+              <Field label="Jumbo frames" hint="With overlay networking in scope, changes the MTU gate. Mixed when some switches run them and others do not.">
+                <Select value={report.discovery.jumboFrames === null ? "unknown" : report.discovery.jumboFrames === "mixed" ? "mixed" : report.discovery.jumboFrames ? "yes" : "no"} onValueChange={next => setDiscovery({ jumboFrames: next === "unknown" ? null : next === "mixed" ? "mixed" : next === "yes" })}>
+                  <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="unknown">Not confirmed</SelectItem><SelectItem value="yes">Yes</SelectItem><SelectItem value="no">No</SelectItem><SelectItem value="mixed">Mixed</SelectItem></SelectContent>
+                </Select>
+              </Field>
               <Field label="Backup" hint="When workloads move, adds a backup support gate.">{textInput(report.discovery.backup, value => setDiscovery({ backup: value }), "Veeam")}</Field>
               <Field label="Disaster recovery" hint="With resilience in scope, adds a DR design element.">{textInput(report.discovery.drSolution, value => setDiscovery({ drSolution: value }), "Zerto")}</Field>
               <Field label="Security tooling" hint="With security in scope, adds a design element.">{textInput(report.discovery.securityTooling, value => setDiscovery({ securityTooling: value }), "CrowdStrike, Palo Alto")}</Field>

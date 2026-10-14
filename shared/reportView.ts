@@ -62,6 +62,11 @@ export function minimumTargetRelease(document: EngagementDocument): { minimum: s
 }
 
 /** The entitlement end the report works to: the stated term end, or start + 12 months. */
+/** True when the term end is calculated as 12 months from the start rather than stated in the brief or work plan. */
+export function termEndAssumed(document: EngagementDocument): boolean {
+  return !document.report.entitlement.termEnd && Boolean(calculateEntitlementEndDate(document.fields.entitlementStart));
+}
+
 export function reportTermEnd(document: EngagementDocument): string | null {
   const { entitlement } = document.report;
   return entitlement.termEnd || calculateEntitlementEndDate(document.fields.entitlementStart) || null;
@@ -143,7 +148,7 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     designElements.push(overlay
       ? discovery.jumboFrames === true
         ? { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: "Jumbo frames are already enabled; confirm the transport VLANs carry them end to end before the overlay is enabled.", gate: null }
-        : { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: `${discovery.jumboFrames === false ? "Jumbo frames are not enabled today; raise" : "Confirm"} the MTU end to end and the transport VLANs before the overlay is enabled.`, gate: "MTU confirmed" }
+        : { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: `${discovery.jumboFrames === false ? "Jumbo frames are not enabled today; raise" : discovery.jumboFrames === "mixed" ? "Jumbo frames run on some switches only; confirm" : "Confirm"} the MTU end to end and the transport VLANs before the overlay is enabled.`, gate: "MTU confirmed" }
       : { component: "Networking", requirement: "NSX is deployed with VCF; workloads can stay VLAN-backed.", recommendation: "Start VLAN-backed; consider overlay networking in a later phase.", gate: null });
   }
   const required = requiredCores(document);
@@ -234,7 +239,7 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   if (fields.plannedImplementationStart) constraints.push({ constraint: `Implementation services start ${shortDate(fields.plannedImplementationStart)}`, imposedBy: customer, effect: "Design runs from the project start; build, upgrade and migration begin on this date" });
   if (fields.timelineNotes.trim()) constraints.push({ constraint: fields.timelineNotes.trim(), imposedBy: "Calendar", effect: "Applied to the schedule of every affected work package" });
   if (fields.adoptionDetails.notes.trim()) constraints.push({ constraint: fields.adoptionDetails.notes.trim(), imposedBy: "Planning note", effect: "Applied to the design and the work packages it affects" });
-  if (termEnd) constraints.push({ constraint: `Entitlement expiry ${shortDate(termEnd)}`, imposedBy: "Entitlement term", effect: handoverWindow ? `Handover completes in ${monthYear(handoverWindow.end)}` : "All hours consumed before expiry" });
+  if (termEnd) constraints.push({ constraint: `Entitlement expiry ${shortDate(termEnd)}${termEndAssumed(document) ? " (12 months from the start; to be confirmed)" : ""}`, imposedBy: "Entitlement term", effect: handoverWindow ? `Handover completes in ${monthYear(handoverWindow.end)}` : "All hours consumed before expiry" });
 
   // ---- Asks of the customer's team
   const { phases, peak } = buildCustomerEffort(document);
@@ -267,6 +272,7 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   // The brief often carries its own item for the work plan hours; raise this one only when nothing covers it.
   const hoursItemOnRecord = report.openItems.some(item => /resource assignment|work plan|entitled hours/i.test(`${item.item} ${item.gates}`));
   if (!report.entitlement.hours && !hoursItemOnRecord) openItems.push({ item: "Entitled hours from the signed resource assignments", gates: "Burndown and weekly pace", owner: "" });
+  if (termEndAssumed(document) && termEnd) openItems.push({ item: `Entitlement end date: ${shortDate(termEnd)} is assumed as 12 months from the start; confirm the term`, gates: "Timeline end, weekly pace and follow-on scope", owner: "" });
   if (renewalPassed) openItems.push({ item: `The subscription renewal date on record (${shortDate(discovery.renewalDate!)}) has passed: confirm the renewal and the new term`, gates: "Licensing activation and core sizing", owner: "" });
   // Licensed cores the imported hosts do not account for usually mean an estate that was not exported.
   if (required && licensed && licensed > required) openItems.push({ item: `${(licensed - required).toLocaleString("en-US")} licensed cores are not matched to the hosts in these RVTools exports`, gates: "Licensing sizing; confirm whether another vCenter needs an RVTools export", owner: "" });
