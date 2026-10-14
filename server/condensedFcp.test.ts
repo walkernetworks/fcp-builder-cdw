@@ -319,6 +319,9 @@ describe("Condensed FCP review fixes", () => {
       { name: "Epic", kind: "workload", pathway: "import", instance: "Lifeline", hosts: 40, notes: "" },
     ] } as never;
     document.report.designProfile.availability = "";
+    // Enough entitlement that the domains stay in it rather than move to the follow-on.
+    document.report.entitlement.hours = null;
+    document.fields.entitlementAmount = 600_000;
     const refreshed = refreshDerivedDocument(document, { forceRebuild: true });
     const bars = new Map(refreshed.adoptionTimeline.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
     expect(bars.get("bar-management-domain")?.label).toBe("Lifeline Management Domain");
@@ -326,7 +329,8 @@ describe("Condensed FCP review fixes", () => {
     expect(bars.get("bar-workload-domain")).toMatchObject({ label: "Citrix VDI Workload Domain", prerequisites: ["bar-management-domain-2"] });
     expect(bars.get("bar-import-domain-1")).toMatchObject({ label: "Import Epic as a Workload Domain", prerequisites: ["bar-management-domain"] });
     const effort = scopedEffortForDocument(refreshed);
-    for (const id of ["bar-management-domain", "bar-management-domain-2", "bar-workload-domain", "bar-import-domain-1"]) expect(effort.workPackages.find(row => row.id === id)?.total ?? 0).toBeGreaterThan(0);
+    // In the entitlement or moved to the follow-on when the entitlement runs out, but always priced.
+    for (const id of ["bar-management-domain", "bar-management-domain-2", "bar-workload-domain", "bar-import-domain-1"]) { const row = effort.workPackages.find(item => item.id === id); expect((row?.total ?? 0) + (row?.followOn?.total ?? 0)).toBeGreaterThan(0); }
     expect(effort.internal.pass1?.inputs).toMatchObject({ workloadDomains: 2, instances: 2 });
     const visible = text(render(refreshed));
     expect(visible).toContain("Import Epic as a Workload Domain");

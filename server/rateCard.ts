@@ -28,8 +28,8 @@ const costOf = (roles: RoleHours & WorkPlanRoles) => roles.architect * RATE.arch
  * still fits and its prerequisites stayed. Design and governance work and work the planner pinned to the
  * entitlement never move; if they alone exceed the entitlement the plan stays over.
  */
-function withinBudget(document: EngagementDocument, effort: ScopedEffort, value: number): ScopedEffort {
-  const hours = document.report.entitlement.hours;
+function withinBudget(document: EngagementDocument, effort: ScopedEffort, value: number, hoursCap: number | null = document.report.entitlement.hours): ScopedEffort {
+  const hours = hoursCap;
   if ((!value && !hours) || effort.source === "assignments") return effort;
   const bars = document.adoptionTimeline.lanes.flatMap(lane => lane.bars);
   const dependents = new Map<string, string[]>();
@@ -64,13 +64,18 @@ function withinBudget(document: EngagementDocument, effort: ScopedEffort, value:
   return deferWorkPackages(effort, moves);
 }
 
-/** v2: the entitlement value turned into hours at the blended rate, fitted by Pass 2 (no squeeze), with dollars per bucket for the planner. */
+/**
+ * v2: the entitlement value turned into hours at the blended rate and fitted by Pass 2, with dollars per bucket for
+ * the planner. The plan never exceeds the hours left after the reserve: when the core alone needs more, the latest
+ * work packages move to the Two-Year Notional as follow-on scope, as the v1 squeeze does, until it fits.
+ */
 function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEffort {
   const override = document.fields.estimateInputs.blendedRate;
   const blendedRate = override ?? BLENDED_RATE;
   const value = document.fields.entitlementAmount > 0 ? document.fields.entitlementAmount : 0;
   const envelope = document.report.entitlement.hours === null && value ? value / blendedRate : null;
-  const effort = buildScopedEffort(document, { envelopeHours: envelope, envelopeSource: "entitlement value", today });
+  const built = buildScopedEffort(document, { envelopeHours: envelope, envelopeSource: "entitlement value", today });
+  const effort = built.internal.fit?.underFunded && built.source !== "assignments" ? fitUnderCap(document, built, built.internal.fit) : built;
   const fit = effort.internal.fit;
   const dollars = (hours: number) => Math.round(hours * blendedRate);
   const money: FitMoney | undefined = fit ? {
@@ -85,6 +90,28 @@ function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEff
   // Under v2 the fit decides what is in the entitlement; only an under-funded core makes the plan cost more than the value.
   const status = fit?.underFunded ? "over" : costStatus(ratio && ratio > 1 ? 1 : ratio);
   return { ...effort, internal: { ...effort.internal, cost: { planCost, followOnCost, entitlementValue: value, ratio, status, byPackage }, ...(money ? { money } : {}) } };
+}
+
+/** Moves the latest work packages to the follow-on until the plan fits the hours left after the reserve, and keeps the buckets in step. */
+function fitUnderCap(document: EngagementDocument, effort: ScopedEffort, fit: NonNullable<ScopedEffort["internal"]["fit"]>): ScopedEffort {
+  const squeezed = withinBudget(document, effort, 0, Math.floor(fit.fillableHours));
+  const moved = effort.totals.total - squeezed.totals.total;
+  const labels = squeezed.workPackages.filter(row => row.deferred === "over budget" && !effort.workPackages.find(item => item.id === row.id)?.deferred).map(row => row.label);
+  const stillOver = squeezed.totals.total > Math.floor(fit.fillableHours);
+  return {
+    ...squeezed,
+    internal: {
+      ...squeezed.internal,
+      fit: {
+        ...fit,
+        buckets: { ...fit.buckets, E1: fit.buckets.E1 - moved, F: fit.buckets.F + moved },
+        // Still over only when design and governance alone exceed what the entitlement funds.
+        underFunded: stillOver ? { gapHours: squeezed.totals.total - fit.fillableHours } : null,
+        movedToFollowOn: { hours: moved, packages: labels },
+        notes: [...fit.notes, `The core needed ${Math.round(fit.coreRequiredHours)} hours against ${Math.round(fit.fillableHours)} after the reserve; ${Math.round(moved)} hours (${labels.join(", ") || "none"}) moved to the Two-Year Notional as follow-on.`],
+      },
+    },
+  };
 }
 
 /** Scoped effort with the envelope filled from the entitlement value when entitled hours are missing, kept within the value, and its cost. */

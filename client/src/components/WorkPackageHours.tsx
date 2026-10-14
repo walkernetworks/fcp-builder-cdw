@@ -42,7 +42,9 @@ const COST_STYLE: Record<PlanCost["status"], { bar: string; box: string; text: s
 
 /** INTERNAL: the plan's cost at the rate card against the entitlement value. Never printed in a document. */
 export function CostMeter({ cost, hours, assignments = false, fit }: { cost: PlanCost; hours: number; assignments?: boolean; fit?: ScopedEffort["internal"]["fit"] }) {
-  const style = COST_STYLE[cost.status];
+  // Under-funded only because of the reserve: the plan costs less than the entitlement value but more than what is left after it.
+  const reserveOnly = cost.status === "over" && Boolean(fit?.underFunded) && !assignments && cost.planCost <= cost.entitlementValue;
+  const style = reserveOnly ? { ...COST_STYLE.over, text: "Over the hours left after the reserve" } : COST_STYLE[cost.status];
   const percent = cost.ratio === null ? 0 : Math.round(cost.ratio * 100);
   return (
     <div className={`rounded-xl border p-3 text-xs ${style.box}`}>
@@ -52,10 +54,11 @@ export function CostMeter({ cost, hours, assignments = false, fit }: { cost: Pla
       </div>
       <p className="mt-1 text-sm font-bold">
         {dollars(cost.planCost)} for {hours.toLocaleString("en-US")} hours
-        {cost.entitlementValue > 0 && <> of {dollars(cost.entitlementValue)} ({percent}%){cost.status === "over" ? ` · over by ${dollars(cost.planCost - cost.entitlementValue)}` : ` · ${dollars(cost.entitlementValue - cost.planCost)} left`}</>}
+        {cost.entitlementValue > 0 && <> of {dollars(cost.entitlementValue)} ({percent}%){cost.status === "over" && !reserveOnly ? ` · over by ${dollars(cost.planCost - cost.entitlementValue)}` : ` · ${dollars(cost.entitlementValue - cost.planCost)} left`}</>}
       </p>
+      {fit?.movedToFollowOn && fit.movedToFollowOn.hours > 0 && !assignments && <p className="mt-1 font-semibold">The core work needed {Math.round(fit.coreRequiredHours).toLocaleString("en-US")} hours against {Math.round(fit.fillableHours).toLocaleString("en-US")} left after the reserve, so the latest work moved to the Two-Year Notional as follow-on: {fit.movedToFollowOn.packages.join(", ")} ({Math.round(fit.movedToFollowOn.hours).toLocaleString("en-US")} h).</p>}
       {cost.status === "over" && fit?.underFunded && !assignments && <div className="mt-1 space-y-1">
-        <p className="font-semibold">Under-funded: the core work needs {Math.round(fit.coreRequiredHours).toLocaleString("en-US")} hours, but the entitlement funds {Math.round(fit.fillableHours).toLocaleString("en-US")} after the 8% reserve ({Math.round(fit.underFunded.gapHours).toLocaleString("en-US")} short). The v2 model keeps the core whole rather than cut part of the pathway, so the Condensed FCP will not export until it fits.</p>
+        <p className="font-semibold">Under-funded: the entitlement funds {Math.round(fit.fillableHours).toLocaleString("en-US")} hours after the reserve, and the design and governance work alone is {Math.round(fit.underFunded.gapHours).toLocaleString("en-US")} hours over it. Build and later work has already moved to the Two-Year Notional; design work never moves, so the Condensed FCP will not export until it fits.</p>
         <p>The core is discovery, design, the pathway build or upgrade, the dated migration waves and VCF Operations Tier 1. Largest parts: {fit.coreByLine.slice(0, 4).map(row => `${row.line} ${Math.round(row.loaded).toLocaleString("en-US")} h`).join("; ")}.</p>
         <p>To close the gap, change the scope rather than the estimate: correct the estate facts the hours are built from (see Assumptions below), mark a prior assessment if one was delivered, lower the dated migration waves, choose a smaller pathway, or raise the entitlement or the rate used.</p>
       </div>}

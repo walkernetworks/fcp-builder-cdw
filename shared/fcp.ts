@@ -692,6 +692,8 @@ export const estimateInputsSchema = z.object({
   broadcomBaselineDelivered: estimateFlag,
   // Entitlement fit
   blendedRate: z.number().positive().max(10_000).optional(),
+  /** Share of the entitlement held back from the plan, as a percent; 0 removes the reserve. Unset uses the 8% default. */
+  reservePercent: z.number().min(0).max(50).optional(),
   monthsRemaining: z.number().int().min(1).max(36).optional(),
   outcomeRanking: z.array(capabilitySchema).max(7).optional(),
   wantThisYear: z.array(capabilitySchema).max(7).optional(),
