@@ -3,15 +3,17 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { buildBurndown, buildCustomerEffort, buildScopedEffort, fitToEnvelope, scopedEffortLines, splitRoles, ROLE_LOADING, type EffortLine } from "../shared/effort";
-import { createDefaultDocument, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
+import { createDefaultDocument, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { fundedHoursFromValue, scopedEffortForDocument } from "./rateCard";
 
 const exampleBrief = () => JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../docs/examples/customer-brief.example.json"), "utf8"));
 
+/** The example brief as an engagement on the v1 hours model, which most tests in this file cover; v2 is in hoursV2.test.ts. */
 function engagement(patch: (document: EngagementDocument) => void = () => {}): EngagementDocument {
   // Start from no priorities so only the brief's choices apply (a new engagement preselects some).
   const base = createDefaultDocument();
   base.fields.priorities = [];
+  base.fields.hoursModel = "v1";
   const document = applyCustomerBrief(base, exampleBrief()).document;
   patch(document);
   return document;
@@ -217,11 +219,13 @@ describe("scoped effort table", () => {
 });
 
 describe("customer effort", () => {
-  it("builds phases from the plan with the migration phase as the peak", () => {
+  it("builds phases from the plan, with customer-run waves as the peak", () => {
     const { phases, peak } = buildCustomerEffort(engagement());
     expect(phases.map(phase => phase.phase)).toEqual(expect.arrayContaining(["Design sessions and design sign-off", "Platform build", "Migration waves"]));
     expect(phases.map(phase => phase.startDate)).toEqual([...phases.map(phase => phase.startDate)].sort());
-    expect(peak).toMatchObject({ phase: "Migration waves", total: 15, fte: 0.38 });
+    // The brief's customer-owned waves are the customer's own heavier phase, and its peak.
+    expect(phases.find(phase => phase.phase === "Migration waves")).toMatchObject({ total: 15, fte: 0.38 });
+    expect(peak).toMatchObject({ phase: "Customer-run migration waves", total: 30, fte: 0.75 });
     for (const phase of phases) expect(phase.platformLead + phase.operations + phase.network).toBe(phase.total);
   });
 });
@@ -315,7 +319,7 @@ describe("entitlement budget limit", () => {
   it("keeps pinned work in and stays over when only design and pinned work remain", () => {
     const tiny = scopedEffortForDocument(planned(1_000));
     expect(tiny.internal.cost!.status).toBe("over");
-    expect(tiny.workPackages.filter(row => row.total > 0).every(row => /design|requirements|mobilize|plan/i.test(row.label) || row.placement === "entitlement")).toBe(true);
+    expect(tiny.workPackages.filter(row => row.total > 0).every(row => /design|discovery|requirements|mobilize|plan|review|access mapping/i.test(row.label) || row.placement === "entitlement")).toBe(true);
 
     const document = planned(1_000);
     const build = scopedEffortForDocument(planned(10_000_000)).workPackages.find(row => row.id === "bar-management-domain")!;
@@ -326,8 +330,9 @@ describe("entitlement budget limit", () => {
 
 describe("placing work in the Two-Year Notional", () => {
   it("takes the package's hours out of the entitlement, even for design work", () => {
+    // A larger entitlement, so the plan fits without the budget squeeze refilling what is moved.
     const document = migrateDocument(engagement(document => {
-      Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated" });
+      Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated", entitlementAmount: 400_000 });
     }));
     const before = scopedEffortForDocument(document);
     const design = before.workPackages.find(row => row.id.startsWith("bar-playbook-design-") && row.total > 0)!;
@@ -365,7 +370,9 @@ describe("who owns a work package", () => {
   it("defaults hardware evidence and site work to the customer and the hardware gate to a checkpoint", () => {
     const rows = buildScopedEffort(planned()).workPackages;
     expect(rows.find(row => row.id === "bar-hcl-gate")?.owner).toBe("checkpoint");
-    expect(rows.find(row => row.id.startsWith("bar-hcl-") && row.id !== "bar-hcl-gate")?.owner).toBe("customer");
+    expect(rows.find(row => row.id.startsWith("bar-hcl-") && row.id !== "bar-hcl-gate" && row.id !== "bar-hcl-review")?.owner).toBe("customer");
+    // The review behind the sign-off is CDW's architect's work.
+    expect(rows.find(row => row.id === "bar-hcl-review")?.owner).toBe("cdw");
     expect(rows.find(row => row.id === "bar-management-domain")?.owner).toBe("cdw");
   });
 
@@ -410,13 +417,13 @@ describe("pre-built hours for every option", () => {
   options.push(["efficiency design", document => { document.fields.adoptionDetails.componentDepths.efficiency = "tier-2"; }]);
   options.push(["prior assessment", document => { document.report.discovery.assessmentCompleted = true; }]);
 
-  it("gives every CDW work package hours, on every path, edition and selected option", () => {
+  it("gives every CDW work package hours, on every path, edition and selected option, under both hours models", () => {
     const gaps: string[] = [];
-    for (const platformEdition of ["vcf", "vvf"] as const) {
+    for (const hoursModel of ["v1", "v2"] as const) for (const platformEdition of ["vcf", "vvf"] as const) {
       for (const upgradePath of ["undecided", "in-place", "converge", "import-workload-domain", "greenfield", "hybrid", "design-only"] as const) {
         for (const [name, select] of options) {
           const document = createDefaultDocument();
-          Object.assign(document.fields, { customerName: "Acme", plannedProjectStart: "2026-06-01", plannedImplementationStart: "2026-06-01", entitlementStart: "2026-06-01", priorities: [] });
+          Object.assign(document.fields, { customerName: "Acme", plannedProjectStart: "2026-06-01", plannedImplementationStart: "2026-06-01", entitlementStart: "2026-06-01", priorities: [], hoursModel });
           Object.assign(document.fields.adoptionDetails, { upgradePath, platformEdition });
           document.inventory.hosts = 40;
           select(document);
@@ -424,11 +431,24 @@ describe("pre-built hours for every option", () => {
           planned.report.entitlement.hours = null;
           planned.report.discovery.assessmentCompleted = document.report.discovery.assessmentCompleted;
           for (const row of buildScopedEffort(planned).workPackages) {
-            if (row.note === "not in the scoped hours" || row.id.startsWith("line:")) gaps.push(`${platformEdition} ${upgradePath} ${name}: ${row.id}`);
+            if (row.note === "not in the scoped hours" || row.id.startsWith("line:")) gaps.push(`${hoursModel} ${platformEdition} ${upgradePath} ${name}: ${row.id}`);
           }
         }
       }
     }
     expect(gaps).toEqual([]);
+  });
+});
+
+describe("hours model flag", () => {
+  it("defaults to v2, keeps v1 selectable, and keeps saved engagements parsing without the new fields", () => {
+    const document = createDefaultDocument();
+    expect(document.fields.hoursModel).toBe("v2");
+    expect(document.fields.estimateInputs).toEqual({});
+    const { hoursModel: _model, estimateInputs: _inputs, ...saved } = document.fields;
+    const parsed = minimalFieldsSchema.parse(saved);
+    expect(parsed.hoursModel).toBe("v2");
+    expect(minimalFieldsSchema.parse({ ...saved, hoursModel: "v1" }).hoursModel).toBe("v1");
+    expect(parsed.estimateInputs).toEqual({});
   });
 });

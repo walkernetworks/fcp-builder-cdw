@@ -6,7 +6,7 @@ import { FIXED_GANTT_CATEGORIES } from "../shared/fcp";
  */
 
 // Internal commercial, classification, and burndown terms that must never reach the page.
-const SCRUB = [
+export const SCRUB = [
   "DRAFT", "rate card", "hourly rate", "blended rate", "BCSegment", "Corporate segment", "Strategic segment", "Commercial segment",
   "pending Broadcom approval", "awaiting staffing", "NextSteps", "ProjectStatusNotes", "Expect PO Value", "PO Value", "Work Authorization #",
   "AT RISK", "catch-up pace", "catch up pace", "risk band", "gap points", "pace gap", "shortfall", "headroom", "funded hours", "unfunded",

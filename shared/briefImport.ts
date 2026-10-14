@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { capabilitySchema, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, type Capability, type EngagementDocument, type MinimalFields } from "./fcp";
+import { capabilitySchema, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, vcfDomainSchema, type Capability, type EngagementDocument, type MinimalFields } from "./fcp";
 import { createFieldCoercer, deepMerge, isPlainObject, type Json, type JsonObject } from "./fieldCoercion";
 import { ADD_ON_OUTCOMES, canonicalAddOn, discoveryAnswersSchema, reportSchema, type ReportContent } from "./report";
 
@@ -58,6 +58,7 @@ function looseScalars(value: unknown, key = ""): unknown {
   if (Array.isArray(value)) return value.map(item => looseScalars(item, key));
   if (isPlainObject(value)) return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, looseScalars(child, childKey)]));
   if (NUMBER_KEYS.has(key)) return looseNumber(value);
+  if (key === "jumboFrames" && typeof value === "string" && /mixed|partial|some|varies/i.test(value)) return "mixed";
   if (BOOLEAN_KEYS.has(key)) return looseBoolean(value);
   return value;
 }
@@ -168,6 +169,17 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   if (isPlainObject(discovery.componentDepth)) detailsPatch.componentDepths = discovery.componentDepth;
   if (typeof discovery.industry === "string") detailsPatch.industryTemplate = discovery.industry;
   if (typeof discovery.planningNotes === "string") detailsPatch.notes = discovery.planningNotes;
+  if (discovery.domains !== undefined) {
+    // Loose phrasing from Copilot: "Workload Domain", "Import", "greenfield build" and so on.
+    const rows = Array.isArray(discovery.domains) ? discovery.domains.map(row => isPlainObject(row) ? {
+      ...row,
+      kind: /manag/i.test(String(row.kind ?? "")) ? "management" : /work/i.test(String(row.kind ?? "")) ? "workload" : row.kind,
+      pathway: /import/i.test(String(row.pathway ?? "")) ? "import" : /converg/i.test(String(row.pathway ?? "")) ? "converge" : /green|new|build/i.test(String(row.pathway ?? "")) ? "greenfield" : row.pathway ?? undefined,
+      hosts: row.hosts === null || row.hosts === undefined || row.hosts === "" ? null : Number(row.hosts),
+      instance: row.instance ?? "", notes: row.notes ?? "",
+    } : row) : discovery.domains;
+    detailsPatch.domains = parseRows(rows, vcfDomainSchema, "discovery.domains", warnings);
+  }
   const newHosts = isPlainObject(discovery.newHostsPurchased) ? discovery.newHostsPurchased : {};
   if ((Number(newHosts.management) || 0) + (Number(newHosts.workload) || 0) > 0) fieldsPatch.hardwareAvailability = "new";
 

@@ -8,6 +8,7 @@ Internal CDW web app that turns RVTools exports into Functional Consumption Plan
 - `pnpm test`: full Vitest suite. Prefer a single file while iterating: `pnpm test server/pdf.test.ts`
 - `pnpm build`: production client and server bundle into `dist/`
 - `pnpm catalog:validate`: validates the HCL catalog in `shared/hclCatalog.ts`
+- `pnpm corpus:import "<VCF 9.1 TechDocs folder>"`: regenerates `shared/vcfCorpus.ts` (CPU support, CPU lifecycle, ESX builds, KB rules, partner server notes) from the weekly corpus refresh. Commit it with the test run.
 - `pnpm exec drizzle-kit migrate`: apply migrations in `drizzle/`. Avoid `pnpm db:push`, which also runs `drizzle-kit generate` and can create new migration files.
 
 `server/rvtools-supplied-verify.test.ts` is skipped unless the customer workbooks it reads exist under `/home/ubuntu/upload/`. They are not in the repo.
@@ -32,7 +33,7 @@ Don't add unrelated work to a branch whose PR is already open. Start a new branc
 - `server/trustedSso.ts`: sign-in; `server/exportTickets.ts` + `server/exportDownloadRoutes.ts`: signed download links
 - `client/src/pages/Home.tsx`: main workspace; `client/src/components/`: `PlanSetup`, `AdoptionTimelineEditor`, `DetailedAdoptionIntake`, `CompatibilityHandoffPanel`
 - `client/src/lib/rvtools.ts`: RVTools XLSX/CSV parsing, in the browser only
-- `shared/hcl.ts`, `shared/hclCatalog.ts`: hardware compatibility data
+- `shared/hcl.ts`, `shared/hclCatalog.ts`: hardware compatibility data; `shared/hclCorpus.ts` applies the corpus rules in `shared/vcfCorpus.ts` (generated)
 
 ## Rules
 

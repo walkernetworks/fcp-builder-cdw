@@ -1,5 +1,8 @@
 import { barWindow } from "./buildingBlocks";
 import { canonicalAddOn, completedReport } from "./report";
+import { BUILD_STAGE_WEIGHTS, HOURS_V2 } from "./hoursConfig";
+import { lineRoles, loadedOf, scopeV2, type Pass1, type V2Code } from "./hoursV2";
+import { fitV2, type FitV2 } from "./hoursFit";
 import type { Timeline } from "./fcp";
 import { activityOwner, calculateEntitlementEndDate, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
@@ -53,7 +56,8 @@ const ADD_ON_DESIGN_SHARE = 0.25;
 
 export type EffortLine = {
   workstream: string;
-  code: CatalogCode | "FILL";
+  /** A v1 catalog code, the v1 wave line, or a v2 line code. */
+  code: CatalogCode | "FILL" | V2Code;
   kind: LineKind;
   lead: Lead;
   /** Catalog (or default) base hours before any reduction. */
@@ -61,10 +65,16 @@ export type EffortLine = {
   base: number;
   /** Why the line is smaller than its full size, when it is. */
   reduction?: "proving run" | "design only" | "one domain";
+  /** v2: the line's hours by role, with its share of the engagement PM pool, for `base`. */
+  roles?: RoleHours;
+  /** v2: the add-on's design share was placed on its own, so these hours are build only. */
+  skipDesignShare?: boolean;
 };
 
 export type RoleHours = { architect: number; srConsultant: number; projectManager: number };
-export type EffortRow = RoleHours & { workstream: string; total: number; note?: string };
+/** Signed work plans can also carry these roles; calculated hours never do. */
+export type WorkPlanRoles = { seniorArchitect?: number; offshoreProjectManager?: number };
+export type EffortRow = RoleHours & WorkPlanRoles & { workstream: string; total: number; note?: string };
 
 /** Plan cost against the entitlement value: within up to 90%, near up to 100%, over beyond it. */
 export const COST_THRESHOLDS = { near: 0.9, over: 1 } as const;
@@ -106,13 +116,15 @@ export type WorkPackageEffort = RoleHours & {
 
 export type DeferralReason = "not funded" | "after the entitlement window" | "over budget" | "planned for later";
 
+export type FitMoney = { blendedRate: number; rateSource: "rate card" | "planner override"; buckets: Record<"E1" | "E2" | "F" | "C" | "reserve", number> };
+
 export type ScopedEffort = {
   /** Which table the report shows. */
   source: "assignments" | "calculated";
   rows: EffortRow[];
   /** The calculated hours spread over the timeline work packages that deliver them; columns foot to the calculated totals. */
   workPackages: WorkPackageEffort[];
-  totals: RoleHours & { total: number };
+  totals: RoleHours & WorkPlanRoles & { total: number };
   /** INTERNAL: the calculated lines and the fit against the envelope. Never rendered in the report. */
   internal: {
     lines: EffortLine[];
@@ -126,6 +138,12 @@ export type ScopedEffort = {
     status: FitStatus;
     shortfallHours: number;
     headroomHours: number;
+    /** v2 only: the Pass 1 scope. */
+    pass1?: Pass1;
+    /** v2 only, filled in by the server: the blended rate the fit used and dollars per bucket. Planner screens only. */
+    money?: FitMoney;
+    /** v2 only: the entitlement fit (Pass 2), with the month-by-month burn-down. Planner screens only. */
+    fit?: FitV2 & { burndown: Array<{ month: string; target: number; actual: number | null }> };
   };
 };
 
@@ -137,8 +155,12 @@ export function splitRoles(base: number, lead: Lead, supportShare = 0.15, pmShar
 }
 
 /** A line's hours by role, with its catalog entry's support and PM shares; `base` defaults to the line's current size. */
-function rolesOf(item: Pick<EffortLine, "code" | "base" | "lead">, base = item.base): RoleHours {
-  const entry: { support?: number; pm?: number } = item.code === "FILL" ? {} : CATALOG[item.code] as { support?: number; pm?: number };
+function rolesOf(item: Pick<EffortLine, "code" | "base" | "lead" | "roles">, base = item.base): RoleHours {
+  if (item.roles) {
+    const scale = item.base ? base / item.base : 0;
+    return { architect: item.roles.architect * scale, srConsultant: item.roles.srConsultant * scale, projectManager: item.roles.projectManager * scale };
+  }
+  const entry: { support?: number; pm?: number } = item.code === "FILL" ? {} : (CATALOG[item.code as CatalogCode] ?? {}) as { support?: number; pm?: number };
   return splitRoles(base, item.lead, entry.support, entry.pm);
 }
 
@@ -296,13 +318,17 @@ function rowsFromLines(lines: EffortLine[]): EffortRow[] {
   });
 }
 
-function totalsOf(rows: EffortRow[]): RoleHours & { total: number } {
-  return rows.reduce((sum, row) => ({
+function totalsOf(rows: EffortRow[]): RoleHours & WorkPlanRoles & { total: number } {
+  const totals = rows.reduce((sum, row) => ({
     architect: sum.architect + row.architect,
     srConsultant: sum.srConsultant + row.srConsultant,
     projectManager: sum.projectManager + row.projectManager,
+    seniorArchitect: sum.seniorArchitect + (row.seniorArchitect ?? 0),
+    offshoreProjectManager: sum.offshoreProjectManager + (row.offshoreProjectManager ?? 0),
     total: sum.total + row.total,
-  }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
+  }), { architect: 0, srConsultant: 0, projectManager: 0, seniorArchitect: 0, offshoreProjectManager: 0, total: 0 });
+  const { seniorArchitect, offshoreProjectManager, ...rest } = totals;
+  return { ...rest, ...(seniorArchitect ? { seniorArchitect } : {}), ...(offshoreProjectManager ? { offshoreProjectManager } : {}) };
 }
 
 /**
@@ -362,13 +388,31 @@ export function entitlementTermEnd(document: EngagementDocument): string | null 
 // Hours by timeline work package
 // ---------------------------------------------------------------------------------------------
 
+/** Packages whose lead is not the lane's usual delivery role. */
+const LEAD_ROLE_BY_BAR: Record<string, string> = {
+  "bar-hcl-review": "VCF Architect with the customer platform lead",
+  "bar-design-access-mapping": "VCF Architect with the customer identity owner",
+  "bar-design-edge-sites": "VCF Architect with the customer site owners",
+};
+
+/**
+ * The lane's lead role, unless the package's hours say otherwise: a package in the governance lane whose hours are
+ * mostly architect or consultant work (the discovery and pathway sessions) is led by the architect, not the PM.
+ */
+function leadRoleFor(laneRole: string, roles: RoleHours): string {
+  const pmLed = laneRole === DELIVERY_ROLE_BY_WORKSTREAM.Governance;
+  const technical = Math.max(roles.architect, roles.srConsultant);
+  if (!pmLed || technical <= roles.projectManager) return laneRole;
+  return roles.architect >= roles.srConsultant ? "VCF Architect" : "Senior Consultant";
+}
+
 /** Program management and steering: these carry the plan's project-manager hours, not technical hours. */
 const GOVERNANCE_BARS = /^bar-(platform-plan|platform-execution-decision|platform-design-authority)$/;
 /** Requirements and discovery packages carry the discovery line; the other design packages carry architecture and design. */
 const DISCOVERY_BARS = /^bar-playbook-design-requirements$/;
-const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$)/;
+const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$|hcl-review$|design-access-mapping$|design-edge-sites$)/;
 const COMPONENT_DESIGN_BARS = /^bar-playbook-component-design-/;
-const BUILD_BARS = /^bar-(management-domain|workload-domain|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover|playbook-adoption-vcf-management$)/;
+const BUILD_BARS = /^bar-(management-domain(-\d+)?|workload-domain(-\d+)?|import-domain-\d+|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover|platform-enablement|playbook-adoption-vcf-management$)/;
 /**
  * Relative effort of each build package, used to split the deploy line instead of window length. Sized from the
  * VCF 9.1 Planning and Preparation Workbook: deploying and configuring the management domain with its fleet
@@ -376,12 +420,12 @@ const BUILD_BARS = /^bar-(management-domain|workload-domain|converge-management-
  * preparation are lighter, handover lighter still, and licensing activation is a few hours.
  */
 const BUILD_WEIGHTS: Array<[RegExp, number]> = [
-  [/^bar-(management-domain|converge-management-domain|vvf-foundation|playbook-adoption-vcf-management|import-workload-domain)$/, 1],
-  [/^bar-workload-domain$/, 0.8],
-  [/^bar-vvf-workload-clusters$/, 0.4],
-  [/^bar-(import-foundation-validation|in-place-preparation)$/, 0.4],
-  [/^bar-platform-handover$/, 0.2],
-  [/^bar-platform-licensing$/, 0.1],
+  [/^bar-(management-domain(-\d+)?|converge-management-domain|vvf-foundation|playbook-adoption-vcf-management|import-workload-domain(-\d+)?|import-domain-\d+)$/, BUILD_STAGE_WEIGHTS.managementDomain.value],
+  [/^bar-workload-domain(-\d+)?$/, BUILD_STAGE_WEIGHTS.workloadDomain.value],
+  [/^bar-vvf-workload-clusters$/, BUILD_STAGE_WEIGHTS.vvfCluster.value],
+  [/^bar-(import-foundation-validation|in-place-preparation)$/, BUILD_STAGE_WEIGHTS.preparation.value],
+  [/^bar-(platform-handover|platform-enablement)$/, BUILD_STAGE_WEIGHTS.handover.value],
+  [/^bar-platform-licensing$/, BUILD_STAGE_WEIGHTS.licensing.value],
 ];
 const buildWeight = (id: string) => BUILD_WEIGHTS.find(([pattern]) => pattern.test(id))?.[1] ?? 0.4;
 /** Work packages each catalog line pays for: the implementation bars, or the component design bar when the line is design only. */
@@ -404,17 +448,30 @@ const ADD_ON_BARS: Partial<Record<CatalogCode, { bars: RegExp; design: string }>
   X15: { bars: /^bar-(cloud-)?(networking-load-balancing|security-waf)/, design: "networking|security" },
   EF: { bars: /^bar-playbook-component-design-efficiency$/, design: "efficiency" },
 };
+/** v2 add-on lines on the same packages as their v1 counterparts; the VCF Automation platform sits on the first automation package. */
+const V2_ADD_ON_BARS: Partial<Record<V2Code, { bars: RegExp; design: string }>> = {
+  ...(ADD_ON_BARS as Partial<Record<V2Code, { bars: RegExp; design: string }>>),
+  X_VCFA_platform: { bars: /^bar-(cloud-)?automation(-(?!data-services).*)?$/, design: "automation" },
+};
+const addOnBars = (code: EffortLine["code"]) => (code === "FILL" ? undefined : (V2_ADD_ON_BARS as Record<string, { bars: RegExp; design: string } | undefined>)[code]);
+/** Lines that carry discovery, architecture, and the build (spread by build weight), in both models. */
+const DISCOVERY_CODES = /^(DD\d?|DX)$/;
+const DESIGN_CODES = /^A\d?$/;
+const BUILD_CODES = /^(D\d|U\d|X1|D|D_VVF|S_storage|U_VVF|C1|R_remed|U3)$/;
 /** The component design package(s) an add-on's design work sits on. */
 const componentDesign = (addOn: { design: string }) => (id: string) => new RegExp(`^bar-playbook-component-design-(${addOn.design})$`).test(id);
 
 function barsForLine(item: EffortLine, discoveryInScope = true): (id: string) => boolean {
   // With a prior assessment there is no discovery line, and the architecture line covers requirements too.
-  if (/^A\d$/.test(item.code)) return id => CORE_DESIGN_BARS.test(id) && !(discoveryInScope && DISCOVERY_BARS.test(id));
-  if (/^(DD\d|DX)$/.test(item.code)) return id => DISCOVERY_BARS.test(id);
-  if (/^(D\d|U\d)$/.test(item.code)) return id => BUILD_BARS.test(id);
-  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain|platform-handover)$/.test(id);
-  if (item.code === "FILL") return id => /^bar-playbook-execution-/.test(id);
-  const addOn = ADD_ON_BARS[item.code];
+  if (DESIGN_CODES.test(item.code)) return id => CORE_DESIGN_BARS.test(id) && !(discoveryInScope && DISCOVERY_BARS.test(id));
+  if (DISCOVERY_CODES.test(item.code)) return id => DISCOVERY_BARS.test(id);
+  if (/^(D\d|U\d|D|D_VVF|S_storage|U_VVF|C1)$/.test(item.code)) return id => BUILD_BARS.test(id);
+  // v2: remediation runs before the converge or upgrade; the VCF upgrade runs on the upgrade packages.
+  if (item.code === "R_remed") return id => /^bar-(in-place-preparation|converge-management-domain|vvf-foundation)$/.test(id);
+  if (item.code === "U3") return id => /^bar-(in-place-preparation|playbook-execution-upgrade-waves|playbook-adoption-vcf-management)$/.test(id);
+  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain(-\d+)?|import-domain-\d+|platform-handover|platform-enablement|playbook-adoption-vcf-management)$/.test(id);
+  if (item.code === "FILL" || item.code === "FILL_mig" || item.code === "FILL_ip") return id => /^bar-playbook-execution-/.test(id);
+  const addOn = addOnBars(item.code);
   if (!addOn) return () => false;
   if (item.reduction === "design only") return componentDesign(addOn);
   return id => addOn.bars.test(id);
@@ -453,7 +510,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   const overrides = new Map(document.report.workPackageHours.map(item => [item.id, item]));
   const deferred = new Map<string, DeferralReason>();
   for (const item of lines) {
-    const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
+    const addOn = addOnBars(item.code);
     if (addOn && item.reduction === "design only") for (const { bar } of bars) if (addOn.bars.test(bar.id) && !componentDesign(addOn)(bar.id)) deferred.set(bar.id, "not funded");
   }
   for (const { bar } of bars) {
@@ -494,23 +551,33 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   // management is pooled and placed after the lines are spread.
   const governance = live(id => GOVERNANCE_BARS.test(id));
   let designPm = 0;
-  const discoveryInScope = lines.some(item => /^(DD\d|DX)$/.test(item.code));
+  const discoveryInScope = lines.some(item => DISCOVERY_CODES.test(item.code));
   for (const item of lines) {
     let roles = rolesOf(item);
-    if (/^(A\d|DD\d|DX)$/.test(item.code) && governance.length) {
+    if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && governance.length) {
       designPm += roles.projectManager;
       roles = { ...roles, projectManager: 0 };
     }
     // Customer-owned packages keep their share of the line, which then drops out of CDW's hours.
     let matches = bars.filter(({ bar }) => barsForLine(item, discoveryInScope)(bar.id) && activityOwner(bar) !== "checkpoint");
+    // Supervisor and VKS required by Private AI sit on the Private AI packages when the plan has no Kubernetes packages.
+    if (item.code === "X9" && !matches.length) {
+      const fallback = item.reduction === "design only" ? /^bar-playbook-component-design-(kubernetes|private-ai)$/ : /^bar-(cloud-)?private-ai/;
+      matches = bars.filter(({ bar }) => fallback.test(bar.id) && activityOwner(bar) !== "checkpoint");
+    }
+    // The VCF Automation platform is built once, on the first automation package.
+    if (item.code === "X_VCFA_platform" && matches.length > 1) {
+      const first = matches.reduce((earliest, candidate) => (candidate.bar.startCol < earliest.bar.startCol ? candidate : earliest));
+      matches = [first];
+    }
     // Architecture and discovery fall back to the other design packages, then to any design package, when theirs are not on the plan.
-    if (/^(A\d|DD\d|DX)$/.test(item.code) && !matches.some(({ bar }) => inEntitlement(bar.id))) {
+    if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && !matches.some(({ bar }) => inEntitlement(bar.id))) {
       const core = live(id => CORE_DESIGN_BARS.test(id));
       matches = core.length ? core : live(id => COMPONENT_DESIGN_BARS.test(id));
     }
     // A fully scoped add-on designs its component on the component design package and builds on the rest.
-    const addOnDesign = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
-    if (addOnDesign && item.reduction !== "design only") {
+    const addOnDesign = addOnBars(item.code);
+    if (addOnDesign && item.reduction !== "design only" && !item.skipDesignShare) {
       const design = live(componentDesign(addOnDesign));
       if (design.length && matches.some(({ bar }) => inEntitlement(bar.id))) {
         spread(design, scale(roles, ADD_ON_DESIGN_SHARE), () => true, inWindow);
@@ -520,13 +587,14 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     // Work the planner placed in the notional keeps its share of the line and takes it out of the entitlement.
     const current = matches.filter(({ bar }) => inEntitlement(bar.id));
     // The deploy line is split by how much work each build package is, not by how long its window is.
-    const weightOf = /^(D\d|U\d|X1)$/.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : lengthWeight;
+    // The hardware review and the access mapping are focused pieces of design: half a design package's share.
+    const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : (bar: TimelineBar) => lengthWeight(bar) * (/^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(bar.id) ? 0.5 : 1);
     if (current.length) spread(current, roles, () => true, inWindow, weightOf);
     else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     // Deferred packages of the line get their share as a follow-on estimate.
     spread(matches, roles, id => deferred.has(id) && deferred.get(id) !== "planned for later", followOn, weightOf);
     // An add-on cut to its design keeps the rest of its hours on its build packages, as follow-on scope.
-    const addOn = item.code === "FILL" ? undefined : ADD_ON_BARS[item.code];
+    const addOn = addOnBars(item.code);
     if (addOn && item.reduction === "design only" && item.fullBase > item.base) {
       const build = bars.filter(({ bar }) => addOn.bars.test(bar.id) && cdw(bar.id));
       if (build.length) {
@@ -583,7 +651,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       label: placed?.bar.label ?? entry?.row.label ?? id,
       category: lane?.category ?? null,
       workstreamType: lane?.workstreamType ?? null,
-      leadRole: lane ? DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType] : "",
+      leadRole: LEAD_ROLE_BY_BAR[id] ?? leadRoleFor(lane ? DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType] : "", roles),
       start: window?.start ?? null,
       end: window?.end ?? null,
       ...(reason ? { architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: reason, followOn: { ...roles, total: sum } } : { ...roles, total: sum }),
@@ -598,7 +666,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
 
 /** Work packages that are design work; the budget limit never moves them out of the entitlement. */
 /** Design and governance work stays in the entitlement; operating readiness for a later implementation can move. */
-export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || /^bar-playbook-(component-)?design-/.test(id);
+export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || /^bar-playbook-(component-)?design-/.test(id) || /^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(id);
 
 /** Moves work packages out of the entitlement into follow-on scope and recalculates the entitlement totals. */
 export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, DeferralReason>): ScopedEffort {
@@ -606,7 +674,9 @@ export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, Defer
   const workPackages = effort.workPackages.map(row => {
     const reason = moves.get(row.id);
     if (!reason || row.deferred) return row;
-    return { ...row, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: reason, followOn: { architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager, total: row.total } };
+    // The package's year-one hours join whatever follow-on hours it already carried (for example the remaining waves).
+    const prior = row.followOn ?? { architect: 0, srConsultant: 0, projectManager: 0, total: 0 };
+    return { ...row, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: reason, followOn: { architect: prior.architect + row.architect, srConsultant: prior.srConsultant + row.srConsultant, projectManager: prior.projectManager + row.projectManager, total: prior.total + row.total } };
   });
   if (effort.source === "assignments") return { ...effort, workPackages };
   const totals = workPackages.reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
@@ -619,7 +689,10 @@ export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, Defer
  */
 export function timelinesWithDeferrals(document: EngagementDocument, deferredIds: string[]): { adoption: Timeline; notional: Timeline } {
   const ids = new Set(deferredIds);
-  const adoption: Timeline = { ...document.adoptionTimeline, lanes: document.adoptionTimeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !ids.has(bar.id)) })) };
+  // Work that stays no longer waits for work that moved out: it goes ahead without it (for example VLAN-backed
+  // workload domains when the NSX build-out moves to the follow-on).
+  const withoutMoved = (bar: TimelineBar) => (bar.prerequisites?.some(id => ids.has(id)) ? { ...bar, prerequisites: bar.prerequisites.filter(id => !ids.has(id)) } : bar);
+  const adoption: Timeline = { ...document.adoptionTimeline, lanes: document.adoptionTimeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !ids.has(bar.id)).map(withoutMoved) })) };
   const notional = document.twoYearPlan;
   const termEnd = entitlementTermEnd(document);
   const start = /^(\d{4})-(\d{2})/.exec(notional.startDate);
@@ -627,21 +700,41 @@ export function timelinesWithDeferrals(document: EngagementDocument, deferredIds
   if (!ids.size || !start || !end) return { adoption, notional };
   // First notional month after the entitlement ends (monthly columns from the notional start).
   const firstAfter = (Number(end[1]) - Number(start[1])) * 12 + Number(end[2]) - Number(start[2]) + 2;
-  const moving = notional.lanes.flatMap(lane => lane.bars).filter(bar => ids.has(bar.id) && bar.startCol < firstAfter);
-  if (!moving.length || firstAfter > notional.columns.length) return { adoption, notional };
-  const earliest = Math.min(...moving.map(bar => bar.startCol));
+  const all = notional.lanes.flatMap(lane => lane.bars);
+  // A checkpoint tied to moved work moves with it.
+  const movedIds = new Set(all.filter(bar => ids.has(bar.id) && bar.startCol < firstAfter).map(bar => bar.id));
+  for (const bar of all) if (activityOwner(bar) === "checkpoint" && (bar.prerequisites ?? []).some(id => movedIds.has(id))) movedIds.add(bar.id);
+  const moving = all.filter(bar => movedIds.has(bar.id));
+  const notionalWithoutMoved: Timeline = { ...notional, lanes: notional.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => (ids.has(bar.id) ? bar : withoutMoved(bar))) })) };
+  if (!moving.length || firstAfter > notional.columns.length) return { adoption, notional: notionalWithoutMoved };
+  const earliest = Math.min(...moving.filter(bar => ids.has(bar.id)).map(bar => bar.startCol));
   const last = notional.columns.length + 1;
+  const placed = new Map(all.map(bar => [bar.id, { startCol: bar.startCol, endCol: bar.endCol }]));
+  for (const bar of moving) {
+    const startCol = Math.min(notional.columns.length, Math.max(firstAfter, firstAfter + bar.startCol - earliest));
+    placed.set(bar.id, { startCol, endCol: Math.min(last, Math.max(startCol + 1, startCol + bar.endCol - bar.startCol)) });
+  }
+  // Moved work starts after its prerequisites end, including work that stayed and runs past the entitlement end.
+  for (let pass = 0; pass < moving.length; pass += 1) {
+    let changed = false;
+    for (const bar of moving) {
+      const current = placed.get(bar.id)!;
+      const after = Math.max(0, ...(bar.prerequisites ?? []).map(id => placed.get(id)?.endCol ?? 0));
+      if (after > current.startCol && current.startCol < notional.columns.length) {
+        const startCol = Math.min(notional.columns.length, after);
+        placed.set(bar.id, { startCol, endCol: Math.min(last, Math.max(startCol + 1, startCol + current.endCol - current.startCol)) });
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
   return {
     adoption,
     notional: {
       ...notional,
       lanes: notional.lanes.map(lane => ({
         ...lane,
-        bars: lane.bars.map(bar => {
-          if (!moving.includes(bar)) return bar;
-          const startCol = Math.min(notional.columns.length, firstAfter + bar.startCol - earliest);
-          return { ...bar, startCol, endCol: Math.min(last, Math.max(startCol + 1, startCol + bar.endCol - bar.startCol)) };
-        }),
+        bars: lane.bars.map(bar => (movedIds.has(bar.id) ? { ...bar, ...placed.get(bar.id)! } : withoutMoved(bar))),
       })),
     },
   };
@@ -669,20 +762,142 @@ export function withOwnership(document: EngagementDocument): EngagementDocument 
 }
 const categoryIndex = (category: TimelineLane["category"] | null) => (category ? FIXED_GANTT_CATEGORIES.indexOf(category) : FIXED_GANTT_CATEGORIES.length);
 
-export function buildScopedEffort(document: EngagementDocument, options: { envelopeHours?: number | null; envelopeSource?: ScopedEffort["internal"]["envelopeSource"] } = {}): ScopedEffort {
+export type ScopedEffortOptions = { envelopeHours?: number | null; envelopeSource?: ScopedEffort["internal"]["envelopeSource"]; today?: string };
+
+/** Scoped effort from the hours model the document selects. */
+export function buildScopedEffort(document: EngagementDocument, options: ScopedEffortOptions = {}): ScopedEffort {
+  return document.fields.hoursModel === "v2" ? buildScopedEffortV2(document, options) : buildScopedEffortV1(document, options);
+}
+
+/** v2 Pass 1 lines as effort lines, so they spread across the same stages as v1; `bases` limits each line to part of its hours. */
+export function effortLinesFromPass1(pass1: Pass1, bases?: Map<V2Code, number>): EffortLine[] {
+  return pass1.lines.flatMap(line => {
+    const base = bases ? bases.get(line.code) ?? 0 : line.computedBase;
+    if (base <= 0) return [];
+    return [{
+      workstream: line.name,
+      code: line.code,
+      kind: line.code.startsWith("FILL") ? "fill" as const : line.code.startsWith("X") || line.code === "EF" ? "addon" as const : "core" as const,
+      lead: line.lead,
+      fullBase: base,
+      base,
+      roles: lineRoles(pass1, line, base),
+      ...(line.designOnly ? { reduction: "design only" as const } : {}),
+    }];
+  });
+}
+
+/** Whole months from today (or the entitlement start, if later) to the end of the entitlement term. */
+function monthsLeft(document: EngagementDocument, today: string): number {
+  const end = entitlementTermEnd(document);
+  const start = document.fields.entitlementStart && document.fields.entitlementStart > today ? document.fields.entitlementStart : today;
+  if (!end) return HOURS_V2.fit.termMonths.value;
+  const [sy, sm] = start.split("-").map(Number);
+  const [ey, em] = end.split("-").map(Number);
+  return Math.max(1, (ey - sy) * 12 + em - sm);
+}
+
+/** Target and actual hours used, month by month, from the entitlement start to its end. */
+function fitBurndown(document: EngagementDocument, fit: FitV2): Array<{ month: string; target: number; actual: number | null }> {
+  const startDate = document.fields.entitlementStart || document.fields.plannedProjectStart;
+  const end = entitlementTermEnd(document);
+  if (!/^\d{4}-\d{2}/.test(startDate) || !end) return [];
+  const [sy, sm] = startDate.split("-").map(Number);
+  const [ey, em] = end.split("-").map(Number);
+  const months = Math.max(1, (ey - sy) * 12 + em - sm);
+  const consumed = document.report.entitlement.hoursConsumed;
+  const consumedMonth = document.report.entitlement.consumedAsOf?.slice(0, 7) ?? null;
+  return Array.from({ length: months }, (_, index) => {
+    const date = new Date(Date.UTC(sy, sm - 1 + index, 1));
+    const month = date.toISOString().slice(0, 7);
+    return { month, target: Math.min(fit.entitlementHours, (fit.entitlementHours / months) * (index + 1)), actual: consumed !== null && consumedMonth === month ? consumed : null };
+  });
+}
+
+/** The v2 model: Pass 1 scope, fitted to the entitlement by Pass 2, spread across the plan's stages. */
+function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffortOptions): ScopedEffort {
+  const pass1 = scopeV2(document);
+  const entitled = document.report.entitlement.hours;
+  const envelopeHours = entitled ?? options.envelopeHours ?? null;
+  const envelopeSource: ScopedEffort["internal"]["envelopeSource"] = entitled !== null ? "entitled hours" : envelopeHours !== null ? options.envelopeSource ?? "entitlement value" : "none";
+  const fullScopeHours = pass1.lines.reduce((sum, line) => sum + loadedOf(pass1, line, line.computedBase), 0);
+  if (envelopeHours === null || envelopeHours <= 0) {
+    return assembleScopedEffort(document, effortLinesFromPass1(pass1), { envelopeHours, envelopeSource, fullScopeHours, status: "no-envelope", shortfallHours: 0, headroomHours: 0 }, { pass1 });
+  }
+  const inputs = document.fields.estimateInputs;
+  const fit = fitV2(pass1, {
+    entitlementHours: envelopeHours,
+    monthsRemaining: inputs.monthsRemaining ?? monthsLeft(document, options.today ?? new Date().toISOString().slice(0, 10)),
+    ranking: inputs.outcomeRanking,
+    wantThisYear: inputs.wantThisYear,
+    datedWaves: pass1.inputs.datedWaves,
+    ...(inputs.reservePercent !== undefined ? { reserveShare: inputs.reservePercent / 100 } : {}),
+  });
+  const fundedBases = new Map<V2Code, number>();
+  const displacedBases = new Map<V2Code, number>();
+  const designShared = new Set<V2Code>();
+  for (const placement of fit.placements) {
+    const target = placement.bucket === "E1" || placement.bucket === "E2" ? fundedBases : displacedBases;
+    target.set(placement.code, (target.get(placement.code) ?? 0) + placement.base);
+    if (placement.designShare) designShared.add(placement.code);
+  }
+  // A line with only its design share in the entitlement is designed now and built later.
+  const fundedLines = effortLinesFromPass1(pass1, fundedBases).map(line => (designShared.has(line.code as V2Code) ? { ...line, reduction: "design only" as const } : line));
+  const displacedLines = effortLinesFromPass1(pass1, displacedBases).map(line => (designShared.has(line.code as V2Code) ? { ...line, skipDesignShare: true } : line));
+  const status: FitStatus = fit.underFunded ? "short" : displacedLines.length ? "fits-reduced" : "fits";
+  const effort = assembleScopedEffort(document, fundedLines, { envelopeHours, envelopeSource, fullScopeHours, status, shortfallHours: fit.underFunded?.gapHours ?? 0, headroomHours: fit.entitlementRemaining }, { pass1, fit: { ...fit, burndown: fitBurndown(document, fit) } });
+  if (!displacedLines.length) return effort;
+
+  // Displaced hours sit on their stages as follow-on scope; a stage with nothing left in the entitlement moves to the Two-Year Notional.
+  const displacedRows = workPackageEffort(document, displacedLines, totalsOf(rowsFromLines(displacedLines)));
+  const later = new Map(displacedRows.map(row => [row.id, row.total > 0 ? row : row.followOn ? { ...row, ...row.followOn } : row]));
+  const merged = effort.workPackages.map((row): WorkPackageEffort => {
+    const moved = later.get(row.id);
+    later.delete(row.id);
+    if (!moved || moved.total <= 0 || row.note === "checkpoint" || row.note === "customer-owned") return row;
+    const followOn = { architect: (row.followOn?.architect ?? 0) + moved.architect, srConsultant: (row.followOn?.srConsultant ?? 0) + moved.srConsultant, projectManager: (row.followOn?.projectManager ?? 0) + moved.projectManager, total: (row.followOn?.total ?? 0) + moved.total };
+    if (row.total > 0 || row.deferred) return { ...row, followOn };
+    const { note: _note, ...rest } = row;
+    return { ...rest, deferred: "not funded", followOn };
+  });
+  for (const row of Array.from(later.values())) if (row.total > 0) merged.push({ ...row, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: "not funded", followOn: { architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager, total: row.total } });
+  return { ...effort, workPackages: merged };
+}
+
+/** The v1 bracket model. */
+export function buildScopedEffortV1(document: EngagementDocument, options: ScopedEffortOptions = {}): ScopedEffort {
   const entitled = document.report.entitlement.hours;
   const envelopeHours = entitled ?? options.envelopeHours ?? null;
   const envelopeSource = entitled !== null ? "entitled hours" : envelopeHours !== null ? options.envelopeSource ?? "entitlement value" : "none";
   const fitted = fitToEnvelope(scopedEffortLines(document), envelopeHours);
-  const calculatedRows = rowsFromLines(fitted.lines);
-  const assignments = completedReport(document.report).resourceAssignments.map(item => ({
+  return assembleScopedEffort(document, fitted.lines, {
+    envelopeHours,
+    envelopeSource,
+    fullScopeHours: fitted.fullScopeHours,
+    status: fitted.status,
+    shortfallHours: fitted.shortfallHours,
+    headroomHours: fitted.headroomHours,
+  });
+}
+
+/** Rows, stage hours and totals from a model's lines. */
+function assembleScopedEffort(
+  document: EngagementDocument,
+  lines: EffortLine[],
+  fit: { envelopeHours: number | null; envelopeSource: ScopedEffort["internal"]["envelopeSource"]; fullScopeHours: number; status: FitStatus; shortfallHours: number; headroomHours: number },
+  extra: Pick<ScopedEffort["internal"], "pass1" | "fit"> = {},
+): ScopedEffort {
+  const calculatedRows = rowsFromLines(lines);
+  const assignments: EffortRow[] = completedReport(document.report).resourceAssignments.map(item => ({
     workstream: item.workstream,
     architect: item.architect,
     srConsultant: item.srConsultant,
     projectManager: item.projectManager,
-    total: item.architect + item.srConsultant + item.projectManager,
+    ...(item.seniorArchitect ? { seniorArchitect: item.seniorArchitect } : {}),
+    ...(item.offshoreProjectManager ? { offshoreProjectManager: item.offshoreProjectManager } : {}),
+    total: item.architect + item.srConsultant + item.projectManager + (item.seniorArchitect ?? 0) + (item.offshoreProjectManager ?? 0),
   }));
-  const workPackages = workPackageEffort(document, fitted.lines, totalsOf(calculatedRows));
+  const workPackages = workPackageEffort(document, lines, totalsOf(calculatedRows));
   const planned = workPackages.filter(row => row.total > 0);
   const rows = assignments.length ? assignments : calculatedRows;
   // The calculated plan is the work packages as adjusted by the planner; it falls back to the catalog lines with no timeline.
@@ -693,15 +908,16 @@ export function buildScopedEffort(document: EngagementDocument, options: { envel
     workPackages,
     totals: assignments.length ? totalsOf(assignments) : calculatedTotals,
     internal: {
-      lines: fitted.lines,
+      lines,
       calculatedRows,
-      envelopeHours,
-      envelopeSource,
-      fullScopeHours: Math.round(fitted.fullScopeHours),
+      envelopeHours: fit.envelopeHours,
+      envelopeSource: fit.envelopeSource,
+      fullScopeHours: Math.round(fit.fullScopeHours),
       planHours: calculatedTotals.total,
-      status: fitted.status,
-      shortfallHours: Math.round(fitted.shortfallHours),
-      headroomHours: Math.round(fitted.headroomHours),
+      status: fit.status,
+      shortfallHours: Math.round(fit.shortfallHours),
+      headroomHours: Math.round(fit.headroomHours),
+      ...extra,
     },
   };
 }
@@ -721,13 +937,15 @@ export type CustomerEffortPhase = {
   fte: number;
 };
 
-type PhaseKey = "design" | "build" | "migration" | "capability" | "recovery" | "handover";
+type PhaseKey = "design" | "build" | "migration" | "customerWaves" | "capability" | "recovery" | "handover";
 
 /** Default customer hours per week by phase type: platform lead, operations, network. */
 export const CUSTOMER_EFFORT_DEFAULTS: Record<PhaseKey, { phase: string; platformLead: number; operations: number; network: number }> = {
   design: { phase: "Design sessions and design sign-off", platformLead: 3, operations: 2, network: 2 },
   build: { phase: "Platform build", platformLead: 4, operations: 2, network: 2 },
   migration: { phase: "Migration waves", platformLead: 8, operations: 6, network: 1 },
+  // The customer's team runs these waves itself, so it carries the platform and application work CDW carried in the proving waves.
+  customerWaves: { phase: "Customer-run migration waves", platformLead: 16, operations: 10, network: 4 },
   capability: { phase: "Capability enablement", platformLead: 3, operations: 3, network: 1 },
   recovery: { phase: "Recovery design and build", platformLead: 3, operations: 3, network: 2 },
   handover: { phase: "Knowledge transfer and handover", platformLead: 2, operations: 3, network: 1 },
@@ -737,7 +955,8 @@ function phaseOf(activity: TimelineBar): PhaseKey | null {
   const id = activity.id;
   if (/^bar-(playbook-design-|playbook-component-design-|platform-plan$)/.test(id)) return "design";
   if (/^bar-(management-domain|vvf-foundation|vvf-workload-clusters|workload-domain|vcf-networking-nsx|converge-management-domain|import-foundation-validation|in-place-preparation|networking-|hcl-|soft-prerequisite-)/.test(id)) return "build";
-  if (/^bar-(playbook-execution-|import-workload-domain$)/.test(id)) return "migration";
+  if (/^bar-(playbook-execution-|import-workload-domain(-\d+)?$)/.test(id)) return "migration";
+  if (/^bar-import-domain-\d+$/.test(id)) return "build";
   if (/^bar-resilience-/.test(id)) return "recovery";
   if (/^bar-(operations-|cloud-|security-|platform-licensing$|playbook-adoption-)/.test(id)) return "capability";
   if (id === "bar-platform-handover") return "handover";
@@ -752,6 +971,23 @@ export function formatWindow(start: string, end: string): string {
   return start.slice(0, 4) === end.slice(0, 4) ? `${monthOnly(start)} – ${monthYear(end)}` : `${monthYear(start)} – ${monthYear(end)}`;
 }
 
+/**
+ * The waves the customer's team runs after CDW's proving waves, with the runbook CDW proved: from the month after
+ * CDW's waves end, about one month per 250 VMs (3 to 12 months). Null when the plan has no waves.
+ */
+export function customerRemainingWaves(document: EngagementDocument): { label: string; start: string; end: string } | null {
+  // CDW's waves in the entitlement, or in the Two-Year Notional when they moved there.
+  const endOf = (timeline: Timeline) => timeline.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-playbook-execution-/.test(bar.id))
+    .map(bar => barWindow(timeline, bar)?.end).filter((end): end is string => Boolean(end)).sort().at(-1);
+  const last = endOf(document.adoptionTimeline) ?? endOf(document.twoYearPlan);
+  if (!last) return null;
+  const upgrade = effectiveDeliveryPath(document.fields) === "in-place";
+  const months = Math.min(12, Math.max(3, Math.ceil((document.inventory.vmCount || 0) / 250)));
+  const month = (iso: string, add: number) => { const date = new Date(`${iso.slice(0, 7)}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + add); return date.toISOString().slice(0, 7); };
+  const customer = document.fields.customerName || "the customer";
+  return { label: `Remaining ${upgrade ? "upgrade" : "migration"} waves, run by ${customer} with the proven runbook`, start: month(last, 1), end: month(last, months) };
+}
+
 /** Customer effort per phase from the plan's windows and the default hours per week. */
 export function buildCustomerEffort(document: EngagementDocument): { phases: CustomerEffortPhase[]; peak: CustomerEffortPhase | null } {
   const timeline = document.adoptionTimeline;
@@ -763,12 +999,13 @@ export function buildCustomerEffort(document: EngagementDocument): { phases: Cus
     const current = windows.get(key);
     windows.set(key, current ? { start: window.start < current.start ? window.start : current.start, end: window.end > current.end ? window.end : current.end } : window);
   }
-  // Customer-run waves extend the migration phase.
+  // Customer-run work: the waves the customer's team runs itself are their own, heavier phase; other customer work extends migration.
   for (const work of completedReport(document.report).customerOwnedWork) {
     const start = work.start.length === 7 ? `${work.start}-01` : work.start;
     const end = work.end.length === 7 ? `${work.end}-28` : work.end;
-    const current = windows.get("migration");
-    windows.set("migration", current ? { start: start < current.start ? start : current.start, end: end > current.end ? end : current.end } : { start, end });
+    const key: PhaseKey = /\bwaves?\b/i.test(work.label) ? "customerWaves" : "migration";
+    const current = windows.get(key);
+    windows.set(key, current ? { start: start < current.start ? start : current.start, end: end > current.end ? end : current.end } : { start, end });
   }
   const phases = Array.from(windows.entries()).map(([key, window]) => {
     const defaults = CUSTOMER_EFFORT_DEFAULTS[key];

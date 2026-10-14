@@ -24,12 +24,14 @@ What each section is for
   - platformEdition: vcf or vvf (VMware vSphere Foundation) when the customer is licensed for VVF only.
   - storage: vsan, nfs-v3, vmfs-fc, other-existing, or undecided.
   - consolidatedDomain: true for one consolidated management and workload domain (usually 10 hosts or fewer).
+  - jumboFrames: true when jumbo frames run end to end, false when they do not, "mixed" when some switches or clusters run them and others do not.
   - assessmentCompleted: true when a VCF assessment or compatibility assessment has already been delivered.
   - sitePrerequisitesOpen: site work the customer still has to finish before the build, using these names: dns-ntp, ip-pools, tor-switch-design. Leave [] when they are ready or nobody said.
   - componentDepth: how far the customer wants each component taken, for operations, automation, networkingSecurity, kubernetesAi and efficiency: tier-1 (deployed), tier-2 (operationalized: run day to day with processes and ownership), tier-3 (business consumption: offered to the business as a service). null when not discussed.
   - industry: one of general-enterprise, healthcare-life-sciences, financial-services-insurance, manufacturing-retail-distributed, public-sector-education, digital-products-technology.
   - targetRelease: the ESXi release the platform should land on, "ESXi 9.0" or "ESXi 9.1", when stated.
   - planningNotes: anything else that shapes the plan and has no other field, in one to three sentences.
+  - domains: every VCF domain the plan delivers, one row each. kind is management or workload. pathway is greenfield (built new), import (an existing vCenter imported as a workload domain) or converge (an existing vCenter converged into a management domain). instance names the VCF instance or site the domain belongs to, so each workload domain follows its own management domain. hosts is the host count when known. notes holds what must happen first or what is special (for example "move the SVRA 600 workloads first"). Leave [] when the domains are not yet decided.
   - outcomesWanted: what the customer wants from each area once the platform is in, which builds the adoption plan. List only outcomes the customer asked for or agreed to, using these names:
     - operations: lifecycle (lifecycle, certificates, passwords), observability (health, logs, diagnostics), capacity-cost (capacity and cost visibility, chargeback), custom-dashboards, identity-certificates (identity and privileged-access runbooks), event-integration (alerts into incident or ticketing tools)
     - automation: vm-self-service (VM catalog), infrastructure-as-code, day-2-automation (remediation and maintenance), governance (projects, quotas, policy), application-provisioning, data-services (database self-service)
@@ -52,7 +54,7 @@ What each section is for
 - openItems: every item still outstanding, what it gates, and the owner.
 - personnel: for each work stream, the named CDW, Broadcom and customer people.
 - milestonesToDate: what has already happened, with dates (entitlement start, discovery sessions, assessment delivered, kickoff).
-- resourceAssignments: ONLY if signed resource assignments exist, hours by work stream for Architect, Sr. Consultant and Project Manager; otherwise null.
+- resourceAssignments: ONLY if signed resource assignments or the Broadcom work plan exist, hours by work stream for architect, srConsultant, projectManager, seniorArchitect and offshoreProjectManager (0 for a role the plan does not use); otherwise null.
 - sources: the documents you used, with their dates.
 - headline: one cover line that starts "Amazing happens when" and states the customer's outcome in their terms.
 - revision: one or two sentences saying what this brief was built from and the date of the newest source.
@@ -77,6 +79,7 @@ JSON shape (fill every key; keep the structure exactly)
     "addOnsConsidered": [], "notInterested": [],
     "sitePrerequisitesOpen": [], "componentDepth": { "operations": null, "automation": null, "networkingSecurity": null, "kubernetesAi": null, "efficiency": null },
     "industry": null, "targetRelease": null, "planningNotes": null,
+    "domains": [{ "name": "", "kind": "management | workload", "pathway": "greenfield | import | converge", "instance": "", "hosts": null, "notes": "" }],
     "outcomesWanted": { "operations": [], "automation": [], "networking": [], "security": [], "resilience": [], "kubernetes": [], "privateAi": [] }
   },
   "situation": [],

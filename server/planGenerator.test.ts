@@ -96,8 +96,8 @@ describe("plans without an approved execution pathway", () => {
 
 describe("outcome prerequisites", () => {
   // Capability work often falls after a 12-month entitlement, so ordering is checked on the full schedule in the notional.
-  it("adds and sequences the vDefend chain for malware prevention", () => {
-    const document = plan({ upgradePath: "greenfield", security: ["malware-prevention"] }, { priorities: ["security"] });
+  it("adds and sequences the vDefend chain for malware prevention, on the NSX overlay under the v1 hours model", () => {
+    const document = plan({ upgradePath: "greenfield", security: ["malware-prevention"] }, { priorities: ["security"], hoursModel: "v1" });
     const timeline = document.twoYearPlan;
     const nsx = activity(timeline, "bar-vcf-networking-nsx");
     const segmentation = activity(timeline, "bar-security-segmentation");
@@ -110,6 +110,18 @@ describe("outcome prerequisites", () => {
     expect(segmentation.outcome).toContain("Included as a prerequisite for: vDefend Malware Prevention");
     expect(malware.dependsOn).toMatch(/^Starts after: First Workload Domain; Segmentation Rollout; vDefend Security Services Platform\. Requires the vDefend Firewall with ATP add-on/);
     expect(document.rationale).toContain("Prerequisites were added so selected outcomes can be delivered");
+    expect(validateTimelineSequence(timeline)).toEqual([]);
+  });
+
+  it("adds the vDefend chain without the NSX overlay build under the v2 hours model", () => {
+    const document = plan({ upgradePath: "greenfield", security: ["malware-prevention"] }, { priorities: ["security"], hoursModel: "v2" });
+    const timeline = document.twoYearPlan;
+    const segmentation = activity(timeline, "bar-security-segmentation");
+    const ssp = activity(timeline, "bar-security-services-platform");
+    const malware = activity(timeline, "bar-security-malware-prevention");
+    expect(timeline.lanes.flatMap(lane => lane.bars).some(bar => bar.id === "bar-vcf-networking-nsx")).toBe(false);
+    expect(malware.startCol).toBeGreaterThanOrEqual(Math.max(segmentation.endCol, ssp.endCol));
+    expect(malware.prerequisites).toEqual(expect.arrayContaining(["bar-security-segmentation", "bar-security-services-platform"]));
     expect(validateTimelineSequence(timeline)).toEqual([]);
   });
 

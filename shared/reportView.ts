@@ -1,6 +1,8 @@
 import { barWindow } from "./buildingBlocks";
-import { buildCustomerEffort, buildScopedEffort, withOwnership } from "./effort";
-import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument } from "./fcp";
+import { buildCustomerEffort, buildScopedEffort, customerRemainingWaves, withOwnership } from "./effort";
+import { activityOwner, calculateEntitlementEndDate, effectiveDeliveryPath, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, serverLabel, summarizeVcfCompatibility, type EngagementDocument } from "./fcp";
+import { renewalStartsCurrentTerm } from "./deliveryBriefing";
+import { backInTime } from "./hclCorpus";
 import { ADD_ON_OUTCOMES, canonicalAddOn, completedReport, type ReportContent } from "./report";
 
 /**
@@ -46,11 +48,25 @@ const monthYear = (value: string) => {
 const keyOf = (section: GeneratedSection, value: string) => `${section}:${value.trim().toLowerCase()}`;
 
 export function platformName(document: EngagementDocument): string {
-  const release = document.fields.compatibilityTargetRelease.replace(/^ESXi\s*/, "");
+  const release = minimumTargetRelease(document)?.minimum ?? document.fields.compatibilityTargetRelease.replace(/^ESXi\s*/, "");
   return `${effectivePlatformEdition(document.fields) === "vvf" ? "VVF" : "VCF"} ${release}`;
 }
 
+/** Hosts on builds newer than the target's first release (8.0 U3j and later) need a later release to upgrade or converge (KB 450972, 454369). */
+export function minimumTargetRelease(document: EngagementDocument): { minimum: string; hosts: number; sources: string[] } | null {
+  const target = document.fields.compatibilityTargetRelease;
+  const late = document.inventory.hclEvidence.hosts.map(host => backInTime(host.esxiVersion, target)).filter((item): item is NonNullable<typeof item> => Boolean(item));
+  if (!late.length) return null;
+  const minimum = late.map(item => item.minimum).sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))[0];
+  return { minimum, hosts: late.length, sources: Array.from(new Set(late.map(item => item.source))) };
+}
+
 /** The entitlement end the report works to: the stated term end, or start + 12 months. */
+/** True when the term end is calculated as 12 months from the start rather than stated in the brief or work plan. */
+export function termEndAssumed(document: EngagementDocument): boolean {
+  return !document.report.entitlement.termEnd && Boolean(calculateEntitlementEndDate(document.fields.entitlementStart));
+}
+
 export function reportTermEnd(document: EngagementDocument): string | null {
   const { entitlement } = document.report;
   return entitlement.termEnd || calculateEntitlementEndDate(document.fields.entitlementStart) || null;
@@ -87,7 +103,7 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   if (inventory.hosts) {
     const vcenters = report.discovery.vcenters;
     situation.push(`${inventory.hosts} ESXi hosts · ${inventory.vmCount.toLocaleString("en-US")} VMs (${inventory.poweredOnVms.toLocaleString("en-US")} powered on)${vcenters ? ` across ${vcenters} vCenter${vcenters === 1 ? "" : "s"}` : ""}${inventory.clusters ? ` and ${inventory.clusters} cluster${inventory.clusters === 1 ? "" : "s"}` : ""}`);
-    const models = inventory.hostModels.slice(0, 3).map(model => `${model.hosts} ${`${model.vendor} ${model.model}`.trim()}`);
+    const models = inventory.hostModels.slice(0, 3).map(model => `${model.hosts} ${serverLabel(model.vendor, model.model)}`);
     if (models.length) situation.push(`Host platforms: ${models.join("; ")}`);
     const versions = inventory.esxiVersions.slice(0, 3).map(item => `${item.version} (${item.hosts})`);
     if (versions.length) situation.push(`ESXi versions in use: ${versions.join(", ")}`);
@@ -95,6 +111,26 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     const oldHardware = vmsBelowHardware19(document);
     if (oldHardware) situation.push(`${oldHardware.toLocaleString("en-US")} VMs below VM hardware version 19`);
     if (onVsphere8(document)) situation.push("vSphere 8 reaches end of general support on 11 October 2027");
+    // Estate health from RVTools: compute, memory, capacity and hosts that need attention before the work starts.
+    const compute = [
+      inventory.physicalCores ? `${inventory.physicalCores.toLocaleString("en-US")} physical cores` : "",
+      inventory.vCpu ? `${inventory.vCpu.toLocaleString("en-US")} vCPU${inventory.physicalCores ? ` (${(inventory.vCpu / inventory.physicalCores).toFixed(1)} per core)` : ""}` : "",
+      inventory.vmMemoryGiB ? `${Math.round(inventory.vmMemoryGiB).toLocaleString("en-US")} GiB VM memory` : "",
+      inventory.datastoreUsedTiB ? `${inventory.datastoreUsedTiB.toLocaleString("en-US")} TiB of storage used` : "",
+    ].filter(Boolean);
+    if (compute.length) situation.push(`Estate size: ${compute.join(", ")}`);
+    const attention = [
+      inventory.poweredOffVms ? `${inventory.poweredOffVms.toLocaleString("en-US")} powered-off VMs to confirm or retire` : "",
+      inventory.snapshotCount ? `${inventory.snapshotCount.toLocaleString("en-US")} VM snapshots to clear before migration` : "",
+      inventory.maintenanceHosts ? `${inventory.maintenanceHosts} host${inventory.maintenanceHosts === 1 ? "" : "s"} in maintenance mode` : "",
+      inventory.disconnectedHosts ? `${inventory.disconnectedHosts} disconnected host${inventory.disconnectedHosts === 1 ? "" : "s"}` : "",
+      inventory.highCpuHosts ? `${inventory.highCpuHosts} host${inventory.highCpuHosts === 1 ? "" : "s"} running high on CPU` : "",
+      inventory.highMemoryHosts ? `${inventory.highMemoryHosts} host${inventory.highMemoryHosts === 1 ? "" : "s"} running high on memory` : "",
+      inventory.overcommittedDatastores ? `${inventory.overcommittedDatastores} overcommitted datastore${inventory.overcommittedDatastores === 1 ? "" : "s"}` : "",
+    ].filter(Boolean);
+    if (attention.length) situation.push(`Estate health: ${attention.join("; ")}`);
+    const guests = inventory.guestOperatingSystems.slice().sort((left, right) => right.vms - left.vms).slice(0, 3).map(item => `${item.name} (${item.vms.toLocaleString("en-US")})`);
+    if (guests.length) situation.push(`Most common guest operating systems: ${guests.join(", ")}`);
   }
 
   // ---- Design elements
@@ -112,7 +148,7 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     designElements.push(overlay
       ? discovery.jumboFrames === true
         ? { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: "Jumbo frames are already enabled; confirm the transport VLANs carry them end to end before the overlay is enabled.", gate: null }
-        : { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: `${discovery.jumboFrames === false ? "Jumbo frames are not enabled today; raise" : "Confirm"} the MTU end to end and the transport VLANs before the overlay is enabled.`, gate: "MTU confirmed" }
+        : { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: `${discovery.jumboFrames === false ? "Jumbo frames are not enabled today; raise" : discovery.jumboFrames === "mixed" ? "Jumbo frames run on some switches only; confirm" : "Confirm"} the MTU end to end and the transport VLANs before the overlay is enabled.`, gate: "MTU confirmed" }
       : { component: "Networking", requirement: "NSX is deployed with VCF; workloads can stay VLAN-backed.", recommendation: "Start VLAN-backed; consider overlay networking in a later phase.", gate: null });
   }
   const required = requiredCores(document);
@@ -121,17 +157,55 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     designElements.push({
       component: "Licensing",
       requirement: "16-core-per-CPU minimum per licensed core.",
+      // Licensed cores beyond what the imported hosts need are only unmatched: they may cover hosts in a vCenter that was not exported.
       recommendation: licensed
-        ? `${licensed.toLocaleString("en-US")} licensed cores on record against ${required.toLocaleString("en-US")} required for the ${inventory.hosts} hosts (${licensed >= required ? `${(licensed - required).toLocaleString("en-US")} spare` : `${(required - licensed).toLocaleString("en-US")} short`}).`
+        ? licensed === required
+          ? `${licensed.toLocaleString("en-US")} licensed cores on record, matching the ${required.toLocaleString("en-US")} the ${inventory.hosts} hosts in these RVTools exports require.`
+          : licensed > required
+          ? `${licensed.toLocaleString("en-US")} licensed cores on record; the ${inventory.hosts} hosts in these RVTools exports require ${required.toLocaleString("en-US")}. The other ${(licensed - required).toLocaleString("en-US")} are not matched to these hosts; confirm which hosts they cover before treating any as available.`
+          : `${licensed.toLocaleString("en-US")} licensed cores on record against ${required.toLocaleString("en-US")} required for the ${inventory.hosts} hosts in these RVTools exports (${(required - licensed).toLocaleString("en-US")} short).`
         : `${required.toLocaleString("en-US")} cores required for the ${inventory.hosts} hosts; licensed core count to be confirmed.`,
-      gate: licensed ? null : "licensed core count confirmed",
+      gate: !licensed ? "licensed core count confirmed" : licensed > required ? "licensed cores reconciled to every in-scope host" : null,
     });
   }
   const oldHardware = vmsBelowHardware19(document);
   if (oldHardware) designElements.push({ component: "Workloads", requirement: "Supported guest operating systems and VM hardware.", recommendation: `Remediate ${oldHardware.toLocaleString("en-US")} VMs below hardware version 19 ahead of their migration waves.`, gate: null });
 
   // Discovery answers that change the design, only where the plan makes them matter.
-  if (builds && discovery.serverVendor) designElements.push({ component: "Hardware lifecycle", requirement: `Hosts are ${discovery.serverVendor}; vLCM images manage firmware and drivers with the ESX image.`, recommendation: `Build the cluster images with the ${discovery.serverVendor} vendor add-on and hardware support manager.`, gate: null });
+  const serverModels = summarizeVcfCompatibility(document.readiness.hardwarePlatforms);
+  if (builds && (discovery.serverVendor || serverModels.length)) {
+    // Images are built for models listed for the target release, including those whose CPU row still needs
+    // confirming; models that are blocked or not listed are a gate. A model can split by CPU, so it is grouped by its
+    // weakest result and the hosts behind each result are named.
+    const models = new Map<string, { label: string; hosts: number; blocked: number; toConfirm: number }>();
+    for (const item of serverModels) {
+      const label = serverLabel(item.vendor, item.model);
+      const entry = models.get(label.toLowerCase()) ?? { label, hosts: 0, blocked: 0, toConfirm: 0 };
+      entry.hosts += item.hosts;
+      if (item.decision === "action-required") entry.blocked += item.hosts;
+      if (item.decision === "validation-required") entry.toConfirm += item.hosts;
+      models.set(label.toLowerCase(), entry);
+    }
+    const all = Array.from(models.values());
+    const count = (part: number, whole: number) => (part === whole ? `${whole} host${whole === 1 ? "" : "s"}` : `${part} of ${whole} hosts, by CPU`);
+    const listed = all.filter(item => item.blocked + item.toConfirm === 0);
+    const toConfirm = all.filter(item => item.toConfirm > 0 && item.blocked < item.hosts);
+    const blocked = all.filter(item => item.blocked > 0);
+    const imageModels = [...listed, ...toConfirm.filter(item => !listed.includes(item))];
+    const vendor = discovery.serverVendor || Array.from(new Set(serverModels.map(item => serverLabel(item.vendor, "")))).join(" and ");
+    designElements.push({
+      component: "Hardware lifecycle",
+      requirement: `Hosts are ${vendor}; vLCM images manage firmware and drivers with the ESX image.`,
+      recommendation: !serverModels.length
+        ? `Build the cluster images with the ${vendor} vendor add-on and hardware support manager once the compatibility check confirms the host models.`
+        : [
+          imageModels.length ? `Build the cluster images with the vendor add-on and hardware support manager for the models listed for the target release: ${imageModels.map(item => item.label).join(", ")}.` : "No host model is listed for the target release yet.",
+          toConfirm.length ? `Listed, with the CPU row to confirm against the current Compatibility Guide: ${toConfirm.map(item => `${item.label} (${count(item.toConfirm, item.hosts)})`).join(", ")}.` : "",
+          blocked.length ? `Blocked or not listed for the target release: ${blocked.map(item => `${item.label} (${count(item.blocked, item.hosts)})`).join(", ")}. Replace these hosts or confirm support before they join a cluster.` : "",
+        ].filter(Boolean).join(" "),
+      gate: !serverModels.length ? "compatibility check run on a current RVTools export" : blocked.length ? "support confirmed or hardware replaced for every host model" : toConfirm.length ? "CPU rows confirmed for every host model" : null,
+    });
+  }
   if (moves && discovery.backup) designElements.push({ component: "Backup", requirement: `${discovery.backup} protects the workloads moving to the new platform.`, recommendation: `Confirm ${discovery.backup} supports the target vSphere and VCF release before the first wave; re-point jobs as each wave lands.`, gate: "backup support confirmed" });
   if (inScope("resilience") && discovery.drSolution) designElements.push({ component: "Disaster recovery", requirement: `Recovery runs on ${discovery.drSolution} today.`, recommendation: "The recovery design decides whether VMware Live Recovery replaces it or runs alongside, and sets the recovery objectives.", gate: null });
   if (inScope("security") && discovery.securityTooling) designElements.push({ component: "Security tooling", requirement: `${discovery.securityTooling} stays in place.`, recommendation: "Design vDefend policy alongside the existing tooling so controls do not overlap or conflict.", gate: null });
@@ -156,11 +230,21 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     constraints.push({ constraint: `${planOutcomeLabel(outcome.key)} before ${outcome.requiredBy.map(key => planOutcomeLabel(key)).join(" and ")}`, imposedBy: "Platform", effect: "Sequenced as a prerequisite" });
   }
   if ((path === "converge" || path === "import-workload-domain") && discovery.enhancedLinkedMode === true) constraints.push({ constraint: "Enhanced Linked Mode split before convergence", imposedBy: "Platform", effect: "vCenters leave the linked group before they join VCF" });
-  if (discovery.renewalDate) constraints.push({ constraint: `Subscription renewal ${shortDate(discovery.renewalDate)}`, imposedBy: "Licensing", effect: "Licensing activated and the renewal sized before that date" });
-  if (termEnd) constraints.push({ constraint: `Entitlement expiry ${shortDate(termEnd)}`, imposedBy: "Entitlement term", effect: handoverWindow ? `Handover completes in ${monthYear(handoverWindow.end)}` : "All hours consumed before expiry" });
+  const today = report.asOf || new Date().toISOString().slice(0, 10);
+  // A renewal that opened the current term is neither a deadline nor a lapsed renewal.
+  const termRenewal = renewalStartsCurrentTerm(document);
+  const renewalPassed = Boolean(discovery.renewalDate && discovery.renewalDate < today && !termRenewal);
+  if (discovery.renewalDate && !renewalPassed && !termRenewal) constraints.push({ constraint: `Subscription renewal ${shortDate(discovery.renewalDate)}`, imposedBy: "Licensing", effect: "Licensing activated and the renewal sized before that date" });
+  if (fields.hardwareAvailability === "new" && fields.hardwareLeadWeeks > 0) constraints.push({ constraint: `New hardware lead time of ${fields.hardwareLeadWeeks} week${fields.hardwareLeadWeeks === 1 ? "" : "s"}`, imposedBy: "Hardware", effect: "The platform build waits for delivery, rack and stack" });
+  if (fields.plannedImplementationStart) constraints.push({ constraint: `Implementation services start ${shortDate(fields.plannedImplementationStart)}`, imposedBy: customer, effect: "Design runs from the project start; build, upgrade and migration begin on this date" });
+  if (fields.timelineNotes.trim()) constraints.push({ constraint: fields.timelineNotes.trim(), imposedBy: "Calendar", effect: "Applied to the schedule of every affected work package" });
+  if (fields.adoptionDetails.notes.trim()) constraints.push({ constraint: fields.adoptionDetails.notes.trim(), imposedBy: "Planning note", effect: "Applied to the design and the work packages it affects" });
+  if (termEnd) constraints.push({ constraint: `Entitlement expiry ${shortDate(termEnd)}${termEndAssumed(document) ? " (12 months from the start; to be confirmed)" : ""}`, imposedBy: "Entitlement term", effect: handoverWindow ? `Handover completes in ${monthYear(handoverWindow.end)}` : "All hours consumed before expiry" });
 
   // ---- Asks of the customer's team
-  const { phases, peak } = buildCustomerEffort(document);
+  // The generated customer-run waves count toward the customer's effort too.
+  const generatedWaves = customerRemainingWaves(document);
+  const { phases, peak } = buildCustomerEffort(generatedWaves && !report.customerOwnedWork.some(row => /\bwaves?\b/i.test(row.label)) ? { ...document, report: { ...report, customerOwnedWork: [...report.customerOwnedWork, generatedWaves] } } : document);
   const customerAsks: string[] = [];
   if (peak) customerAsks.push(`Effort: ${Math.min(...phases.map(phase => phase.total))}–${peak.total} hours per week, peaking at ${peak.fte} FTE during ${peak.phase.toLowerCase()}`);
   if (!inventory.hosts) customerAsks.push("Inventory: a current RVTools export");
@@ -176,10 +260,26 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   const customerOwnedWork: Array<Row<"customerOwnedWork">> = [
     ...(siteWindows.length ? [{ label: SITE_PREREQUISITES_LABEL, start: siteWindows.map(window => window.start).sort()[0].slice(0, 7), end: siteWindows.map(window => window.end).sort().at(-1)!.slice(0, 7) }] : []),
     ...customerBars.filter(bar => !SITE_ID.test(bar.id)).flatMap(bar => { const window = barWindow(timeline, bar); return window ? [{ label: bar.label, start: window.start.slice(0, 7), end: window.end.slice(0, 7) }] : []; }),
+    // CDW proves the runbook on the first waves; the customer's team runs the rest, unless the planner already planned them.
+    ...(() => { const waves = customerRemainingWaves(document); return waves && !report.customerOwnedWork.some(row => /\bwaves?\b/i.test(row.label)) ? [waves] : []; })(),
   ];
 
   // ---- Open items for what is still missing
   const openItems: Array<Row<"openItems">> = [];
+  // vSphere 8 end of general support: every host still on 8.x moves to VCF 9 or is upgraded before it.
+  const vsphere8Hosts = inventory.esxiVersions.filter(item => /\b8\.\d/.test(item.version)).reduce((sum, item) => sum + item.hosts, 0);
+  if (vsphere8Hosts && moves) {
+    const clusters = Array.from(new Set(inventory.hclEvidence.hosts.filter(host => /\b8\.\d/.test(host.esxiVersion)).map(host => host.cluster).filter(Boolean)));
+    const where = clusters.length ? ` (${clusters.slice(0, 3).join(", ")}${clusters.length > 3 ? ` and ${clusters.length - 3} more clusters` : ""})` : "";
+    constraints.push({ constraint: `${vsphere8Hosts} host${vsphere8Hosts === 1 ? "" : "s"} on vSphere 8${where} moved or upgraded before 11 Oct 2027`, imposedBy: "Broadcom product lifecycle", effect: "Their waves are planned before vSphere 8 general support ends" });
+    const waveEnds = [
+      ...customerOwnedWork.filter(row => /\bwaves?\b/i.test(row.label)).map(row => row.end),
+      ...report.customerOwnedWork.filter(row => /\bwaves?\b/i.test(row.label)).map(row => row.end),
+      ...timeline.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-playbook-execution-/.test(bar.id)).map(bar => barWindow(timeline, bar)?.end ?? ""),
+    ].filter(Boolean).map(value => value.slice(0, 7)).sort();
+    const lastWave = waveEnds.at(-1);
+    if (lastWave && lastWave > "2027-10") openItems.push({ item: `The waves run to ${monthYear(`${lastWave}-01`)}, after vSphere 8 general support ends on 11 Oct 2027, with ${vsphere8Hosts} host${vsphere8Hosts === 1 ? "" : "s"} still on vSphere 8${where}`, gates: "Supported platform: move those hosts' workloads first, upgrade them in place, or arrange extended support", owner: "" });
+  }
   if (!inventory.hosts) openItems.push({ item: "Current RVTools export", gates: "Design sign-off and sizing", owner: "" });
   for (const purchased of discovery.addOnsPurchased) {
     const key = canonicalAddOn(purchased);
@@ -187,7 +287,15 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     const planned = addOn?.priority && addOn.focus ? addOn.focus.some(focus => outcomeKeys.has(`${addOn.priority}:${focus}`)) : false;
     if (!planned) openItems.push({ item: `${addOn?.label ?? purchased} is purchased but not in this plan`, gates: "Scope: add it or record why it waits", owner: "" });
   }
-  if (!report.entitlement.hours) openItems.push({ item: "Entitled hours from the signed resource assignments", gates: "Burndown and weekly pace", owner: "" });
+  // The brief often carries its own item for the work plan hours; raise this one only when nothing covers it.
+  const hoursItemOnRecord = report.openItems.some(item => /resource assignment|work plan|entitled hours/i.test(`${item.item} ${item.gates}`));
+  if (!report.entitlement.hours && !hoursItemOnRecord) openItems.push({ item: "Entitled hours from the signed resource assignments", gates: "Burndown and weekly pace", owner: "" });
+  if (termEndAssumed(document) && termEnd) openItems.push({ item: `Entitlement end date: ${shortDate(termEnd)} is assumed as 12 months from the start; confirm the term`, gates: "Timeline end, weekly pace and follow-on scope", owner: "" });
+  if (renewalPassed) openItems.push({ item: `The subscription renewal date on record (${shortDate(discovery.renewalDate!)}) has passed: confirm the renewal and the new term`, gates: "Licensing activation and core sizing", owner: "" });
+  // Licensed cores the imported hosts do not account for usually mean an estate that was not exported.
+  if (required && licensed && licensed > required) openItems.push({ item: `${(licensed - required).toLocaleString("en-US")} licensed cores are not matched to the hosts in these RVTools exports`, gates: "Licensing sizing; confirm whether another vCenter needs an RVTools export", owner: "" });
+  const exported = document.inventorySources.filter(source => /\.xlsx?$/i.test(source.filename)).length;
+  if (discovery.vcenters && exported && exported < discovery.vcenters) openItems.push({ item: `RVTools exports for ${exported} of ${discovery.vcenters} vCenters`, gates: "Sizing, compatibility and licensing for the vCenters not exported", owner: "" });
 
   // ---- Milestones from the engagement dates
   const milestonesToDate: Array<Row<"milestonesToDate">> = [];
@@ -197,7 +305,14 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     switch (key) {
       case "consumption": return `${platformName(document)} with VCF Operations as the daily operations console${outcomes.some(item => item.key.startsWith("automation:")) ? "; self-service through VCF Automation" : "; automation evaluated later"}.`;
       case "physicalSite": return sites ? `${sites} site${sites === 1 ? "" : "s"}${inventory.hosts ? `, ${inventory.hosts} hosts in the current estate` : ""}.` : "Sites to be confirmed in design.";
-      case "availability": return fields.adoptionDetails.domainTopology === "consolidated" ? "Consolidated management domain: management components and workloads share the cluster; HA and fully automated DRS retained." : fields.adoptionDetails.domainTopology === "standard" ? "Standard architecture: a dedicated management domain and separate workload domains." : "Management domain topology to be decided in design.";
+      case "availability": if (fields.adoptionDetails.domains.length) {
+        // The domains from the brief, by instance: what is built, imported or converged.
+        const how = (domain: (typeof fields.adoptionDetails.domains)[number]) => (domain.pathway === "import" ? "imported" : domain.pathway === "converge" ? "converged" : "built new");
+        const list = (kind: "management" | "workload") => fields.adoptionDetails.domains.filter(domain => domain.kind === kind).map(domain => `${domain.name}${domain.instance ? ` (${domain.instance})` : ""}, ${how(domain)}`).join("; ");
+        const workloads = list("workload");
+        return `Management domains: ${list("management") || "to be confirmed in design"}.${workloads ? ` Workload domains: ${workloads}.` : ""} HA and fully automated DRS on every cluster.`;
+      }
+      return fields.adoptionDetails.domainTopology === "consolidated" ? "Consolidated management domain: management components and workloads share the cluster; HA and fully automated DRS retained." : fields.adoptionDetails.domainTopology === "standard" ? "Standard architecture: a dedicated management domain and separate workload domains." : "Management domain topology to be decided in design.";
       case "isolation": return vvf ? "vSphere Distributed Switch networking; no NSX overlay in VVF." : outcomeKeys.has("networking:overlay-transport") || outcomeKeys.has("networking:vpc") ? "NSX deployed with VCF, with overlay networking in scope." : "NSX deployed with VCF, VLAN-backed at first; no network redesign on day one.";
       case "recoverability": return outcomes.some(item => item.key.startsWith("resilience:")) ? "Recovery design with VMware Live Recovery; recovery objectives set in design." : "Recovery approach to be confirmed in design.";
       default: return "Capacity added wave by wave as hosts are evacuated and rebuilt into the platform.";
@@ -261,4 +376,36 @@ export function effectiveReport(document: EngagementDocument): ReportContent {
     openItems: merge("openItems"),
     milestonesToDate: merge("milestonesToDate").sort((left, right) => left.date.localeCompare(right.date)),
   };
+}
+
+/** One sentence on what the plan is framed around and the delivery path, for the Plan on a Page. */
+export function selectedScopeSummary(document: EngagementDocument) {
+  const { priorities, adoptionDetails } = document.fields;
+  const resolved = resolvePlanOutcomes(document.fields);
+  const vvf = resolved.edition === "vvf";
+  const scope: string[] = [];
+  if (priorities.includes("operations") || adoptionDetails.operations.length) scope.push("operations and lifecycle management");
+  if (priorities.includes("automation") || adoptionDetails.automation.length) scope.push("automation and self-service foundations");
+  if (priorities.includes("networking") || adoptionDetails.networking.length) scope.push(vvf ? "the explicitly selected networking and load-balancing scope" : "the explicitly selected VCF networking and NSX scope");
+  if (priorities.includes("security") || adoptionDetails.security.length) scope.push("security and segmentation controls");
+  if (priorities.includes("resilience") || adoptionDetails.resilience.length) scope.push("resilience and recovery planning");
+  if (priorities.includes("kubernetes") || adoptionDetails.kubernetes.length) scope.push("Kubernetes and workload-domain enablement");
+  if (priorities.includes("private-ai") || adoptionDetails.privateAi.length) scope.push("private AI enablement");
+
+  const deliveryPath = {
+    "migration-waves": "controlled migration waves",
+    "new-build": "a new platform build",
+    "in-place": "an in-place modernization path",
+    converge: "convergence of an existing vCenter into the VCF management domain",
+    "import-workload-domain": "import of an existing vCenter as a VCF workload domain",
+    greenfield: "a separately funded greenfield VCF foundation and workload migration path",
+    hybrid: "a combination of approved VCF adoption pathways, one for each vCenter or cluster",
+    "design-only": "architecture and implementation-ready design work",
+    undecided: "a delivery path still to be confirmed",
+  }[vvf ? effectiveDeliveryPath(document.fields) : adoptionDetails.upgradePath];
+
+  const selected = scope.length ? scope.join(", ").replace(/, ([^,]*)$/, " and $1") : "the selected operational priorities";
+  const edition = vvf ? " on VMware vSphere Foundation (VVF)" : "";
+  const excluded = resolved.excluded.length ? ` Outcomes that require VCF are not included: ${resolved.excluded.map(key => planOutcomeLabel(key)).join("; ")}.` : "";
+  return `The plan is framed around ${selected}, with ${vvf ? deliveryPath.replace(/VCF/g, "VVF") : deliveryPath}${edition}.${excluded}`;
 }
