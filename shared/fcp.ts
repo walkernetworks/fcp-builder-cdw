@@ -2173,7 +2173,7 @@ function softPrerequisiteLabel(key: AdoptionDetails["softPrerequisites"][number]
   }[key];
 }
 
-function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary, path = getHclSchedulePath(inventory), requiredColumns = 0): Timeline {
+function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary, path = getHclSchedulePath(inventory), requiredColumns = 0, context: PlanContext = {}): Timeline {
   const cadence = fields.adoptionCadence;
   const mobilizationDuration = scheduleUnits(cadence, 2, 1);
   const remediationDuration = scheduleUnits(cadence, 3, 1);
@@ -2502,6 +2502,10 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   if (executionPathway) {
     // Role and access mapping is design work every build needs, whether or not identity and RBAC is a selected outcome.
     const [accessStart, accessEnd] = range(Math.max(mobilizationEnd, pathwayDesignEnd - 1), 1);
+    if (context.edgeSites && context.edgeSites > 0) {
+      const [edgeStart, edgeEnd] = range(Math.max(mobilizationEnd, pathwayDesignEnd - 1), 1);
+      infrastructureBars.push(bar("bar-design-edge-sites", edgeStart, edgeEnd, colorForWorkstreamType("Infrastructure Build"), "VCF Edge Evaluation", false, false, "Runs in the design sessions, before the build.", `In design sessions, decide for each of the ${context.edgeSites} edge site${context.edgeSites === 1 ? "" : "s"} whether it joins the fleet as a VCF Edge deployment, stays on its current platform, or consolidates into a data center, with its connectivity, lifecycle and support needs.`));
+    }
     operationsBars.push(bar("bar-design-access-mapping", accessStart, accessEnd, colorForWorkstreamType("Operating Model / Platform"), "Role and Access Mapping", false, false, "Runs in the design sessions, before the build.", "In design sessions, map the directory groups to vCenter, VCF Operations and SSO roles, with least-privilege service accounts and break-glass access."));
   }
   const cloudBars: TimelineBar[] = [...designBars.cloud];
@@ -2646,7 +2650,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const maximumColumns = cadence === "week" ? 104 : 36;
   // Squeezed activities understate what later ones need, so grow until the schedule fits or the cap is reached.
   if (requestedEnd > count + 1 && count < maximumColumns) {
-    return buildPrimaryTimeline(fields, inventory, path, Math.min(maximumColumns, requestedEnd - 1));
+    return buildPrimaryTimeline(fields, inventory, path, Math.min(maximumColumns, requestedEnd - 1), context);
   }
   return applyWorkstreamPresentation({ cadence, startDate, columns, lanes });
 }
@@ -2942,11 +2946,14 @@ function buildTwoYearPlan(fields: MinimalFields, _inventory: InventorySummary, s
   return applyWorkstreamPresentation({ cadence: "month", startDate, columns, lanes });
 }
 
-export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary, providedHclPath?: HclSchedulePath): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
+/** Plan context that lives outside the fields: the edge sites from the discovery answers. */
+export type PlanContext = { edgeSites?: number | null };
+
+export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary, providedHclPath?: HclSchedulePath, context: PlanContext = {}): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
   const hclPath = providedHclPath ?? getHclSchedulePath(inventory);
   const playbookPlan = playbookPlanForFields(fields);
   // Schedule everything first, then cap the entitlement view; the Two-Year Notional carries what falls after it.
-  const schedule = buildPrimaryTimeline(fields, inventory, hclPath);
+  const schedule = buildPrimaryTimeline(fields, inventory, hclPath, 0, context);
   const adoptionTimeline = limitToEntitlement(fields, schedule);
   const twoYearPlan = buildTwoYearPlan(fields, inventory, schedule);
   const carriedToYearTwo = schedule.lanes.flatMap(lane => lane.bars).filter(activity => activity.startCol > adoptionTimeline.columns.length).length;
@@ -3677,7 +3684,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const current = engagementDocumentV11Schema.safeParse(normalizedValue);
   if (current.success) {
     const fields = normalizePlanningDates(current.data.fields);
-    const generated = buildAdoptionPlans(fields, current.data.inventory);
+    const generated = buildAdoptionPlans(fields, current.data.inventory, undefined, { edgeSites: current.data.report?.discovery?.edgeSites ?? null });
     const planAuthority = inferredPlanAuthority(normalizedValue, current.data, generated);
     if ((needsImplementationTimelineRebaseline(current.data.adoptionTimeline) || needsPlaybookCategoryRebaseline(current.data.adoptionTimeline, fields)) && planAuthority !== "manual") {
       return {
@@ -3934,7 +3941,7 @@ export function refreshDerivedDocument(document: EngagementDocument, options: { 
   const warnings = document.inventorySources.flatMap(source => source.warnings);
   // Assessment can be expensive for large RVTools estates. Calculate it once and share its path with timeline generation.
   const readiness = assessReadiness(document.fields, document.inventory, warnings);
-  const plans = buildAdoptionPlans(document.fields, document.inventory, readiness.hclSchedulePath);
+  const plans = buildAdoptionPlans(document.fields, document.inventory, readiness.hclSchedulePath, { edgeSites: document.report.discovery.edgeSites });
   if (document.planAuthority === "manual" && !options.forceRebuild) {
     return { ...document, readiness, rationale: plans.rationale };
   }
