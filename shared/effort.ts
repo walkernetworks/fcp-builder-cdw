@@ -392,13 +392,14 @@ export function entitlementTermEnd(document: EngagementDocument): string | null 
 const LEAD_ROLE_BY_BAR: Record<string, string> = {
   "bar-hcl-review": "VCF Architect with the customer platform lead",
   "bar-design-access-mapping": "VCF Architect with the customer identity owner",
+  "bar-design-edge-sites": "VCF Architect with the customer site owners",
 };
 
 /** Program management and steering: these carry the plan's project-manager hours, not technical hours. */
 const GOVERNANCE_BARS = /^bar-(platform-plan|platform-execution-decision|platform-design-authority)$/;
 /** Requirements and discovery packages carry the discovery line; the other design packages carry architecture and design. */
 const DISCOVERY_BARS = /^bar-playbook-design-requirements$/;
-const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$|hcl-review$|design-access-mapping$)/;
+const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$|hcl-review$|design-access-mapping$|design-edge-sites$)/;
 const COMPONENT_DESIGN_BARS = /^bar-playbook-component-design-/;
 const BUILD_BARS = /^bar-(management-domain(-\d+)?|workload-domain(-\d+)?|import-domain-\d+|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover|platform-enablement|playbook-adoption-vcf-management$)/;
 /**
@@ -576,7 +577,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     const current = matches.filter(({ bar }) => inEntitlement(bar.id));
     // The deploy line is split by how much work each build package is, not by how long its window is.
     // The hardware review and the access mapping are focused pieces of design: half a design package's share.
-    const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : (bar: TimelineBar) => lengthWeight(bar) * (/^bar-(hcl-review|design-access-mapping)$/.test(bar.id) ? 0.5 : 1);
+    const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : (bar: TimelineBar) => lengthWeight(bar) * (/^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(bar.id) ? 0.5 : 1);
     if (current.length) spread(current, roles, () => true, inWindow, weightOf);
     else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     // Deferred packages of the line get their share as a follow-on estimate.
@@ -654,7 +655,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
 
 /** Work packages that are design work; the budget limit never moves them out of the entitlement. */
 /** Design and governance work stays in the entitlement; operating readiness for a later implementation can move. */
-export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || /^bar-playbook-(component-)?design-/.test(id) || /^bar-(hcl-review|design-access-mapping)$/.test(id);
+export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || /^bar-playbook-(component-)?design-/.test(id) || /^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(id);
 
 /** Moves work packages out of the entitlement into follow-on scope and recalculates the entitlement totals. */
 export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, DeferralReason>): ScopedEffort {

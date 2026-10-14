@@ -380,6 +380,22 @@ describe("Condensed FCP review fixes", () => {
     expect(text(render(refreshDerivedDocument(document, { forceRebuild: true })))).not.toContain("after vSphere 8 general support ends");
   });
 
+  it("plans a VCF Edge evaluation when the brief lists edge sites", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid" } as never;
+    document.fields.entitlementAmount = 400_000;
+    document.report.entitlement.hours = null;
+    document.report.discovery.edgeSites = 12;
+    const refreshed = refreshDerivedDocument(document, { forceRebuild: true });
+    const row = scopedEffortForDocument(refreshed).workPackages.find(item => item.id === "bar-design-edge-sites");
+    expect(row).toMatchObject({ owner: "cdw", leadRole: "VCF Architect with the customer site owners" });
+    expect(row!.total).toBeGreaterThan(0);
+    expect(text(render(refreshed))).toContain("decide for each of the 12 edge sites whether it joins the fleet as a VCF Edge deployment");
+    // No edge sites, no package.
+    document.report.discovery.edgeSites = null;
+    expect(refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline.lanes.flatMap(lane => lane.bars).some(bar => bar.id === "bar-design-edge-sites")).toBe(false);
+  });
+
   it("raises the work plan hours item only once", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];
