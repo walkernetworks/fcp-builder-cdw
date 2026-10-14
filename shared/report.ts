@@ -47,7 +47,8 @@ export const discoveryAnswersSchema = z.object({
   storage: optionalText,
   serverVendor: optionalText,
   containerPlatform: optionalText,
-  jumboFrames: z.boolean().nullable().default(null),
+  // "mixed" when some switches run jumbo frames and others do not.
+  jumboFrames: z.union([z.boolean(), z.literal("mixed")]).nullable().default(null),
   securityTooling: optionalText,
   drSolution: optionalText,
   backup: optionalText,

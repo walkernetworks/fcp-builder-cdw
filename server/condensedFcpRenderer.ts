@@ -1,7 +1,7 @@
 import { barWindow } from "../shared/buildingBlocks";
 import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
 import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
-import { effectiveReport, minimumTargetRelease, platformName } from "../shared/reportView";
+import { effectiveReport, minimumTargetRelease, platformName, termEndAssumed } from "../shared/reportView";
 import { VCF_CORPUS } from "../shared/vcfCorpus";
 import { summarizeHclFindings } from "../shared/hcl";
 import { deliveryBriefing, renewalStartsCurrentTerm } from "../shared/deliveryBriefing";
@@ -105,7 +105,7 @@ function sentence(text: string): string {
 
 function deadlines(document: EngagementDocument, termEnd: string | null): PlanItem[] {
   const out: PlanItem[] = [];
-  if (termEnd) out.push({ category: "Program Management & Governance", label: `Expiry ${shortDate(termEnd).replace(/ \d{4}$/, "")}`, start: termEnd, end: termEnd, swatch: "muted", milestone: true, outcome: "Unconsumed hours are not refunded.", dependsOn: [] });
+  if (termEnd) out.push({ category: "Program Management & Governance", label: `Expiry ${shortDate(termEnd).replace(/ \d{4}$/, "")}${termEndAssumed(document) ? " (to confirm)" : ""}`, start: termEnd, end: termEnd, swatch: "muted", milestone: true, outcome: "Unconsumed hours are not refunded.", dependsOn: [] });
   const renewal = document.report.discovery.renewalDate;
   if (renewal && !renewalStartsCurrentTerm(document)) out.push({ category: "Program Management & Governance", label: `Subscription renewal ${shortDate(renewal).replace(/ \d{4}$/, "")}`, start: renewal, end: renewal, swatch: "muted", milestone: true, outcome: "Licensing activated and the renewal sized before this date.", dependsOn: [] });
   const onVsphere8 = document.inventory.esxiVersions.some(item => /\b8\.\d/.test(item.version));
@@ -277,6 +277,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const plan = playbookPlanForFields(fields);
   const burndown: Burndown | null = buildBurndown(document, today);
   const termEnd = burndown?.termEnd || report.entitlement.termEnd || calculateEntitlementEndDate(fields.entitlementStart) || null;
+  const assumedEnd = termEndAssumed(document);
   const termStart = burndown?.termStart || report.entitlement.termStart || fields.entitlementStart || null;
   const effort = options.effort;
   const customerEffort = buildCustomerEffort(planned);
@@ -293,7 +294,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     : `<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">No entitlement booked yet</div></div>`;
   const kpis = burndown
     ? `${valueTile}<div class="kpi"><div class="v">${hours(burndown.remainingHours)} hrs</div><div class="l">Hours Remaining</div><div class="sub">${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} hours delivered${report.entitlement.consumedAsOf ? ` (as of ${esc(shortDate(report.entitlement.consumedAsOf))})` : ""}</div></div><div class="kpi"><div class="v">${burndown.daysToExpiry} days</div><div class="l">Days to Expiry</div><div class="sub">Expires ${esc(shortDate(burndown.termEnd))}</div></div><div class="kpi"><div class="v">${burndown.expiryPace} hrs/wk</div><div class="l">Required Weekly Pace</div><div class="sub">To consume by expiry · ~${burndown.expiryPaceFte} FTE from ${esc(shortDate(burndown.asOf))}</div></div>`
-    : `${valueTile}<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">${effort.source === "assignments" ? "Signed resource assignments" : "Estimated from the plan"}</div></div><div class="kpi"><div class="v">${esc(termEnd ? shortDate(termEnd) : shortDate(items.at(-1)?.end ?? asOf))}</div><div class="l">${termEnd ? "Delivery Window Ends" : "Planned Completion"}</div><div class="sub">No consumption data yet</div></div><div class="kpi"><div class="v">${esc(platform)}</div><div class="l">Target Platform</div><div class="sub">${esc(plan.label)}</div></div>`;
+    : `${valueTile}<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">${effort.source === "assignments" ? "Signed resource assignments" : "Estimated from the plan"}</div></div><div class="kpi"><div class="v">${esc(termEnd ? shortDate(termEnd) : shortDate(items.at(-1)?.end ?? asOf))}</div><div class="l">${termEnd ? "Delivery Window Ends" : "Planned Completion"}</div><div class="sub">${termEnd && assumedEnd ? "12 months from the start; to be confirmed" : "No consumption data yet"}</div></div><div class="kpi"><div class="v">${esc(platform)}</div><div class="l">Target Platform</div><div class="sub">${esc(plan.label)}</div></div>`;
 
   // ---- Executive summary
   const situation = report.situation.map(esc);
@@ -304,7 +305,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     const text = `${work.length ? esc(Array.from(new Set(work)).slice(0, 4).join("; ")) : later.length ? "nothing in the entitlement window" : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; after the entitlement: ${esc(later.join("; "))}` : ""}`;
     return `<li><b>${esc(category)}</b> — ${text}</li>`;
   }).join("");
-  const lead = `A design-led plan to move ${esc(customer)} onto ${esc(platform)} — ${esc(plan.label.toLowerCase())}${termEnd ? ` — consuming the services entitlement before it lapses on ${esc(longDate(termEnd))}` : ""}.`;
+  const lead = `A design-led plan to move ${esc(customer)} onto ${esc(platform)} — ${esc(plan.label.toLowerCase())}${termEnd ? ` — consuming the services entitlement before it ends on ${esc(longDate(termEnd))}${assumedEnd ? " (12 months from the start; to be confirmed)" : ""}` : ""}.`;
 
   // ---- Burndown
   const burndownSection = burndown
@@ -456,7 +457,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const forward = (implementationStart ? `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>` : "")
     + (buildLater ? `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.</span></div>` : "")
     + (fields.targetComplete ? `<div class="ms"><b>${esc(shortDate(fields.targetComplete))}</b><span>${esc(customer)}'s target completion.</span></div>` : "")
-    + (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption: all hours consumed ahead of expiry.</span></div>` : "")
+    + (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption: all hours consumed ahead of expiry.${assumedEnd ? " The end date is 12 months from the start and is still to be confirmed." : ""}</span></div>` : "")
     + (deferredWork.length ? `<div class="ms"><b>After ${esc(termEnd ? shortDate(termEnd) : "the entitlement")}</b><span>${esc(deferredWork.map(row => row.label.replace(UNDECIDED_DEPTH, "")).join("; "))} — shown in the Two-Year Notional as follow-on scope.</span></div>` : "");
 
   // ---- Adoption plan & recommendation

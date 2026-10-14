@@ -58,6 +58,7 @@ function looseScalars(value: unknown, key = ""): unknown {
   if (Array.isArray(value)) return value.map(item => looseScalars(item, key));
   if (isPlainObject(value)) return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, looseScalars(child, childKey)]));
   if (NUMBER_KEYS.has(key)) return looseNumber(value);
+  if (key === "jumboFrames" && typeof value === "string" && /mixed|partial|some|varies/i.test(value)) return "mixed";
   if (BOOLEAN_KEYS.has(key)) return looseBoolean(value);
   return value;
 }

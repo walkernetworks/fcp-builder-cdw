@@ -297,6 +297,19 @@ describe("Condensed FCP review fixes", () => {
     expect(visible).toMatch(new RegExp(`\\d{1,2} ${month} Platform build begins`));
   });
 
+  it("marks a calculated entitlement end as to be confirmed, and shows mixed jumbo frames", () => {
+    const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.report.entitlement.termEnd = "";
+    document.report.discovery.jumboFrames = "mixed";
+    const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
+    expect(visible).toContain("12 months from the start; to be confirmed");
+    expect(visible).toMatch(/Entitlement end date: .* is assumed as 12 months from the start/);
+    expect(visible).toMatch(/Jumbo frames Mixed/);
+    // A stated term end carries no caveat.
+    document.report.entitlement.termEnd = "2027-09-30";
+    expect(text(render(refreshDerivedDocument(document, { forceRebuild: true })))).not.toContain("to be confirmed");
+  });
+
   it("raises the work plan hours item only once", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];

@@ -184,4 +184,9 @@ describe("plan inputs from the brief", () => {
     expect(applyCustomerBrief(document, { schemaVersion: 1, contacts: { customer: [{ name: "Pat Rivera", role: "" }] } }).document.fields.primaryContact).toBe("Set by hand");
     expect(applyCustomerBrief(document, { schemaVersion: 1, customer: { primaryContact: "Sam Lee, CIO" } }).document.fields.primaryContact).toBe("Sam Lee, CIO");
   });
+  it("reads mixed jumbo frames", () => {
+    const brief = example() as Record<string, any>;
+    brief.discovery = { ...brief.discovery, jumboFrames: "Mixed: Citrix and Epic switches run 9000" };
+    expect(applyCustomerBrief(createDefaultDocument(), brief).document.report.discovery.jumboFrames).toBe("mixed");
+  });
 });

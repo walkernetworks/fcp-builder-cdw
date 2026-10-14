@@ -24,6 +24,7 @@ What each section is for
   - platformEdition: vcf or vvf (VMware vSphere Foundation) when the customer is licensed for VVF only.
   - storage: vsan, nfs-v3, vmfs-fc, other-existing, or undecided.
   - consolidatedDomain: true for one consolidated management and workload domain (usually 10 hosts or fewer).
+  - jumboFrames: true when jumbo frames run end to end, false when they do not, "mixed" when some switches or clusters run them and others do not.
   - assessmentCompleted: true when a VCF assessment or compatibility assessment has already been delivered.
   - sitePrerequisitesOpen: site work the customer still has to finish before the build, using these names: dns-ntp, ip-pools, tor-switch-design. Leave [] when they are ready or nobody said.
   - componentDepth: how far the customer wants each component taken, for operations, automation, networkingSecurity, kubernetesAi and efficiency: tier-1 (deployed), tier-2 (operationalized: run day to day with processes and ownership), tier-3 (business consumption: offered to the business as a service). null when not discussed.
