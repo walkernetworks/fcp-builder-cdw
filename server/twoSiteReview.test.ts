@@ -257,7 +257,10 @@ describe("Riverbend review: estimating and checks", () => {
     // The server domain keeps its cluster boundaries but its notes name no cluster: the count is set in design.
     expect(visible).toMatch(/Clusters on the new platform Set in design Assumed: Server workload domain \(VC 0470\) keeps its existing cluster boundaries/);
     // Named clusters are counted from RVTools.
-    const named = text(render(twoSite(raw => { raw.discovery.domains[5].notes = "Cluster boundaries kept: App01-CL and App02-CL move as they are."; })));
+    const keeps = twoSite(raw => { raw.discovery.domains[5].notes = "Cluster boundaries kept for the Server-DC clusters; the BC11-CL adapters are replaced first."; });
+    // A cluster the notes name in passing (a hardware gate) is not one the domain keeps.
+    keeps.inventory.clusterProfiles.push({ name: "Legacy-DC / BC11-CL", hosts: 16 });
+    const named = text(render(keeps));
     expect(named).toMatch(/Clusters on the new platform 14 2 clusters kept for Server workload domain \(VC 0470\) \(RVTools\)/);
     // A brief can state mixed storage without RVTools datastores.
     const stated = twoSite(raw => { raw.discovery.storageSecondary = ["NFS v3", "made-up"]; });
