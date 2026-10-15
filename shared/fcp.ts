@@ -613,7 +613,38 @@ export function domainBuildWeight(domain: VcfDomain, hosts: number | null): numb
 /** A domain's outcome led by its note from the brief ("Move the CORE 600 workloads first, then deploy ..."). */
 function withDomainNote(domain: VcfDomain, outcome: string): string {
   const note = domain.notes.trim().replace(/[.\s]+$/, "");
-  return note ? `${note}, then ${outcome.charAt(0).toLowerCase()}${outcome.slice(1)}` : outcome;
+  if (!note) return outcome;
+  // A note that already says how the domain is built keeps the template to what the note does not say.
+  if (/^(built|build|deploy(ed)?|greenfield|import(ed)?|converge(d)?)\b/i.test(note)) return `${note}. ${domainFollowUp(domain)}`;
+  return `${note}, then ${outcome.charAt(0).toLowerCase()}${outcome.slice(1)}`;
+}
+
+const namesDomain = (domain: VcfDomain) => /\bdomain\b/i.test(domain.name);
+const domainHostsText = (domain: VcfDomain) => (domain.hosts ? ` (${domain.hosts} hosts)` : "");
+
+/** A domain package title: the brief's name, with the kind added only when the name does not already say "domain". */
+export function domainTitle(domain: VcfDomain): string {
+  const named = namesDomain(domain);
+  if (domain.kind === "management") return domain.pathway === "converge" ? `Converge ${domain.name}${named ? "" : " into a Management Domain"}` : `${domain.name}${named ? "" : " Management Domain"}`;
+  if (domain.pathway !== "greenfield") return `Import ${domain.name}${named ? "" : " as a Workload Domain"}`;
+  return `${domain.name}${named ? "" : " Workload Domain"}`;
+}
+
+/** What delivering the domain means, as one sentence. */
+function domainOutcome(domain: VcfDomain, allClusters = false): string {
+  const noun = namesDomain(domain) ? `the ${domain.name}` : `the ${domain.name} ${domain.kind} domain`;
+  if (domain.kind === "management") return `${domain.pathway === "converge" ? "Converge the existing vCenter into" : "Deploy"} ${noun}${domainHostsText(domain)} with its fleet services and validate core platform health.`;
+  if (domain.pathway !== "greenfield") return namesDomain(domain)
+    ? `Bring the existing vCenter for ${noun}${domainHostsText(domain)}${allClusters ? " and all of its clusters" : ""} under VCF fleet management and validate it.`
+    : `Bring the existing ${domain.name} vCenter${domainHostsText(domain)}${allClusters ? " and all of its clusters" : ""} under VCF fleet management as a workload domain and validate it.`;
+  return `Create ${noun}${domainHostsText(domain)} with vLCM images and validate it before workloads move.`;
+}
+
+/** The part of the outcome a note that already describes the build leaves to say. */
+function domainFollowUp(domain: VcfDomain): string {
+  if (domain.kind === "management") return `Deploy it${domainHostsText(domain)} with its fleet services and validate core platform health.`;
+  if (domain.pathway !== "greenfield") return `Validate it${domainHostsText(domain)} under VCF fleet management.`;
+  return `Build it${domainHostsText(domain)} with vLCM images and validate it before workloads move.`;
 }
 
 export const adoptionDetailsSchema = adoptionDetailsV6Schema.extend({
@@ -2475,7 +2506,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   } else if (playbookPlan.path === "converge") {
     foundationId = vvf ? "bar-vvf-foundation" : "bar-converge-management-domain";
     const convergedDomain = fields.adoptionDetails.domains.find(domain => domain.kind === "management");
-    foundationEnd = addInfrastructurePackage(foundationId, convergedDomain && !vvf ? `Converge ${convergedDomain.name} into a Management Domain` : implementationPackage?.title || "Converge vCenter into VCF", deliveryStart, managementDuration, implementationPackage?.dependsOn || "Begin after the convergence runbook is approved.", implementationPackage?.outcome || "Establish the VCF management domain from the accepted existing environment.", buildPrerequisites);
+    foundationEnd = addInfrastructurePackage(foundationId, convergedDomain && !vvf ? domainTitle(convergedDomain) : implementationPackage?.title || "Converge vCenter into VCF", deliveryStart, managementDuration, implementationPackage?.dependsOn || "Begin after the convergence runbook is approved.", implementationPackage?.outcome || "Establish the VCF management domain from the accepted existing environment.", buildPrerequisites);
     licenseFrom = foundationEnd;
     workloadEnd = foundationEnd;
     // Workload domains from the brief follow the converged management domain, each imported or built in turn.
@@ -2483,9 +2514,9 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     fields.adoptionDetails.domains.filter(domain => domain.kind === "workload" && !vvf).forEach((domain, index) => {
       const imported = domain.pathway !== "greenfield";
       const id = imported ? `bar-import-domain-${index + 1}` : index === 0 ? "bar-workload-domain" : `bar-workload-domain-${index + 1}`;
-      workloadEnd = addInfrastructurePackage(id, imported ? `Import ${domain.name} as a Workload Domain` : `${domain.name} Workload Domain`, workloadEnd, workloadDuration,
+      workloadEnd = addInfrastructurePackage(id, domainTitle(domain), workloadEnd, workloadDuration,
         imported ? "Begin after the converged management domain and the complete source-vCenter inventory are accepted; the whole vCenter is imported." : "Begin after management-domain health and the approved network and storage prerequisites are validated.",
-        withDomainNote(domain, imported ? `Bring the existing ${domain.name} vCenter${domain.hosts ? ` (${domain.hosts} hosts)` : ""} under VCF fleet management as a workload domain and validate it.` : `Create the ${domain.name} workload domain${domain.hosts ? ` (${domain.hosts} hosts)` : ""} with vLCM images and validate it before workloads move.`),
+        withDomainNote(domain, domainOutcome(domain)),
         [previousDomain]);
       previousDomain = id;
     });
@@ -2502,7 +2533,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       imports.forEach((domain, index) => {
         const id = index === 0 ? "bar-import-workload-domain" : `bar-import-workload-domain-${index + 1}`;
         const [start, end] = range(cursor, workloadDuration);
-        migrationBars.push({ ...bar(id, start, end, colorForWorkstreamType("Migration Waves"), `Import ${domain.name} as a Workload Domain`, false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after the destination foundation is accepted."), withDomainNote(domain, `Bring the existing ${domain.name} vCenter${domain.hosts ? ` (${domain.hosts} hosts)` : ""} and all of its clusters under VCF fleet management as a workload domain and validate it.`)), prerequisites: [previousImport] });
+        migrationBars.push({ ...bar(id, start, end, colorForWorkstreamType("Migration Waves"), domainTitle({ ...domain, pathway: "import" }), false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after the destination foundation is accepted."), withDomainNote(domain, domainOutcome({ ...domain, pathway: "import" }, true))), prerequisites: [previousImport] });
         cursor = end;
         previousImport = id;
       });
@@ -2524,12 +2555,12 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     let previous = "";
     domains.filter(domain => domain.kind === "management").forEach((domain, index) => {
       const id = index === 0 ? "bar-management-domain" : `bar-management-domain-${index + 1}`;
-      const title = domain.pathway === "converge" ? `Converge ${domain.name} into a Management Domain` : `${domain.name} Management Domain`;
+      const title = domainTitle(domain);
       const first = index === 0
         ? (playbookPlan.path === "greenfield" ? "Begin only after separately funded hardware, rack, network, storage, DNS, NTP, and IP prerequisites are accepted." : "Begin after the pathway decisions and shared target-state design are approved.")
         : `Begin after the ${domains.find(item => item.kind === "management")!.name} management domain is accepted.`;
       const end = addInfrastructurePackage(id, title, foundationEnd, managementDuration, first,
-        withDomainNote(domain, `${domain.pathway === "converge" ? "Converge the existing vCenter into" : "Deploy"} the ${domain.name} management domain${domain.hosts ? ` (${domain.hosts} hosts)` : ""} with its fleet services and validate core platform health.`),
+        withDomainNote(domain, domainOutcome(domain)),
         index === 0 ? buildPrerequisites : [previous]);
       if (index === 0) { foundationId = id; licenseFrom = end; }
       managementByInstance.set(instanceKey(domain), id);
@@ -2552,10 +2583,10 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       const id = base === "bar-workload-domain" && n === 1 ? base : `${base}-${n}`;
       const track = managementByInstance.has(instanceKey(domain)) ? instanceKey(domain) : "";
       const management = managementByInstance.get(track) ?? previous;
-      const title = domain.pathway === "import" ? `Import ${domain.name} as a Workload Domain` : `${domain.name} Workload Domain`;
+      const title = domainTitle(domain);
       const end = addInfrastructurePackage(id, title, trackEnd.get(track) ?? foundationEnd, workloadDuration,
         `${domain.pathway === "import" ? "Begin after the destination management domain and the complete source-vCenter inventory are accepted; the whole vCenter is imported." : "Begin after management-domain health and the approved network and storage prerequisites are validated."}`,
-        withDomainNote(domain, domain.pathway === "import" ? `Bring the existing ${domain.name} vCenter${domain.hosts ? ` (${domain.hosts} hosts)` : ""} under VCF fleet management as a workload domain and validate it.` : `Create the ${domain.name} workload domain${domain.hosts ? ` (${domain.hosts} hosts)` : ""} with vLCM images and validate it before workloads move.`),
+        withDomainNote(domain, domainOutcome(domain)),
         [management, ...(networkingId ? [networkingId] : [])]);
       trackEnd.set(track, end);
       workloadEnd = Math.max(workloadEnd, end);
