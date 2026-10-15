@@ -62,6 +62,8 @@ export type V2Line = {
   units: V2Unit[];
   /** Lines that must be in the same or an earlier bucket. */
   requires: V2Code[];
+  /** The brief only considers this area: the line is follow-on scope and never draws on the entitlement. */
+  followOnOnly: boolean;
 };
 
 export type Assumption = { key: string; label: string; value: number | boolean | string; source: string };
@@ -241,6 +243,9 @@ export function scopeV2(document: EngagementDocument): Pass1 {
   const explicitNsx = resolved.some(outcome => outcome.key === "platform:nsx" && !outcome.requiredBy.length);
   const designOnlyPath = path === "design-only" || path === "undecided";
   const addOns = new Set(document.report.discovery.addOnsPurchased.map(item => item.trim().toLowerCase()));
+  const laterOnly = new Set<string>(fields.adoptionDetails.followOnOnly);
+  /** An area the plan delivers now, not one the brief only considers for later. */
+  const hasNow = (capability: string) => hasAny(capability) && !laterOnly.has(capability);
   const lines: V2Line[] = [];
 
   const unit = (id: string, label: string, base: number, tag: UnitTag = "whole"): V2Unit => ({ id, label, base, tier: 1, tag });
@@ -268,6 +273,7 @@ export function scopeV2(document: EngagementDocument): Pass1 {
       drivers,
       units: all,
       requires: options.requires ?? [],
+      followOnOnly: code === "EF" ? fields.adoptionDetails.componentDepths.efficiency === "not-selected" : Boolean(options.capability && laterOnly.has(options.capability)),
     });
   };
 
@@ -280,14 +286,14 @@ export function scopeV2(document: EngagementDocument): Pass1 {
     if (!x.broadcomBaselineDelivered) {
       const extraSites = x.sites - 1;
       const areas: Array<[string, number]> = [];
-      if (hasAny("operations") || hasAny("automation")) areas.push(["Operations and automation", v(H.discoveryAreas.opsAutomation)]);
-      if (hasAny("kubernetes")) areas.push(["Kubernetes", v(H.discoveryAreas.kubernetes)]);
+      if (hasNow("operations") || hasNow("automation")) areas.push(["Operations and automation", v(H.discoveryAreas.opsAutomation)]);
+      if (hasNow("kubernetes")) areas.push(["Kubernetes", v(H.discoveryAreas.kubernetes)]);
       if (Array.from(outcomes).some(key => key.startsWith("networking:") && key !== "networking:physical-fabric")) areas.push(["NSX networking", v(H.discoveryAreas.networking) + v(H.discoveryAreas.perExtraSite) * extraSites]);
-      if (hasAny("security")) areas.push(["Security", v(H.discoveryAreas.security)]);
+      if (hasNow("security")) areas.push(["Security", v(H.discoveryAreas.security)]);
       if (has("resilience:core", "resilience:recovery-architecture", "resilience:recovery-exercises")) areas.push(["Disaster recovery", v(H.discoveryAreas.resilience) + v(H.discoveryAreas.perExtraSite) * extraSites]);
       if (addOns.has("hcx")) areas.push(["HCX", v(H.discoveryAreas.hcx) + v(H.discoveryAreas.perExtraSite) * extraSites]);
       if (has("resilience:cyber-recovery", "resilience:cloud-cyber-recovery") || addOns.has("acc")) areas.push(["Cyber recovery", v(H.discoveryAreas.cyberRecovery)]);
-      if (hasAny("private-ai")) areas.push(["Private AI", v(H.discoveryAreas.privateAi)]);
+      if (hasNow("private-ai")) areas.push(["Private AI", v(H.discoveryAreas.privateAi)]);
       add("DX", "Discovery by area", "architect", areas.map(([label, base]) => unit(`DX:${label}`, label, base, "module")), { areas: areas.map(([label]) => label).join(", "), sites: x.sites });
     }
   }
@@ -513,7 +519,7 @@ export function scopeV2(document: EngagementDocument): Pass1 {
       ...Array.from({ length: waf }, (_, index) => unit(`X15:waf-${index + 1}`, `WAF policy ${index + 1}`, v(H.avi.perWafPolicy), "module")),
     ], { clouds: x.clouds, virtualServices: x.virtualServices, wafPolicies: waf }, { capability: "networking" });
   }
-  if (fields.adoptionDetails.componentDepths.efficiency !== "not-selected") {
+  if (fields.adoptionDetails.componentDepths.efficiency !== "not-selected" || laterOnly.has("efficiency")) {
     add("EF", "Efficiency, memory tiering and sizing", "architect", [unit("EF", "Efficiency and memory tiering", v(H.efficiency.base) + v(H.efficiency.perTieredHost) * x.tieredHosts)], { tieredHosts: x.tieredHosts });
   }
 

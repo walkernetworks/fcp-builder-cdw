@@ -1,4 +1,4 @@
-import { effectiveDeliveryPath, resolvePlanOutcomes, type EngagementDocument } from "./fcp";
+import { effectiveDeliveryPath, resolvePlanOutcomes, usesVdefend, type EngagementDocument } from "./fcp";
 import { ADD_ON_OUTCOMES, canonicalAddOn } from "./report";
 
 /**
@@ -38,7 +38,7 @@ export function deliveryBriefing(document: EngagementDocument): BriefingItem[] {
   add("Jumbo frames", discovery.jumboFrames === null ? null : discovery.jumboFrames === "mixed" ? "Mixed" : yesNo(discovery.jumboFrames), discovery.jumboFrames === "mixed" ? "Some switches run jumbo frames and others do not: confirm the MTU end to end on every transport VLAN." : discovery.jumboFrames === false ? "Not enabled: raise the MTU on transport VLANs before overlay or vSAN traffic runs." : "Confirm the MTU end to end on the transport VLANs.");
   add("Backup", discovery.backup, moving ? "Confirm support for the target release before the first wave and re-point jobs as workloads move." : "Record it in the design so the build plan covers protection from day one.");
   add("Disaster recovery", discovery.drSolution, inScope("resilience") ? "The recovery design replaces or integrates it; capture current recovery objectives first." : "Not in this plan's scope; keep it working through every change.");
-  add("Security tooling", discovery.securityTooling, inScope("security") ? "Design vDefend policy alongside it to avoid conflicting controls." : "Agents and integrations must support the target release.");
+  add("Security tooling", discovery.securityTooling, inScope("security") ? (usesVdefend(fields) ? "Design vDefend policy alongside it to avoid conflicting controls." : "Design the identity, access and hardening controls alongside it to avoid conflicting controls.") : "Agents and integrations must support the target release.");
   add("Container platform", discovery.containerPlatform, inScope("kubernetes") ? "Decide which clusters move to the Supervisor and VKS." : "Out of scope; confirm nothing on it depends on the hosts being rebuilt.");
   add("Public cloud", discovery.hyperscalers.join(", "), "Existing cloud connectivity and workloads that the design must account for.");
   const bought = discovery.newHostsPurchased;

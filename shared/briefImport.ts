@@ -89,6 +89,12 @@ const OUTCOME_AREAS: Array<[string, Capability]> = [
   ["resilience", "resilience"], ["kubernetes", "kubernetes"], ["privateAi", "private-ai"],
 ];
 
+/** The component depth that sizes each outcome area; recovery has none. */
+const DEPTH_OF_AREA: Record<string, string> = {
+  operations: "operations", automation: "automation", networking: "networkingSecurity", security: "networkingSecurity",
+  resilience: "", kubernetes: "kubernetesAi", privateAi: "kubernetesAi",
+};
+
 /** The allowed focus values for one adoption-detail list. */
 function focusOptions(detailKey: string): string[] {
   let schema: any = (minimalFieldsSchema.shape.adoptionDetails.shape as Record<string, unknown>)[detailKey];
@@ -187,30 +193,52 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   const coercedFields = coercer.coerce("fields", "fields", fieldsPatch, minimalFieldsSchema) as JsonObject;
   const coercedDetails = coercer.coerce("fields.adoptionDetails", "adoptionDetails", detailsPatch, fieldsShape.adoptionDetails) as JsonObject;
 
-  // Add-ons the customer is considering become priorities and outcomes; they add to what is already selected.
+  // The brief is the source of truth for scope. When it states outcomes or depths, each area's outcome list replaces
+  // the earlier one, a depth left null with nothing wanted in its area is not selected, and an add-on it only
+  // considers (no outcome wanted and no depth stated in its area) is planned as follow-on scope outside the
+  // entitlement. A brief that states neither keeps the planning defaults: considered add-ons are planned as before.
   const current = document.fields;
+  const depthGiven = isPlainObject(discovery.componentDepth) ? discovery.componentDepth : null;
+  const wantedGiven = isPlainObject(discovery.outcomesWanted) ? discovery.outcomesWanted : null;
+  const statesScope = Boolean(depthGiven || wantedGiven);
+  const depthStated = (key: string) => typeof depthGiven?.[key] === "string" && String(depthGiven[key]).trim() !== "";
+  const wanted: Record<string, string[]> = {};
+  for (const [detailKey] of OUTCOME_AREAS) {
+    const allowed = focusOptions(detailKey);
+    wanted[detailKey] = [];
+    for (const value of textList(wantedGiven?.[detailKey], `discovery.outcomesWanted.${detailKey}`, warnings)) {
+      const focus = value.toLowerCase().replace(/[\s_]+/g, "-");
+      if (!allowed.includes(focus)) { warnings.push(`discovery.outcomesWanted.${detailKey}: "${value}" is not a recognized outcome; ignored`); continue; }
+      wanted[detailKey].push(focus);
+    }
+  }
+  const areaSelected = (detailKey: string) => !statesScope || wanted[detailKey].length > 0 || Boolean(DEPTH_OF_AREA[detailKey] && depthStated(DEPTH_OF_AREA[detailKey]));
   const priorities = new Set<string>(current.priorities);
+  // Areas the brief answers are rebuilt from it; the others keep what is already selected.
+  for (const [detailKey, capability] of OUTCOME_AREAS) if (Array.isArray(wantedGiven?.[detailKey])) priorities.delete(capability);
   const focusAdditions: Record<string, Set<string>> = {};
+  const followOnOnly = new Set<string>();
   let efficiency = false;
   for (const value of textList(discovery.addOnsConsidered, "discovery.addOnsConsidered", warnings)) {
     const key = canonicalAddOn(value);
     if (!key) { warnings.push(`discovery.addOnsConsidered: "${value}" is not a recognized add-on; ignored`); continue; }
     const addOn = ADD_ON_OUTCOMES[key];
-    if (addOn.efficiency) efficiency = true;
+    if (addOn.efficiency) {
+      if (!statesScope || depthStated("efficiency")) efficiency = true;
+      else followOnOnly.add("efficiency");
+    }
     if (addOn.priority) priorities.add(addOn.priority);
     if (addOn.detailKey && addOn.focus) {
       focusAdditions[addOn.detailKey] ??= new Set();
       addOn.focus.forEach(focus => focusAdditions[addOn.detailKey!].add(focus));
+      if (!areaSelected(addOn.detailKey) && addOn.priority) followOnOnly.add(addOn.priority);
     }
     if (key === "hcx") changes.push("discovery.addOnsConsidered: HCX is planned through the migration waves; no separate outcome added");
   }
-  // Outcomes the customer asked for in each area build the adoption plan; they add to what is already selected.
-  const outcomesWanted = isPlainObject(discovery.outcomesWanted) ? discovery.outcomesWanted : {};
+  for (const capability of Array.from(followOnOnly)) changes.push(`discovery.addOnsConsidered: ${capability === "efficiency" ? "memory tiering" : capability} is considered but not selected; planned as follow-on scope after the entitlement`);
+  // Outcomes the customer asked for in each area build the adoption plan.
   for (const [detailKey, capability] of OUTCOME_AREAS) {
-    const allowed = focusOptions(detailKey);
-    for (const value of textList(outcomesWanted[detailKey], `discovery.outcomesWanted.${detailKey}`, warnings)) {
-      const focus = value.toLowerCase().replace(/[\s_]+/g, "-");
-      if (!allowed.includes(focus)) { warnings.push(`discovery.outcomesWanted.${detailKey}: "${value}" is not a recognized outcome; ignored`); continue; }
+    for (const focus of wanted[detailKey]) {
       priorities.add(capability);
       (focusAdditions[detailKey] ??= new Set()).add(focus);
     }
@@ -222,12 +250,23 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   }));
 
   const details = { ...current.adoptionDetails } as Record<string, unknown>;
+  for (const [detailKey] of OUTCOME_AREAS) if (Array.isArray(wantedGiven?.[detailKey])) details[detailKey] = [];
   for (const [detailKey, additions] of Object.entries(focusAdditions)) {
     details[detailKey] = Array.from(new Set([...(details[detailKey] as string[]), ...Array.from(additions)]));
   }
-  if (efficiency && current.adoptionDetails.componentDepths.efficiency === "not-selected") {
-    details.componentDepths = { ...current.adoptionDetails.componentDepths, efficiency: "tier-1" };
+  const depths = { ...current.adoptionDetails.componentDepths };
+  if (depthGiven) {
+    // A null depth is not selected unless the brief wants outcomes in that area, where the planning default stays.
+    for (const key of Object.keys(depths) as Array<keyof typeof depths>) {
+      if (depthStated(key) || key === "efficiency") continue;
+      const areas = Object.entries(DEPTH_OF_AREA).filter(([, depthKey]) => depthKey === key).map(([area]) => area);
+      if (!areas.some(area => wanted[area].length)) depths[key] = "not-selected";
+    }
+    if (!depthStated("efficiency")) depths.efficiency = "not-selected";
   }
+  if (efficiency && depths.efficiency === "not-selected") depths.efficiency = "tier-1";
+  details.componentDepths = depths;
+  details.followOnOnly = statesScope ? Array.from(followOnOnly) : current.adoptionDetails.followOnOnly;
   const nextPriorities = capabilitySchema.options.filter(capability => priorities.has(capability) && !(declinedPriorities.has(capability) && !current.priorities.includes(capability)));
 
   const mergedFields = deepMerge(

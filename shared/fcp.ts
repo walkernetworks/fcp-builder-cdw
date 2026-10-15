@@ -562,6 +562,11 @@ function withDomainNote(domain: VcfDomain, outcome: string): string {
 export const adoptionDetailsSchema = adoptionDetailsV6Schema.extend({
   industryTemplate: industryTemplateSchema,
   domains: z.array(vcfDomainSchema).default([]),
+  /**
+   * Areas the brief lists only as considered (an add-on with no outcome or depth selected for it): they are planned
+   * in the Two-Year Notional as follow-on scope and never draw on the entitlement. "efficiency" is memory tiering.
+   */
+  followOnOnly: z.array(z.enum(["operations", "automation", "networking", "security", "resilience", "kubernetes", "private-ai", "efficiency"])).default([]),
 });
 export type AdoptionDetails = z.infer<typeof adoptionDetailsSchema>;
 
@@ -1302,6 +1307,7 @@ export function createDefaultAdoptionDetails(): AdoptionDetails {
     softPrerequisites: [],
     notes: "",
     industryTemplate: "general-enterprise",
+    followOnOnly: [],
   };
 }
 
@@ -2009,6 +2015,12 @@ const VVF_COMPONENT_DESIGN_TITLES: Partial<Record<Capability, string>> = {
   security: "vSphere Hardening and Access Design",
 };
 
+/** vDefend is in scope only through its own outcomes (segmentation, threat prevention, security intelligence) or the add-on. */
+const VDEFEND_FOCUSES = new Set(["segmentation", "ids-ips", "malware-prevention", "identity-firewall", "security-intelligence"]);
+export function usesVdefend(fields: MinimalFields): boolean {
+  return fields.adoptionDetails.security.some(focus => VDEFEND_FOCUSES.has(focus));
+}
+
 export function getVcfComponentDesignOwnership(capability: Capability): VcfPlaybookOwnership {
   return componentDesignProfiles[capability].ownership;
 }
@@ -2279,7 +2291,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       taskStart,
       taskEnd,
       colorForWorkstreamType(profile.ownership.workstreamType),
-      componentDesignTitle(edition === "vvf" ? VVF_COMPONENT_DESIGN_TITLES[capability] ?? profile.title : profile.title, depth),
+      componentDesignTitle(edition === "vvf" ? VVF_COMPONENT_DESIGN_TITLES[capability] ?? profile.title : capability === "security" && fields.adoptionDetails.security.length && !usesVdefend(fields) ? "Security Design: Identity, Access and Hardening" : profile.title, depth),
       false,
       false,
       appendDeliveryContext(profile.dependency),
@@ -2287,7 +2299,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     ));
     componentDesignCursors[laneKey] = taskEnd;
   });
-  if (fields.adoptionDetails.componentDepths.efficiency !== "not-selected") {
+  if (fields.adoptionDetails.componentDepths.efficiency !== "not-selected" || fields.adoptionDetails.followOnOnly.includes("efficiency")) {
     const [taskStart, taskEnd] = range(componentDesignCursors.infrastructureBuild, scheduleUnits(cadence, 2, 1));
     designBars.infrastructureBuild.push(bar(
       "bar-playbook-component-design-efficiency",
@@ -3388,14 +3400,14 @@ function numberValue(value: unknown): number {
 
 function migrateFieldsToV6(fields: z.infer<typeof minimalFieldsV5Schema>): z.infer<typeof minimalFieldsV6Schema> {
   const details = createDefaultAdoptionDetails();
-  const { industryTemplate: _industryTemplate, ...legacyDetails } = details;
+  const { industryTemplate: _industryTemplate, domains: _domains, followOnOnly: _followOnOnly, ...legacyDetails } = details;
   return { ...fields, adoptionCadence: "month", adoptionDetails: legacyDetails };
 }
 
 function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): MinimalFields {
   return {
     ...fields,
-    adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise", domains: [] },
+    adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise", domains: [], followOnOnly: [] },
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
     hoursModel: "v2",
     estimateInputs: {},

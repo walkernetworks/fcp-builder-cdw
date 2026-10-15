@@ -822,7 +822,11 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
   const envelopeSource: ScopedEffort["internal"]["envelopeSource"] = entitled !== null ? "entitled hours" : envelopeHours !== null ? options.envelopeSource ?? "entitlement value" : "none";
   const fullScopeHours = pass1.lines.reduce((sum, line) => sum + loadedOf(pass1, line, line.computedBase), 0);
   if (envelopeHours === null || envelopeHours <= 0) {
-    return assembleScopedEffort(document, effortLinesFromPass1(pass1), { envelopeHours, envelopeSource, fullScopeHours, status: "no-envelope", shortfallHours: 0, headroomHours: 0 }, { pass1 });
+    // Without an entitlement to fit, everything is planned except what the brief only considers, which is follow-on.
+    const later = new Set(pass1.lines.filter(line => line.followOnOnly).map(line => line.code));
+    const bases = (keep: boolean) => new Map(pass1.lines.filter(line => later.has(line.code) !== keep).map(line => [line.code, line.computedBase]));
+    const effort = assembleScopedEffort(document, effortLinesFromPass1(pass1, bases(true)), { envelopeHours, envelopeSource, fullScopeHours, status: "no-envelope", shortfallHours: 0, headroomHours: 0 }, { pass1 });
+    return later.size ? withDisplacedLines(document, effort, effortLinesFromPass1(pass1, bases(false))) : effort;
   }
   const inputs = document.fields.estimateInputs;
   const fit = fitV2(pass1, {
@@ -846,9 +850,11 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
   const displacedLines = effortLinesFromPass1(pass1, displacedBases).map(line => (designShared.has(line.code as V2Code) ? { ...line, skipDesignShare: true } : line));
   const status: FitStatus = fit.underFunded ? "short" : displacedLines.length ? "fits-reduced" : "fits";
   const effort = assembleScopedEffort(document, fundedLines, { envelopeHours, envelopeSource, fullScopeHours, status, shortfallHours: fit.underFunded?.gapHours ?? 0, headroomHours: fit.entitlementRemaining }, { pass1, fit: { ...fit, burndown: fitBurndown(document, fit) } });
-  if (!displacedLines.length) return effort;
+  return displacedLines.length ? withDisplacedLines(document, effort, displacedLines) : effort;
+}
 
-  // Displaced hours sit on their stages as follow-on scope; a stage with nothing left in the entitlement moves to the Two-Year Notional.
+/** Displaced hours sit on their stages as follow-on scope; a stage with nothing left in the entitlement moves to the Two-Year Notional. */
+function withDisplacedLines(document: EngagementDocument, effort: ScopedEffort, displacedLines: EffortLine[]): ScopedEffort {
   const displacedRows = workPackageEffort(document, displacedLines, totalsOf(rowsFromLines(displacedLines)));
   const later = new Map(displacedRows.map(row => [row.id, row.total > 0 ? row : row.followOn ? { ...row, ...row.followOn } : row]));
   const merged = effort.workPackages.map((row): WorkPackageEffort => {
