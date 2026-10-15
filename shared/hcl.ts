@@ -516,6 +516,20 @@ function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolutio
   };
 }
 
+/** Words that do not identify a server model (vendor and family names). */
+const MODEL_FILLER = new Set(["hpe", "hp", "proliant", "dell", "inc", "emc", "poweredge", "lenovo", "thinksystem", "cisco", "ucs", "server", "compute", "module", "blade"]);
+/**
+ * The listed model this one is a name variant of: the identifying tokens (model numbers, generations, "Plus") of one
+ * are all in the other, as with "ProLiant DL360 Gen10 8SFF CTO" and "ProLiant DL360 Gen10". A model that shares no
+ * model number with any listed model (a BL460c against DL-series candidates) is absent, not a variant.
+ */
+function nameVariantOf(model: string, candidates: HclCandidate[]): string | null {
+  const identifying = (value: string) => new Set(value.toLowerCase().split(/[^a-z0-9]+/).filter(token => token && !MODEL_FILLER.has(token) && (/\d/.test(token) || token === "plus")));
+  const observed = identifying(model);
+  const within = (left: Set<string>, right: Set<string>) => left.size >= 2 && Array.from(left).every(token => right.has(token));
+  return candidates.find(candidate => { const listed = identifying(candidate.model); return within(listed, observed) || within(observed, listed); })?.model ?? null;
+}
+
 /**
  * The server-and-CPU assessment, with the VCF corpus applied: a CPU the Compatibility Guide does not list for the
  * target release, or that KB 318697 lists as Discontinued, is not supported whatever the server model; a server
@@ -538,6 +552,18 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
       requiredEvidence: [],
     };
   }
+  if (base.status === "unknown" && base.vendorResolved && nameVariantOf(model, base.candidateModels)) {
+    // A listed model carries every identifying token of this one ("Synergy 480 Gen12" against "Synergy 480 Gen12
+    // Compute Module"): the match is unresolved, not absent, so the model name is confirmed rather than the hosts replaced.
+    const variant = nameVariantOf(model, base.candidateModels)!;
+    return {
+      ...base,
+      status: "review",
+      evidenceState: "identity-confirmation-required",
+      detail: `${vendor} ${model} does not match a Broadcom server list entry exactly; ${variant} is listed and may be the same server under another name (catalog ${HCL_CATALOG_METADATA.id}).`,
+      nextAction: "Confirm the exact model name with the vendor; if it is not listed for the target release, replace the hosts before they join a VCF 9 cluster.",
+    };
+  }
   if (base.status === "unknown" && base.vendorResolved) {
     // The server list covers every model listed for ESXi 9.0 and 9.1, so a model the vendor's list does not have is not listed.
     const nearest = base.candidateModels.slice(0, 3).map(item => item.model).filter(Boolean);
@@ -546,7 +572,7 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
       status: "not-supported",
       evidenceState: "verified-not-listed",
       detail: `${vendor} ${model} is not in the Broadcom server list for ESXi 9.0 or 9.1 (catalog ${HCL_CATALOG_METADATA.id}).${nearest.length ? ` Closest listed models: ${nearest.join(", ")}.` : ""} Treat it as not supported unless the vendor shows a current listing.`,
-      nextAction: "Confirm the exact model name with the vendor; if it is not listed for the target release, replace the hosts before they join a VCF 9 cluster.",
+      nextAction: "Not on the Broadcom server list for the target release: replace these hosts before they join a VCF 9 cluster, or keep them on vSphere 8 outside the VCF 9 estate until they are retired.",
     };
   }
   const deprecation = generation ? cpuDeprecation(generation) : null;
