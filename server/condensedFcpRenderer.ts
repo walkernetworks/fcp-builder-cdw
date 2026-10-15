@@ -299,11 +299,24 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
 
   // ---- Executive summary
   const situation = report.situation.map(esc);
+  // Every in-entitlement package is listed; the domain packages are grouped under one count so the line stays readable.
+  const domainKinds = new Map(domainPackages(fields).map(({ id, domain }) => [id, domain.kind]));
   const planOnPage = FIXED_GANTT_CATEGORIES.map(category => {
     // CDW work on the entitlement timeline in this category, governance and design stages included.
-    const work = document.adoptionTimeline.lanes.filter(lane => lane.category === category).flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "cdw").map(bar => bar.label.replace(UNDECIDED_DEPTH, "").replace(/^(Month \d+|Weeks? [\d–-]+): /, ""));
+    const bars = document.adoptionTimeline.lanes.filter(lane => lane.category === category).flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "cdw");
+    const label = (value: string) => value.replace(UNDECIDED_DEPTH, "").replace(/^(Month \d+|Weeks? [\d–-]+): /, "");
+    const domains = bars.filter(bar => domainKinds.has(bar.id));
+    const management = domains.filter(bar => domainKinds.get(bar.id) === "management").length;
+    const domainGroup = domains.length > 1
+      ? `${domains.length} domains (${[management ? `${management} management` : "", domains.length - management ? `${domains.length - management} workload` : ""].filter(Boolean).join(", ")}): ${domains.map(bar => label(bar.label)).join(", ")}`
+      : "";
+    const items: string[] = [];
+    for (const bar of bars) {
+      if (domainGroup && domainKinds.has(bar.id)) { if (!items.includes(domainGroup)) items.push(domainGroup); continue; }
+      if (!items.includes(label(bar.label))) items.push(label(bar.label));
+    }
     const later = deferredWork.filter(row => row.category === category).map(row => row.label.replace(UNDECIDED_DEPTH, ""));
-    const text = `${work.length ? esc(Array.from(new Set(work)).slice(0, 4).join("; ")) : later.length ? "nothing in the entitlement window" : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; after the entitlement: ${esc(later.join("; "))}` : ""}`;
+    const text = `${items.length ? esc(items.join("; ")) : later.length ? "nothing in the entitlement window" : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; after the entitlement: ${esc(later.join("; "))}` : ""}`;
     return `<li><b>${esc(category)}</b> — ${text}</li>`;
   }).join("");
   const lead = `A design-led plan to move ${esc(customer)} onto ${esc(platform)} — ${esc(plan.label.toLowerCase())}${termEnd ? ` — consuming the services entitlement before it ends on ${esc(longDate(termEnd))}${assumedEnd ? " (12 months from the start; to be confirmed)" : ""}` : ""}.`;

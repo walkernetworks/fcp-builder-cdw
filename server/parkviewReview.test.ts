@@ -371,5 +371,16 @@ describe("Parkview review: text, dedupe and layout", () => {
     expect(visible).toMatch(/This entitlement: reserve Held back for change requests and estimate variance; reviewed at month 6 and released to follow-on work if unused \d+/);
     expect(visible).not.toContain("held in reserve until month 6");
   });
+
+  it("15. lists every in-entitlement package on the Plan on a Page, grouping the domains", () => {
+    const document = twoSite();
+    const effort = scopedEffortForDocument(document);
+    const visible = text(render(document));
+    const plan = visible.split("Plan on a Page")[1].split(/Entitlement Burndown|No consumption data/)[0];
+    const inEntitlement = effort.workPackages.filter(row => !row.deferred && row.owner === "cdw" && row.category && bars(document).some(bar => bar.id === row.id));
+    expect(inEntitlement.length).toBeGreaterThan(15);
+    for (const row of inEntitlement) expect(plan).toContain(row.label.replace(/ — depth to be confirmed$/, "").replace(/^(Month \d+|Weeks? [\d–-]+): /, ""));
+    expect(plan).toContain("6 domains (2 management, 4 workload): North management domain, South management domain");
+  });
 });
 
