@@ -4,7 +4,7 @@ import { BUILD_STAGE_WEIGHTS, HOURS_V2 } from "./hoursConfig";
 import { lineRoles, loadedOf, scopeV2, type Pass1, type V2Code } from "./hoursV2";
 import { fitV2, type FitV2 } from "./hoursFit";
 import type { Timeline } from "./fcp";
-import { activityOwner, calculateEntitlementEndDate, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
+import { activityOwner, calculateEntitlementEndDate, domainBuildWeight, domainHosts, domainPackages, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
 /**
  * Hours model for the Condensed FCP, after the fcp-builder skill's fcp_hours.py.
@@ -562,6 +562,8 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   const governance = live(id => GOVERNANCE_BARS.test(id));
   let designPm = 0;
   const discoveryInScope = lines.some(item => DISCOVERY_CODES.test(item.code));
+  // Domain packages from the brief take their build share from their pathway and host count.
+  const domainWeights = new Map(domainPackages(document.fields).map(({ id, domain }) => [id, domainBuildWeight(domain, domainHosts(domain, document.inventory).hosts)]));
   for (const item of lines) {
     let roles = rolesOf(item);
     if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && governance.length) {
@@ -598,7 +600,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     const current = matches.filter(({ bar }) => inEntitlement(bar.id));
     // The deploy line is split by how much work each build package is, not by how long its window is.
     // The hardware review and the access mapping are focused pieces of design: half a design package's share.
-    const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : (bar: TimelineBar) => lengthWeight(bar) * (/^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(bar.id) ? 0.5 : 1);
+    const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => domainWeights.get(bar.id) ?? buildWeight(bar.id) : (bar: TimelineBar) => lengthWeight(bar) * (/^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(bar.id) ? 0.5 : 1);
     if (current.length) spread(current, roles, () => true, inWindow, weightOf);
     else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     // Deferred packages of the line get their share as a follow-on estimate.

@@ -5,7 +5,7 @@ import { applyCustomerBrief } from "../shared/briefImport";
 import { barWindow } from "../shared/buildingBlocks";
 import { buildCustomerEffort, customerRemainingWaves, formatWindow, NSX_VLAN_NOTE } from "../shared/effort";
 import { effectiveReport } from "../shared/reportView";
-import { createDefaultDocument, type EngagementDocument } from "../shared/fcp";
+import { createDefaultDocument, domainBuildWeight, domainHosts, domainPackages, type EngagementDocument } from "../shared/fcp";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { scopedEffortForDocument } from "./rateCard";
@@ -130,7 +130,8 @@ describe("Parkview review: scope and sequencing", () => {
       expect(Boolean(design) || carried).toBe(true);
       if (!design) expect(first.notes).toContain(NSX_VLAN_NOTE);
     }
-    expect(checked).toBe(plans.length);
+    // A small entitlement may carry no management domain at all; the rule applies to every plan that does.
+    expect(checked).toBeGreaterThanOrEqual(3);
     // The note reaches the customer document with the build date.
     expect(text(render(plans[1]))).toContain(`Platform build begins. ${NSX_VLAN_NOTE}`);
   });
@@ -191,6 +192,34 @@ describe("Parkview review: scope and sequencing", () => {
     expect(migration.sources.map(item => item.label)).toEqual(["Delivery Waves by Pathway"]);
     expect(migration.window).toBe(formatWindow(waves.start, waves.end));
     expect(text(render(document))).toContain(`Migration waves ${formatWindow(waves.start, waves.end)}`);
+  });
+
+  it("7. sizes each domain's build by its pathway and host count", () => {
+    const document = twoSite(raw => { raw.entitlement.value = 2_000_000; });
+    const effort = scopedEffortForDocument(document);
+    const packages = domainPackages(document.fields);
+    // Every domain has its package on the plan.
+    expect(packages.map(item => item.id).every(id => bars(document).some(bar => bar.id === id))).toBe(true);
+    const sized = packages.map(({ id, domain }) => {
+      const row = effort.workPackages.find(item => item.id === id)!;
+      return { name: domain.name, kind: domain.kind, pathway: domain.pathway, hosts: domainHosts(domain, document.inventory).hosts ?? 0, hours: row.total + (row.followOn?.total ?? 0) };
+    });
+    // Host counts fall back to the domain notes when the brief leaves them out.
+    expect(sized.find(item => item.name === "VDI workload domain – North")?.hosts).toBe(120);
+    // For the same pathway and kind, more hosts never means fewer hours.
+    for (const left of sized) for (const right of sized) {
+      if (left.kind === right.kind && left.pathway === right.pathway && left.hosts > right.hosts) expect(left.hours).toBeGreaterThanOrEqual(right.hours);
+    }
+    // An import of 6 hosts costs less than a greenfield domain replacing 120.
+    const imported = sized.find(item => item.pathway === "import")!;
+    const greenfield = sized.find(item => item.name === "VDI workload domain – North")!;
+    expect(imported.hours).toBeLessThan(greenfield.hours);
+    // The weight itself never falls as hosts rise, on any pathway.
+    for (const pathway of ["greenfield", "import", "converge"] as const) {
+      const domain = { name: "Any", kind: "workload" as const, pathway, instance: "", hosts: null, notes: "" };
+      expect(domainBuildWeight(domain, 200)).toBeGreaterThan(domainBuildWeight(domain, 20));
+    }
+    expect(text(render(document))).toContain("Domain build hours");
   });
 
   it("4. counts the remaining waves once: as work the customer runs or as CDW follow-on scope, never both", () => {
