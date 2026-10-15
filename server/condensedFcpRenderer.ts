@@ -451,7 +451,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ? `<h3>Estimating Basis</h3><p class="lead">The hours are built from the estate and scope below. Values marked as assumed were not stated and use the planning default; a confirmed value replaces it.</p>${table(["Driver", "Value", "Basis"], [
       ...[["ESX hosts", pass1.inputs.hosts], ["Clusters", pass1.inputs.clusters], ["VMs", pass1.inputs.vms], ["vCenters", pass1.inputs.vcenters], ["Sites", pass1.inputs.sites], ["VCF instances", pass1.inputs.instances], ["Workload domains", pass1.inputs.workloadDomains]]
         .map(([label, value]) => { const assumed = pass1.assumptions.find(item => item.label.toLowerCase() === String(label).toLowerCase()); return [esc(label), esc(value), esc(assumed ? basis(assumed.source) : "From RVTools or the brief")]; }),
-      ...pass1.assumptions.filter(item => !["hosts", "clusters", "vms", "vcenters", "sites", "instances", "workloadDomains"].includes(item.key)).map(item => [esc(item.label), esc(typeof item.value === "boolean" ? (item.value ? "Yes" : "No") : item.value), esc(basis(item.source))]),
+      ...pass1.assumptions.filter(item => !["hosts", "clusters", "vms", "vcenters", "sites", "instances", "workloadDomains"].includes(item.key)).map(item => [esc(item.label), esc(item.display ?? (typeof item.value === "boolean" ? (item.value ? "Yes" : "No") : item.value)), esc(item.derived ? item.source : basis(item.source))]),
       ...domainRows,
     ])}`
     : "";
