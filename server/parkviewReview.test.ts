@@ -331,5 +331,25 @@ describe("Parkview review: text, dedupe and layout", () => {
     expect(keyDate?.[2]).toBe(new Date(`${start}T00:00:00Z`).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).replace("Sept", "Sep"));
     expect(visible).not.toContain("build, upgrade and migration begin on this date");
   });
+
+  it("13. never repeats a word or the domain kind in a domain package's title or description", () => {
+    for (const document of [twoSite(), twoSite(raw => { raw.discovery.domains = raw.discovery.domains.map((domain: any) => ({ ...domain, name: domain.name.replace(/ (management|workload) domain/, "") })); })]) {
+      const packages = domainPackages(document.fields).map(({ id }) => bars(document).find(bar => bar.id === id)!);
+      expect(packages).toHaveLength(6);
+      for (const bar of packages) {
+        for (const value of [bar.label, bar.outcome]) {
+          expect(value).not.toMatch(/\b(\w+)\s+\1\b/i);
+          expect(value).not.toMatch(/\bdomains?\b\W+(?:\w+\W+)?domains?\b/i);
+        }
+        expect(bar.label.match(/\bdomain\b/gi)?.length ?? 0).toBeLessThanOrEqual(1);
+      }
+    }
+    const document = twoSite();
+    const label = (id: string) => bars(document).find(bar => bar.id === id)!;
+    expect(label("bar-management-domain-2").label).toBe("South management domain");
+    expect(label("bar-import-domain-1").label).toBe("Import Clinical workload domain");
+    // A note that already says how the domain is built is not followed by the template's own build sentence.
+    expect(label("bar-management-domain-2").outcome).toBe("Built on the existing two-host South management cluster; it temporarily carries the North management workloads, so it follows the North build. Deploy it (2 hosts) with its fleet services and validate core platform health.");
+  });
 });
 
