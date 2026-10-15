@@ -3,6 +3,7 @@ import { buildCustomerEffort, buildScopedEffort, customerRemainingWaves, WAVES_L
 import { activityOwner, calculateEntitlementEndDate, effectiveDeliveryPath, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, serverLabel, summarizeVcfCompatibility, usesVdefend, type EngagementDocument } from "./fcp";
 import { renewalStartsCurrentTerm } from "./deliveryBriefing";
 import { backInTime } from "./hclCorpus";
+import { MTU_REQUIREMENT_SOURCE, NSX_TEP_MIN_MTU, RECOMMENDED_MTU, VDS_REQUIREMENT } from "./hcl";
 import { ADD_ON_OUTCOMES, canonicalAddOn, completedReport, VSPHERE8_STRATEGY_TEXT, type ReportContent } from "./report";
 
 /**
@@ -83,6 +84,9 @@ const vmsBelowHardware19 = (document: EngagementDocument) => document.inventory.
   return version > 0 && version < 19;
 }).length;
 const onVsphere8 = (document: EngagementDocument) => document.inventory.esxiVersions.some(item => /\b8\.\d/.test(item.version));
+
+/** The overlay MTU requirement, from the same constants the host findings use. */
+const OVERLAY_MTU_REQUIREMENT = `Workload traffic on distributed switches (${VDS_REQUIREMENT}); NSX TEP traffic needs an MTU of at least ${NSX_TEP_MIN_MTU.toLocaleString("en-US")} end to end, with ${RECOMMENDED_MTU.toLocaleString("en-US")} recommended.`;
 
 /** vSphere 8 reaches end of general support on this date. */
 export const VSPHERE8_EOGS = "2027-10-11";
@@ -174,8 +178,8 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   if (!vvf) {
     designElements.push(overlay
       ? discovery.jumboFrames === true
-        ? { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: "Jumbo frames are already enabled; confirm the transport VLANs carry them end to end before the overlay is enabled.", gate: null }
-        : { component: "Networking", requirement: "Workload traffic on distributed switches; the overlay needs an MTU of 1,600 or more.", recommendation: `${discovery.jumboFrames === false ? "Jumbo frames are not enabled today; raise" : discovery.jumboFrames === "mixed" ? "Jumbo frames run on some switches only; confirm" : "Confirm"} the MTU end to end and the transport VLANs before the overlay is enabled.`, gate: "MTU confirmed" }
+        ? { component: "Networking", requirement: OVERLAY_MTU_REQUIREMENT, recommendation: "Jumbo frames are already enabled; confirm the transport VLANs carry them end to end before the overlay is enabled.", gate: null }
+        : { component: "Networking", requirement: OVERLAY_MTU_REQUIREMENT, recommendation: `${discovery.jumboFrames === false ? "Jumbo frames are not enabled today; raise" : discovery.jumboFrames === "mixed" ? "Jumbo frames run on some switches only; confirm" : "Confirm"} the MTU end to end and the transport VLANs before the overlay is enabled.`, gate: "MTU confirmed" }
       : { component: "Networking", requirement: "NSX is deployed with VCF; workloads can stay VLAN-backed.", recommendation: "Start VLAN-backed; consider overlay networking in a later phase.", gate: null });
   }
   const required = requiredCores(document);
@@ -243,6 +247,8 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   const technicalItems: Array<Row<"technicalItems">> = [];
   if (onVsphere8(document)) technicalItems.push({ item: "vSphere 8 end of general support 11 October 2027", reference: "Broadcom Product Lifecycle" });
   if (!vvf && (path === "greenfield" || path === "hybrid" || path === "converge")) technicalItems.push({ item: "The VCF Installer deploys vCenter, NSX and VCF Operations with the management domain", reference: "VCF documentation > Overview > VCF Installer Overview" });
+  // The brief's own MTU item, when it has one, already states this requirement.
+  if (!vvf && builds && !report.technicalItems.some(item => /\bMTU\b/i.test(item.item))) technicalItems.push({ item: `NSX TEP traffic needs an MTU of at least ${NSX_TEP_MIN_MTU} end to end, with ${RECOMMENDED_MTU} recommended; hosts join VCF on a distributed switch (${VDS_REQUIREMENT})`, reference: MTU_REQUIREMENT_SOURCE });
   if (path === "converge" || path === "import-workload-domain") technicalItems.push({ item: `Convergence blockers closed: ${discovery.enhancedLinkedMode === false ? "" : "Enhanced Linked Mode removed, "}vLCM images, no vCenter HA, DRS fully automated`, reference: "VCF documentation > Deployment > Supported and not supported configurations" });
 
   // ---- Sequencing constraints

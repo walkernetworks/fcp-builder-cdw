@@ -5,6 +5,7 @@ import { applyCustomerBrief } from "../shared/briefImport";
 import { barWindow } from "../shared/buildingBlocks";
 import { buildCustomerEffort, customerRemainingWaves, formatWindow, NSX_VLAN_NOTE } from "../shared/effort";
 import { effectiveReport } from "../shared/reportView";
+import { assessHclEstate, emptyHclInventoryEvidence, NSX_TEP_MIN_MTU, RECOMMENDED_MTU, VDS_MINIMUM } from "../shared/hcl";
 import { createDefaultDocument, domainBuildWeight, domainHosts, domainPackages, type EngagementDocument } from "../shared/fcp";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
@@ -263,5 +264,23 @@ describe("Riverbend review: estimating and checks", () => {
     expect(stated.report.discovery.storageSecondary).toEqual(["nfs-v3"]);
     expect(text(render(stated))).toMatch(/Mixed principal storage Yes The brief states VMFS on Fibre Channel and NFS/);
   });
-});
 
+  it("9. states the same MTU and distributed switch thresholds in the host findings as in the technical items", () => {
+    expect([NSX_TEP_MIN_MTU, RECOMMENDED_MTU, VDS_MINIMUM.converge, VDS_MINIMUM.import]).toEqual([1700, 9000, 8, 7]);
+    const evidence = emptyHclInventoryEvidence();
+    evidence.tabs = Object.fromEntries(["vHost", "vNIC", "dvSwitch"].map(tab => [tab, true]));
+    evidence.hosts = [{ name: "esx01", cluster: "Server-CL", vendor: "HPE", model: "Synergy 480 Gen11", cpuModel: "Intel(R) Xeon(R) Gold 6430", esxiVersion: "8.0.3", socketCount: 2, coresPerSocket: 32, biosVersion: "1", biosDate: "2024-01-01" }];
+    evidence.nics = [{ host: "esx01", cluster: "Server-CL", device: "vmnic0", driver: "ixgben", speedMb: 25000, switchName: "vSwitch0" }];
+    evidence.distributedSwitches = [{ name: "vDS-Server", version: "7.0.3", maxMtu: 1500 }];
+    const findings = assessHclEstate(evidence, new Date("2026-10-15T00:00:00Z")).findings;
+    const remedy = (checkId: string) => findings.find(item => item.checkId === checkId)?.remediation ?? "";
+    expect(remedy("NET.VDS_MTU_TOO_LOW")).toContain(`at least ${NSX_TEP_MIN_MTU} end to end; ${RECOMMENDED_MTU} is recommended`);
+    expect(remedy("NET.VDS_BELOW_CONVERGE_MINIMUM")).toContain(`vDS to ${VDS_MINIMUM.converge}.0 or later before its vCenter converges`);
+    expect(remedy("NET.NO_DISTRIBUTED_SWITCH")).toContain(`vDS ${VDS_MINIMUM.converge}.0 or later to converge into VCF; vDS ${VDS_MINIMUM.import}.0 or later to import`);
+    expect(JSON.stringify(findings)).not.toMatch(/1600|vDS 7\.0 or later before it joins/);
+    // The plan's own technical item and networking requirement use the same numbers.
+    const visible = text(render(twoSite(raw => { raw.technicalItems = []; })));
+    expect(visible).toContain(`NSX TEP traffic needs an MTU of at least ${NSX_TEP_MIN_MTU} end to end, with ${RECOMMENDED_MTU} recommended; hosts join VCF on a distributed switch (vDS ${VDS_MINIMUM.converge}.0 or later to converge into VCF; vDS ${VDS_MINIMUM.import}.0 or later to import)`);
+    expect(visible).not.toMatch(/MTU of 1,600/);
+  });
+});
