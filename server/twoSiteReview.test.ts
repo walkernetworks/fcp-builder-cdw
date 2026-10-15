@@ -307,5 +307,13 @@ describe("Riverbend review: estimating and checks", () => {
     expect(visible).toMatch(/Blocked or not listed for the target release: [^.]*HPE ProLiant BL460c Gen10 \(16 hosts\)/);
     expect(visible).toMatch(/To confirm the exact model name with the vendor: HPE ProLiant DL360 Gen10 8SFF CTO \(18 hosts\)/);
   });
+
+  it("11. counts every host of a model, whatever name or CPU it is reported with", () => {
+    const document = twoSite();
+    // 142 reported as "Synergy 480 Gen10" and 5 as "HPE Synergy 480 Gen10" on another CPU.
+    expect(text(render(document))).toContain("Host platforms: 150 HPE Synergy 480 Gen11; 147 HPE Synergy 480 Gen10; 16 HPE ProLiant BL460c Gen10");
+    const total = document.inventory.hostModels.reduce((sum, model) => sum + model.hosts, 0);
+    expect(total).toBe(document.inventory.hosts);
+  });
 });
 

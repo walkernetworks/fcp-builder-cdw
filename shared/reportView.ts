@@ -164,7 +164,16 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   if (inventory.hosts) {
     const vcenters = report.discovery.vcenters;
     situation.push(`${inventory.hosts} ESXi hosts · ${inventory.vmCount.toLocaleString("en-US")} VMs (${inventory.poweredOnVms.toLocaleString("en-US")} powered on)${vcenters ? ` across ${vcenters} vCenter${vcenters === 1 ? "" : "s"}` : ""}${inventory.clusters ? ` and ${inventory.clusters} cluster${inventory.clusters === 1 ? "" : "s"}` : ""}`);
-    const models = inventory.hostModels.slice(0, 3).map(model => `${model.hosts} ${serverLabel(model.vendor, model.model)}`);
+    // Every host in vHost counts, maintenance-mode and disconnected hosts included; a model reported under several
+    // names or CPUs ("HPE Synergy 480 Gen10", "Synergy 480 Gen10") is one model.
+    const byModel = new Map<string, { label: string; hosts: number }>();
+    for (const model of inventory.hostModels) {
+      const label = serverLabel(model.vendor, model.model);
+      const entry = byModel.get(normalizedModel(label)) ?? { label, hosts: 0 };
+      entry.hosts += model.hosts;
+      byModel.set(normalizedModel(label), entry);
+    }
+    const models = Array.from(byModel.values()).sort((left, right) => right.hosts - left.hosts).slice(0, 3).map(model => `${model.hosts} ${model.label}`);
     if (models.length) situation.push(`Host platforms: ${models.join("; ")}`);
     const versions = inventory.esxiVersions.slice(0, 3).map(item => `${item.version} (${item.hosts})`);
     if (versions.length) situation.push(`ESXi versions in use: ${versions.join(", ")}`);
