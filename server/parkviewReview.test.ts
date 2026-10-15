@@ -3,7 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { barWindow } from "../shared/buildingBlocks";
-import { customerRemainingWaves, NSX_VLAN_NOTE } from "../shared/effort";
+import { buildCustomerEffort, customerRemainingWaves, formatWindow, NSX_VLAN_NOTE } from "../shared/effort";
+import { effectiveReport } from "../shared/reportView";
 import { createDefaultDocument, type EngagementDocument } from "../shared/fcp";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
@@ -174,6 +175,22 @@ describe("Parkview review: scope and sequencing", () => {
     const hoursOf = (id: string) => { const row = effort.workPackages.find(item => item.id === id)!; return row.total + (row.followOn?.total ?? 0); };
     expect(hoursOf("bar-platform-enablement")).toBeGreaterThan(0);
     expect(Math.abs(hoursOf("bar-platform-enablement") + hoursOf("bar-platform-runbook-transfer") - hoursOf("bar-platform-handover"))).toBeLessThanOrEqual(1);
+  });
+
+  it("6. dates every customer effort phase from the span of the work it covers", () => {
+    const document = twoSite();
+    const { phases } = buildCustomerEffort({ ...document, report: effectiveReport(document) });
+    expect(phases.length).toBeGreaterThan(3);
+    for (const phase of phases) {
+      expect(phase.sources.length).toBeGreaterThan(0);
+      expect(phase.window).toBe(formatWindow(phase.sources.map(item => item.start).sort()[0], phase.sources.map(item => item.end).sort().at(-1)!));
+    }
+    // The migration phase is CDW's wave package, not the customer's site prerequisites that run during design.
+    const migration = phases.find(phase => phase.phase === "Migration waves")!;
+    const waves = windowOf(document, "bar-playbook-execution-delivery-waves")!;
+    expect(migration.sources.map(item => item.label)).toEqual(["Delivery Waves by Pathway"]);
+    expect(migration.window).toBe(formatWindow(waves.start, waves.end));
+    expect(text(render(document))).toContain(`Migration waves ${formatWindow(waves.start, waves.end)}`);
   });
 
   it("4. counts the remaining waves once: as work the customer runs or as CDW follow-on scope, never both", () => {

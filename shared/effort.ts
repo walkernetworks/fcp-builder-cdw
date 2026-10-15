@@ -952,6 +952,8 @@ export type CustomerEffortPhase = {
   phase: string;
   window: string;
   startDate: string;
+  /** The work packages and customer-run work the phase covers; its window is their span. */
+  sources: Array<{ label: string; start: string; end: string }>;
   platformLead: number;
   operations: number;
   network: number;
@@ -1026,26 +1028,26 @@ export function customerRunsRemainingWaves(document: EngagementDocument): boolea
 /** Customer effort per phase from the plan's windows and the default hours per week. */
 export function buildCustomerEffort(document: EngagementDocument): { phases: CustomerEffortPhase[]; peak: CustomerEffortPhase | null } {
   const timeline = document.adoptionTimeline;
-  const windows = new Map<PhaseKey, { start: string; end: string }>();
+  const sources = new Map<PhaseKey, CustomerEffortPhase["sources"]>();
+  const add = (key: PhaseKey, source: CustomerEffortPhase["sources"][number]) => sources.set(key, [...(sources.get(key) ?? []), source]);
   for (const activity of timeline.lanes.flatMap(lane => lane.bars)) {
     const key = phaseOf(activity);
     const window = key ? barWindow(timeline, activity) : null;
-    if (!key || !window) continue;
-    const current = windows.get(key);
-    windows.set(key, current ? { start: window.start < current.start ? window.start : current.start, end: window.end > current.end ? window.end : current.end } : window);
+    if (key && window) add(key, { label: activity.label, ...window });
   }
-  // Customer-run work: the waves the customer's team runs itself are their own, heavier phase; other customer work extends migration.
+  // Customer-run work: the waves the customer's team runs itself are their own, heavier phase; other customer work
+  // (site prerequisites, hardware) prepares the build, never the migration waves.
   for (const work of completedReport(document.report).customerOwnedWork) {
     const start = work.start.length === 7 ? `${work.start}-01` : work.start;
     const end = work.end.length === 7 ? `${work.end}-28` : work.end;
-    const key: PhaseKey = /\bwaves?\b/i.test(work.label) ? "customerWaves" : "migration";
-    const current = windows.get(key);
-    windows.set(key, current ? { start: start < current.start ? start : current.start, end: end > current.end ? end : current.end } : { start, end });
+    add(WAVES_LABEL.test(work.label) ? "customerWaves" : "build", { label: work.label, start, end });
   }
-  const phases = Array.from(windows.entries()).map(([key, window]) => {
+  const phases = Array.from(sources.entries()).map(([key, items]) => {
     const defaults = CUSTOMER_EFFORT_DEFAULTS[key];
     const total = defaults.platformLead + defaults.operations + defaults.network;
-    return { phase: defaults.phase, window: formatWindow(window.start, window.end), startDate: window.start, platformLead: defaults.platformLead, operations: defaults.operations, network: defaults.network, total, fte: Math.round((total / 40) * 100) / 100 };
+    const start = items.map(item => item.start).sort()[0];
+    const end = items.map(item => item.end).sort().at(-1)!;
+    return { phase: defaults.phase, window: formatWindow(start, end), startDate: start, sources: items, platformLead: defaults.platformLead, operations: defaults.operations, network: defaults.network, total, fte: Math.round((total / 40) * 100) / 100 };
   }).sort((left, right) => left.startDate.localeCompare(right.startDate));
   const peak = phases.reduce<CustomerEffortPhase | null>((best, phase) => (!best || phase.total > best.total ? phase : best), null);
   return { phases, peak };
