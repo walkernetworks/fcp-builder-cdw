@@ -351,5 +351,25 @@ describe("Parkview review: text, dedupe and layout", () => {
     // A note that already says how the domain is built is not followed by the template's own build sentence.
     expect(label("bar-management-domain-2").outcome).toBe("Built on the existing two-host South management cluster; it temporarily carries the North management workloads, so it follows the North build. Deploy it (2 hosts) with its fleet services and validate core platform health.");
   });
+
+  it("14. gives every open item an owner, raises each subject once, and shows what the reserve is for", () => {
+    const document = twoSite(raw => { raw.discovery.addOnsPurchased = ["vdefend"]; });
+    const report = effectiveReport(document);
+    expect(report.openItems.length).toBeGreaterThan(2);
+    for (const item of report.openItems) expect(item.owner.trim()).not.toBe("");
+    // The brief already asks to confirm the entitlement term, so the plan does not raise its own end-date item.
+    expect(report.openItems.filter(item => /entitlement (term|end)/i.test(item.item))).toHaveLength(1);
+    // No two items cover the same subject.
+    const subject = (item: string) => item.toLowerCase().replace(/\(.*?\)/g, "").split(/[^a-z]+/).filter(word => word.length > 4).slice(0, 4).join(" ");
+    const subjects = report.openItems.map(item => subject(item.item));
+    expect(new Set(subjects).size).toBe(subjects.length);
+    // Platform items fall to the customer's infrastructure team with CDW; commercial items to the brief's commercial owner.
+    expect(report.openItems.find(item => /after vSphere 8 general support ends/.test(item.item))?.owner).toBe("Riverbend Health infrastructure team with CDW");
+    expect(report.openItems.find(item => /purchased but not in this plan/.test(item.item))?.owner).toBe("Account lead / Partner practice lead");
+    // The reserve is a line of its own with what it is for, not a loose sentence.
+    const visible = text(render(document));
+    expect(visible).toMatch(/This entitlement: reserve Held back for change requests and estimate variance; reviewed at month 6 and released to follow-on work if unused \d+/);
+    expect(visible).not.toContain("held in reserve until month 6");
+  });
 });
 
