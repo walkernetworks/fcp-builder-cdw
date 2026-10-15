@@ -1,6 +1,6 @@
 import { barWindow } from "./buildingBlocks";
 import { buildCustomerEffort, buildScopedEffort, customerRemainingWaves, withOwnership } from "./effort";
-import { activityOwner, calculateEntitlementEndDate, effectiveDeliveryPath, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, serverLabel, summarizeVcfCompatibility, type EngagementDocument } from "./fcp";
+import { activityOwner, calculateEntitlementEndDate, effectiveDeliveryPath, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, serverLabel, summarizeVcfCompatibility, usesVdefend, type EngagementDocument } from "./fcp";
 import { renewalStartsCurrentTerm } from "./deliveryBriefing";
 import { backInTime } from "./hclCorpus";
 import { ADD_ON_OUTCOMES, canonicalAddOn, completedReport, type ReportContent } from "./report";
@@ -208,7 +208,7 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   }
   if (moves && discovery.backup) designElements.push({ component: "Backup", requirement: `${discovery.backup} protects the workloads moving to the new platform.`, recommendation: `Confirm ${discovery.backup} supports the target vSphere and VCF release before the first wave; re-point jobs as each wave lands.`, gate: "backup support confirmed" });
   if (inScope("resilience") && discovery.drSolution) designElements.push({ component: "Disaster recovery", requirement: `Recovery runs on ${discovery.drSolution} today.`, recommendation: "The recovery design decides whether VMware Live Recovery replaces it or runs alongside, and sets the recovery objectives.", gate: null });
-  if (inScope("security") && discovery.securityTooling) designElements.push({ component: "Security tooling", requirement: `${discovery.securityTooling} stays in place.`, recommendation: "Design vDefend policy alongside the existing tooling so controls do not overlap or conflict.", gate: null });
+  if (inScope("security") && discovery.securityTooling) designElements.push({ component: "Security tooling", requirement: `${discovery.securityTooling} stays in place.`, recommendation: usesVdefend(fields) ? "Design vDefend policy alongside the existing tooling so controls do not overlap or conflict." : "Design the identity, access and hardening controls alongside the existing tooling so they do not overlap or conflict.", gate: null });
   if (inScope("kubernetes") && discovery.containerPlatform) designElements.push({ component: "Containers", requirement: `${discovery.containerPlatform} runs containers today.`, recommendation: "Decide in design which clusters move to the Supervisor and VKS and which stay where they are.", gate: null });
   if (discovery.edgeSites) designElements.push({ component: "Edge sites", requirement: `${discovery.edgeSites} edge site${discovery.edgeSites === 1 ? "" : "s"} in the estate.`, recommendation: "Decide in design whether each edge site joins the fleet or stays on its current platform.", gate: null });
 
@@ -384,13 +384,16 @@ export function selectedScopeSummary(document: EngagementDocument) {
   const resolved = resolvePlanOutcomes(document.fields);
   const vvf = resolved.edition === "vvf";
   const scope: string[] = [];
-  if (priorities.includes("operations") || adoptionDetails.operations.length) scope.push("operations and lifecycle management");
-  if (priorities.includes("automation") || adoptionDetails.automation.length) scope.push("automation and self-service foundations");
-  if (priorities.includes("networking") || adoptionDetails.networking.length) scope.push(vvf ? "the explicitly selected networking and load-balancing scope" : "the explicitly selected VCF networking and NSX scope");
-  if (priorities.includes("security") || adoptionDetails.security.length) scope.push("security and segmentation controls");
-  if (priorities.includes("resilience") || adoptionDetails.resilience.length) scope.push("resilience and recovery planning");
-  if (priorities.includes("kubernetes") || adoptionDetails.kubernetes.length) scope.push("Kubernetes and workload-domain enablement");
-  if (priorities.includes("private-ai") || adoptionDetails.privateAi.length) scope.push("private AI enablement");
+  const later: string[] = [];
+  const area = (capability: string, selected: boolean, phrase: string) => { if (selected) (adoptionDetails.followOnOnly.includes(capability as never) ? later : scope).push(phrase); };
+  area("operations", priorities.includes("operations") || adoptionDetails.operations.length > 0, "operations and lifecycle management");
+  area("automation", priorities.includes("automation") || adoptionDetails.automation.length > 0, "automation and self-service foundations");
+  area("networking", priorities.includes("networking") || adoptionDetails.networking.length > 0, vvf ? "the explicitly selected networking and load-balancing scope" : "the explicitly selected VCF networking and NSX scope");
+  area("security", priorities.includes("security") || adoptionDetails.security.length > 0, usesVdefend(document.fields) ? "security and segmentation controls" : "identity, access and hardening controls");
+  area("resilience", priorities.includes("resilience") || adoptionDetails.resilience.length > 0, "resilience and recovery planning");
+  area("kubernetes", priorities.includes("kubernetes") || adoptionDetails.kubernetes.length > 0, "Kubernetes and workload-domain enablement");
+  area("private-ai", priorities.includes("private-ai") || adoptionDetails.privateAi.length > 0, "private AI enablement");
+  if (adoptionDetails.followOnOnly.includes("efficiency")) later.push("memory tiering");
 
   const deliveryPath = {
     "migration-waves": "controlled migration waves",
@@ -407,5 +410,6 @@ export function selectedScopeSummary(document: EngagementDocument) {
   const selected = scope.length ? scope.join(", ").replace(/, ([^,]*)$/, " and $1") : "the selected operational priorities";
   const edition = vvf ? " on VMware vSphere Foundation (VVF)" : "";
   const excluded = resolved.excluded.length ? ` Outcomes that require VCF are not included: ${resolved.excluded.map(key => planOutcomeLabel(key)).join("; ")}.` : "";
-  return `The plan is framed around ${selected}, with ${vvf ? deliveryPath.replace(/VCF/g, "VVF") : deliveryPath}${edition}.${excluded}`;
+  const considered = later.length ? ` Considered for after the entitlement: ${later.join(", ").replace(/, ([^,]*)$/, " and $1")}.` : "";
+  return `The plan is framed around ${selected}, with ${vvf ? deliveryPath.replace(/VCF/g, "VVF") : deliveryPath}${edition}.${excluded}${considered}`;
 }

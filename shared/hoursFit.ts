@@ -10,7 +10,7 @@ import type { Capability } from "./fcp";
  */
 
 export type Bucket = "E1" | "E2" | "F" | "C";
-export type DisplacedReason = "ran out" | "no owner" | "customer deferred" | "cannot cover";
+export type DisplacedReason = "ran out" | "no owner" | "customer deferred" | "cannot cover" | "considered only";
 
 export type Placement = {
   code: V2Code;
@@ -125,7 +125,8 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   const reserveHours = entitlementHours * (options.reserveShare ?? H.fit.reserveShare.value);
   const fillableHours = entitlementHours - reserveHours;
   const loaded = (line: V2Line, base: number) => loadedOf(pass1, line, base);
-  const items = fillOrder(pass1, options);
+  // Lines the brief only considers never draw on the entitlement; they are placed in the follow-on after the fill.
+  const items = fillOrder({ ...pass1, lines: pass1.lines.filter(line => !line.followOnOnly) }, options);
   const coreItems = items.filter(item => item.step <= 5);
   const coreRequiredHours = coreItems.reduce((sum, item) => sum + loaded(item.line, item.unit.base), 0);
   const coreByLine = Array.from(coreItems.reduce((map, item) => {
@@ -188,6 +189,9 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     // A line that kept its design share in E2 carries the remaining 75% of each Tier 1 unit into the later bucket.
     const base = sharedLines.has(item.line.code) && item.unit.tier === 1 ? item.unit.base * (1 - share) : item.unit.base;
     place(item, displacedBucket(item.line), base, { reason: "ran out" });
+  }
+  for (const line of pass1.lines.filter(item => item.followOnOnly)) {
+    for (const unit of line.units) place({ line, unit, step: 9, order: 0 }, "F", unit.base, { reason: "considered only" });
   }
 
   const buckets: Record<Bucket, number> = { E1: 0, E2: 0, F: 0, C: 0 };
