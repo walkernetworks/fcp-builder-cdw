@@ -33,7 +33,7 @@ const hostModel = (vendor: string, model: string, cpuModel: string, hosts: numbe
 function twoSite(patch: (raw: any) => void = () => {}): EngagementDocument {
   const raw = exampleBrief();
   raw.customer = { ...raw.customer, name: "Riverbend Health" };
-  raw.entitlement = { value: 410_000, hours: null, termStart: "2026-10-11", termEnd: null, hoursConsumed: null, consumedAsOf: null };
+  raw.entitlement = { value: 450_000, hours: null, termStart: "2026-10-11", termEnd: null, hoursConsumed: null, consumedAsOf: null };
   raw.schedule = { projectStart: "2026-10-16", implementationStart: null, targetComplete: "2027-10-15", hardwareLeadWeeks: null, calendarConstraints: null };
   raw.customerOwnedWork = [];
   raw.resourceAssignments = [];
@@ -245,3 +245,23 @@ describe("Parkview review: scope and sequencing", () => {
     expect(cdw.customerRuns).toBe(false);
   });
 });
+
+describe("Parkview review: estimating and checks", () => {
+  it("8. takes storage types and kept clusters from the estate instead of planning defaults", () => {
+    const visible = text(render(twoSite()));
+    // VMFS on Fibre Channel, NFS and vSAN from the RVTools datastores; local disks do not count.
+    expect(visible).toMatch(/Principal storage types 3 [^|]*RVTools datastores show VMFS on Fibre Channel, NFS, vSAN \(Pure, Nimble, VxRail arrays\)/);
+    expect(visible).toMatch(/Mixed principal storage Yes /);
+    // The server domain keeps its cluster boundaries but its notes name no cluster: the count is set in design.
+    expect(visible).toMatch(/Clusters on the new platform Set in design Assumed: Server workload domain \(VC 0470\) keeps its existing cluster boundaries/);
+    // Named clusters are counted from RVTools.
+    const named = text(render(twoSite(raw => { raw.discovery.domains[5].notes = "Cluster boundaries kept: App01-CL and App02-CL move as they are."; })));
+    expect(named).toMatch(/Clusters on the new platform 14 2 clusters kept for Server workload domain \(VC 0470\) \(RVTools\)/);
+    // A brief can state mixed storage without RVTools datastores.
+    const stated = twoSite(raw => { raw.discovery.storageSecondary = ["NFS v3", "made-up"]; });
+    stated.inventory.hclEvidence.datastores = [];
+    expect(stated.report.discovery.storageSecondary).toEqual(["nfs-v3"]);
+    expect(text(render(stated))).toMatch(/Mixed principal storage Yes The brief states VMFS on Fibre Channel and NFS/);
+  });
+});
+

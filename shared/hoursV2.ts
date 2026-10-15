@@ -66,7 +66,8 @@ export type V2Line = {
   followOnOnly: boolean;
 };
 
-export type Assumption = { key: string; label: string; value: number | boolean | string; source: string };
+/** A driver value and where it came from; `display` replaces the value when the number is not yet known to the customer. */
+export type Assumption = { key: string; label: string; value: number | boolean | string; source: string; display?: string; derived?: boolean };
 
 export type Pass1 = {
   path: VcfDeliveryPath;
@@ -140,21 +141,26 @@ export function resolveInputs(document: EngagementDocument) {
   const clusters = inventory.clusters || assume("clusters", "Existing clusters", Math.max(1, Math.ceil(hosts / v(H.defaults.hostsPerCluster))), H.defaults.hostsPerCluster.source);
   // Converge, import and in-place work on the existing clusters; a build or a design sizes the new platform's clusters.
   const existingPlatform = ["converge", "import-workload-domain", "in-place"].includes(effectiveDeliveryPath(fields));
-  const platformClusters = existingPlatform ? clusters : given.targetClusters ?? assume("targetClusters", "Clusters on the new platform", Math.max(1, Math.ceil(hosts / v(H.defaults.hostsPerCluster))),
-    `Up to ${v(H.defaults.hostsPerCluster)} hosts per cluster on the new platform${inventory.clusters ? `, against ${inventory.clusters} clusters today` : ""}; the cluster layout is set in design`);
+  const platformClusters = existingPlatform ? clusters : given.targetClusters ?? newPlatformClusters(document, hosts, assumptions);
   const vms = inventory.vmCount || assume("vms", "VMs", hosts * v(H.defaults.vmsPerHost), H.defaults.vmsPerHost.source);
   const topology = fields.adoptionDetails.domainTopology;
   const consolidated = topology === "consolidated" || (topology === "undecided" && hosts > 0 && hosts <= 10);
   const storage = fields.adoptionDetails.principalStorage;
+  const storageFound = storageTypesInUse(document);
+  /** A value worked out from RVTools or the brief rather than a planning default. */
+  const derive = <T extends number | boolean>(key: string, label: string, value: T, source: string): T => {
+    assumptions.push({ key, label, value, source, derived: true });
+    return value;
+  };
   const source8xFromInventory = inventory.esxiVersions.some(item => /^8\./.test(item.version.trim()));
 
   const values = {
     hosts, sites, vcenters, instances, clusters, platformClusters, vms, consolidated,
     workloadDomains: pick("workloadDomains", "Workload domains", () => workloadDomainList ? workloadDomainList : ({ value: consolidated ? 0 : 1, source: consolidated ? "Consolidated topology (or 10 hosts or fewer with topology undecided)" : "One workload domain unless the topology is consolidated" })),
     stretchedClusters: pick("stretchedClusters", "Stretched clusters", () => ({ value: 0, source: "None stated" })),
-    storageTypes: pick("storageTypes", "Principal storage types", () => ({ value: 1, source: "One principal storage type" })),
+    storageTypes: pick("storageTypes", "Principal storage types", () => storageFound.types.length ? derive("storageTypes", "Principal storage types", storageFound.types.length, storageFound.source) : { value: 1, source: "One principal storage type" }),
     clustersOnFcOrNfs: pick("clustersOnFcOrNfs", "Clusters on FC or NFS principal storage", () => ({ value: storage === "vmfs-fc" || storage === "nfs-v3" ? platformClusters : 0, source: `Principal storage is ${storage}` })),
-    mixedStorage: pick("mixedStorage", "Mixed principal storage", () => ({ value: false, source: "None stated" })),
+    mixedStorage: pick("mixedStorage", "Mixed principal storage", () => storageFound.types.length ? derive("mixedStorage", "Mixed principal storage", storageFound.types.length > 1, storageFound.source) : { value: false, source: "None stated" }),
     dedicatedNsxWorkloadDomains: pick("dedicatedNsxWorkloadDomains", "Workload domains with dedicated NSX", () => ({ value: 0, source: "None stated" })),
     noExistingNsx: pick("noExistingNsx", "No NSX in the existing estate", () => ({ value: v(H.defaults.noExistingNsx) === 1, source: H.defaults.noExistingNsx.source })),
     enhancedLinkedMode: pick("enhancedLinkedMode", "Enhanced Linked Mode", () => report.discovery.enhancedLinkedMode ?? { value: false, source: "Not stated in the brief" }),
@@ -211,6 +217,62 @@ export function resolveInputs(document: EngagementDocument) {
     broadcomBaselineDelivered: pick("broadcomBaselineDelivered", "Broadcom baselining delivered", () => ({ value: false, source: "None stated" })),
   };
   return { values, assumptions };
+}
+
+const STORAGE_NAMES: Record<string, string> = { vsan: "vSAN", "nfs-v3": "NFS", "vmfs-fc": "VMFS on Fibre Channel", "other-existing": "VMFS on iSCSI or other existing storage" };
+/** Fibre Channel and FCoE HBA drivers: VMFS datastores on hosts with these adapters are VMFS on FC. */
+const FC_DRIVERS = /^(lpfc|qlnativefc|qedf|brcmfcoe|qfle3f|fnic|nfnic|elxfc)$/i;
+const ARRAYS: Array<[RegExp, string]> = [[/pure/i, "Pure"], [/nimble/i, "Nimble"], [/vxrail/i, "VxRail"], [/netapp|ontap/i, "NetApp"], [/powerstore/i, "PowerStore"], [/unity/i, "Unity"], [/3par|primera|alletra/i, "HPE"]];
+
+/**
+ * The storage types in use: the brief's principal and secondary storage, and the RVTools datastores by type
+ * (vSAN, NFS, shared VMFS on FC or other transports; local disks are not principal storage), named with the arrays
+ * the datastore names show.
+ */
+export function storageTypesInUse(document: EngagementDocument): { types: string[]; source: string } {
+  const { fields, report, inventory } = document;
+  const types = new Set<string>();
+  const stated = [fields.adoptionDetails.principalStorage, ...report.discovery.storageSecondary].filter(type => type !== "undecided");
+  stated.forEach(type => types.add(type));
+  const datastores = inventory.hclEvidence.datastores;
+  const shared = datastores.filter(item => !/\blocal\b|^datastore\s?\d*$|local-/i.test(item.name));
+  const fc = inventory.hclEvidence.hbas.some(hba => FC_DRIVERS.test(hba.driver));
+  const found = new Set<string>();
+  for (const item of shared) {
+    const type = item.type.toLowerCase();
+    if (type.startsWith("vsan")) found.add("vsan");
+    else if (type.startsWith("nfs")) found.add("nfs-v3");
+    else if (type.startsWith("vmfs")) found.add(fc ? "vmfs-fc" : "other-existing");
+  }
+  found.forEach(type => types.add(type));
+  if (!types.size) return { types: [], source: "" };
+  const arrays = ARRAYS.filter(([pattern]) => shared.some(item => pattern.test(item.name))).map(([, name]) => name);
+  const parts = [
+    stated.length ? `the brief states ${stated.map(type => STORAGE_NAMES[type] ?? type).join(" and ")}` : "",
+    found.size ? `RVTools datastores show ${Array.from(found).map(type => STORAGE_NAMES[type] ?? type).join(", ")}${arrays.length ? ` (${arrays.join(", ")} arrays)` : ""}` : "",
+  ].filter(Boolean);
+  return { types: Array.from(types), source: `${parts.join("; ")}`.replace(/^./, first => first.toUpperCase()) };
+}
+
+/**
+ * Clusters on the new platform. Domains that keep their cluster boundaries keep the RVTools clusters their notes name;
+ * when their notes name none, the count is set in design and shown without a number. The rest use the planning default.
+ */
+function newPlatformClusters(document: EngagementDocument, hosts: number, assumptions: Assumption[]): number {
+  const perCluster = v(H.defaults.hostsPerCluster);
+  const fallback = Math.max(1, Math.ceil(hosts / perCluster));
+  const keeps = document.fields.adoptionDetails.domains.filter(domain => /cluster boundaries (are )?kept|keeps? (its |the |existing |meaningful )*cluster/i.test(domain.notes));
+  const push = (value: number, source: string, display?: string) => { assumptions.push({ key: "targetClusters", label: "Clusters on the new platform", value, source, ...(display ? { display } : {}), ...(display ? {} : keeps.length ? { derived: true } : {}) }); return value; };
+  if (!keeps.length) return push(fallback, `Up to ${perCluster} hosts per cluster on the new platform${document.inventory.clusters ? `, against ${document.inventory.clusters} clusters today` : ""}; the cluster layout is set in design`);
+  const named = keeps.flatMap(domain => {
+    const text = `${domain.name} ${domain.notes}`.toLowerCase();
+    return document.inventory.clusterProfiles.filter(profile => profile.name.split(" / ").some(part => part.trim().length > 3 && text.includes(part.trim().toLowerCase())));
+  });
+  const names = keeps.map(domain => domain.name).join(" and ");
+  if (!named.length) return push(fallback, `${names} keeps its existing cluster boundaries; the count is confirmed in design from its RVTools export`, "Set in design");
+  const keptHosts = named.reduce((sum, profile) => sum + profile.hosts, 0);
+  const rest = Math.ceil(Math.max(0, hosts - keptHosts) / perCluster);
+  return push(named.length + rest, `${named.length} cluster${named.length === 1 ? "" : "s"} kept for ${names} (RVTools), plus up to ${perCluster} hosts per cluster for the rest`);
 }
 
 // ---------------------------------------------------------------------------------------------
