@@ -317,3 +317,19 @@ describe("Parkview review: estimating and checks", () => {
   });
 });
 
+describe("Parkview review: text, dedupe and layout", () => {
+  it("12. dates the implementation start constraint from the same values as Key Dates", () => {
+    const document = twoSite();
+    const visible = text(render(document));
+    const keyDate = /(\d{1,2} \w{3} \d{4}) Implementation services start with design and planning\. (\d{1,2} \w{3} \d{4}) Platform build begins/.exec(visible);
+    const constraint = /Implementation services start (\d{1,2} \w{3} \d{4}) with design and planning; the platform build begins (\d{1,2} \w{3} \d{4}) Riverbend Health Design and planning run from the project start/.exec(visible);
+    expect(keyDate).not.toBeNull();
+    expect(constraint?.slice(1)).toEqual(keyDate?.slice(1));
+    expect(keyDate?.[1]).toBe("16 Oct 2026");
+    // The build begins with the first management domain.
+    const start = windowOf(document, "bar-management-domain")!.start;
+    expect(keyDate?.[2]).toBe(new Date(`${start}T00:00:00Z`).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).replace("Sept", "Sep"));
+    expect(visible).not.toContain("build, upgrade and migration begin on this date");
+  });
+});
+
