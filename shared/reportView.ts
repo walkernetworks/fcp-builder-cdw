@@ -1,9 +1,9 @@
 import { barWindow } from "./buildingBlocks";
-import { buildCustomerEffort, buildScopedEffort, customerRemainingWaves, withOwnership } from "./effort";
+import { buildCustomerEffort, buildScopedEffort, customerRemainingWaves, WAVES_LABEL, withOwnership } from "./effort";
 import { activityOwner, calculateEntitlementEndDate, effectiveDeliveryPath, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, serverLabel, summarizeVcfCompatibility, usesVdefend, type EngagementDocument } from "./fcp";
 import { renewalStartsCurrentTerm } from "./deliveryBriefing";
 import { backInTime } from "./hclCorpus";
-import { ADD_ON_OUTCOMES, canonicalAddOn, completedReport, type ReportContent } from "./report";
+import { ADD_ON_OUTCOMES, canonicalAddOn, completedReport, VSPHERE8_STRATEGY_TEXT, type ReportContent } from "./report";
 
 /**
  * What the Condensed FCP generates from the plan when the planner has not written it, and the report the
@@ -83,6 +83,33 @@ const vmsBelowHardware19 = (document: EngagementDocument) => document.inventory.
   return version > 0 && version < 19;
 }).length;
 const onVsphere8 = (document: EngagementDocument) => document.inventory.esxiVersions.some(item => /\b8\.\d/.test(item.version));
+
+/** vSphere 8 reaches end of general support on this date. */
+export const VSPHERE8_EOGS = "2027-10-11";
+/** The default owner of a platform item the plan raises. */
+export const PLATFORM_OWNER = (customer: string) => `${customer} infrastructure team with CDW`;
+
+/**
+ * Hosts still on vSphere 8 and whether any wave (CDW-led or run by the customer's team) ends after vSphere 8 general
+ * support ends. Null when no host is on vSphere 8 or the plan moves nothing.
+ */
+export function vsphere8Exposure(document: EngagementDocument): { hosts: number; where: string; lastWave: string | null; after: boolean; strategy: ReportContent["discovery"]["vsphere8Strategy"] } | null {
+  const { inventory, fields, report } = document;
+  const path = playbookPlanForFields(fields).path;
+  const hosts = inventory.esxiVersions.filter(item => /\b8\.\d/.test(item.version)).reduce((sum, item) => sum + item.hosts, 0);
+  if (!hosts || !["greenfield", "hybrid", "in-place", "converge", "import-workload-domain"].includes(path)) return null;
+  const clusters = Array.from(new Set(inventory.hclEvidence.hosts.filter(host => /\b8\.\d/.test(host.esxiVersion)).map(host => host.cluster).filter(Boolean)));
+  const where = clusters.length ? ` (${clusters.slice(0, 3).join(", ")}${clusters.length > 3 ? ` and ${clusters.length - 3} more clusters` : ""})` : "";
+  // The customer's waves: its own rows, or the plan's generated row unless the planner hid it.
+  const own = completedReport(report).customerOwnedWork.filter(row => WAVES_LABEL.test(row.label));
+  const generated = customerRemainingWaves(document);
+  const customerWaves = own.length ? own : generated && !report.hiddenGenerated.includes(`customerOwnedWork:${generated.label.trim().toLowerCase()}`) ? [generated] : [];
+  // CDW's waves in the entitlement; its waves in the Two-Year Notional only when the customer's team runs none, since
+  // otherwise the customer's waves are the remaining waves (they are never counted twice).
+  const cdwWaves = (customerWaves.length ? [document.adoptionTimeline] : [document.adoptionTimeline, document.twoYearPlan]).flatMap(timeline => timeline.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-playbook-execution-/.test(bar.id)).map(bar => barWindow(timeline, bar)?.end ?? ""));
+  const lastWave = [...customerWaves.map(row => row.end), ...cdwWaves].filter(Boolean).map(value => value.slice(0, 7)).sort().at(-1) ?? null;
+  return { hosts, where, lastWave, after: Boolean(lastWave && lastWave > VSPHERE8_EOGS.slice(0, 7)), strategy: report.discovery.vsphere8Strategy };
+}
 
 export function generateReport(document: EngagementDocument): GeneratedReport {
   const { fields, inventory, report } = document;
@@ -266,19 +293,23 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
 
   // ---- Open items for what is still missing
   const openItems: Array<Row<"openItems">> = [];
-  // vSphere 8 end of general support: every host still on 8.x moves to VCF 9 or is upgraded before it.
-  const vsphere8Hosts = inventory.esxiVersions.filter(item => /\b8\.\d/.test(item.version)).reduce((sum, item) => sum + item.hosts, 0);
-  if (vsphere8Hosts && moves) {
-    const clusters = Array.from(new Set(inventory.hclEvidence.hosts.filter(host => /\b8\.\d/.test(host.esxiVersion)).map(host => host.cluster).filter(Boolean)));
-    const where = clusters.length ? ` (${clusters.slice(0, 3).join(", ")}${clusters.length > 3 ? ` and ${clusters.length - 3} more clusters` : ""})` : "";
-    constraints.push({ constraint: `${vsphere8Hosts} host${vsphere8Hosts === 1 ? "" : "s"} on vSphere 8${where} moved or upgraded before 11 Oct 2027`, imposedBy: "Broadcom product lifecycle", effect: "Their waves are planned before vSphere 8 general support ends" });
-    const waveEnds = [
-      ...customerOwnedWork.filter(row => /\bwaves?\b/i.test(row.label)).map(row => row.end),
-      ...report.customerOwnedWork.filter(row => /\bwaves?\b/i.test(row.label)).map(row => row.end),
-      ...timeline.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-playbook-execution-/.test(bar.id)).map(bar => barWindow(timeline, bar)?.end ?? ""),
-    ].filter(Boolean).map(value => value.slice(0, 7)).sort();
-    const lastWave = waveEnds.at(-1);
-    if (lastWave && lastWave > "2027-10") openItems.push({ item: `The waves run to ${monthYear(`${lastWave}-01`)}, after vSphere 8 general support ends on 11 Oct 2027, with ${vsphere8Hosts} host${vsphere8Hosts === 1 ? "" : "s"} still on vSphere 8${where}`, gates: "Supported platform: move those hosts' workloads first, upgrade them in place, or arrange extended support", owner: "" });
+  // vSphere 8 end of general support: one finding drives both the constraint and the open item, so they always agree.
+  // Waves that all end in time need neither row.
+  const vsphere8 = vsphere8Exposure(document);
+  if (vsphere8?.after) {
+    const hostsText = `${vsphere8.hosts} host${vsphere8.hosts === 1 ? "" : "s"}`;
+    const runTo = monthYear(`${vsphere8.lastWave}-01`);
+    const chosen = vsphere8.strategy ? VSPHERE8_STRATEGY_TEXT[vsphere8.strategy] : null;
+    constraints.push({
+      constraint: `${hostsText} on vSphere 8${vsphere8.where} moved or upgraded before ${shortDate(VSPHERE8_EOGS)}`,
+      imposedBy: "Broadcom product lifecycle",
+      effect: `The waves run to ${runTo}, after vSphere 8 general support ends; ${chosen ? `${customer} will ${chosen}` : "how those hosts stay supported is an open item"}`,
+    });
+    if (!chosen) openItems.push({
+      item: `The waves run to ${runTo}, after vSphere 8 general support ends on ${shortDate(VSPHERE8_EOGS)}, with ${hostsText} still on vSphere 8${vsphere8.where}`,
+      gates: `Supported platform. Options: ${(Object.values(VSPHERE8_STRATEGY_TEXT) as string[]).join("; or ")}`,
+      owner: PLATFORM_OWNER(customer),
+    });
   }
   if (!inventory.hosts) openItems.push({ item: "Current RVTools export", gates: "Design sign-off and sizing", owner: "" });
   for (const purchased of discovery.addOnsPurchased) {

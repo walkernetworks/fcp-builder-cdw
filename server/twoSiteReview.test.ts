@@ -134,6 +134,32 @@ describe("Riverbend review: scope and sequencing", () => {
     expect(text(render(plans[1]))).toContain(`Platform build begins. ${NSX_VLAN_NOTE}`);
   });
 
+  it("3. states one vSphere 8 finding in the constraint and the open item, for waves after and before its end of support", () => {
+    const rows = (document: EngagementDocument) => {
+      const visible = text(render(document));
+      return {
+        constraint: /on vSphere 8 moved or upgraded before 11 Oct 2027 Broadcom product lifecycle The waves run to (\w{3} \d{4}), after vSphere 8 general support ends; ([^|]*?)(?= [A-Z][a-z]+ [a-z])/.exec(visible),
+        openItem: /The waves run to (\w{3} \d{4}), after vSphere 8 general support ends on 11 Oct 2027, with (\d+) hosts still on vSphere 8 Supported platform\. Options: (.*?) Riverbend Health infrastructure team with CDW/.exec(visible),
+        anyAfter: /after vSphere 8 general support ends/.test(visible),
+      };
+    };
+    // After: the customer's waves run to Sep 2028. Both rows say so, with the same month; the item has an owner and three options.
+    const after = rows(twoSite());
+    expect(after.constraint?.[1]).toBe("Sep 2028");
+    expect(after.constraint?.[2]).toMatch(/^how those hosts stay supported is an open item/);
+    expect(after.openItem?.[1]).toBe(after.constraint?.[1]);
+    expect(after.openItem?.[2]).toBe("299");
+    expect(after.openItem?.[3].split("; or ")).toHaveLength(3);
+    expect(after.openItem?.[3]).toContain("import the existing vCenters into VCF before it ends (import works on vSphere 8)");
+    // Before: every wave ends in time, so neither row appears.
+    const before = rows(twoSite(raw => { raw.customerOwnedWork = [{ label: "Remaining migration waves", start: "2027-09", end: "2027-09" }]; }));
+    expect(before).toEqual({ constraint: null, openItem: null, anyAfter: false });
+    // A strategy chosen in the brief resolves it: the constraint names it and no open item is raised.
+    const chosen = text(render(twoSite(raw => { raw.discovery.vsphere8Strategy = "import-before-eogs"; })));
+    expect(chosen).toContain("after vSphere 8 general support ends; Riverbend Health will import the existing vCenters into VCF before it ends");
+    expect(chosen).not.toContain("still on vSphere 8");
+  });
+
   it("4. counts the remaining waves once: as work the customer runs or as CDW follow-on scope, never both", () => {
     const waves = (document: EngagementDocument) => {
       const effort = scopedEffortForDocument(document);
