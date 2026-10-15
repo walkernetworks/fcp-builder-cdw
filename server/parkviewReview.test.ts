@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { barWindow } from "../shared/buildingBlocks";
+import { NSX_VLAN_NOTE } from "../shared/effort";
 import { createDefaultDocument, type EngagementDocument } from "../shared/fcp";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
@@ -106,5 +107,30 @@ describe("Parkview review: scope and sequencing", () => {
     // A brief that does not consider automation at all has no automation work anywhere.
     const without = twoSite(raw => { raw.discovery.addOnsConsidered = ["vcf-operations", "nsx"]; });
     expect(bars(without).some(bar => /automation/.test(bar.id))).toBe(false);
+  });
+
+  it("2. gives every plan with a management domain in the entitlement NSX design hours in or before that package", () => {
+    const plans = [
+      ...[150_000, 410_000, 2_000_000].map(value => twoSite(raw => { raw.entitlement.value = value; })),
+      // No networking outcome and NSX not considered: the VLAN-backed NSX design is core scope of its own.
+      twoSite(raw => { raw.discovery.addOnsConsidered = ["vcf-operations"]; raw.discovery.outcomesWanted.networking = []; }),
+      // No entitlement value: nothing is fitted, so every selected line is planned.
+      twoSite(raw => { raw.entitlement.value = null; }),
+    ];
+    let checked = 0;
+    for (const document of plans) {
+      const effort = scopedEffortForDocument(document);
+      const management = effort.workPackages.filter(row => /^bar-management-domain(-\d+)?$/.test(row.id) && !row.deferred && row.total > 0).sort((left, right) => (left.start ?? "").localeCompare(right.start ?? ""));
+      if (!management.length) continue;
+      checked += 1;
+      const first = management[0];
+      const design = effort.workPackages.find(row => row.id === "bar-playbook-component-design-networking" && !row.deferred && row.total > 0 && (row.start ?? "9999") <= (first.start ?? ""));
+      const carried = first.id === "bar-management-domain" && effort.internal.lines.some(line => line.code === "NX");
+      expect(Boolean(design) || carried).toBe(true);
+      if (!design) expect(first.notes).toContain(NSX_VLAN_NOTE);
+    }
+    expect(checked).toBe(plans.length);
+    // The note reaches the customer document with the build date.
+    expect(text(render(plans[1]))).toContain(`Platform build begins. ${NSX_VLAN_NOTE}`);
   });
 });
