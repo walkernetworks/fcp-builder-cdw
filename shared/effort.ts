@@ -849,6 +849,7 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
     wantThisYear: inputs.wantThisYear,
     datedWaves: pass1.inputs.datedWaves,
     ...(inputs.reservePercent !== undefined ? { reserveShare: inputs.reservePercent / 100 } : {}),
+    customerRunsLaterWaves: customerRunsRemainingWaves(document),
   });
   const fundedBases = new Map<V2Code, number>();
   const displacedBases = new Map<V2Code, number>();
@@ -1005,6 +1006,19 @@ export function customerRemainingWaves(document: EngagementDocument): { label: s
   const month = (iso: string, add: number) => { const date = new Date(`${iso.slice(0, 7)}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + add); return date.toISOString().slice(0, 7); };
   const customer = document.fields.customerName || "the customer";
   return { label: `Remaining ${upgrade ? "upgrade" : "migration"} waves, run by ${customer} with the proven runbook`, start: month(last, 1), end: month(last, months) };
+}
+
+/** Labels that name migration or upgrade waves. */
+export const WAVES_LABEL = /\bwaves?\b/i;
+
+/**
+ * True when the customer's team runs the waves after CDW's: the report has its own wave row, or the plan's generated
+ * one is not hidden. Those waves are then customer work only, never CDW follow-on scope as well.
+ */
+export function customerRunsRemainingWaves(document: EngagementDocument): boolean {
+  if (completedReport(document.report).customerOwnedWork.some(row => WAVES_LABEL.test(row.label))) return true;
+  const generated = customerRemainingWaves(document);
+  return Boolean(generated && !document.report.hiddenGenerated.includes(`customerOwnedWork:${generated.label.trim().toLowerCase()}`));
 }
 
 /** Customer effort per phase from the plan's windows and the default hours per week. */

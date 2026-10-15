@@ -50,6 +50,8 @@ export type FitV2 = {
   /** Displaced lines whose design share did not fit in E2 and moved with the line. */
   designShareFlags: string[];
   notFunded: Array<{ code: V2Code; line: string; label: string; loaded: number; bucket: "F" | "C"; reason: DisplacedReason }>;
+  /** Waves the customer's team runs after CDW's: estimated as CDW would run them, in no bucket and no CDW hours. */
+  customerRun: { hours: number; waves: number };
   warnings: string[];
   notes: string[];
 };
@@ -65,6 +67,8 @@ export type FitOptions = {
   datedWaves: number;
   /** Share of the entitlement held back, 0 to 0.5; the 8% default when unset. */
   reserveShare?: number;
+  /** The customer's team runs the waves CDW's entitlement does not carry, so they are not CDW follow-on scope. */
+  customerRunsLaterWaves?: boolean;
 };
 
 /** Spec 7.4 step 6 default order when the customer has not ranked outcomes. Operations modules beyond Tier 1 come last. */
@@ -155,6 +159,7 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   let used = nsxCost;
   let stopped = Boolean(underFunded);
   const displaced: Item[] = [];
+  const customerRun: Item[] = [];
   for (const item of items) {
     if (item.step <= 5) {
       place(item, "E1");
@@ -165,6 +170,9 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     if (!stopped && used + cost <= fillableHours + 1e-9) {
       place(item, "E2");
       used += cost;
+    } else if (options.customerRunsLaterWaves && item.line.code === "FILL_mig" && item.step === 7) {
+      // The customer's team runs it with CDW's runbook: it is neither CDW follow-on scope nor a reason to stop the fill.
+      customerRun.push(item);
     } else {
       // Stop at the first whole unit that does not fit; everything after it is displaced.
       stopped = true;
@@ -228,7 +236,8 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   }, new Map<string, { code: V2Code; line: string; label: string; loaded: number; bucket: "F" | "C"; reason: DisplacedReason; units: string[] }>()).values())
     .map(({ units, ...row }) => ({ ...row, label: units.join("; ") }));
 
-  const total = pass1.lines.reduce((sum, line) => sum + loaded(line, line.computedBase), 0);
+  const customerRunHours = customerRun.reduce((sum, item) => sum + loaded(item.line, item.unit.base), 0);
+  const total = pass1.lines.reduce((sum, line) => sum + loaded(line, line.computedBase), 0) - customerRunHours;
   const placedTotal = buckets.E1 + buckets.E2 + buckets.F + buckets.C;
   const warnings: string[] = [];
   if (underFunded) warnings.push(`Under-funded: the core work (discovery, design, the pathway spine, dated waves and Operations Tier 1) needs ${Math.round(coreRequiredHours)} hours, ${Math.round(underFunded.gapHours)} more than the ${Math.round(fillableHours)} fillable hours.`);
@@ -250,6 +259,6 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     entitlementRemaining: Math.max(0, fillableHours - used),
     coreRequiredHours: coreRequiredHours + (nsxCarved ? nsxCost : 0), coreByLine, underFunded, monthsRemaining,
     requiredMonthlyBurn: entitlementHours / monthsRemaining,
-    designShareFlags, notFunded, warnings, notes,
+    designShareFlags, notFunded, customerRun: { hours: customerRunHours, waves: customerRun.length }, warnings, notes,
   };
 }

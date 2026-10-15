@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { barWindow } from "../shared/buildingBlocks";
-import { NSX_VLAN_NOTE } from "../shared/effort";
+import { customerRemainingWaves, NSX_VLAN_NOTE } from "../shared/effort";
 import { createDefaultDocument, type EngagementDocument } from "../shared/fcp";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
@@ -132,5 +132,28 @@ describe("Riverbend review: scope and sequencing", () => {
     expect(checked).toBe(plans.length);
     // The note reaches the customer document with the build date.
     expect(text(render(plans[1]))).toContain(`Platform build begins. ${NSX_VLAN_NOTE}`);
+  });
+
+  it("4. counts the remaining waves once: as work the customer runs or as CDW follow-on scope, never both", () => {
+    const waves = (document: EngagementDocument) => {
+      const effort = scopedEffortForDocument(document);
+      const visible = text(render(document));
+      const workRun = visible.split("Work Run by Riverbend Health")[1]?.split(/Target Personnel|Who Is Involved/)[0] ?? "";
+      return {
+        followOn: effort.workPackages.filter(row => /^bar-playbook-execution-/.test(row.id)).reduce((sum, row) => sum + (row.followOn?.total ?? 0), 0),
+        customerRuns: /\bwaves\b/i.test(workRun),
+        customerEffort: /Customer-run migration waves/.test(visible),
+      };
+    };
+    // The plan hands the remaining waves to the customer's team: no CDW follow-on hours for them.
+    expect(waves(twoSite())).toEqual({ followOn: 0, customerRuns: true, customerEffort: true });
+    // The brief's own row for them does the same.
+    expect(waves(twoSite(raw => { raw.customerOwnedWork = [{ label: "Remaining waves (customer team)", start: "2027-10", end: "2028-09" }]; }))).toMatchObject({ followOn: 0, customerRuns: true });
+    // With the generated row hidden, CDW carries them as follow-on scope and the customer runs none.
+    const hidden = twoSite();
+    hidden.report.hiddenGenerated = [`customerOwnedWork:${customerRemainingWaves(hidden)!.label.toLowerCase()}`];
+    const cdw = waves(hidden);
+    expect(cdw.followOn).toBeGreaterThan(0);
+    expect(cdw.customerRuns).toBe(false);
   });
 });
