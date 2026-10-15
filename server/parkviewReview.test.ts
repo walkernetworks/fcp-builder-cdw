@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { barWindow } from "../shared/buildingBlocks";
 import { buildCustomerEffort, customerRemainingWaves, formatWindow, NSX_VLAN_NOTE } from "../shared/effort";
-import { effectiveReport } from "../shared/reportView";
+import { effectiveReport, hardwareGroups } from "../shared/reportView";
+import { refreshDerivedDocument, summarizeCompatibilityHandoff } from "../shared/fcp";
 import { assessHclEstate, emptyHclInventoryEvidence, NSX_TEP_MIN_MTU, RECOMMENDED_MTU, VDS_MINIMUM } from "../shared/hcl";
 import { createDefaultDocument, domainBuildWeight, domainHosts, domainPackages, type EngagementDocument } from "../shared/fcp";
 import { checkCondensedFcp } from "./condensedFcpChecks";
@@ -283,4 +284,28 @@ describe("Parkview review: estimating and checks", () => {
     expect(visible).toContain(`NSX TEP traffic needs an MTU of at least ${NSX_TEP_MIN_MTU} end to end, with ${RECOMMENDED_MTU} recommended; hosts join VCF on a distributed switch (vDS ${VDS_MINIMUM.converge}.0 or later to converge into VCF; vDS ${VDS_MINIMUM.import}.0 or later to import)`);
     expect(visible).not.toMatch(/MTU of 1,600/);
   });
+
+  it("10. puts every host model in exactly one of listed, to confirm or blocked, with an action that matches its group", () => {
+    const document = twoSite();
+    document.inventory.hostModels.push(hostModel("HPE", "ProLiant DL360 Gen10 8SFF CTO", "Intel(R) Xeon(R) Gold 6130 CPU @ 2.10GHz", 18, "Edge-DC / Site01-CL"));
+    const refreshed = refreshDerivedDocument(document, { forceRebuild: true });
+    const groups = hardwareGroups(refreshed);
+    const labels = [...groups.listed, ...groups.toConfirm, ...groups.blocked].map(item => item.label);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels).toHaveLength(4);
+    // Absent from the server list: blocked. A name variant of a listed model: to confirm.
+    expect(groups.blocked.map(item => item.label)).toContain("HPE ProLiant BL460c Gen10");
+    expect(groups.toConfirm.find(item => item.label === "HPE ProLiant DL360 Gen10 8SFF CTO")?.nameToConfirm).toBe(true);
+    // Each action's wording matches its group.
+    const handoff = summarizeCompatibilityHandoff(refreshed.readiness.hardwarePlatforms, refreshed.inventory.hosts);
+    for (const action of handoff.actions) {
+      if (action.priority === "blocker") expect(action.title).not.toMatch(/Confirm the exact model name/);
+      if (/Confirm the exact model name/.test(action.title)) expect(action.priority).toBe("required");
+    }
+    expect(handoff.actions.some(action => action.priority === "required" && /Confirm the exact model name/.test(action.title))).toBe(true);
+    const visible = text(render(refreshed));
+    expect(visible).toMatch(/Blocked or not listed for the target release: [^.]*HPE ProLiant BL460c Gen10 \(16 hosts\)/);
+    expect(visible).toMatch(/To confirm the exact model name with the vendor: HPE ProLiant DL360 Gen10 8SFF CTO \(18 hosts\)/);
+  });
 });
+

@@ -85,6 +85,36 @@ const vmsBelowHardware19 = (document: EngagementDocument) => document.inventory.
 }).length;
 const onVsphere8 = (document: EngagementDocument) => document.inventory.esxiVersions.some(item => /\b8\.\d/.test(item.version));
 
+/**
+ * Each host model in exactly one group: blocked (some hosts not listed for the target release), to confirm (a CPU row
+ * or the model name still to confirm), or listed. A model that splits by CPU is grouped by its weakest result.
+ */
+export function hardwareGroups(document: EngagementDocument) {
+  type Entry = { label: string; hosts: number; blocked: number; toConfirm: number; nameToConfirm: boolean };
+  const models = new Map<string, Entry>();
+  for (const item of summarizeVcfCompatibility(document.readiness.hardwarePlatforms)) {
+    const label = serverLabel(item.vendor, item.model);
+    const key = normalizedModel(label);
+    const entry = models.get(key) ?? { label, hosts: 0, blocked: 0, toConfirm: 0, nameToConfirm: false };
+    entry.hosts += item.hosts;
+    if (item.decision === "action-required") entry.blocked += item.hosts;
+    if (item.decision === "validation-required") entry.toConfirm += item.hosts;
+    if (item.evidenceState === "identity-confirmation-required") entry.nameToConfirm = true;
+    models.set(key, entry);
+  }
+  const all = Array.from(models.values());
+  return {
+    blocked: all.filter(item => item.blocked > 0),
+    toConfirm: all.filter(item => item.blocked === 0 && item.toConfirm > 0),
+    listed: all.filter(item => item.blocked === 0 && item.toConfirm === 0),
+  };
+}
+
+/** A server model compared without its vendor name, so "HPE Synergy 480 Gen10" and "Synergy 480 Gen10" are one model. */
+export function normalizedModel(label: string): string {
+  return label.toLowerCase().replace(/^(hpe|hp|dell( inc\.?)?|lenovo|cisco( systems)?( inc\.?)?)\s+/, "").replace(/\s+/g, " ").trim();
+}
+
 /** The overlay MTU requirement, from the same constants the host findings use. */
 const OVERLAY_MTU_REQUIREMENT = `Workload traffic on distributed switches (${VDS_REQUIREMENT}); NSX TEP traffic needs an MTU of at least ${NSX_TEP_MIN_MTU.toLocaleString("en-US")} end to end, with ${RECOMMENDED_MTU.toLocaleString("en-US")} recommended.`;
 
@@ -208,21 +238,12 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     // Images are built for models listed for the target release, including those whose CPU row still needs
     // confirming; models that are blocked or not listed are a gate. A model can split by CPU, so it is grouped by its
     // weakest result and the hosts behind each result are named.
-    const models = new Map<string, { label: string; hosts: number; blocked: number; toConfirm: number }>();
-    for (const item of serverModels) {
-      const label = serverLabel(item.vendor, item.model);
-      const entry = models.get(label.toLowerCase()) ?? { label, hosts: 0, blocked: 0, toConfirm: 0 };
-      entry.hosts += item.hosts;
-      if (item.decision === "action-required") entry.blocked += item.hosts;
-      if (item.decision === "validation-required") entry.toConfirm += item.hosts;
-      models.set(label.toLowerCase(), entry);
-    }
-    const all = Array.from(models.values());
+    const groups = hardwareGroups(document);
     const count = (part: number, whole: number) => (part === whole ? `${whole} host${whole === 1 ? "" : "s"}` : `${part} of ${whole} hosts, by CPU`);
-    const listed = all.filter(item => item.blocked + item.toConfirm === 0);
-    const toConfirm = all.filter(item => item.toConfirm > 0 && item.blocked < item.hosts);
-    const blocked = all.filter(item => item.blocked > 0);
-    const imageModels = [...listed, ...toConfirm.filter(item => !listed.includes(item))];
+    const { listed, toConfirm, blocked } = groups;
+    // Images are built for listed models, including those whose CPU row is still to confirm; a model whose name is
+    // still to confirm is not listed yet.
+    const imageModels = [...listed, ...toConfirm.filter(item => !item.nameToConfirm)];
     const vendor = discovery.serverVendor || Array.from(new Set(serverModels.map(item => serverLabel(item.vendor, "")))).join(" and ");
     designElements.push({
       component: "Hardware lifecycle",
@@ -231,7 +252,8 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
         ? `Build the cluster images with the ${vendor} vendor add-on and hardware support manager once the compatibility check confirms the host models.`
         : [
           imageModels.length ? `Build the cluster images with the vendor add-on and hardware support manager for the models listed for the target release: ${imageModels.map(item => item.label).join(", ")}.` : "No host model is listed for the target release yet.",
-          toConfirm.length ? `Listed, with the CPU row to confirm against the current Compatibility Guide: ${toConfirm.map(item => `${item.label} (${count(item.toConfirm, item.hosts)})`).join(", ")}.` : "",
+          toConfirm.some(item => !item.nameToConfirm) ? `Listed, with the CPU row to confirm against the current Compatibility Guide: ${toConfirm.filter(item => !item.nameToConfirm).map(item => `${item.label} (${count(item.toConfirm, item.hosts)})`).join(", ")}.` : "",
+          toConfirm.some(item => item.nameToConfirm) ? `To confirm the exact model name with the vendor: ${toConfirm.filter(item => item.nameToConfirm).map(item => `${item.label} (${count(item.toConfirm, item.hosts)})`).join(", ")}.` : "",
           blocked.length ? `Blocked or not listed for the target release: ${blocked.map(item => `${item.label} (${count(item.blocked, item.hosts)})`).join(", ")}. Replace these hosts or confirm support before they join a cluster.` : "",
         ].filter(Boolean).join(" "),
       gate: !serverModels.length ? "compatibility check run on a current RVTools export" : blocked.length ? "support confirmed or hardware replaced for every host model" : toConfirm.length ? "CPU rows confirmed for every host model" : null,
