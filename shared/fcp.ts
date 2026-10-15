@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getIndustryDiscoveryTemplate, industryDiscoveryPromptBlock } from "./industryDiscovery";
 import { emptyReport, reportSchema } from "./report";
+import { DOMAIN_BUILD_WEIGHTS } from "./hoursConfig";
 import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, hclAssessmentSchema, hclFindingSchedulePath, hclInventoryEvidenceSchema, hclSchedulePath, HCL_CATALOG_METADATA, HCL_CATALOG_RELEASES, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, HCL_TARGET_RELEASE, type HclCatalogRelease, type HclSchedulePath } from "./hcl";
 
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
@@ -552,6 +553,62 @@ export const vcfDomainSchema = z.object({
   notes: z.string().max(500).default(""),
 });
 export type VcfDomain = z.infer<typeof vcfDomainSchema>;
+
+/**
+ * The work package each domain from the brief becomes, by id, in the order the plan builds them. Mirrors the
+ * generator's ids; VVF plans have no domain packages.
+ */
+export function domainPackages(fields: MinimalFields): Array<{ id: string; domain: VcfDomain }> {
+  const domains = fields.adoptionDetails.domains;
+  const path = playbookPlanForFields(fields).path;
+  if (effectivePlatformEdition(fields) === "vvf") return [];
+  const workloads = domains.filter(domain => domain.kind === "workload");
+  if (path === "converge") {
+    const management = domains.find(domain => domain.kind === "management");
+    return [
+      ...(management ? [{ id: "bar-converge-management-domain", domain: management }] : []),
+      ...workloads.map((domain, index) => ({ id: domain.pathway !== "greenfield" ? `bar-import-domain-${index + 1}` : index === 0 ? "bar-workload-domain" : `bar-workload-domain-${index + 1}`, domain })),
+    ];
+  }
+  if (path === "import-workload-domain") return workloads.map((domain, index) => ({ id: index === 0 ? "bar-import-workload-domain" : `bar-import-workload-domain-${index + 1}`, domain }));
+  if ((path === "greenfield" || path === "hybrid") && domains.some(domain => domain.kind === "management")) {
+    const used = new Map<string, number>();
+    return [
+      ...domains.filter(domain => domain.kind === "management").map((domain, index) => ({ id: index === 0 ? "bar-management-domain" : `bar-management-domain-${index + 1}`, domain })),
+      ...workloads.map(domain => {
+        const base = domain.pathway === "import" ? "bar-import-domain" : "bar-workload-domain";
+        const n = (used.get(base) ?? 0) + 1;
+        used.set(base, n);
+        return { id: base === "bar-workload-domain" && n === 1 ? base : `${base}-${n}`, domain };
+      }),
+    ];
+  }
+  return [];
+}
+
+/**
+ * A domain's host count: stated in the brief, else the count its notes give ("120 hosts today"), else the RVTools
+ * hosts in the clusters or vCenter datacenters its notes name. Null when none of these says.
+ */
+export function domainHosts(domain: VcfDomain, inventory: InventorySummary): { hosts: number | null; source: string } {
+  if (domain.hosts !== null) return { hosts: domain.hosts, source: "From the brief" };
+  const stated = /\b(\d[\d,]*)\s+hosts?\b/i.exec(domain.notes);
+  if (stated) return { hosts: Number(stated[1].replace(/,/g, "")), source: `From the domain notes ("${stated[0]}")` };
+  const text = `${domain.name} ${domain.notes}`.toLowerCase();
+  const named = inventory.clusterProfiles.filter(profile => profile.name.split(" / ").some(part => part.trim().length > 3 && text.includes(part.trim().toLowerCase())));
+  if (named.length) return { hosts: named.reduce((sum, profile) => sum + profile.hosts, 0), source: `From RVTools: the ${named.length} cluster${named.length === 1 ? "" : "s"} its notes name` };
+  return { hosts: null, source: "Not stated; the pathway base only" };
+}
+
+/** A domain's share of the build line: a base by pathway plus an increment per host (DOMAIN_BUILD_WEIGHTS). */
+export function domainBuildWeight(domain: VcfDomain, hosts: number | null): number {
+  const w = DOMAIN_BUILD_WEIGHTS;
+  const [base, perHost] = domain.kind === "management" && domain.pathway !== "converge" ? [w.managementBase, w.perHostGreenfield]
+    : domain.pathway === "import" ? [w.importBase, w.perHostImport]
+    : domain.pathway === "converge" ? [w.convergeBase, w.perHostConverge]
+    : [w.greenfieldBase, w.perHostGreenfield];
+  return base.value + perHost.value * (hosts ?? 0);
+}
 
 /** A domain's outcome led by its note from the brief ("Move the CORE 600 workloads first, then deploy ..."). */
 function withDomainNote(domain: VcfDomain, outcome: string): string {

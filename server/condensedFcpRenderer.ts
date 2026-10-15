@@ -1,8 +1,9 @@
 import { barWindow } from "../shared/buildingBlocks";
 import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
-import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
+import { activityOwner, calculateEntitlementEndDate, domainHosts, domainPackages, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
 import { effectiveReport, minimumTargetRelease, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
 import { VCF_CORPUS } from "../shared/vcfCorpus";
+import { DOMAIN_BUILD_WEIGHTS } from "../shared/hoursConfig";
 import { summarizeHclFindings } from "../shared/hcl";
 import { deliveryBriefing, renewalStartsCurrentTerm } from "../shared/deliveryBriefing";
 import { getIndustryDiscoveryTemplate } from "../shared/industryDiscovery";
@@ -438,12 +439,20 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
 
   // ---- Estimating basis (v2): the estate facts and the defaults the hours were built on, in hours only
   const pass1 = effort.internal.pass1;
+  // Each domain's build hours: its share of the build line, from its pathway and host count.
+  const domainList = domainPackages(fields);
+  const w = DOMAIN_BUILD_WEIGHTS;
+  const domainRows = domainList.length ? [
+    ...domainList.map(({ domain }) => { const known = domainHosts(domain, document.inventory); return [esc(`Hosts in ${domain.name}`), known.hosts === null ? "Set in design" : esc(known.hosts), esc(known.source)]; }),
+    ["Domain build hours", "Share of the build", esc(`Each domain takes a share of the build hours: a base by pathway (management domain ${w.managementBase.value}, new workload domain ${w.greenfieldBase.value}, converge ${w.convergeBase.value}, import ${w.importBase.value}) plus ${w.perHostGreenfield.value} per host built new (${w.perHostConverge.value} converged, ${w.perHostImport.value} imported), so more hosts never mean fewer hours`)],
+  ] : [];
   const basis = (source: string) => /\bspec\b|worked example|section \d/i.test(source) ? "Assumed: planning default; confirm in design" : `Assumed: ${source}`;
   const estimatingBasis = pass1
     ? `<h3>Estimating Basis</h3><p class="lead">The hours are built from the estate and scope below. Values marked as assumed were not stated and use the planning default; a confirmed value replaces it.</p>${table(["Driver", "Value", "Basis"], [
       ...[["ESX hosts", pass1.inputs.hosts], ["Clusters", pass1.inputs.clusters], ["VMs", pass1.inputs.vms], ["vCenters", pass1.inputs.vcenters], ["Sites", pass1.inputs.sites], ["VCF instances", pass1.inputs.instances], ["Workload domains", pass1.inputs.workloadDomains]]
         .map(([label, value]) => { const assumed = pass1.assumptions.find(item => item.label.toLowerCase() === String(label).toLowerCase()); return [esc(label), esc(value), esc(assumed ? basis(assumed.source) : "From RVTools or the brief")]; }),
       ...pass1.assumptions.filter(item => !["hosts", "clusters", "vms", "vcenters", "sites", "instances", "workloadDomains"].includes(item.key)).map(item => [esc(item.label), esc(typeof item.value === "boolean" ? (item.value ? "Yes" : "No") : item.value), esc(basis(item.source))]),
+      ...domainRows,
     ])}`
     : "";
 
