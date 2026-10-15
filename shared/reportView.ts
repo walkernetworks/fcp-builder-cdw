@@ -115,6 +115,22 @@ export function normalizedModel(label: string): string {
   return label.toLowerCase().replace(/^(hpe|hp|dell( inc\.?)?|lenovo|cisco( systems)?( inc\.?)?)\s+/, "").replace(/\s+/g, " ").trim();
 }
 
+/** The packages that start the platform build, first match wins: the first management domain or foundation, then any build or wave. */
+const BUILD_START = [/^bar-(management-domain|converge-management-domain|vvf-foundation|in-place-preparation|import-foundation-validation)$/, /^bar-(management-domain|workload-domain|import-domain|import-workload-domain)(-\d+)?$|^bar-playbook-execution-/];
+
+/**
+ * When implementation services start (design and planning) and when the platform build begins (the first management
+ * domain or foundation package). Key Dates and the sequencing constraint both read these.
+ */
+export function planKeyDates(document: EngagementDocument): { implementationStart: string; buildStart: string | null; buildLater: boolean } {
+  const timeline = document.adoptionTimeline;
+  const all = timeline.lanes.flatMap(lane => lane.bars);
+  const starts = (pattern: RegExp) => all.filter(bar => pattern.test(bar.id)).map(bar => barWindow(timeline, bar)?.start).filter((start): start is string => Boolean(start)).sort();
+  const buildStart = BUILD_START.map(starts).find(found => found.length)?.[0] ?? null;
+  const implementationStart = document.fields.plannedImplementationStart;
+  return { implementationStart, buildStart, buildLater: Boolean(buildStart && implementationStart && buildStart.slice(0, 7) > implementationStart.slice(0, 7)) };
+}
+
 /** The overlay MTU requirement, from the same constants the host findings use. */
 const OVERLAY_MTU_REQUIREMENT = `Workload traffic on distributed switches (${VDS_REQUIREMENT}); NSX TEP traffic needs an MTU of at least ${NSX_TEP_MIN_MTU.toLocaleString("en-US")} end to end, with ${RECOMMENDED_MTU.toLocaleString("en-US")} recommended.`;
 
@@ -300,7 +316,10 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   const renewalPassed = Boolean(discovery.renewalDate && discovery.renewalDate < today && !termRenewal);
   if (discovery.renewalDate && !renewalPassed && !termRenewal) constraints.push({ constraint: `Subscription renewal ${shortDate(discovery.renewalDate)}`, imposedBy: "Licensing", effect: "Licensing activated and the renewal sized before that date" });
   if (fields.hardwareAvailability === "new" && fields.hardwareLeadWeeks > 0) constraints.push({ constraint: `New hardware lead time of ${fields.hardwareLeadWeeks} week${fields.hardwareLeadWeeks === 1 ? "" : "s"}`, imposedBy: "Hardware", effect: "The platform build waits for delivery, rack and stack" });
-  if (fields.plannedImplementationStart) constraints.push({ constraint: `Implementation services start ${shortDate(fields.plannedImplementationStart)}`, imposedBy: customer, effect: "Design runs from the project start; build, upgrade and migration begin on this date" });
+  const keyDates = planKeyDates(document);
+  if (keyDates.implementationStart) constraints.push(keyDates.buildLater
+    ? { constraint: `Implementation services start ${shortDate(keyDates.implementationStart)} with design and planning; the platform build begins ${shortDate(keyDates.buildStart!)}`, imposedBy: customer, effect: "Design and planning run from the project start; build, upgrade and migration begin with the platform build" }
+    : { constraint: `Implementation services start ${shortDate(keyDates.implementationStart)}`, imposedBy: customer, effect: "Design runs from the project start; build, upgrade and migration begin on this date" });
   if (fields.timelineNotes.trim()) constraints.push({ constraint: fields.timelineNotes.trim(), imposedBy: "Calendar", effect: "Applied to the schedule of every affected work package" });
   if (fields.adoptionDetails.notes.trim()) constraints.push({ constraint: fields.adoptionDetails.notes.trim(), imposedBy: "Planning note", effect: "Applied to the design and the work packages it affects" });
   if (termEnd) constraints.push({ constraint: `Entitlement expiry ${shortDate(termEnd)}${termEndAssumed(document) ? " (12 months from the start; to be confirmed)" : ""}`, imposedBy: "Entitlement term", effect: handoverWindow ? `Handover completes in ${monthYear(handoverWindow.end)}` : "All hours consumed before expiry" });

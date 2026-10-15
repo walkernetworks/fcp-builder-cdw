@@ -1,7 +1,7 @@
 import { barWindow } from "../shared/buildingBlocks";
 import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
 import { activityOwner, calculateEntitlementEndDate, domainHosts, domainPackages, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
-import { effectiveReport, minimumTargetRelease, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
+import { effectiveReport, minimumTargetRelease, planKeyDates, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
 import { VCF_CORPUS } from "../shared/vcfCorpus";
 import { DOMAIN_BUILD_WEIGHTS } from "../shared/hoursConfig";
 import { summarizeHclFindings } from "../shared/hcl";
@@ -471,11 +471,10 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ? `<h3>Engagement Milestones to Date</h3>${report.milestonesToDate.map(item => `<div class="ms"><b>${esc(shortDate(item.date))}</b><span><b>${esc(item.event)}</b>${item.detail ? ` — ${esc(item.detail)}` : ""}</span></div>`).join("")}`
     : "";
   // The build starts with the foundation build or the first execution stage, which can be months after services start.
-  const buildStart = customerTimelines.adoption.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-(management-domain|workload-domain|import-domain)(-\d+)?$/.test(bar.id) || bar.id.startsWith("bar-playbook-execution-")).map(bar => barWindow(customerTimelines.adoption, bar)?.start).filter((start): start is string => Boolean(start)).sort()[0];
-  const implementationStart = fields.plannedImplementationStart;
+  // The same dates the sequencing constraint states.
+  const { implementationStart, buildStart, buildLater } = planKeyDates(document);
   // What the first build package also carries, such as the NSX design when the full NSX design is not funded.
   const buildNotes = effort.workPackages.filter(row => !row.deferred && row.total > 0).flatMap(row => row.notes ?? []);
-  const buildLater = Boolean(buildStart && implementationStart && buildStart.slice(0, 7) > implementationStart.slice(0, 7));
   const forward = (implementationStart ? `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>` : "")
     + (buildLater ? `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.${buildNotes.length ? ` ${esc(buildNotes.join(" "))}` : ""}</span></div>` : "")
     + (fields.targetComplete ? `<div class="ms"><b>${esc(shortDate(fields.targetComplete))}</b><span>${esc(customer)}'s target completion.</span></div>` : "")
