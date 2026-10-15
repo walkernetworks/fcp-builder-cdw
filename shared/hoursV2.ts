@@ -255,8 +255,8 @@ export function storageTypesInUse(document: EngagementDocument): { types: string
 }
 
 /**
- * Clusters on the new platform. Domains that keep their cluster boundaries keep the RVTools clusters their notes name;
- * when their notes name none, the count is set in design and shown without a number. The rest use the planning default.
+ * Clusters on the new platform. Domains that keep their cluster boundaries keep the RVTools clusters of the vCenter
+ * datacenters their notes name; when their notes name none, the count is set in design and shown without a number. The rest use the planning default.
  */
 function newPlatformClusters(document: EngagementDocument, hosts: number, assumptions: Assumption[]): number {
   const perCluster = v(H.defaults.hostsPerCluster);
@@ -266,7 +266,8 @@ function newPlatformClusters(document: EngagementDocument, hosts: number, assump
   if (!keeps.length) return push(fallback, `Up to ${perCluster} hosts per cluster on the new platform${document.inventory.clusters ? `, against ${document.inventory.clusters} clusters today` : ""}; the cluster layout is set in design`);
   const named = keeps.flatMap(domain => {
     const text = `${domain.name} ${domain.notes}`.toLowerCase();
-    return document.inventory.clusterProfiles.filter(profile => profile.name.split(" / ").some(part => part.trim().length > 3 && text.includes(part.trim().toLowerCase())));
+    // A vCenter datacenter the notes name brings all of its clusters; a cluster named in passing (a hardware gate) does not.
+    return document.inventory.clusterProfiles.filter(profile => { const datacenter = profile.name.split(" / ")[0].trim().toLowerCase(); return profile.name.includes(" / ") && datacenter.length > 3 && text.includes(datacenter); });
   });
   const names = keeps.map(domain => domain.name).join(" and ");
   if (!named.length) return push(fallback, `${names} keeps its existing cluster boundaries; the count is confirmed in design from its RVTools export`, "Set in design");

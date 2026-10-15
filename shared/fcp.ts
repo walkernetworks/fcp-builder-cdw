@@ -588,15 +588,15 @@ export function domainPackages(fields: MinimalFields): Array<{ id: string; domai
 
 /**
  * A domain's host count: stated in the brief, else the count its notes give ("120 hosts today"), else the RVTools
- * hosts in the clusters or vCenter datacenters its notes name. Null when none of these says.
+ * hosts in the vCenter datacenters its notes name. Null when none of these says.
  */
 export function domainHosts(domain: VcfDomain, inventory: InventorySummary): { hosts: number | null; source: string } {
   if (domain.hosts !== null) return { hosts: domain.hosts, source: "From the brief" };
   const stated = /\b(\d[\d,]*)\s+hosts?\b/i.exec(domain.notes);
   if (stated) return { hosts: Number(stated[1].replace(/,/g, "")), source: `From the domain notes ("${stated[0]}")` };
   const text = `${domain.name} ${domain.notes}`.toLowerCase();
-  const named = inventory.clusterProfiles.filter(profile => profile.name.split(" / ").some(part => part.trim().length > 3 && text.includes(part.trim().toLowerCase())));
-  if (named.length) return { hosts: named.reduce((sum, profile) => sum + profile.hosts, 0), source: `From RVTools: the ${named.length} cluster${named.length === 1 ? "" : "s"} its notes name` };
+  const named = inventory.clusterProfiles.filter(profile => { const datacenter = profile.name.split(" / ")[0].trim().toLowerCase(); return profile.name.includes(" / ") && datacenter.length > 3 && text.includes(datacenter); });
+  if (named.length) return { hosts: named.reduce((sum, profile) => sum + profile.hosts, 0), source: `From RVTools: the clusters of the vCenter datacenters its notes name` };
   return { hosts: null, source: "Not stated; the pathway base only" };
 }
 
