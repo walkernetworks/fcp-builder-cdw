@@ -9,7 +9,7 @@ import { effectiveDeliveryPath, effectivePlatformEdition, resolvePlanOutcomes, t
 
 export type V2Code =
   | "DD" | "DX" | "A" | "D" | "D_VVF" | "S_storage" | "C1" | "R_remed" | "X1" | "U_VVF" | "U3" | "FILL_mig" | "FILL_ip"
-  | "X_VCFA_platform" | "X2" | "X3" | "X4" | "X5" | "X6" | "X7" | "X8" | "X9" | "X10" | "X11" | "X12" | "X13" | "X14" | "X15" | "X16" | "EF";
+  | "X_VCFA_platform" | "X2" | "X3" | "X4" | "X5" | "X6" | "X7" | "X8" | "X9" | "X10" | "X11" | "X12" | "X13" | "X14" | "X15" | "X16" | "EF" | "NX";
 
 export type V2Lead = "architect" | "srConsultant";
 
@@ -81,6 +81,13 @@ export type Pass1 = {
   pmRatio: number;
   assumptions: Assumption[];
   inputs: ResolvedInputs;
+  /**
+   * The VCF Installer deploys NSX with a new management domain, so the build needs at least a VLAN-backed NSX design
+   * (transport zones, TEP and MTU, IP pools). When no NSX design is funded, Pass 2 carves this much out of the
+   * networking line and places it in the core with the first management domain; the scope total does not change.
+   * Null on plans that build no management domain (a converge prices its NSX deploy in the converge line).
+   */
+  nsxMinimalDesign: V2Line | null;
 };
 
 const v = (coefficient: Coefficient) => coefficient.value;
@@ -523,6 +530,20 @@ export function scopeV2(document: EngagementDocument): Pass1 {
     add("EF", "Efficiency, memory tiering and sizing", "architect", [unit("EF", "Efficiency and memory tiering", v(H.efficiency.base) + v(H.efficiency.perTieredHost) * x.tieredHosts)], { tieredHosts: x.tieredHosts });
   }
 
+  // ---- NSX design the management domain needs when the full NSX design is not funded: the design share of the
+  // VDS networking line at Tier 1, which is the VLAN-backed NSX model.
+  let nsxMinimalDesign: V2Line | null = null;
+  if (!vvf && (path === "greenfield" || path === "hybrid")) {
+    const base = v(H.designOnlyShare) * (v(H.vds.base) + v(H.vds.perCluster) * x.platformClusters);
+    nsxMinimalDesign = {
+      code: "NX", name: "NSX design for the management domain (VLAN-backed)", lead: "architect", secondaryShare: v(H.roles.secondaryShare), capability: null,
+      depthMultiplier: 1, designOnly: false, computedBase: base, drivers: { clusters: x.platformClusters },
+      units: [{ id: "NX", label: "VLAN-backed transport zones, TEP and MTU, IP pools", base, tier: 1, tag: "platform" }], requires: [], followOnOnly: false,
+    };
+    // With no networking line to carve it from, it is core scope of its own.
+    if (!lines.some(line => ["X5", "X6", "X7", "X16"].includes(line.code) && !line.followOnOnly)) lines.push(nsxMinimalDesign);
+  }
+
   // ---- Engagement project management
   const technical = sum(lines.map(line => technicalOf(line, line.computedBase)));
   const build = lines.some(line => ["D", "D_VVF", "C1", "X1", "U3", "U_VVF", "FILL_mig", "FILL_ip"].includes(line.code));
@@ -534,7 +555,7 @@ export function scopeV2(document: EngagementDocument): Pass1 {
     const users = ASSUMPTION_USERS[item.key];
     return !users || users.some(code => present.has(code));
   });
-  return { path, edition, lines, technical, pm, pmFloorApplied: floor > share, pmRatio: technical ? pm / technical : 0, assumptions: relevant, inputs: x };
+  return { path, edition, lines, technical, pm, pmFloorApplied: floor > share, pmRatio: technical ? pm / technical : 0, assumptions: relevant, inputs: x, nsxMinimalDesign };
 }
 
 /** The lines each defaulted input feeds; an assumption is listed only when one of them is in the plan. Inputs not listed here feed every plan. */

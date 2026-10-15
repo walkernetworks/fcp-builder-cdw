@@ -112,6 +112,8 @@ export type WorkPackageEffort = RoleHours & {
   baseline: RoleHours;
   /** True when the planner set hours for at least one role. */
   adjusted: boolean;
+  /** Customer-facing notes on what the package also covers. */
+  notes?: string[];
 };
 
 export type DeferralReason = "not funded" | "after the entitlement window" | "over budget" | "planned for later";
@@ -471,11 +473,17 @@ function barsForLine(item: EffortLine, discoveryInScope = true): (id: string) =>
   if (item.code === "U3") return id => /^bar-(in-place-preparation|playbook-execution-upgrade-waves|playbook-adoption-vcf-management)$/.test(id);
   if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain(-\d+)?|import-domain-\d+|platform-handover|platform-enablement|playbook-adoption-vcf-management)$/.test(id);
   if (item.code === "FILL" || item.code === "FILL_mig" || item.code === "FILL_ip") return id => /^bar-playbook-execution-/.test(id);
+  if (item.code === "NX") return id => FIRST_MANAGEMENT_DOMAIN.test(id);
   const addOn = addOnBars(item.code);
   if (!addOn) return () => false;
   if (item.reduction === "design only") return componentDesign(addOn);
   return id => addOn.bars.test(id);
 }
+
+/** The first management domain package: the one the VCF Installer deploys NSX with. */
+const FIRST_MANAGEMENT_DOMAIN = /^bar-(management-domain|converge-management-domain)$/;
+/** Shown with the first management domain when it carries the NSX design because the full NSX design is not funded. */
+export const NSX_VLAN_NOTE = "NSX is deployed with VLAN-backed transport zones; overlay design follows after the entitlement.";
 
 /** Rounds each column so it foots to its target: floors, then hands the remainder to the largest fractions. */
 function footedColumn(values: number[], target: number): number[] {
@@ -629,6 +637,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   ]);
   const entries = Array.from(baselines.entries());
   const lanes = new Map(bars.map(({ lane, bar }) => [bar.id, { lane, bar }]));
+  const carriesNsxDesign = lines.some(item => item.code === "NX");
   const ids = [...bars.map(({ bar }) => bar.id), ...entries.map(([id]) => id).filter(id => !lanes.has(id))];
 
   return ids.map((id): WorkPackageEffort => {
@@ -659,6 +668,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       adjusted: Boolean(editable && (override.architect !== null || override.srConsultant !== null || override.projectManager !== null)),
       placement: override?.placement ?? "auto",
       owner,
+      ...(carriesNsxDesign && FIRST_MANAGEMENT_DOMAIN.test(id) ? { notes: [NSX_VLAN_NOTE] } : {}),
       ...(note ? { note } : !reason && sum === 0 ? { note: "not in the scoped hours" as const } : {}),
     };
   }).sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));
@@ -771,7 +781,9 @@ export function buildScopedEffort(document: EngagementDocument, options: ScopedE
 
 /** v2 Pass 1 lines as effort lines, so they spread across the same stages as v1; `bases` limits each line to part of its hours. */
 export function effortLinesFromPass1(pass1: Pass1, bases?: Map<V2Code, number>): EffortLine[] {
-  return pass1.lines.flatMap(line => {
+  // The management domain's NSX design is not a scope line: it is in the plan only where the fit placed it.
+  const nsx = pass1.nsxMinimalDesign && bases?.has("NX") && !pass1.lines.includes(pass1.nsxMinimalDesign) ? [pass1.nsxMinimalDesign] : [];
+  return [...pass1.lines, ...nsx].flatMap(line => {
     const base = bases ? bases.get(line.code) ?? 0 : line.computedBase;
     if (base <= 0) return [];
     return [{
@@ -825,7 +837,8 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
     // Without an entitlement to fit, everything is planned except what the brief only considers, which is follow-on.
     const later = new Set(pass1.lines.filter(line => line.followOnOnly).map(line => line.code));
     const bases = (keep: boolean) => new Map(pass1.lines.filter(line => later.has(line.code) !== keep).map(line => [line.code, line.computedBase]));
-    const effort = assembleScopedEffort(document, effortLinesFromPass1(pass1, bases(true)), { envelopeHours, envelopeSource, fullScopeHours, status: "no-envelope", shortfallHours: 0, headroomHours: 0 }, { pass1 });
+    const funded = bases(true);
+    const effort = assembleScopedEffort(document, effortLinesFromPass1(pass1, funded), { envelopeHours, envelopeSource, fullScopeHours, status: "no-envelope", shortfallHours: 0, headroomHours: 0 }, { pass1 });
     return later.size ? withDisplacedLines(document, effort, effortLinesFromPass1(pass1, bases(false))) : effort;
   }
   const inputs = document.fields.estimateInputs;

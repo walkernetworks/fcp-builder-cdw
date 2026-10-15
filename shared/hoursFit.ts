@@ -69,7 +69,7 @@ export type FitOptions = {
 
 /** Spec 7.4 step 6 default order when the customer has not ranked outcomes. Operations modules beyond Tier 1 come last. */
 export const DEFAULT_OUTCOME_ORDER: Capability[] = ["networking", "security", "resilience", "automation", "kubernetes", "private-ai", "operations"];
-const SPINE: V2Code[] = ["D", "D_VVF", "S_storage", "C1", "R_remed", "X1", "U3", "U_VVF", "FILL_ip"];
+const SPINE: V2Code[] = ["D", "D_VVF", "S_storage", "NX", "C1", "R_remed", "X1", "U3", "U_VVF", "FILL_ip"];
 
 type Item = { line: V2Line; unit: V2Unit; step: number; order: number };
 
@@ -134,7 +134,15 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     row.loaded += loaded(item.line, item.unit.base);
     return map.set(item.line.code, row);
   }, new Map<V2Code, { code: V2Code; line: string; loaded: number; step: number }>()).values()).sort((left, right) => right.loaded - left.loaded);
-  const underFunded = fillableHours < coreRequiredHours ? { gapHours: coreRequiredHours - fillableHours } : null;
+  // The new management domain's VLAN-backed NSX design is core until an NSX design is funded. It is carved out of the
+  // networking line, held first, and released at the end if the networking design made it into the entitlement.
+  const NETWORKING: V2Code[] = ["X5", "X7", "X6", "X16"];
+  const nsx = pass1.nsxMinimalDesign;
+  const carvedFrom = nsx && !pass1.lines.includes(nsx) ? NETWORKING.map(code => pass1.lines.find(line => line.code === code && !line.followOnOnly)).find(Boolean) ?? null : null;
+  const carveBase = nsx && carvedFrom ? Math.min(nsx.computedBase, carvedFrom.units.filter(unit => unit.tier === 1).reduce((sum, unit) => sum + unit.base, 0)) : 0;
+  const nsxCost = carvedFrom ? loaded(carvedFrom, carveBase) : 0;
+  const coreWithNsx = coreRequiredHours + nsxCost;
+  const underFunded = fillableHours < coreWithNsx ? { gapHours: coreWithNsx - fillableHours } : null;
   const wantThisYear = new Set(options.wantThisYear ?? []);
   const displacedBucket = (line: V2Line): "F" | "C" => (line.capability && wantThisYear.has(line.capability) ? "C" : "F");
 
@@ -144,7 +152,7 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   });
 
   // Steps 1 to 5 are E1. An under-funded entitlement still gets the whole core, flagged, rather than a plan that stops mid-spine.
-  let used = 0;
+  let used = nsxCost;
   let stopped = Boolean(underFunded);
   const displaced: Item[] = [];
   for (const item of items) {
@@ -194,6 +202,20 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     for (const unit of line.units) place({ line, unit, step: 9, order: 0 }, "F", unit.base, { reason: "considered only" });
   }
 
+  // An NSX design in the entitlement (the networking component design, in full or as its design share) covers the
+  // management domain; otherwise the VLAN-backed NSX design goes into the core with the first management domain,
+  // and the networking line's follow-on keeps the rest.
+  const nsxDesignFunded = placements.some(item => NETWORKING.includes(item.code) && (item.bucket === "E1" || item.bucket === "E2"));
+  const nsxCarved = Boolean(nsx && carvedFrom && carveBase > 0 && !nsxDesignFunded);
+  if (nsxCarved) {
+    const later = placements.filter(item => item.code === carvedFrom!.code && item.bucket !== "E1" && item.bucket !== "E2" && !item.unitId.includes(":tier-"));
+    const laterBase = later.reduce((sum, item) => sum + item.base, 0);
+    for (const item of later) { item.base -= carveBase * (item.base / laterBase); item.loaded = loaded(carvedFrom!, item.base); }
+    placements.push({ code: "NX", line: nsx!.name, unitId: nsx!.units[0].id, label: nsx!.units[0].label, base: carveBase, loaded: nsxCost, bucket: "E1", step: 3 });
+  } else {
+    used -= nsxCost;
+  }
+
   const buckets: Record<Bucket, number> = { E1: 0, E2: 0, F: 0, C: 0 };
   for (const item of placements) buckets[item.bucket] += item.loaded;
   const notFunded = Array.from(placements.filter(item => item.bucket === "F" || item.bucket === "C").reduce((map, item) => {
@@ -226,7 +248,7 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   return {
     entitlementHours, reserveHours, fillableHours, placements, buckets,
     entitlementRemaining: Math.max(0, fillableHours - used),
-    coreRequiredHours, coreByLine, underFunded, monthsRemaining,
+    coreRequiredHours: coreRequiredHours + (nsxCarved ? nsxCost : 0), coreByLine, underFunded, monthsRemaining,
     requiredMonthlyBurn: entitlementHours / monthsRemaining,
     designShareFlags, notFunded, warnings, notes,
   };

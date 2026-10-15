@@ -335,6 +335,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
       const after = Array.from(new Set((bar?.prerequisites ?? []).flatMap(id => (bars.has(id) ? [bars.get(id)!.label.replace(UNDECIDED_DEPTH, "")] : []))));
       const parts = [
         sentence(playbook?.outcome ?? firstSentence(bar?.outcome, 400) ?? "").replace(/^\.$/, ""),
+        ...(row.notes ?? []).map(sentence),
         playbook?.acceptance ? sentence(`Accepted when: ${playbook.acceptance}`) : "",
         after.length ? sentence(`Starts after: ${after.slice(0, 3).map(item => item.replace(/[.\s]+$/, "")).join("; ")}`) : "",
       ].filter(Boolean);
@@ -463,9 +464,11 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   // The build starts with the foundation build or the first execution stage, which can be months after services start.
   const buildStart = customerTimelines.adoption.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-(management-domain|workload-domain|import-domain)(-\d+)?$/.test(bar.id) || bar.id.startsWith("bar-playbook-execution-")).map(bar => barWindow(customerTimelines.adoption, bar)?.start).filter((start): start is string => Boolean(start)).sort()[0];
   const implementationStart = fields.plannedImplementationStart;
+  // What the first build package also carries, such as the NSX design when the full NSX design is not funded.
+  const buildNotes = effort.workPackages.filter(row => !row.deferred && row.total > 0).flatMap(row => row.notes ?? []);
   const buildLater = Boolean(buildStart && implementationStart && buildStart.slice(0, 7) > implementationStart.slice(0, 7));
   const forward = (implementationStart ? `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>` : "")
-    + (buildLater ? `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.</span></div>` : "")
+    + (buildLater ? `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.${buildNotes.length ? ` ${esc(buildNotes.join(" "))}` : ""}</span></div>` : "")
     + (fields.targetComplete ? `<div class="ms"><b>${esc(shortDate(fields.targetComplete))}</b><span>${esc(customer)}'s target completion.</span></div>` : "")
     + (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption: all hours consumed ahead of expiry.${assumedEnd ? " The end date is 12 months from the start and is still to be confirmed." : ""}</span></div>` : "")
     + (deferredWork.length ? `<div class="ms"><b>After ${esc(termEnd ? shortDate(termEnd) : "the entitlement")}</b><span>${esc(deferredWork.map(row => row.label.replace(UNDECIDED_DEPTH, "")).join("; "))} — shown in the Two-Year Notional as follow-on scope.</span></div>` : "");
