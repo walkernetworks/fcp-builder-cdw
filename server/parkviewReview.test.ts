@@ -384,3 +384,20 @@ describe("Parkview review: text, dedupe and layout", () => {
   });
 });
 
+describe("Parkview review: the rebuild", () => {
+  it("keeps a signed plan within the entitlement after the reserve by moving late work, and never blocks the export", () => {
+    const document = twoSite(raw => {
+      raw.entitlement.value = 410_000;
+      raw.resourceAssignments = [{ workstream: "VCF Services Entitlement", architect: 180, srConsultant: 900, projectManager: 190, seniorArchitect: 62, offshoreProjectManager: 113 }];
+    });
+    const effort = scopedEffortForDocument(document);
+    expect(effort.source).toBe("assignments");
+    expect(effort.totals.total).toBe(1_445);
+    const fit = effort.internal.fit!;
+    expect(effort.workPackages.reduce((sum, row) => sum + row.total, 0)).toBeLessThanOrEqual(Math.floor(fit.fillableHours));
+    expect(effort.internal.cost?.status).not.toBe("over");
+    const html = renderCondensedFcpHtml("Riverbend Health", document, { effort, today: "2026-10-15" });
+    expect(checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount })).toEqual([]);
+  });
+});
+
