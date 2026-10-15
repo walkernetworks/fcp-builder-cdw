@@ -140,6 +140,19 @@ export const VSPHERE8_EOGS = "2027-10-11";
 export const PLATFORM_OWNER = (customer: string) => `${customer} infrastructure team with CDW`;
 
 /**
+ * The default owner of a commercial item the plan raises (entitlement term, hours, licensing): whoever owns the brief's
+ * own commercial items, else the CDW pre-sales lead with the Broadcom partner contact, else the CDW account team.
+ */
+export function commercialItemOwner(document: EngagementDocument): string {
+  const { report } = document;
+  const onRecord = report.openItems.find(item => item.owner.trim() && /entitlement|work plan|quote|licens|renewal|hours/i.test(`${item.item} ${item.gates}`));
+  if (onRecord) return onRecord.owner.trim();
+  const cdw = report.contacts.cdw.find(person => /pre-?sales|solution architect|account (executive|manager)|client executive/i.test(person.role))?.name;
+  const broadcom = report.contacts.broadcom.find(person => /partner|practice|account/i.test(person.role))?.name;
+  return [cdw, broadcom].filter(Boolean).join(" / ") || "CDW account team";
+}
+
+/**
  * Hosts still on vSphere 8 and whether any wave (CDW-led or run by the customer's team) ends after vSphere 8 general
  * support ends. Null when no host is on vSphere 8 or the plan moves nothing.
  */
@@ -347,8 +360,9 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     ...(() => { const waves = customerRemainingWaves(document); return waves && !report.customerOwnedWork.some(row => /\bwaves?\b/i.test(row.label)) ? [waves] : []; })(),
   ];
 
-  // ---- Open items for what is still missing
+  // ---- Open items for what is still missing; every item the plan raises has an owner.
   const openItems: Array<Row<"openItems">> = [];
+  const commercialOwner = commercialItemOwner(document);
   // vSphere 8 end of general support: one finding drives both the constraint and the open item, so they always agree.
   // Waves that all end in time need neither row.
   const vsphere8 = vsphere8Exposure(document);
@@ -367,22 +381,24 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
       owner: PLATFORM_OWNER(customer),
     });
   }
-  if (!inventory.hosts) openItems.push({ item: "Current RVTools export", gates: "Design sign-off and sizing", owner: "" });
+  if (!inventory.hosts) openItems.push({ item: "Current RVTools export", gates: "Design sign-off and sizing", owner: PLATFORM_OWNER(customer) });
   for (const purchased of discovery.addOnsPurchased) {
     const key = canonicalAddOn(purchased);
     const addOn = key ? ADD_ON_OUTCOMES[key] : null;
     const planned = addOn?.priority && addOn.focus ? addOn.focus.some(focus => outcomeKeys.has(`${addOn.priority}:${focus}`)) : false;
-    if (!planned) openItems.push({ item: `${addOn?.label ?? purchased} is purchased but not in this plan`, gates: "Scope: add it or record why it waits", owner: "" });
+    if (!planned) openItems.push({ item: `${addOn?.label ?? purchased} is purchased but not in this plan`, gates: "Scope: add it or record why it waits", owner: commercialOwner });
   }
   // The brief often carries its own item for the work plan hours; raise this one only when nothing covers it.
   const hoursItemOnRecord = report.openItems.some(item => /resource assignment|work plan|entitled hours/i.test(`${item.item} ${item.gates}`));
-  if (!report.entitlement.hours && !hoursItemOnRecord) openItems.push({ item: "Entitled hours from the signed resource assignments", gates: "Burndown and weekly pace", owner: "" });
-  if (termEndAssumed(document) && termEnd) openItems.push({ item: `Entitlement end date: ${shortDate(termEnd)} is assumed as 12 months from the start; confirm the term`, gates: "Timeline end, weekly pace and follow-on scope", owner: "" });
-  if (renewalPassed) openItems.push({ item: `The subscription renewal date on record (${shortDate(discovery.renewalDate!)}) has passed: confirm the renewal and the new term`, gates: "Licensing activation and core sizing", owner: "" });
+  if (!report.entitlement.hours && !hoursItemOnRecord) openItems.push({ item: "Entitled hours from the signed resource assignments", gates: "Burndown and weekly pace", owner: commercialOwner });
+  // The brief often asks for the term itself; raise the assumed end date only when nothing covers it.
+  const termItemOnRecord = report.openItems.some(item => /entitlement (term|end)/i.test(`${item.item} ${item.gates}`));
+  if (termEndAssumed(document) && termEnd && !termItemOnRecord) openItems.push({ item: `Entitlement end date: ${shortDate(termEnd)} is assumed as 12 months from the start; confirm the term`, gates: "Timeline end, weekly pace and follow-on scope", owner: commercialOwner });
+  if (renewalPassed) openItems.push({ item: `The subscription renewal date on record (${shortDate(discovery.renewalDate!)}) has passed: confirm the renewal and the new term`, gates: "Licensing activation and core sizing", owner: commercialOwner });
   // Licensed cores the imported hosts do not account for usually mean an estate that was not exported.
-  if (required && licensed && licensed > required) openItems.push({ item: `${(licensed - required).toLocaleString("en-US")} licensed cores are not matched to the hosts in these RVTools exports`, gates: "Licensing sizing; confirm whether another vCenter needs an RVTools export", owner: "" });
+  if (required && licensed && licensed > required) openItems.push({ item: `${(licensed - required).toLocaleString("en-US")} licensed cores are not matched to the hosts in these RVTools exports`, gates: "Licensing sizing; confirm whether another vCenter needs an RVTools export", owner: commercialOwner });
   const exported = document.inventorySources.filter(source => /\.xlsx?$/i.test(source.filename)).length;
-  if (discovery.vcenters && exported && exported < discovery.vcenters) openItems.push({ item: `RVTools exports for ${exported} of ${discovery.vcenters} vCenters`, gates: "Sizing, compatibility and licensing for the vCenters not exported", owner: "" });
+  if (discovery.vcenters && exported && exported < discovery.vcenters) openItems.push({ item: `RVTools exports for ${exported} of ${discovery.vcenters} vCenters`, gates: "Sizing, compatibility and licensing for the vCenters not exported", owner: PLATFORM_OWNER(customer) });
 
   // ---- Milestones from the engagement dates
   const milestonesToDate: Array<Row<"milestonesToDate">> = [];
