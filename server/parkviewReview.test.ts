@@ -160,6 +160,22 @@ describe("Parkview review: scope and sequencing", () => {
     expect(chosen).not.toContain("still on vSphere 8");
   });
 
+  it("5. starts training with the first management domain build and hands over the runbook before the customer's waves", () => {
+    const document = twoSite();
+    const management = windowOf(document, "bar-management-domain")!;
+    const enablement = windowOf(document, "bar-platform-enablement")!;
+    const runbook = windowOf(document, "bar-platform-runbook-transfer")!;
+    const month = (iso: string, add = 0) => { const date = new Date(`${iso.slice(0, 7)}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + add); return date.toISOString().slice(0, 7); };
+    expect([month(management.start), month(management.start, 1)]).toContain(month(enablement.start));
+    const customerWaves = customerRemainingWaves(document)!;
+    expect(month(runbook.end) < customerWaves.start).toBe(true);
+    // The same training hours as before, split across the two packages: together one handover-sized package.
+    const effort = scopedEffortForDocument(document);
+    const hoursOf = (id: string) => { const row = effort.workPackages.find(item => item.id === id)!; return row.total + (row.followOn?.total ?? 0); };
+    expect(hoursOf("bar-platform-enablement")).toBeGreaterThan(0);
+    expect(Math.abs(hoursOf("bar-platform-enablement") + hoursOf("bar-platform-runbook-transfer") - hoursOf("bar-platform-handover"))).toBeLessThanOrEqual(1);
+  });
+
   it("4. counts the remaining waves once: as work the customer runs or as CDW follow-on scope, never both", () => {
     const waves = (document: EngagementDocument) => {
       const effort = scopedEffortForDocument(document);

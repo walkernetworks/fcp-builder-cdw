@@ -2691,9 +2691,13 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   if (implementationApproved) {
     const [handoverStart, handoverEnd] = range(Math.max(migrationEnd, operationsCursor, cloudEnd, securityEnd, networkingEnd), handoverDuration);
-    // Training runs once the platform is accepted, alongside the first waves, so the team runs the later ones.
-    const [trainingStart, trainingEnd] = range(platformReadyEnd, scheduleUnits(cadence, 2, 1));
-    operationsBars.push({ ...bar("bar-platform-enablement", trainingStart, trainingEnd, colorForWorkstreamType("Operating Model / Platform"), "Training and Knowledge Transfer", false, false, "Begin once the platform is accepted.", "Train the platform team on lifecycle, VCF Operations and the migration runbook, with shadowed then reverse-shadowed waves, so the team runs the later waves itself."), prerequisites: [lastBuildId] });
+    // Training in two parts: hands-on enablement starts with the first management domain build, so the team learns by
+    // installing it, and the runbook knowledge transfer runs in CDW's last wave month, before the team runs the rest.
+    const foundationStart = infrastructureBars.find(item => item.id === foundationId)?.startCol ?? platformReadyEnd;
+    const [trainingStart, trainingEnd] = range(foundationStart, scheduleUnits(cadence, 2, 1));
+    operationsBars.push({ ...bar("bar-platform-enablement", trainingStart, trainingEnd, colorForWorkstreamType("Operating Model / Platform"), "Training and Knowledge Transfer", false, false, "Starts with the first management domain build.", "Hands-on enablement: the platform team installs and operates the management domain alongside CDW, covering deployment, lifecycle and VCF Operations, so it learns by doing from the first build."), prerequisites: buildPrerequisites });
+    const [runbookStart, runbookEnd] = range(migrationRange ? Math.max(migrationRange[0], migrationRange[1] - scheduleUnits(cadence, 2, 1)) : platformReadyEnd, scheduleUnits(cadence, 2, 1));
+    operationsBars.push({ ...bar("bar-platform-runbook-transfer", runbookStart, runbookEnd, colorForWorkstreamType("Operating Model / Platform"), "Runbook Knowledge Transfer", false, false, "Runs in CDW's last wave month, before the customer's team runs the remaining waves.", "Hand over the proven migration runbook with shadowed then reverse-shadowed waves, so the team runs the later waves itself."), prerequisites: [lastBuildId] });
     operationsBars.push({ ...bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Handover and Service Acceptance", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm the operating model, evidence, ownership, and the continuing lifecycle cadence."), prerequisites: [deliveryCompleteId] });
   }
 

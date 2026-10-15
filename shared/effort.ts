@@ -414,7 +414,7 @@ const GOVERNANCE_BARS = /^bar-(platform-plan|platform-execution-decision|platfor
 const DISCOVERY_BARS = /^bar-playbook-design-requirements$/;
 const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$|hcl-review$|design-access-mapping$|design-edge-sites$)/;
 const COMPONENT_DESIGN_BARS = /^bar-playbook-component-design-/;
-const BUILD_BARS = /^bar-(management-domain(-\d+)?|workload-domain(-\d+)?|import-domain-\d+|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover|platform-enablement|playbook-adoption-vcf-management$)/;
+const BUILD_BARS = /^bar-(management-domain(-\d+)?|workload-domain(-\d+)?|import-domain-\d+|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover|platform-enablement|platform-runbook-transfer|playbook-adoption-vcf-management$)/;
 /**
  * Relative effort of each build package, used to split the deploy line instead of window length. Sized from the
  * VCF 9.1 Planning and Preparation Workbook: deploying and configuring the management domain with its fleet
@@ -426,7 +426,9 @@ const BUILD_WEIGHTS: Array<[RegExp, number]> = [
   [/^bar-workload-domain(-\d+)?$/, BUILD_STAGE_WEIGHTS.workloadDomain.value],
   [/^bar-vvf-workload-clusters$/, BUILD_STAGE_WEIGHTS.vvfCluster.value],
   [/^bar-(import-foundation-validation|in-place-preparation)$/, BUILD_STAGE_WEIGHTS.preparation.value],
-  [/^bar-(platform-handover|platform-enablement)$/, BUILD_STAGE_WEIGHTS.handover.value],
+  [/^bar-platform-handover$/, BUILD_STAGE_WEIGHTS.handover.value],
+  // Training is one handover-sized package split in two: hands-on enablement with the build, and the runbook transfer.
+  [/^bar-(platform-enablement|platform-runbook-transfer)$/, BUILD_STAGE_WEIGHTS.handover.value / 2],
   [/^bar-platform-licensing$/, BUILD_STAGE_WEIGHTS.licensing.value],
 ];
 const buildWeight = (id: string) => BUILD_WEIGHTS.find(([pattern]) => pattern.test(id))?.[1] ?? 0.4;
@@ -471,7 +473,7 @@ function barsForLine(item: EffortLine, discoveryInScope = true): (id: string) =>
   // v2: remediation runs before the converge or upgrade; the VCF upgrade runs on the upgrade packages.
   if (item.code === "R_remed") return id => /^bar-(in-place-preparation|converge-management-domain|vvf-foundation)$/.test(id);
   if (item.code === "U3") return id => /^bar-(in-place-preparation|playbook-execution-upgrade-waves|playbook-adoption-vcf-management)$/.test(id);
-  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain(-\d+)?|import-domain-\d+|platform-handover|platform-enablement|playbook-adoption-vcf-management)$/.test(id);
+  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain(-\d+)?|import-domain-\d+|platform-handover|platform-enablement|platform-runbook-transfer|playbook-adoption-vcf-management)$/.test(id);
   if (item.code === "FILL" || item.code === "FILL_mig" || item.code === "FILL_ip") return id => /^bar-playbook-execution-/.test(id);
   if (item.code === "NX") return id => FIRST_MANAGEMENT_DOMAIN.test(id);
   const addOn = addOnBars(item.code);
