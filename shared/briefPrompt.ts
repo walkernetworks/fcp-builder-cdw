@@ -22,7 +22,9 @@ What each section is for
 - discovery: answers to the discovery questionnaire (RVTools export, licensing and core counts, current versions, Enhanced Linked Mode, networking, vCenters, data centers, edge sites, ESX hosts, storage, hardware vendor, container platform, network details, jumbo frames, security tooling, DR, backup, hyperscalers, new hardware purchased, planned path, consolidated domain, add-ons considered or not wanted).
   - plannedPath: one of greenfield, in-place, converge, import-workload-domain, hybrid, design-only, undecided.
   - platformEdition: vcf or vvf (VMware vSphere Foundation) when the customer is licensed for VVF only.
-  - storage: vsan, nfs-v3, vmfs-fc, other-existing, or undecided.
+  - storage: the principal storage type: vsan, nfs-v3, vmfs-fc, other-existing, or undecided.
+  - storageSecondary: any other storage types in use beside the principal one, using the same names (for example ["nfs-v3", "vsan"]). Leave [] when there is only one.
+  - vsphere8Strategy: when hosts stay on vSphere 8 past its end of general support (11 October 2027), how they stay supported: bring-waves-forward, import-before-eogs (import the existing vCenters into VCF first; import works on vSphere 8) or extended-support. null until it is decided.
   - consolidatedDomain: true for one consolidated management and workload domain (usually 10 hosts or fewer).
   - jumboFrames: true when jumbo frames run end to end, false when they do not, "mixed" when some switches or clusters run them and others do not.
   - assessmentCompleted: true when a VCF assessment or compatibility assessment has already been delivered.
@@ -72,10 +74,10 @@ JSON shape (fill every key; keep the structure exactly)
   "discovery": {
     "assessmentCompleted": null, "coreCount": null, "licensedCores": null, "vcfLicensed": null, "renewalDate": null, "addOnsPurchased": [],
     "currentPlatform": null, "enhancedLinkedMode": null, "networking": null, "vcenters": null, "datacenters": null, "edgeSites": null,
-    "esxHosts": null, "vcfInstances": null, "storage": null, "serverVendor": null, "containerPlatform": null, "jumboFrames": null,
+    "esxHosts": null, "vcfInstances": null, "storage": null, "storageSecondary": [], "serverVendor": null, "containerPlatform": null, "jumboFrames": null,
     "securityTooling": null, "drSolution": null, "backup": null, "hyperscalers": [],
     "newHostsPurchased": { "management": null, "workload": null },
-    "plannedPath": null, "platformEdition": null, "consolidatedDomain": null,
+    "plannedPath": null, "platformEdition": null, "consolidatedDomain": null, "vsphere8Strategy": null,
     "addOnsConsidered": [], "notInterested": [],
     "sitePrerequisitesOpen": [], "componentDepth": { "operations": null, "automation": null, "networkingSecurity": null, "kubernetesAi": null, "efficiency": null },
     "industry": null, "targetRelease": null, "planningNotes": null,

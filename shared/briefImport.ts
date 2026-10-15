@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { capabilitySchema, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, vcfDomainSchema, type Capability, type EngagementDocument, type MinimalFields } from "./fcp";
 import { createFieldCoercer, deepMerge, isPlainObject, type Json, type JsonObject } from "./fieldCoercion";
-import { ADD_ON_OUTCOMES, canonicalAddOn, discoveryAnswersSchema, reportSchema, type ReportContent } from "./report";
+import { ADD_ON_OUTCOMES, canonicalAddOn, discoveryAnswersSchema, reportSchema, VSPHERE8_STRATEGIES, type ReportContent } from "./report";
 
 export const CUSTOMER_BRIEF_VERSION = 1;
 
@@ -283,7 +283,17 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
 
   // ---- Report content --------------------------------------------------------------------------
   const prior = document.report;
-  const discoveryCheck = discoveryAnswersSchema.safeParse({ ...prior.discovery, ...Object.fromEntries(Object.entries(discovery).filter(([key]) => key in discoveryAnswersSchema.shape)) });
+  // Loose list values are kept when they name a storage type and dropped with a warning when they do not.
+  const STORAGE = ["vsan", "nfs-v3", "vmfs-fc", "other-existing"];
+  const storageSecondary = discovery.storageSecondary === undefined ? undefined : textList(discovery.storageSecondary, "discovery.storageSecondary", warnings).map(value => value.toLowerCase().replace(/[\s_]+/g, "-")).filter(value => {
+    if (STORAGE.includes(value)) return true;
+    warnings.push(`discovery.storageSecondary: "${value}" is not a storage type (${STORAGE.join(", ")}); ignored`);
+    return false;
+  });
+  const vsphere8Strategy = typeof discovery.vsphere8Strategy === "string" && !(VSPHERE8_STRATEGIES as readonly string[]).includes(discovery.vsphere8Strategy)
+    ? (warnings.push(`discovery.vsphere8Strategy: "${discovery.vsphere8Strategy}" is not one of ${VSPHERE8_STRATEGIES.join(", ")}; ignored`), null)
+    : discovery.vsphere8Strategy;
+  const discoveryCheck = discoveryAnswersSchema.safeParse({ ...prior.discovery, ...Object.fromEntries(Object.entries({ ...discovery, ...(storageSecondary ? { storageSecondary } : {}), ...(vsphere8Strategy !== undefined ? { vsphere8Strategy } : {}) }).filter(([key]) => key in discoveryAnswersSchema.shape)) });
   if (!discoveryCheck.success) warnings.push(...discoveryCheck.error.issues.map(issue => `discovery.${issue.path.join(".")}: ${issue.message}; kept the previous value`));
   const contacts = isPlainObject(brief.contacts) ? brief.contacts : {};
   const person = element(reportShape.contacts.unwrap().shape.customer);
