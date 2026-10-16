@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getIndustryDiscoveryTemplate, industryDiscoveryPromptBlock } from "./industryDiscovery";
 import { emptyReport, reportSchema } from "./report";
+import { DOMAIN_BUILD_WEIGHTS } from "./hoursConfig";
 import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, hclAssessmentSchema, hclFindingSchedulePath, hclInventoryEvidenceSchema, hclSchedulePath, HCL_CATALOG_METADATA, HCL_CATALOG_RELEASES, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, HCL_TARGET_RELEASE, type HclCatalogRelease, type HclSchedulePath } from "./hcl";
 
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
@@ -553,15 +554,107 @@ export const vcfDomainSchema = z.object({
 });
 export type VcfDomain = z.infer<typeof vcfDomainSchema>;
 
+/**
+ * The work package each domain from the brief becomes, by id, in the order the plan builds them. Mirrors the
+ * generator's ids; VVF plans have no domain packages.
+ */
+export function domainPackages(fields: MinimalFields): Array<{ id: string; domain: VcfDomain }> {
+  const domains = fields.adoptionDetails.domains;
+  const path = playbookPlanForFields(fields).path;
+  if (effectivePlatformEdition(fields) === "vvf") return [];
+  const workloads = domains.filter(domain => domain.kind === "workload");
+  if (path === "converge") {
+    const management = domains.find(domain => domain.kind === "management");
+    return [
+      ...(management ? [{ id: "bar-converge-management-domain", domain: management }] : []),
+      ...workloads.map((domain, index) => ({ id: domain.pathway !== "greenfield" ? `bar-import-domain-${index + 1}` : index === 0 ? "bar-workload-domain" : `bar-workload-domain-${index + 1}`, domain })),
+    ];
+  }
+  if (path === "import-workload-domain") return workloads.map((domain, index) => ({ id: index === 0 ? "bar-import-workload-domain" : `bar-import-workload-domain-${index + 1}`, domain }));
+  if ((path === "greenfield" || path === "hybrid") && domains.some(domain => domain.kind === "management")) {
+    const used = new Map<string, number>();
+    return [
+      ...domains.filter(domain => domain.kind === "management").map((domain, index) => ({ id: index === 0 ? "bar-management-domain" : `bar-management-domain-${index + 1}`, domain })),
+      ...workloads.map(domain => {
+        const base = domain.pathway === "import" ? "bar-import-domain" : "bar-workload-domain";
+        const n = (used.get(base) ?? 0) + 1;
+        used.set(base, n);
+        return { id: base === "bar-workload-domain" && n === 1 ? base : `${base}-${n}`, domain };
+      }),
+    ];
+  }
+  return [];
+}
+
+/**
+ * A domain's host count: stated in the brief, else the count its notes give ("120 hosts today"), else the RVTools
+ * hosts in the vCenter datacenters its notes name. Null when none of these says.
+ */
+export function domainHosts(domain: VcfDomain, inventory: InventorySummary): { hosts: number | null; source: string } {
+  if (domain.hosts !== null) return { hosts: domain.hosts, source: "From the brief" };
+  const stated = /\b(\d[\d,]*)\s+hosts?\b/i.exec(domain.notes);
+  if (stated) return { hosts: Number(stated[1].replace(/,/g, "")), source: `From the domain notes ("${stated[0]}")` };
+  const text = `${domain.name} ${domain.notes}`.toLowerCase();
+  const named = inventory.clusterProfiles.filter(profile => { const datacenter = profile.name.split(" / ")[0].trim().toLowerCase(); return profile.name.includes(" / ") && datacenter.length > 3 && text.includes(datacenter); });
+  if (named.length) return { hosts: named.reduce((sum, profile) => sum + profile.hosts, 0), source: `From RVTools: the clusters of the vCenter datacenters its notes name` };
+  return { hosts: null, source: "Not stated; the pathway base only" };
+}
+
+/** A domain's share of the build line: a base by pathway plus an increment per host (DOMAIN_BUILD_WEIGHTS). */
+export function domainBuildWeight(domain: VcfDomain, hosts: number | null): number {
+  const w = DOMAIN_BUILD_WEIGHTS;
+  const [base, perHost] = domain.kind === "management" && domain.pathway !== "converge" ? [w.managementBase, w.perHostGreenfield]
+    : domain.pathway === "import" ? [w.importBase, w.perHostImport]
+    : domain.pathway === "converge" ? [w.convergeBase, w.perHostConverge]
+    : [w.greenfieldBase, w.perHostGreenfield];
+  return base.value + perHost.value * (hosts ?? 0);
+}
+
 /** A domain's outcome led by its note from the brief ("Move the SVRA 600 workloads first, then deploy ..."). */
 function withDomainNote(domain: VcfDomain, outcome: string): string {
   const note = domain.notes.trim().replace(/[.\s]+$/, "");
-  return note ? `${note}, then ${outcome.charAt(0).toLowerCase()}${outcome.slice(1)}` : outcome;
+  if (!note) return outcome;
+  // A note that already says how the domain is built keeps the template to what the note does not say.
+  if (/^(built|build|deploy(ed)?|greenfield|import(ed)?|converge(d)?)\b/i.test(note)) return `${note}. ${domainFollowUp(domain)}`;
+  return `${note}, then ${outcome.charAt(0).toLowerCase()}${outcome.slice(1)}`;
+}
+
+const namesDomain = (domain: VcfDomain) => /\bdomain\b/i.test(domain.name);
+const domainHostsText = (domain: VcfDomain) => (domain.hosts ? ` (${domain.hosts} hosts)` : "");
+
+/** A domain package title: the brief's name, with the kind added only when the name does not already say "domain". */
+export function domainTitle(domain: VcfDomain): string {
+  const named = namesDomain(domain);
+  if (domain.kind === "management") return domain.pathway === "converge" ? `Converge ${domain.name}${named ? "" : " into a Management Domain"}` : `${domain.name}${named ? "" : " Management Domain"}`;
+  if (domain.pathway !== "greenfield") return `Import ${domain.name}${named ? "" : " as a Workload Domain"}`;
+  return `${domain.name}${named ? "" : " Workload Domain"}`;
+}
+
+/** What delivering the domain means, as one sentence. */
+function domainOutcome(domain: VcfDomain, allClusters = false): string {
+  const noun = namesDomain(domain) ? `the ${domain.name}` : `the ${domain.name} ${domain.kind} domain`;
+  if (domain.kind === "management") return `${domain.pathway === "converge" ? "Converge the existing vCenter into" : "Deploy"} ${noun}${domainHostsText(domain)} with its fleet services and validate core platform health.`;
+  if (domain.pathway !== "greenfield") return namesDomain(domain)
+    ? `Bring the existing vCenter for ${noun}${domainHostsText(domain)}${allClusters ? " and all of its clusters" : ""} under VCF fleet management and validate it.`
+    : `Bring the existing ${domain.name} vCenter${domainHostsText(domain)}${allClusters ? " and all of its clusters" : ""} under VCF fleet management as a workload domain and validate it.`;
+  return `Create ${noun}${domainHostsText(domain)} with vLCM images and validate it before workloads move.`;
+}
+
+/** The part of the outcome a note that already describes the build leaves to say. */
+function domainFollowUp(domain: VcfDomain): string {
+  if (domain.kind === "management") return `Deploy it${domainHostsText(domain)} with its fleet services and validate core platform health.`;
+  if (domain.pathway !== "greenfield") return `Validate it${domainHostsText(domain)} under VCF fleet management.`;
+  return `Build it${domainHostsText(domain)} with vLCM images and validate it before workloads move.`;
 }
 
 export const adoptionDetailsSchema = adoptionDetailsV6Schema.extend({
   industryTemplate: industryTemplateSchema,
   domains: z.array(vcfDomainSchema).default([]),
+  /**
+   * Areas the brief lists only as considered (an add-on with no outcome or depth selected for it): they are planned
+   * in the Two-Year Notional as follow-on scope and never draw on the entitlement. "efficiency" is memory tiering.
+   */
+  followOnOnly: z.array(z.enum(["operations", "automation", "networking", "security", "resilience", "kubernetes", "private-ai", "efficiency"])).default([]),
 });
 export type AdoptionDetails = z.infer<typeof adoptionDetailsSchema>;
 
@@ -1302,6 +1395,7 @@ export function createDefaultAdoptionDetails(): AdoptionDetails {
     softPrerequisites: [],
     notes: "",
     industryTemplate: "general-enterprise",
+    followOnOnly: [],
   };
 }
 
@@ -2009,6 +2103,12 @@ const VVF_COMPONENT_DESIGN_TITLES: Partial<Record<Capability, string>> = {
   security: "vSphere Hardening and Access Design",
 };
 
+/** vDefend is in scope only through its own outcomes (segmentation, threat prevention, security intelligence) or the add-on. */
+const VDEFEND_FOCUSES = new Set(["segmentation", "ids-ips", "malware-prevention", "identity-firewall", "security-intelligence"]);
+export function usesVdefend(fields: MinimalFields): boolean {
+  return fields.adoptionDetails.security.some(focus => VDEFEND_FOCUSES.has(focus));
+}
+
 export function getVcfComponentDesignOwnership(capability: Capability): VcfPlaybookOwnership {
   return componentDesignProfiles[capability].ownership;
 }
@@ -2279,7 +2379,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       taskStart,
       taskEnd,
       colorForWorkstreamType(profile.ownership.workstreamType),
-      componentDesignTitle(edition === "vvf" ? VVF_COMPONENT_DESIGN_TITLES[capability] ?? profile.title : profile.title, depth),
+      componentDesignTitle(edition === "vvf" ? VVF_COMPONENT_DESIGN_TITLES[capability] ?? profile.title : capability === "security" && fields.adoptionDetails.security.length && !usesVdefend(fields) ? "Security Design: Identity, Access and Hardening" : profile.title, depth),
       false,
       false,
       appendDeliveryContext(profile.dependency),
@@ -2287,7 +2387,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     ));
     componentDesignCursors[laneKey] = taskEnd;
   });
-  if (fields.adoptionDetails.componentDepths.efficiency !== "not-selected") {
+  if (fields.adoptionDetails.componentDepths.efficiency !== "not-selected" || fields.adoptionDetails.followOnOnly.includes("efficiency")) {
     const [taskStart, taskEnd] = range(componentDesignCursors.infrastructureBuild, scheduleUnits(cadence, 2, 1));
     designBars.infrastructureBuild.push(bar(
       "bar-playbook-component-design-efficiency",
@@ -2406,7 +2506,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   } else if (playbookPlan.path === "converge") {
     foundationId = vvf ? "bar-vvf-foundation" : "bar-converge-management-domain";
     const convergedDomain = fields.adoptionDetails.domains.find(domain => domain.kind === "management");
-    foundationEnd = addInfrastructurePackage(foundationId, convergedDomain && !vvf ? `Converge ${convergedDomain.name} into a Management Domain` : implementationPackage?.title || "Converge vCenter into VCF", deliveryStart, managementDuration, implementationPackage?.dependsOn || "Begin after the convergence runbook is approved.", implementationPackage?.outcome || "Establish the VCF management domain from the accepted existing environment.", buildPrerequisites);
+    foundationEnd = addInfrastructurePackage(foundationId, convergedDomain && !vvf ? domainTitle(convergedDomain) : implementationPackage?.title || "Converge vCenter into VCF", deliveryStart, managementDuration, implementationPackage?.dependsOn || "Begin after the convergence runbook is approved.", implementationPackage?.outcome || "Establish the VCF management domain from the accepted existing environment.", buildPrerequisites);
     licenseFrom = foundationEnd;
     workloadEnd = foundationEnd;
     // Workload domains from the brief follow the converged management domain, each imported or built in turn.
@@ -2414,9 +2514,9 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     fields.adoptionDetails.domains.filter(domain => domain.kind === "workload" && !vvf).forEach((domain, index) => {
       const imported = domain.pathway !== "greenfield";
       const id = imported ? `bar-import-domain-${index + 1}` : index === 0 ? "bar-workload-domain" : `bar-workload-domain-${index + 1}`;
-      workloadEnd = addInfrastructurePackage(id, imported ? `Import ${domain.name} as a Workload Domain` : `${domain.name} Workload Domain`, workloadEnd, workloadDuration,
+      workloadEnd = addInfrastructurePackage(id, domainTitle(domain), workloadEnd, workloadDuration,
         imported ? "Begin after the converged management domain and the complete source-vCenter inventory are accepted; the whole vCenter is imported." : "Begin after management-domain health and the approved network and storage prerequisites are validated.",
-        withDomainNote(domain, imported ? `Bring the existing ${domain.name} vCenter${domain.hosts ? ` (${domain.hosts} hosts)` : ""} under VCF fleet management as a workload domain and validate it.` : `Create the ${domain.name} workload domain${domain.hosts ? ` (${domain.hosts} hosts)` : ""} with vLCM images and validate it before workloads move.`),
+        withDomainNote(domain, domainOutcome(domain)),
         [previousDomain]);
       previousDomain = id;
     });
@@ -2433,7 +2533,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       imports.forEach((domain, index) => {
         const id = index === 0 ? "bar-import-workload-domain" : `bar-import-workload-domain-${index + 1}`;
         const [start, end] = range(cursor, workloadDuration);
-        migrationBars.push({ ...bar(id, start, end, colorForWorkstreamType("Migration Waves"), `Import ${domain.name} as a Workload Domain`, false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after the destination foundation is accepted."), withDomainNote(domain, `Bring the existing ${domain.name} vCenter${domain.hosts ? ` (${domain.hosts} hosts)` : ""} and all of its clusters under VCF fleet management as a workload domain and validate it.`)), prerequisites: [previousImport] });
+        migrationBars.push({ ...bar(id, start, end, colorForWorkstreamType("Migration Waves"), domainTitle({ ...domain, pathway: "import" }), false, false, appendDeliveryContext(implementationPackage?.dependsOn || "Begin after the destination foundation is accepted."), withDomainNote(domain, domainOutcome({ ...domain, pathway: "import" }, true))), prerequisites: [previousImport] });
         cursor = end;
         previousImport = id;
       });
@@ -2455,12 +2555,12 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     let previous = "";
     domains.filter(domain => domain.kind === "management").forEach((domain, index) => {
       const id = index === 0 ? "bar-management-domain" : `bar-management-domain-${index + 1}`;
-      const title = domain.pathway === "converge" ? `Converge ${domain.name} into a Management Domain` : `${domain.name} Management Domain`;
+      const title = domainTitle(domain);
       const first = index === 0
         ? (playbookPlan.path === "greenfield" ? "Begin only after separately funded hardware, rack, network, storage, DNS, NTP, and IP prerequisites are accepted." : "Begin after the pathway decisions and shared target-state design are approved.")
         : `Begin after the ${domains.find(item => item.kind === "management")!.name} management domain is accepted.`;
       const end = addInfrastructurePackage(id, title, foundationEnd, managementDuration, first,
-        withDomainNote(domain, `${domain.pathway === "converge" ? "Converge the existing vCenter into" : "Deploy"} the ${domain.name} management domain${domain.hosts ? ` (${domain.hosts} hosts)` : ""} with its fleet services and validate core platform health.`),
+        withDomainNote(domain, domainOutcome(domain)),
         index === 0 ? buildPrerequisites : [previous]);
       if (index === 0) { foundationId = id; licenseFrom = end; }
       managementByInstance.set(instanceKey(domain), id);
@@ -2483,10 +2583,10 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       const id = base === "bar-workload-domain" && n === 1 ? base : `${base}-${n}`;
       const track = managementByInstance.has(instanceKey(domain)) ? instanceKey(domain) : "";
       const management = managementByInstance.get(track) ?? previous;
-      const title = domain.pathway === "import" ? `Import ${domain.name} as a Workload Domain` : `${domain.name} Workload Domain`;
+      const title = domainTitle(domain);
       const end = addInfrastructurePackage(id, title, trackEnd.get(track) ?? foundationEnd, workloadDuration,
         `${domain.pathway === "import" ? "Begin after the destination management domain and the complete source-vCenter inventory are accepted; the whole vCenter is imported." : "Begin after management-domain health and the approved network and storage prerequisites are validated."}`,
-        withDomainNote(domain, domain.pathway === "import" ? `Bring the existing ${domain.name} vCenter${domain.hosts ? ` (${domain.hosts} hosts)` : ""} under VCF fleet management as a workload domain and validate it.` : `Create the ${domain.name} workload domain${domain.hosts ? ` (${domain.hosts} hosts)` : ""} with vLCM images and validate it before workloads move.`),
+        withDomainNote(domain, domainOutcome(domain)),
         [management, ...(networkingId ? [networkingId] : [])]);
       trackEnd.set(track, end);
       workloadEnd = Math.max(workloadEnd, end);
@@ -2679,9 +2779,13 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
 
   if (implementationApproved) {
     const [handoverStart, handoverEnd] = range(Math.max(migrationEnd, operationsCursor, cloudEnd, securityEnd, networkingEnd), handoverDuration);
-    // Training runs once the platform is accepted, alongside the first waves, so the team runs the later ones.
-    const [trainingStart, trainingEnd] = range(platformReadyEnd, scheduleUnits(cadence, 2, 1));
-    operationsBars.push({ ...bar("bar-platform-enablement", trainingStart, trainingEnd, colorForWorkstreamType("Operating Model / Platform"), "Training and Knowledge Transfer", false, false, "Begin once the platform is accepted.", "Train the platform team on lifecycle, VCF Operations and the migration runbook, with shadowed then reverse-shadowed waves, so the team runs the later waves itself."), prerequisites: [lastBuildId] });
+    // Training in two parts: hands-on enablement starts with the first management domain build, so the team learns by
+    // installing it, and the runbook knowledge transfer runs in CDW's last wave month, before the team runs the rest.
+    const foundationStart = infrastructureBars.find(item => item.id === foundationId)?.startCol ?? platformReadyEnd;
+    const [trainingStart, trainingEnd] = range(foundationStart, scheduleUnits(cadence, 2, 1));
+    operationsBars.push({ ...bar("bar-platform-enablement", trainingStart, trainingEnd, colorForWorkstreamType("Operating Model / Platform"), "Training and Knowledge Transfer", false, false, "Starts with the first management domain build.", "Hands-on enablement: the platform team installs and operates the management domain alongside CDW, covering deployment, lifecycle and VCF Operations, so it learns by doing from the first build."), prerequisites: buildPrerequisites });
+    const [runbookStart, runbookEnd] = range(migrationRange ? Math.max(migrationRange[0], migrationRange[1] - scheduleUnits(cadence, 2, 1)) : platformReadyEnd, scheduleUnits(cadence, 2, 1));
+    operationsBars.push({ ...bar("bar-platform-runbook-transfer", runbookStart, runbookEnd, colorForWorkstreamType("Operating Model / Platform"), "Runbook Knowledge Transfer", false, false, "Runs in CDW's last wave month, before the customer's team runs the remaining waves.", "Hand over the proven migration runbook with shadowed then reverse-shadowed waves, so the team runs the later waves itself."), prerequisites: [lastBuildId] });
     operationsBars.push({ ...bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Handover and Service Acceptance", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm the operating model, evidence, ownership, and the continuing lifecycle cadence."), prerequisites: [deliveryCompleteId] });
   }
 
@@ -3388,14 +3492,14 @@ function numberValue(value: unknown): number {
 
 function migrateFieldsToV6(fields: z.infer<typeof minimalFieldsV5Schema>): z.infer<typeof minimalFieldsV6Schema> {
   const details = createDefaultAdoptionDetails();
-  const { industryTemplate: _industryTemplate, ...legacyDetails } = details;
+  const { industryTemplate: _industryTemplate, domains: _domains, followOnOnly: _followOnOnly, ...legacyDetails } = details;
   return { ...fields, adoptionCadence: "month", adoptionDetails: legacyDetails };
 }
 
 function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): MinimalFields {
   return {
     ...fields,
-    adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise", domains: [] },
+    adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise", domains: [], followOnOnly: [] },
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
     hoursModel: "v2",
     estimateInputs: {},
