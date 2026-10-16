@@ -5,6 +5,7 @@ import { migrateDocument } from "../shared/fcp";
 import * as db from "./db";
 import { BUILDING_BLOCKS_MIME, buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
 import { verifyExportTicket } from "./exportTickets";
+import { viewerFor } from "./visibility";
 import { renderFcpHtml, renderHclCompatibilityPlanOutputHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 import { checkCondensedFcp } from "./condensedFcpChecks";
@@ -26,7 +27,9 @@ export function registerExportDownloadRoutes(app: Express) {
     if (!ticket) return deny(res, 401, "This download link is invalid or has expired.");
 
     try {
-      const row = await db.getEngagement(ticket.userId, ticket.engagementId);
+      // Visibility is rechecked at download time for the user the ticket was issued to.
+      const user = await db.getUserById(ticket.userId);
+      const row = user ? await db.getEngagement(viewerFor(user), ticket.engagementId) : undefined;
       if (!row) return deny(res, 404, "Engagement not found.");
 
       // Same migration the workspace applies on load, so exports reflect current planning rules and wording.

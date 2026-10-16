@@ -1,6 +1,6 @@
 # VSA Tracker Data Model
 
-Status: **Phase 0, reviewed.** Decisions from review are recorded in [section 11](#11-review-decisions). The Phase 1 migration is built from this document.
+Status: **Phase 1 implemented** (migration `drizzle/0002_vsa_tracker_core.sql`). Decisions from review are recorded in [section 11](#11-review-decisions).
 
 This document locks the relational shape of the VSA engagement record that absorbs the SharePoint VSA Pipeline List. It extends the existing `engagements` table and adds three tables. The FCP document model (`engagements.data`, typed by `shared/fcp.ts`) is unchanged and becomes the output of the FCP Draft stage.
 
@@ -70,8 +70,10 @@ Commercial customers have no work plan step: Customer Approval is FCP approval o
 - **Backward:** to any earlier main-line stage, with a required note.
 - **Exits:** any non-terminal stage can move to `refused`, `paused`, or `lost`.
 - **Resume:** `paused` returns to the `fromStage` of the event that paused it. If that is unknown (imported as paused), the user picks.
+- **Dates:** a transition's `effectiveOn` cannot be before the record's current `stageEnteredOn` or in the future, so history stays in order.
 - **Hard gate:** `kickoff` and `in_delivery` cannot be entered without `poReceivedOn`. The handbook is explicit that no delivery work begins before the Broadcom PO. Every other exit criterion in 2.1 is a **soft gate**: the transition is allowed, and the record shows a warning until the date is filled.
-- The module exports `STAGES`, `stageOrder`, `applicableStages(segment)`, `nextStage(record)`, `canTransition(record, to) -> { ok, hardBlock?, warnings[] }`, and `stageWarnings(record)`. It has no database or React imports.
+- The module exports `STAGES`, `stageOrder`, `applicableStages(segment)`, `nextStage(record)`, `canTransition(record, to) -> { ok, hardBlock?, noteRequired, warnings[] }`, `exitGaps`, `customerApprovalItems`, `effectiveDateProblem`, and `stageWarnings(record, today)`. It has no database or React imports.
+- Records created from the FCP workspace (the existing "New engagement" flow, and duplicates) start in `fcp_draft`. Records created from the tracker start in `intake`.
 
 ## 3. `engagements` (extended)
 
@@ -289,7 +291,7 @@ export const ENGAGEMENT_COLUMN_VISIBILITY = {
 
 - The `satisfies Record<keyof Engagement, …>` makes `pnpm check` fail when a column is added without a tag.
 - `customerFacingColumns(row)` returns only the **C** columns. Any renderer that puts tracker columns into a customer document (FCP, condensed FCP, handoff) must go through it.
-- A test asserts that every **I** column value, seeded with a sentinel string, is absent from the rendered FCP HTML.
+- A test seeds every column with a sentinel string and asserts that no **I** value survives `customerFacingColumns()`. Today no renderer reads tracker columns at all (they render from `data` only); the first one that does must take its input from `customerFacingColumns()`.
 - `stageEvents`, `sourceChainItems`, `engagementAssignments`, and `workspaces` are internal in full. They get no per-column map.
 - `data` is tagged **C**. The FCP document is customer-facing by design, and its existing export gates (rate card, blended rate) are unchanged.
 
@@ -303,7 +305,7 @@ export const ENGAGEMENT_COLUMN_VISIBILITY = {
 |---|---|
 | See a record, its events, sources, assignments | Any user in the record's workspace |
 | Edit tracker fields, transition stage, edit sources and assignments | Any user in the workspace (shared tracker), with `rowVersion` checks |
-| Edit the FCP document | Any user in the workspace, when they hold the build lock or no one does (lock enforced from Phase 4; until then, `rowVersion`) |
+| Edit the FCP document | Any user in the workspace. Saves stay last-write-wins, as today, and do not bump `rowVersion` (FCP saves never touch tracker columns). The build lock is enforced from Phase 4 |
 | Delete a record | Its `ownerId`, or an `admin` |
 | Export (HTML/PDF links) | Any user in the workspace. The download route rechecks visibility for the ticket's user at download time |
 
@@ -320,8 +322,8 @@ export function canEditEngagement(viewer: Viewer, row: Engagement): boolean;
 export function canDeleteEngagement(viewer: Viewer, row: Engagement): boolean;
 ```
 
-- Every `db.ts` engagement function takes a `Viewer` and composes `visibleEngagements(viewer)` into its `where`. Child-table functions join through `engagements` with the same predicate; they never filter by `engagementId` alone.
-- A test enumerates the `db.ts` exports touching engagement data and asserts each applies the predicate (the same spirit as `noThirdPartyPlatform.test.ts`).
+- Every `db.ts` engagement function takes a `Viewer` and composes `visibleEngagements(viewer)` into its `where`. Child-table functions first load the engagement through the same predicate, then filter the child table by both its own ID and that `engagementId`; they never trust an `engagementId` alone.
+- `server/visibility.test.ts` scans the `db.ts` exports touching engagement data and fails if one does not apply the helper (the same spirit as `noThirdPartyPlatform.test.ts`). It also asserts that nothing updates or deletes `stageEvents`.
 - Where the database lives stays a `DATABASE_URL` choice. No storage or scoping logic outside `db.ts` and `visibility.ts`.
 
 ### 8.3 Effect on the existing FCP flow
@@ -359,7 +361,7 @@ One migration, `0002_*`, generated with `pnpm exec drizzle-kit generate` and app
 5. Insert one `stageEvents` row per existing engagement: `fromStage NULL`, `toStage 'fcp_draft'`, `effectiveOn = DATE(createdAt)`, `source 'system'`, `note 'Existing FCP at tracker migration'`.
 6. Add the foreign keys and indexes from sections 3.8 to 6.3.
 
-The migration is checked by applying it to a copy of the local database with existing FCP rows, then confirming the current FCP test suite and a manual FCP export still pass.
+Checked on 2026-10-16 by applying it to a copy of the local database (7 existing FCPs, 1 user): all 7 moved to `fcp_draft` with one `system` stage event each, workspace 1 was created, and the user joined it. A smoke run of every new `db.ts` function against the copy confirmed workspace isolation, stale-write rejection, unique-key handling, the PO hard gate, note rules, pause and resume, waived-source notes, owner-or-admin delete, and cascades.
 
 ## 10. SharePoint import mapping (preview for Phase 2)
 

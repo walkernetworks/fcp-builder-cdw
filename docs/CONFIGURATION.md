@@ -24,7 +24,7 @@ Default Plan and Design activities are created from confirmed customer inputs, a
 
 In CDW self-hosted mode, Entra ID or Okta authentication is terminated by an approved reverse proxy or application gateway. The gateway must remove inbound copies of the configured identity headers, authenticate the user, inject validated identity values, and forward traffic over a protected network path. Direct access to the application container must be blocked.
 
-The app maps the trusted immutable identity to a local owner record and retains only the display name, email, issuer-scoped identity digest, and engagement ownership. It never receives or stores the corporate password, MFA secret, or identity-provider access token.
+The app maps the trusted immutable identity to a local owner record and retains only the display name, email, issuer-scoped identity digest, workspace membership, and engagement ownership (kept for attribution). Every signed-in user joins workspace 1 and sees its engagements, so assignment to the app at the gateway decides who can see engagement data. The VSA tracker adds no environment variables. It never receives or stores the corporate password, MFA secret, or identity-provider access token.
 
 ## Secret handling
 
