@@ -232,3 +232,24 @@ export const savedReports = mysqlTable(
 
 export type SavedReport = typeof savedReports.$inferSelect;
 
+/** Snapshots of an engagement's FCP document. Made on request, when the FCP leaves FCP Draft, and on export. */
+export const fcpVersions = mysqlTable(
+  "fcpVersions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    engagementId: int("engagementId").notNull().references(() => engagements.id, { onDelete: "cascade" }),
+    versionNumber: int("versionNumber").notNull(),
+    title: varchar("title", { length: 240 }).notNull(),
+    data: json("data").$type<EngagementDocument>().notNull(),
+    /** SHA-256 of the document JSON, so an unchanged FCP is not saved twice. */
+    dataHash: varchar("dataHash", { length: 64 }).notNull(),
+    label: varchar("label", { length: 160 }).notNull(),
+    reason: mysqlEnum("reason", ["manual", "submitted", "export", "restore"]).notNull(),
+    createdByUserId: int("createdByUserId").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [uniqueIndex("fcp_versions_number_uq").on(table.engagementId, table.versionNumber)],
+);
+
+export type FcpVersion = typeof fcpVersions.$inferSelect;
+

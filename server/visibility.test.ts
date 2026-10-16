@@ -33,8 +33,9 @@ describe("visibility helper", () => {
 describe("db.ts engagement access", () => {
   const source = readFileSync(path.join(import.meta.dirname, "db.ts"), "utf8");
   const functions = [...source.matchAll(/^export async function (\w+)\(([\s\S]*?)^}$/gm)].map(([, name, body]) => ({ name, body }));
-  const scoped = /visibleEngagements\(|deletableEngagements\(|requireVisibleEngagement\(/;
-  const touchesEngagementData = /\b(engagements|stageEvents|sourceChainItems|engagementAssignments)\b/;
+  // Direct use of the helper, or delegation to a function that is itself scoped (checked by this same test).
+  const scoped = /visibleEngagements\(|deletableEngagements\(|requireVisibleEngagement\(|getEngagement\(viewer|getFcpVersion\(viewer/;
+  const touchesEngagementData = /\b(engagements|stageEvents|sourceChainItems|engagementAssignments|fcpVersions)\b/;
   // Delegates to scoped functions, or writes a new row into the viewer's own workspace.
   const allowed: Record<string, RegExp> = {
     createEngagement: /workspaceId: viewer\.workspaceId/,
@@ -42,7 +43,7 @@ describe("db.ts engagement access", () => {
   };
 
   it("finds the engagement functions", () => {
-    expect(functions.map(fn => fn.name)).toEqual(expect.arrayContaining(["listEngagements", "getEngagement", "listTracker", "transitionStage", "setAssignment"]));
+    expect(functions.map(fn => fn.name)).toEqual(expect.arrayContaining(["listEngagements", "getEngagement", "listTracker", "transitionStage", "setAssignment", "listFcpVersions", "createFcpVersion", "restoreFcpVersion", "acquireBuildLock", "releaseBuildLock"]));
   });
 
   it("scopes every function that reads or writes engagement data through the visibility helper", () => {

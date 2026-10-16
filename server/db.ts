@@ -1,13 +1,16 @@
-import { and, asc, desc, eq, getTableColumns, inArray, isNull, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, max, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { createDefaultDocument, EngagementDocument } from "../shared/fcp";
 import { renameInTitle, resolveFcpSaveNames } from "../shared/customerName";
+import { buildLockState, sourceUpdatesFromDocument } from "../shared/fcpRecord";
 import { IMPORT_FIELDS, IMPORT_ROLES, planImport, type ExistingRecord, type ImportPlan, type ImportRole } from "../shared/sharepointImport";
 import type { AssignmentRole, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
-import { canTransition, DEFAULT_SOURCE_CHAIN, effectiveDateProblem, type Stage, type StageRecord } from "../shared/vsaStage";
+import { canTransition, DEFAULT_SOURCE_CHAIN, effectiveDateProblem, STAGE_LABELS, stageOrder, type Stage, type StageRecord } from "../shared/vsaStage";
 import {
   engagementAssignments,
   engagements,
+  fcpVersions,
   savedReports,
   InsertEngagement,
   InsertUser,
@@ -178,11 +181,13 @@ export async function createEngagement(viewer: Viewer, title: string, data: Enga
 export async function updateEngagement(viewer: Viewer, id: number, title: string, data: EngagementDocument, base: { customerName?: string | null; title?: string | null } = {}) {
   const db = await requireDb();
   const [current] = await db
-    .select({ customerName: engagements.customerName, title: engagements.title, storedDocName: sql<string | null>`JSON_UNQUOTE(JSON_EXTRACT(${engagements.data}, '$.fields.customerName'))` })
+    .select({ customerName: engagements.customerName, title: engagements.title, storedDocName: sql<string | null>`JSON_UNQUOTE(JSON_EXTRACT(${engagements.data}, '$.fields.customerName'))`, buildLockUserId: engagements.buildLockUserId, buildLockAt: engagements.buildLockAt })
     .from(engagements)
     .where(and(visibleEngagements(viewer), eq(engagements.id, id)))
     .limit(1);
   if (!current) return undefined;
+  // One editor at a time: a save from someone who does not hold a live build lock is refused.
+  if (buildLockState({ userId: current.buildLockUserId, at: current.buildLockAt }, viewer.id, Date.now()) === "other") throw new BuildLockedError(await lockHolderName(current.buildLockUserId));
   const names = resolveFcpSaveNames({ incomingName: data.fields.customerName ?? "", incomingTitle: title, baseName: base.customerName, baseTitle: base.title, storedDocName: current.storedDocName, storedTitle: current.title, column: current.customerName });
   const document = names.docName === data.fields.customerName ? data : { ...data, fields: { ...data.fields, customerName: names.docName } };
   await db
@@ -194,9 +199,61 @@ export async function updateEngagement(viewer: Viewer, id: number, title: string
       data: document,
       status: data.fields.customerName && data.fields.entitlementEnd && data.inventory.hosts > 0 ? "ready" : "draft",
       updatedByUserId: viewer.id,
+      // Saving renews (or takes, when free) the build lock.
+      buildLockUserId: viewer.id,
+      buildLockAt: new Date(),
     })
     .where(and(visibleEngagements(viewer), eq(engagements.id, id)));
+  await applySourceEvidence(db, viewer, id, document);
   return getEngagement(viewer, id);
+}
+
+/** Ticks off checklist items the saved FCP evidences (RVTools imported, brief imported, signed hours entered). */
+async function applySourceEvidence(db: Db, viewer: Viewer, engagementId: number, document: EngagementDocument) {
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return;
+  const items = await db.select({ id: sourceChainItems.id, kind: sourceChainItems.kind, status: sourceChainItems.status, reference: sourceChainItems.reference }).from(sourceChainItems).where(eq(sourceChainItems.engagementId, engagementId));
+  for (const update of sourceUpdatesFromDocument(document, items, today())) {
+    await db
+      .update(sourceChainItems)
+      .set({ status: update.status, receivedOn: update.receivedOn, reference: update.reference, note: update.note, updatedByUserId: viewer.id })
+      .where(and(eq(sourceChainItems.id, update.id), eq(sourceChainItems.engagementId, engagementId), inArray(sourceChainItems.status, ["needed", "requested"])));
+  }
+}
+
+export class BuildLockedError extends Error {
+  constructor(readonly holder: string) {
+    super(`${holder} is editing this FCP. Your change was not saved. Take over editing or wait until they finish.`);
+  }
+}
+
+async function lockHolderName(userId: number | null) {
+  if (userId === null) return "Someone";
+  const holder = await getUserById(userId);
+  return holder?.name || holder?.email || "Someone";
+}
+
+export type BuildLockResult = { held: boolean; holder: string | null; since: Date | null };
+
+/** Takes or renews the build lock. `takeOver` takes it from another live holder. */
+export async function acquireBuildLock(viewer: Viewer, id: number, takeOver = false): Promise<BuildLockResult | undefined> {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const row = await requireVisibleEngagement(tx, viewer, id, true);
+    if (!row) return undefined;
+    const state = buildLockState({ userId: row.buildLockUserId, at: row.buildLockAt }, viewer.id, Date.now());
+    if (state === "other" && !takeOver) return { held: false, holder: await lockHolderName(row.buildLockUserId), since: row.buildLockAt };
+    const now = new Date();
+    await tx.update(engagements).set({ buildLockUserId: viewer.id, buildLockAt: now, updatedAt: sql`${engagements.updatedAt}` }).where(and(visibleEngagements(viewer), eq(engagements.id, id)));
+    return { held: true, holder: null, since: now };
+  });
+}
+
+export async function releaseBuildLock(viewer: Viewer, id: number) {
+  const db = await requireDb();
+  await db
+    .update(engagements)
+    .set({ buildLockUserId: null, buildLockAt: null, updatedAt: sql`${engagements.updatedAt}` })
+    .where(and(visibleEngagements(viewer), eq(engagements.id, id), eq(engagements.buildLockUserId, viewer.id)));
 }
 
 export async function deleteEngagement(viewer: Viewer, id: number) {
@@ -312,6 +369,15 @@ export type StageTransition = { to: Stage; effectiveOn: string; note?: string; e
 /** Writes the stage event, the stage, and `stageEnteredOn` in one transaction. Rules come from shared/vsaStage.ts. */
 export async function transitionStage(viewer: Viewer, id: number, transition: StageTransition): Promise<WriteResult<{ warnings: string[] }>> {
   const db = await requireDb();
+  const result = await transitionStageInTx(db, viewer, id, transition);
+  // Leaving FCP Draft forward keeps the FCP as it stood when it went for approval.
+  if (result.status === "ok" && result.from === "fcp_draft" && stageOrder(transition.to) > stageOrder("fcp_draft")) {
+    await createFcpVersion(viewer, id, `Submitted: moved to ${STAGE_LABELS[transition.to]}`, "submitted");
+  }
+  return result.status === "ok" ? { status: "ok", value: result.value } : result;
+}
+
+async function transitionStageInTx(db: Db, viewer: Viewer, id: number, transition: StageTransition): Promise<WriteResult<{ warnings: string[] }> & { from?: Stage }> {
   return db.transaction(async tx => {
     const row = await requireVisibleEngagement(tx, viewer, id, true);
     if (!row) return { status: "not_found" } as const;
@@ -336,7 +402,7 @@ export async function transitionStage(viewer: Viewer, id: number, transition: St
       .update(engagements)
       .set({ stage: transition.to, stageEnteredOn: transition.effectiveOn, rowVersion: sql`${engagements.rowVersion} + 1`, updatedByUserId: viewer.id })
       .where(eq(engagements.id, row.id));
-    return { status: "ok", value: { warnings: check.warnings } } as const;
+    return { status: "ok", value: { warnings: check.warnings }, from: row.stage } as const;
   });
 }
 
@@ -535,5 +601,52 @@ export async function deleteReport(viewer: Viewer, id: number) {
   const db = await requireDb();
   const result = await db.delete(savedReports).where(and(editableReports(viewer), eq(savedReports.id, id)));
   return result[0].affectedRows > 0;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// FCP version history
+
+const versionSummary = { id: fcpVersions.id, versionNumber: fcpVersions.versionNumber, title: fcpVersions.title, label: fcpVersions.label, reason: fcpVersions.reason, createdAt: fcpVersions.createdAt, createdByName: users.name };
+
+export async function listFcpVersions(viewer: Viewer, engagementId: number) {
+  const db = await requireDb();
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return undefined;
+  return db.select(versionSummary).from(fcpVersions).leftJoin(users, eq(users.id, fcpVersions.createdByUserId)).where(eq(fcpVersions.engagementId, engagementId)).orderBy(desc(fcpVersions.versionNumber));
+}
+
+export async function getFcpVersion(viewer: Viewer, engagementId: number, versionId: number) {
+  const db = await requireDb();
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return undefined;
+  const [version] = await db.select().from(fcpVersions).where(and(eq(fcpVersions.id, versionId), eq(fcpVersions.engagementId, engagementId))).limit(1);
+  return version;
+}
+
+/** Saves the stored FCP as a new version. An export of an FCP identical to the latest version is not saved again. */
+export async function createFcpVersion(viewer: Viewer, engagementId: number, label: string, reason: "manual" | "submitted" | "export" | "restore") {
+  const db = await requireDb();
+  const engagement = await getEngagement(viewer, engagementId);
+  if (!engagement) return undefined;
+  const dataHash = createHash("sha256").update(JSON.stringify(engagement.data)).digest("hex");
+  const [latest] = await db.select({ id: fcpVersions.id, dataHash: fcpVersions.dataHash, versionNumber: fcpVersions.versionNumber }).from(fcpVersions).where(eq(fcpVersions.engagementId, engagementId)).orderBy(desc(fcpVersions.versionNumber)).limit(1);
+  // Repeated exports of an unchanged FCP add nothing; a submission or a saved version is always recorded as a milestone.
+  if (latest && latest.dataHash === dataHash && reason === "export") return { id: latest.id, versionNumber: latest.versionNumber, skipped: true };
+  const [{ highest }] = await db.select({ highest: max(fcpVersions.versionNumber) }).from(fcpVersions).where(eq(fcpVersions.engagementId, engagementId));
+  const versionNumber = (highest ?? 0) + 1;
+  const result = await db.insert(fcpVersions).values({ engagementId, versionNumber, title: engagement.title, data: engagement.data, dataHash, label: label.slice(0, 160), reason, createdByUserId: viewer.id });
+  return { id: Number(result[0].insertId), versionNumber, skipped: false };
+}
+
+/**
+ * Restores a version's FCP content. The current FCP is saved as a version first, so a restore can itself be undone.
+ * The engagement keeps its current customer name and title; only the document content goes back.
+ */
+export async function restoreFcpVersion(viewer: Viewer, engagementId: number, versionId: number) {
+  const version = await getFcpVersion(viewer, engagementId, versionId);
+  if (!version) return undefined;
+  const current = await getEngagement(viewer, engagementId);
+  if (!current) return undefined;
+  await createFcpVersion(viewer, engagementId, `Before restoring version ${version.versionNumber}`, "restore");
+  const restored = { ...version.data, fields: { ...version.data.fields, customerName: current.customerName } };
+  return updateEngagement(viewer, engagementId, current.title, restored, { customerName: current.customerName, title: current.title });
 }
 
