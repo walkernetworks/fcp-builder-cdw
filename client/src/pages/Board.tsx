@@ -209,6 +209,7 @@ function shortWarning(warning: string) {
   if (warning === "Segment not set") return "No segment";
   if (warning.startsWith("Commercial customers skip")) return "Skips approval";
   if (warning.startsWith("Work plan sent")) return "Work plan stale";
+  if (warning.startsWith("Source not received")) return "Sources open";
   return "Check";
 }
 

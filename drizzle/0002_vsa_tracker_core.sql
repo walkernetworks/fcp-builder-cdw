@@ -34,8 +34,8 @@ CREATE TABLE `sourceChainItems` (
 CREATE TABLE `stageEvents` (
 	`id` int AUTO_INCREMENT NOT NULL,
 	`engagementId` int NOT NULL,
-	`fromStage` enum('intake','broadcom_request','discovery','source_chain','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost'),
-	`toStage` enum('intake','broadcom_request','discovery','source_chain','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost') NOT NULL,
+	`fromStage` enum('intake','broadcom_request','discovery','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost'),
+	`toStage` enum('intake','broadcom_request','discovery','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost') NOT NULL,
 	`effectiveOn` date NOT NULL,
 	`recordedAt` timestamp NOT NULL DEFAULT (now()),
 	`actorUserId` int,
@@ -71,7 +71,7 @@ ALTER TABLE `engagements` ADD `program` enum('entitlement','extended_expert','bs
 ALTER TABLE `engagements` ADD `region` enum('west','east');--> statement-breakpoint
 ALTER TABLE `engagements` ADD `customerState` varchar(64);--> statement-breakpoint
 ALTER TABLE `engagements` ADD `entitlementInterest` enum('interested','not_interested','pending');--> statement-breakpoint
-ALTER TABLE `engagements` ADD `stage` enum('intake','broadcom_request','discovery','source_chain','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost') DEFAULT 'intake' NOT NULL;--> statement-breakpoint
+ALTER TABLE `engagements` ADD `stage` enum('intake','broadcom_request','discovery','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost') DEFAULT 'intake' NOT NULL;--> statement-breakpoint
 ALTER TABLE `engagements` ADD `stageEnteredOn` date DEFAULT (curdate()) NOT NULL;--> statement-breakpoint
 ALTER TABLE `engagements` ADD `waitingOn` enum('sales','customer','broadcom','cdw_internal');--> statement-breakpoint
 ALTER TABLE `engagements` ADD `health` enum('green','yellow','red');--> statement-breakpoint

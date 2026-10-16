@@ -354,7 +354,7 @@
         },
         "stage": {
           "name": "stage",
-          "type": "enum('intake','broadcom_request','discovery','source_chain','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost')",
+          "type": "enum('intake','broadcom_request','discovery','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
@@ -932,14 +932,14 @@
         },
         "fromStage": {
           "name": "fromStage",
-          "type": "enum('intake','broadcom_request','discovery','source_chain','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost')",
+          "type": "enum('intake','broadcom_request','discovery','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
         "toStage": {
           "name": "toStage",
-          "type": "enum('intake','broadcom_request','discovery','source_chain','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost')",
+          "type": "enum('intake','broadcom_request','discovery','fcp_draft','broadcom_approval','customer_approval','ra_staffing','kickoff','in_delivery','complete','refused','paused','lost')",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false

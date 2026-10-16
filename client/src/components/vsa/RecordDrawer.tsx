@@ -54,7 +54,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: DrawerTab }) {
   const today = todayIso();
   const { record, events, sources, assignments } = data;
-  const warnings = stageWarnings(record, today);
+  const warnings = stageWarnings({ ...record, sourceItems: sources }, today);
   const expiry = expiryVerdict(record.deliveryWindowEnd, today);
   const approvals = customerApprovalItems(record);
 
