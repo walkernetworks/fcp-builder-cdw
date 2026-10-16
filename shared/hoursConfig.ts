@@ -284,3 +284,17 @@ export const BUILD_STAGE_WEIGHTS = {
   handover: c(0.2, "Medium-Low", "v1 build weights, kept by the spec"),
   licensing: c(0.1, "Medium-Low", "v1 build weights, kept by the spec"),
 } as const;
+
+/**
+ * Each domain's share of the build line: a base by pathway plus an increment per host, so a domain's hours follow its
+ * size and how it is delivered. Shares, like the build weights above: they split the build line, never add to it.
+ */
+export const DOMAIN_BUILD_WEIGHTS = {
+  managementBase: c(1, "Medium-Low", "Management domain build weight, as above"),
+  greenfieldBase: c(0.6, "Low", "Judgment: a new workload domain with its vLCM images and validation, before its hosts"),
+  importBase: c(0.3, "Low", "Judgment: an import brings an existing vCenter under fleet management without rebuilding it"),
+  convergeBase: c(0.5, "Low", "Judgment: a converge adds the management components to an existing vCenter"),
+  perHostGreenfield: c(0.004, "Low", "Judgment: host commissioning, images and cluster validation per host built new"),
+  perHostImport: c(0.002, "Low", "Judgment: per-host validation and upgrade of an imported vCenter"),
+  perHostConverge: c(0.003, "Low", "Judgment: per-host validation of a converged vCenter"),
+} as const;

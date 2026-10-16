@@ -516,6 +516,20 @@ function emptyAssessment(status: HclEvaluationStatus, modelMatch: ModelResolutio
   };
 }
 
+/** Words that do not identify a server model (vendor and family names). */
+const MODEL_FILLER = new Set(["hpe", "hp", "proliant", "dell", "inc", "emc", "poweredge", "lenovo", "thinksystem", "cisco", "ucs", "server", "compute", "module", "blade"]);
+/**
+ * The listed model this one is a name variant of: the identifying tokens (model numbers, generations, "Plus") of one
+ * are all in the other, as with "ProLiant DL360 Gen10 8SFF CTO" and "ProLiant DL360 Gen10". A model that shares no
+ * model number with any listed model (a BL460c against DL-series candidates) is absent, not a variant.
+ */
+function nameVariantOf(model: string, candidates: HclCandidate[]): string | null {
+  const identifying = (value: string) => new Set(value.toLowerCase().split(/[^a-z0-9]+/).filter(token => token && !MODEL_FILLER.has(token) && (/\d/.test(token) || token === "plus")));
+  const observed = identifying(model);
+  const within = (left: Set<string>, right: Set<string>) => left.size >= 2 && Array.from(left).every(token => right.has(token));
+  return candidates.find(candidate => { const listed = identifying(candidate.model); return within(listed, observed) || within(observed, listed); })?.model ?? null;
+}
+
 /**
  * The server-and-CPU assessment, with the VCF corpus applied: a CPU the Compatibility Guide does not list for the
  * target release, or that KB 318697 lists as Discontinued, is not supported whatever the server model; a server
@@ -538,6 +552,18 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
       requiredEvidence: [],
     };
   }
+  if (base.status === "unknown" && base.vendorResolved && nameVariantOf(model, base.candidateModels)) {
+    // A listed model carries every identifying token of this one ("Synergy 480 Gen12" against "Synergy 480 Gen12
+    // Compute Module"): the match is unresolved, not absent, so the model name is confirmed rather than the hosts replaced.
+    const variant = nameVariantOf(model, base.candidateModels)!;
+    return {
+      ...base,
+      status: "review",
+      evidenceState: "identity-confirmation-required",
+      detail: `${vendor} ${model} does not match a Broadcom server list entry exactly; ${variant} is listed and may be the same server under another name (catalog ${HCL_CATALOG_METADATA.id}).`,
+      nextAction: "Confirm the exact model name with the vendor; if it is not listed for the target release, replace the hosts before they join a VCF 9 cluster.",
+    };
+  }
   if (base.status === "unknown" && base.vendorResolved) {
     // The server list covers every model listed for ESXi 9.0 and 9.1, so a model the vendor's list does not have is not listed.
     const nearest = base.candidateModels.slice(0, 3).map(item => item.model).filter(Boolean);
@@ -546,7 +572,7 @@ export function assessHclPlatform(vendor: string, model: string, cpuModel: strin
       status: "not-supported",
       evidenceState: "verified-not-listed",
       detail: `${vendor} ${model} is not in the Broadcom server list for ESXi 9.0 or 9.1 (catalog ${HCL_CATALOG_METADATA.id}).${nearest.length ? ` Closest listed models: ${nearest.join(", ")}.` : ""} Treat it as not supported unless the vendor shows a current listing.`,
-      nextAction: "Confirm the exact model name with the vendor; if it is not listed for the target release, replace the hosts before they join a VCF 9 cluster.",
+      nextAction: "Not on the Broadcom server list for the target release: replace these hosts before they join a VCF 9 cluster, or keep them on vSphere 8 outside the VCF 9 estate until they are retired.",
     };
   }
   const deprecation = generation ? cpuDeprecation(generation) : null;
@@ -884,8 +910,16 @@ export function summarizeHclFindings(findings: HclFinding[]): HclFindingSummary[
 }
 
 const HCL_MIN_NIC_SPEED_MB = 10000;
-const HCL_NSX_TEP_MIN_MTU = 1600;
-const HCL_RECOMMENDED_MTU = 9000;
+/** NSX TEP traffic needs an MTU of at least 1700 end to end, with 9000 recommended (VCF-NET-REQD-MTU-006). */
+export const NSX_TEP_MIN_MTU = 1700;
+export const RECOMMENDED_MTU = 9000;
+export const MTU_REQUIREMENT_SOURCE = "VCF 9.1 Planning and Preparation Guide, network requirements (VCF-NET-REQD-MTU-006)";
+/** Distributed switch version each pathway needs: a converge into VCF 9.1 needs 8.0 or later; an import needs 7.0 or later. */
+export const VDS_MINIMUM = { converge: 8, import: 7 } as const;
+const HCL_NSX_TEP_MIN_MTU = NSX_TEP_MIN_MTU;
+const HCL_RECOMMENDED_MTU = RECOMMENDED_MTU;
+/** The vDS requirement as the findings and the plan state it. */
+export const VDS_REQUIREMENT = `vDS ${VDS_MINIMUM.converge}.0 or later to converge into VCF; vDS ${VDS_MINIMUM.import}.0 or later to import`;
 const HCL_MIN_WORKLOAD_DOMAIN_HOSTS = 3;
 const HCL_LOW_FREE_SPACE_PCT = 20;
 const HCL_STALE_SNAPSHOT_DAYS = 30;
@@ -1215,16 +1249,27 @@ function hclNetworkFindings(evidence: HclInventoryEvidence): HclFinding[] {
   if (hasHclTab(evidence, "dvswitch")) {
     for (const distributedSwitch of evidence.distributedSwitches) {
       const major = hclMajorVersion(distributedSwitch.version);
-      if (major !== null && major < 7) {
+      if (major !== null && major < VDS_MINIMUM.import) {
         findings.push(hclFinding(
           "NET.VDS_VERSION_TOO_OLD",
           "BLOCKER",
-          "Distributed switch is older than vDS 7.0",
+          `Distributed switch is older than vDS ${VDS_MINIMUM.import}.0`,
           "switch",
           distributedSwitch.name || "Unnamed distributed switch",
           `vDS '${distributedSwitch.name || "Unnamed"}' reports version ${distributedSwitch.version}.`,
-          "Upgrade the vDS to 7.0 or later before conversion because the VCF NSX path requires a distributed switch.",
-          { releases: [HCL_TARGET_RELEASE], source: "VCF 9 release notes — N-VDS removal and vDS requirement" },
+          `Upgrade the vDS before it joins VCF: ${VDS_REQUIREMENT}.`,
+          { releases: [HCL_TARGET_RELEASE], source: "VCF 9.1 Deployment Guide — converging and importing existing vCenter environments" },
+        ));
+      } else if (major !== null && major < VDS_MINIMUM.converge) {
+        findings.push(hclFinding(
+          "NET.VDS_BELOW_CONVERGE_MINIMUM",
+          "WARNING",
+          `Distributed switch is older than vDS ${VDS_MINIMUM.converge}.0, the converge minimum`,
+          "switch",
+          distributedSwitch.name || "Unnamed distributed switch",
+          `vDS '${distributedSwitch.name || "Unnamed"}' reports version ${distributedSwitch.version}.`,
+          `Upgrade the vDS to ${VDS_MINIMUM.converge}.0 or later before its vCenter converges into VCF; an import needs vDS ${VDS_MINIMUM.import}.0 or later, which it meets.`,
+          { releases: [HCL_TARGET_RELEASE], source: "VCF 9.1 Deployment Guide — converging and importing existing vCenter environments" },
         ));
       }
       if (distributedSwitch.maxMtu > 0 && distributedSwitch.maxMtu < HCL_NSX_TEP_MIN_MTU) {
@@ -1235,7 +1280,7 @@ function hclNetworkFindings(evidence: HclInventoryEvidence): HclFinding[] {
           "switch",
           distributedSwitch.name || "Unnamed distributed switch",
           `vDS '${distributedSwitch.name || "Unnamed"}' reports a maximum MTU of ${distributedSwitch.maxMtu}.`,
-          `Raise vDS and physical-fabric MTU together to at least ${HCL_NSX_TEP_MIN_MTU}; ${HCL_RECOMMENDED_MTU} is the usual target.`,
+          `Raise vDS and physical-fabric MTU together to at least ${HCL_NSX_TEP_MIN_MTU} end to end; ${HCL_RECOMMENDED_MTU} is recommended (VCF-NET-REQD-MTU-006).`,
         ));
       }
     }
@@ -1261,7 +1306,7 @@ function hclNetworkFindings(evidence: HclInventoryEvidence): HclFinding[] {
           "host",
           hclHostLabel(host),
           `Reported uplinks are attached to: ${hclTextList(Array.from(switches))}; none match a distributed-switch row.`,
-          "Migrate this host's uplinks to a vDS 7.0 or later before it joins a VCF workload domain.",
+          `Migrate this host's uplinks to a distributed switch before it joins VCF: ${VDS_REQUIREMENT}.`,
           { cluster: clusterByHost.get(host.name) || host.cluster || undefined, releases: [HCL_TARGET_RELEASE], source: "VCF 9 release notes — N-VDS removal and vDS requirement" },
         ));
       }
