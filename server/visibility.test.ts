@@ -53,6 +53,13 @@ describe("db.ts engagement access", () => {
     expect(unscoped).toEqual([]);
   });
 
+  it("scopes saved reports to the workspace, and changes to the owner or an admin", () => {
+    const touching = functions.filter(fn => /\bsavedReports\b/.test(fn.body));
+    expect(touching.map(fn => fn.name)).toEqual(expect.arrayContaining(["listSavedReports", "saveReport", "deleteReport"]));
+    const unscoped = touching.filter(fn => !/visibleReports\(|editableReports\(/.test(fn.body)).map(fn => fn.name);
+    expect(unscoped).toEqual([]);
+  });
+
   it("never updates or deletes stage events", () => {
     expect(source).not.toMatch(/\.update\(stageEvents\)|\.delete\(stageEvents\)/);
   });

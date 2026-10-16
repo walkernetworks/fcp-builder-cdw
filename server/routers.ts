@@ -12,6 +12,9 @@ import { canDeleteEngagement, viewerFor } from "./visibility";
 import { ASSIGNMENT_ROLES, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, trackerPatchSchema, VSA_ROLES } from "../shared/vsaFields";
 import { STAGES } from "../shared/vsaStage";
 import { MAX_IMPORT_CSV_BYTES } from "../shared/sharepointImport";
+import { PROPRIETARY_LEGEND, reportConfigSchema, runReport } from "../shared/vsaReports";
+import { inRoleView } from "../shared/vsaViews";
+import { REPORT_XLSX_MIME, renderReportWorkbook, reportFilename } from "./reportWorkbook";
 
 function requireRow<T>(row: T | undefined): T {
   if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Engagement not found" });
@@ -123,6 +126,30 @@ export const appRouter = router({
     preview: protectedProcedure.input(z.object({ csv: z.string().min(1).max(MAX_IMPORT_CSV_BYTES) })).mutation(({ ctx, input }) => db.runSharePointImport(viewerFor(ctx.user), input.csv, "preview")),
     /** Re-plans on locked rows and applies the import in one transaction. The returned report is what was written. */
     commit: protectedProcedure.input(z.object({ csv: z.string().min(1).max(MAX_IMPORT_CSV_BYTES) })).mutation(({ ctx, input }) => db.runSharePointImport(viewerFor(ctx.user), input.csv, "apply")),
+  }),
+  reports: router({
+    list: protectedProcedure.query(({ ctx }) => db.listSavedReports(viewerFor(ctx.user))),
+    save: protectedProcedure
+      .input(z.object({ id: recordId.optional(), name: z.string().trim().min(1).max(120), config: reportConfigSchema }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await db.saveReport(viewerFor(ctx.user), input);
+        if (!id) throw new TRPCError({ code: "FORBIDDEN", message: "Only the report's owner or an admin can change it. Save it under a new name instead." });
+        return { id };
+      }),
+    delete: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => {
+      if (!(await db.deleteReport(viewerFor(ctx.user), input.id))) throw new TRPCError({ code: "FORBIDDEN", message: "Only the report's owner or an admin can delete it." });
+      return { success: true };
+    }),
+    /** Runs the report on the server against the records the user can see, in their role view, and returns an XLSX. */
+    exportXlsx: protectedProcedure
+      .input(z.object({ name: z.string().trim().min(1).max(120), config: reportConfigSchema }))
+      .mutation(async ({ ctx, input }) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const rows = (await db.listTracker(viewerFor(ctx.user))).filter(row => inRoleView(row, ctx.user.id, ctx.user.vsaRole ?? null));
+        const result = runReport(rows, input.config, today);
+        const workbook = renderReportWorkbook(result, input.config, PROPRIETARY_LEGEND, today);
+        return { filename: reportFilename(input.name, today, "xlsx"), mime: REPORT_XLSX_MIME, base64: Buffer.from(workbook).toString("base64") };
+      }),
   }),
   effort: router({
     /** Scoped effort and the internal fit check; rates stay on the server. A mutation so the document travels in the body. */

@@ -35,6 +35,20 @@ Plus Jakarta Sans, **bundled** through `@fontsource-variable/plus-jakarta-sans`.
 - Tables use `.tbl`: cool-gray header, zebra rows, a totals rule, and `.num` for figures.
 - Detail views open in the right-side drawer (`Sheet`). Esc and the backdrop close it.
 
+## FCP workspace (`/fcp`)
+
+- **Toolbar:** back to the board, switch engagement, title, Tracker details (opens the record drawer), Save, Rebuild plans, and a More menu (New FCP, Duplicate, Delete). The board is the engagement list, so the workspace has no sidebar.
+- **Hero band:** the red field carries the work plan headline and its dates and value as hero KPIs, each stating its basis.
+- **Steps:** a horizontal stepper; the active step is red, and a completed step shows a check. Each step opens with a section bar.
+- **Panels:** rounded cards on the neutral ramp. Statuses use the state tokens; compatibility decisions, reconciliation, readiness, and action priority render as pills, while evidence state and catalog notes are chips. Data tables use `.tbl`; the report-content editing grid keeps its own layout.
+- **Exception:** the Entitlement Adoption Timeline bars and their legend keep the workstream colors the FCP document defines, so the preview matches the exported FCP.
+- **Money:** every client money formatter shows double zeros.
+## Reports (`/reports`)
+
+- **Engine:** reports run on `shared/vsaReports.ts`, which the screen, the CSV export, and the server's Excel export all share. Totals of VSA amount count each alternative-plan group once.
+- **Charts:** one measure by group, drawn as horizontal bars in a single series of CDW Red. The design system's series order (red, then cool grays 11, 8, and 4) fails the data-visualization palette check as a categorical palette: the grays fall below the chroma floor and Cool Gray 4 is under 3:1 contrast. So comparisons across a second dimension use the pivot table, not colored series. The chart title names the measure, and the table carries every value.
+- **Exports:** CSV and XLSX both end with the proprietary legend. The XLSX header uses the table-contract fill (Cool Gray 11, white bold).
+
 ## Shell and compliance
 
 - **AppShell** (`client/src/components/vsa/AppShell.tsx`): the official logo with its ® (asserted at nine subpaths), the main navigation, the role-view selector, and the proprietary legend on every view: "CDW — Proprietary and confidential. Copying restricted."

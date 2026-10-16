@@ -8,6 +8,7 @@ import { canTransition, DEFAULT_SOURCE_CHAIN, effectiveDateProblem, type Stage, 
 import {
   engagementAssignments,
   engagements,
+  savedReports,
   InsertEngagement,
   InsertUser,
   sourceChainItems,
@@ -16,7 +17,8 @@ import {
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { deletableEngagements, visibleEngagements, type Viewer } from "./visibility";
+import { deletableEngagements, editableReports, visibleEngagements, visibleReports, type Viewer } from "./visibility";
+import type { ReportConfig } from "../shared/vsaReports";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -499,5 +501,35 @@ export async function runSharePointImport(viewer: Viewer, csv: string, mode: "pr
     }
     return plan;
   });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Saved reports
+
+export async function listSavedReports(viewer: Viewer) {
+  const db = await requireDb();
+  return db
+    .select({ id: savedReports.id, name: savedReports.name, config: savedReports.config, ownerId: savedReports.ownerId, ownerName: users.name, updatedAt: savedReports.updatedAt })
+    .from(savedReports)
+    .leftJoin(users, eq(users.id, savedReports.ownerId))
+    .where(visibleReports(viewer))
+    .orderBy(asc(savedReports.name));
+}
+
+/** Creates a report, or updates one the viewer may edit. Returns the id, or undefined when the report is not editable. */
+export async function saveReport(viewer: Viewer, input: { id?: number; name: string; config: ReportConfig }) {
+  const db = await requireDb();
+  if (input.id) {
+    const result = await db.update(savedReports).set({ name: input.name, config: input.config }).where(and(editableReports(viewer), eq(savedReports.id, input.id)));
+    return result[0].affectedRows > 0 ? input.id : undefined;
+  }
+  const result = await db.insert(savedReports).values({ workspaceId: viewer.workspaceId, ownerId: viewer.id, name: input.name, config: input.config });
+  return Number(result[0].insertId);
+}
+
+export async function deleteReport(viewer: Viewer, id: number) {
+  const db = await requireDb();
+  const result = await db.delete(savedReports).where(and(editableReports(viewer), eq(savedReports.id, id)));
+  return result[0].affectedRows > 0;
 }
 
