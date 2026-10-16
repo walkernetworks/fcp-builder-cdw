@@ -1,17 +1,22 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Redirect, Route, Switch } from "wouter";
+import { AppShell } from "./components/vsa/AppShell";
 import DashboardLayout from "./components/DashboardLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import PipelineImport from "./pages/PipelineImport";
+import Board from "./pages/Board";
+import Expiry from "./pages/Expiry";
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
+      <Route path="/">{() => (/[?&]engagement=/.test(window.location.search) ? <Redirect to={`/fcp${window.location.search}`} replace /> : <Board />)}</Route>
+      <Route path="/expiry" component={Expiry} />
+      <Route path="/fcp">{() => <AppShell><Home /></AppShell>}</Route>
       <Route path="/import" component={PipelineImport} />
       <Route component={NotFound} />
     </Switch>

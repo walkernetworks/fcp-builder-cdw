@@ -178,7 +178,7 @@ export function AdoptionTimelineEditor({
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2"><CalendarRange className="size-5 text-[#c8102e]" /><h2 className="text-lg font-semibold text-slate-950">{title}</h2></div>
+          <div className="flex items-center gap-2"><CalendarRange className="size-5 text-cdw-red" /><h2 className="text-lg font-semibold text-slate-950">{title}</h2></div>
           <p className="mt-1 text-sm text-slate-500">{description}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Delivery workstream color legend"><span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Delivery workstream key</span>{WORKSTREAM_TYPES.map(type => <span key={type} title={`Lead role: ${DELIVERY_ROLE_BY_WORKSTREAM[type]}`} className={cn("inline-flex items-center gap-1 border px-2 py-1 text-[10px] font-semibold", colorClasses[WORKSTREAM_TYPE_COLORS[type]])}><span className="size-2 rounded-full border border-current/25 bg-current/35" />{type}</span>)}</div>
         </div>
