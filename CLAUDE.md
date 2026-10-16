@@ -30,9 +30,9 @@ Don't add unrelated work to a branch whose PR is already open. Start a new branc
 - `server/fcpRenderer.ts`: FCP HTML document; the PDF is rendered from this HTML by `server/pdf.ts`
 - `server/compatibilityHandoffRenderer.ts`: compatibility delivery handoff document
 - `server/routers.ts`: all tRPC procedures; `server/db.ts`: data access (always through `server/visibility.ts`)
-- VSA tracker: `docs/VSA-TRACKER-DATA-MODEL.md` (schema and decisions), `shared/vsaStage.ts` (stage rules, pure), `shared/vsaFields.ts` (enums, editable fields, internal vs customer-facing tags), `shared/sharepointImport.ts` (Pipeline List CSV import: mapping, matching, merge; pure)
+- VSA tracker: `docs/VSA-TRACKER-DATA-MODEL.md` (schema and decisions), `shared/vsaStage.ts` (stage rules, pure), `shared/vsaFields.ts` (enums, editable fields, internal vs customer-facing tags), `shared/sharepointImport.ts` (Pipeline List CSV import: mapping, matching, merge; pure), `shared/vsaReports.ts` (report field catalog, engine, presets; pure) with `server/reportWorkbook.ts` (XLSX)
 - `server/trustedSso.ts`: sign-in; `server/exportTickets.ts` + `server/exportDownloadRoutes.ts`: signed download links
-- `client/src/pages/Board.tsx` (home, `/`), `Expiry.tsx`, `PipelineImport.tsx`; `client/src/components/vsa/` (AppShell, design elements, RecordDrawer)
+- `client/src/pages/Board.tsx` (home, `/`), `Reports.tsx` (`/reports`), `PipelineImport.tsx`; `client/src/components/vsa/` (AppShell, design elements, RecordDrawer)
 - `client/src/pages/Home.tsx`: FCP workspace (`/fcp`); `client/src/components/`: `PlanSetup`, `AdoptionTimelineEditor`, `DetailedAdoptionIntake`, `CompatibilityHandoffPanel`
 - `client/src/lib/rvtools.ts`: RVTools XLSX/CSV parsing, in the browser only
 - `shared/hcl.ts`, `shared/hclCatalog.ts`: hardware compatibility data; `shared/hclCorpus.ts` applies the corpus rules in `shared/vcfCorpus.ts` (generated)
