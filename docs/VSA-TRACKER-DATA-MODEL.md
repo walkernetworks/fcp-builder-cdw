@@ -90,6 +90,8 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 | `opportunityNumber` | varchar(32) | yes | | I | **Unique.** CDW's internal opportunity number for the opportunity under the account in Salesforce, `C-OPP-` plus digits ("Deal ID or Name"). Validated as `^C-OPP-\d{6,8}$`. Shown on the board card and searchable |
 | `intakeSource` | enum `manual`, `sharepoint_import`, `intake_import` | no | `manual` | I | How the record was created (section 12). Existing rows backfill to `manual` |
 | `intakeSubmissionId` | varchar(64) | yes | | I | **Unique.** The form response ID from the intake import, so re-importing the same file never creates a duplicate |
+| `sharepointItemId` | int | yes | | I | **Unique.** The Pipeline List item's built-in `ID`. The primary match key for the daily import (12.4) |
+| `importSnapshot` | json | yes | | I | The mapped values from the last SharePoint import of this record. The merge base that tells "changed in SharePoint" apart from "changed in the app" (12.4) |
 | `lastImportedAt` | timestamp | yes | | I | Last time an import touched this record |
 | `intakeAnswers` | json | yes | | I | Intake form answers that are context, not tracker fields: industry codes, engagement scope, contract length, prior sales or services, MSA, services provided so far, evaluation notes. Read-only after import. Typed by a zod schema in `shared/vsaIntake.ts` |
 | `isFundingExtension` | boolean | no | false | I | "Funding Extension". **Legacy only.** Funding extensions are no longer offered; this keeps the 12 imported historical records identifiable. Import-only: not on the new-record form or the edit form |
@@ -177,6 +179,8 @@ Several tracker columns overlap with FCP inputs in `data.fields`: `entitlementVa
 - unique `engagements_sf_customer_uq (salesforceCustomerId)`
 - unique `engagements_sf_opportunity_uq (salesforceOpportunityId)`
 - unique `engagements_opportunity_number_uq (opportunityNumber)`
+- unique `engagements_sharepoint_item_uq (sharepointItemId)`
+- unique `engagements_intake_submission_uq (intakeSubmissionId)`
 - `engagements_workspace_stage_idx (workspaceId, stage, stageEnteredOn)`: board
 - `engagements_workspace_expiry_idx (workspaceId, deliveryWindowEnd)`: expiry view
 - `engagements_ser_idx (serNumber)`
@@ -374,7 +378,7 @@ This shows the stage enum covers every SharePoint state. Phase 2 owns the detail
 
 ### 10.1 Column coverage
 
-Every column in the current SharePoint list (46, confirmed against a header-only export of the live list) has a destination:
+Every column in the current SharePoint list view (46, confirmed against a header-only export of the live list) has a destination:
 
 | SharePoint column | Destination |
 |---|---|
@@ -424,6 +428,7 @@ Every column in the current SharePoint list (46, confirmed against a header-only
 | Modified | not stored on the record. SharePoint's own last-edit time; Phase 2 uses it in the reconciliation report and as the `effectiveOn` fallback for imported `stageEvents` when no gate date fits |
 | SER Number | `serNumber` |
 | Client Folder | `clientFolderUrl` |
+| ID (built-in, hidden in the current view; to be added) | `sharepointItemId` |
 
 New fields with no SharePoint column: `termStart`, `termEnd`, `coreCount`, `serSubmittedOn`, `serApprovedOn`, `workPlanSentOn`, `workPlanAcceptedOn`, `raReceivedOn`, `completedOn`, `waitingOn`.
 
@@ -445,7 +450,7 @@ Decided in review on 2026-10-15:
 9. **Strategic is rare.** Broadcom usually takes Strategic customers direct, so CDW seldom handles one. The enum value stays for the one record in the current list, and it is gated like Corporate (Broadcom Approval and work plan). No Strategic-specific screens or views.
 
 10. **`AWC-OPP-` numbers are placeholders**, not valid opportunity numbers. Only `C-OPP-` is accepted. The 17 placeholder rows import with no opportunity number and a "needs opportunity number" flag.
-11. **Intake and the Power Automate flow:** recommendation in section 12.4 (keep the flow for Salesforce, folders, and email; restructure it; replace the Pipeline List write with a plain Intake Log the app imports). Pending your decision.
+11. **Intake starts with a daily import of the SharePoint Pipeline List** (12.4). The flow stays as it is. Restructuring the flow and replacing the list write with an Intake Log is kept in the plan as a later option, if IT allows it (12.5).
 
 ## 12. Intake and the Power Automate flow
 
@@ -483,7 +488,36 @@ The list write (7) is only one of nine. Replacing the list with the app removes 
 
 The kickoff locks the app as standalone. It makes no calls to Salesforce, SharePoint, or mail, and no outbound network calls except the database; data moves as files. So the app cannot take over steps 2, 4, or 5 (account lookup, folders and files, opportunity, emails) without reopening that decision.
 
-### 12.4 Recommendation
+### 12.4 Baseline: daily import of the Pipeline List
+
+The first operating mode assumes the flow and the SharePoint list stay exactly as they are, and the app pulls the list in once a day. People may keep updating SharePoint during the transition while others work in the app, so the import is built to run every day, safely.
+
+**How the file gets in.** The app cannot fetch from SharePoint (no outbound network). Once a day, someone exports the list view to CSV (SharePoint "Export to CSV") and uploads it on the app's Import page. The server parses the CSV; it holds tracker data only, no RVTools. A dry run shows the reconciliation report before anything is written, and the import is applied in one transaction.
+
+**One change to the SharePoint view, no IT needed:** add the built-in **ID** column to the view that gets exported. It is the only key every row has. Without it, the 33 rows with no valid `C-OPP-` number could only be matched on SER or customer name, and a renamed customer would come in as a duplicate.
+
+**Matching** (first hit wins, every fallback is reported): `sharepointItemId` → `opportunityNumber` → `serNumber` → `salesforceCustomerId`. An unmatched row creates a record with `intakeSource = sharepoint_import`. A row that matches two records is skipped and reported.
+
+**Merge rule, per field,** using `importSnapshot` (the values from the last import) as the base:
+
+| SharePoint value vs last import | App value vs last import | Result |
+|---|---|---|
+| Unchanged | Any | Keep the app value |
+| Changed | Unchanged | Take the SharePoint value |
+| Changed | Changed, same new value | No change |
+| Changed | Changed, different values | Keep the app value; listed as a conflict in the report |
+
+So SharePoint edits flow in, app edits are never overwritten, and only true two-sided edits need a person. After each import, `importSnapshot` is updated to the imported values.
+
+**Stage:** the stage derived from the row (section 10) goes through the same rule. A stage change taken from SharePoint is written as a `stageEvents` row with `source = import` and `effectiveOn` from the relevant gate date, or from "Modified" if none fits.
+
+**Rows that disappear** from the export are never deleted in the app. They are listed in the report as "not in today's export".
+
+**Idempotent:** importing the same file twice changes nothing the second time. A test covers this.
+
+### 12.5 Later, if IT allows: restructure the flow and add an Intake Log
+
+This is the preferred end state, kept in the plan in case IT allows the flow changes. Nothing in the daily-import baseline depends on it, and the schema needs no change to adopt it.
 
 **Keep the flow for what only it can do, restructure it, and stop it writing the 46-column list.**
 
@@ -497,24 +531,16 @@ Flow changes (Power Automate work, outside this repo):
 6. **Run the emails in parallel branches** after the opportunity exists, so one failure does not skip the rest (fixes 5).
 7. **Replace the Pipeline List write with an "Intake Log"**: a plain SharePoint list or Excel table with text-only columns (response ID, submit date, Customer ID, client name, `C-OPP-` number, opportunity ID, flow result). No people or choice fields (fixes 7). The app imports this log, plus the form-response export for the answers.
 
-App side, the intake import (Phase 5, possibly earlier):
+App side, the intake import (replaces the daily list import as the source of new records):
 
-- Matches on `intakeSubmissionId`, then `opportunityNumber`, then `salesforceCustomerId`. A rerun of the same file changes nothing.
+- Matches on `intakeSubmissionId`, then `opportunityNumber`, then `salesforceCustomerId`. Records that came from the daily list import match on `opportunityNumber`, so switching sources creates no duplicates. A rerun of the same file changes nothing.
 - Creates the record at stage `intake` (the SER is still submitted by hand by the SDDC team, so `broadcom_request` starts when `serSubmittedOn` is set), with `riskAssessment = submitted`, as the flow does today.
 - Maps the answers: Y1 VCF consulting amount → `entitlementValue`; estimated booking date → `estimatedCloseOn`; booking date + 364 days → `deliveryWindowEnd`, marked as an estimate until confirmed; estimated cores → `coreCount`; estimated ABV → `estimatedDealValue`; rep, DC architect, and Broadcom AD → assignments; everything else → `intakeAnswers`.
 - Never handles RVTools files. The upload stays in SharePoint as today; the architect loads RVTools in the browser, so raw data still never reaches the app.
 
 If you later want the app to own the form itself (option C in the earlier draft), it would export an intake file to a watched SharePoint folder, and the restructured flow would start from that file instead of from Forms. Nothing in the schema changes for that.
 
-### 12.5 Transition
-
-Until the Intake Log exists, the Phase 2 importer is re-run against fresh Pipeline List exports. Import rules once a record exists in the app:
-
-- Import creates new records and fills empty fields.
-- It never overwrites a field someone edited in the app. Conflicts go to the reconciliation report.
-- Stage changes from import are written as `stageEvents` with `source = import`.
-
-When the team works from the app, the flow's list write is swapped for the Intake Log write, and the importer switches source.
+Cutover from the baseline: once the Intake Log is live and the team works from the app, the daily list import is turned off and the intake import takes over. Fix 4 (the RVTools file selection) is worth asking IT for on its own, even if nothing else changes.
 
 ### 12.6 Smaller findings
 
