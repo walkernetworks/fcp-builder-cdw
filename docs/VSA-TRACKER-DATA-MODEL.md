@@ -85,9 +85,9 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 |---|---|---|---|---|---|
 | `workspaceId` | int | no | 1 | I | FK `workspaces.id`. Visibility boundary (section 8) |
 | `salesforceCustomerId` | varchar(32) | yes | | I | **Unique.** The "Customer ID" of the VSA-only account in CDW's Salesforce tenant, imported from "New CDW Account #" (8 digits today). NULL until the account exists; MySQL allows many NULLs in a unique index. Replaces the kickoff's working name `salesforceAccountId` |
-| `salesforceOpportunityId` | varchar(32) | yes | | I | Unique. Extracted from the "Opportunity ID" HTML link; the link itself is not stored |
+| `salesforceOpportunityId` | varchar(32) | yes | | I | Unique. The Salesforce record ID extracted from the "Opportunity ID" HTML link; the link itself is not stored. Kept for matching; `opportunityNumber` is what people see and search |
 | `serNumber` | varchar(32) | yes | | I | "SER Number". Indexed, not unique (two duplicate groups in the export are duplicate rows; import flags them) |
-| `broadcomDealId` | varchar(64) | yes | | I | "Deal ID or Name". Filled on every exported row, mostly shaped like a Broadcom deal ID; a few are short numbers or names. Indexed, not unique (same duplicate rows as above) |
+| `opportunityNumber` | varchar(32) | yes | | I | **Unique.** CDW's internal opportunity number for the opportunity under the account in Salesforce, `C-OPP-` plus digits ("Deal ID or Name"). Validated as `^[A-Z]+-OPP-\d{6,8}$`. Shown on the board card and searchable |
 | `isFundingExtension` | boolean | no | false | I | "Funding Extension". **Legacy only.** Funding extensions are no longer offered; this keeps the 12 imported historical records identifiable. Import-only: not on the new-record form or the edit form |
 
 ### 3.2 Classification
@@ -172,10 +172,10 @@ Several tracker columns overlap with FCP inputs in `data.fields`: `entitlementVa
 
 - unique `engagements_sf_customer_uq (salesforceCustomerId)`
 - unique `engagements_sf_opportunity_uq (salesforceOpportunityId)`
+- unique `engagements_opportunity_number_uq (opportunityNumber)`
 - `engagements_workspace_stage_idx (workspaceId, stage, stageEnteredOn)`: board
 - `engagements_workspace_expiry_idx (workspaceId, deliveryWindowEnd)`: expiry view
 - `engagements_ser_idx (serNumber)`
-- `engagements_deal_idx (broadcomDealId)`
 - existing `engagements_owner_updated_idx (ownerId, updatedAt)` stays
 
 ## 4. `stageEvents` (new, append-only)
@@ -377,7 +377,7 @@ Every column in the current SharePoint list (46, confirmed against a header-only
 | Customer Name | `customerName` |
 | Customer State | `customerState` |
 | Opportunity ID | `salesforceOpportunityId` (ID extracted from the link) |
-| Deal ID or Name | `broadcomDealId` |
+| Deal ID or Name | `opportunityNumber` when it matches the `…-OPP-` pattern; otherwise left NULL and the original text goes to the reconciliation report |
 | West vs East | `region` |
 | Program | `program` |
 | BC Segment | `segment` |
@@ -423,7 +423,7 @@ Every column in the current SharePoint list (46, confirmed against a header-only
 
 New fields with no SharePoint column: `termStart`, `termEnd`, `coreCount`, `serSubmittedOn`, `serApprovedOn`, `workPlanSentOn`, `workPlanAcceptedOn`, `raReceivedOn`, `completedOn`, `waitingOn`.
 
-Data-quality flags already visible in the export: 39 rows with no segment, 49 with no account number, 2 account numbers shared by different customers, 2 duplicate rows (same account, SER, and customer), 28 with no opportunity link, boolean "FCP Submitted" with no date, and a "$9.99"-shaped placeholder amount on 2 rows.
+Data-quality flags already visible in the export: "Deal ID or Name" is a `C-OPP-` number on 85 rows and an `AWC-OPP-` number on 17. The other 16 rows hold 4-digit numbers or free text, and one non-opportunity value is repeated across 4 different customers. Also: 39 rows with no segment, 49 with no account number, 2 account numbers shared by different customers, 2 duplicate rows (same account, SER, and customer), 28 with no opportunity link, boolean "FCP Submitted" with no date, and a "$9.99"-shaped placeholder amount on 2 rows.
 
 ## 11. Review decisions
 
@@ -437,4 +437,7 @@ Decided in review on 2026-10-15:
 6. **The FCP edition is not seeded from `segment`.** The two fields stay independent.
 7. **Delete stays owner-or-admin**, matching today. `status = archived` remains available for anyone who prefers to archive.
 
-The work plan rule follows "Corporate customers" from review and applies it to Strategic too, matching how Broadcom Approval is gated. Strategic is one record in the current list. If Strategic should skip the work plan, it is one constant in `shared/vsaStage.ts`.
+8. **"Deal ID or Name" is the internal opportunity number** (`C-OPP-xxxxxxx`), stored as the unique `opportunityNumber`.
+9. **Strategic is rare.** Broadcom usually takes Strategic customers direct, so CDW seldom handles one. The enum value stays for the one record in the current list, and it is gated like Corporate (Broadcom Approval and work plan). No Strategic-specific screens or views.
+
+**Still to confirm:** what the 17 `AWC-OPP-` numbers are (another Salesforce org or a legacy prefix?). They are accepted as opportunity numbers for now.
