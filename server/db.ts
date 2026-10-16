@@ -238,13 +238,17 @@ export async function listTracker(viewer: Viewer, filter: TrackerFilter = {}) {
     .where(and(...conditions))
     .orderBy(asc(engagements.stageEnteredOn), asc(engagements.id));
   const ids = rows.map(row => row.id);
+  // The source checklist rides along so FCP Draft readiness can show on the board and in reports.
+  const sources = ids.length
+    ? await db.select({ engagementId: sourceChainItems.engagementId, kind: sourceChainItems.kind, label: sourceChainItems.label, required: sourceChainItems.required, status: sourceChainItems.status }).from(sourceChainItems).where(inArray(sourceChainItems.engagementId, ids))
+    : [];
   const assignments = ids.length
     ? await db
         .select({ engagementId: engagementAssignments.engagementId, role: engagementAssignments.role, userId: engagementAssignments.userId, displayName: engagementAssignments.displayName })
         .from(engagementAssignments)
         .where(inArray(engagementAssignments.engagementId, ids))
     : [];
-  return rows.map(row => ({ ...row, assignments: assignments.filter(assignment => assignment.engagementId === row.id) }));
+  return rows.map(row => ({ ...row, assignments: assignments.filter(assignment => assignment.engagementId === row.id), sourceItems: sources.filter(source => source.engagementId === row.id) }));
 }
 
 async function requireVisibleEngagement(tx: Db | Tx, viewer: Viewer, id: number, lock = false) {
