@@ -63,6 +63,7 @@ export const ENGAGEMENT_COLUMN_VISIBILITY = {
   lastImportedAt: "internal",
   intakeAnswers: "internal",
   isFundingExtension: "internal",
+  entitlementGroupId: "internal",
   segment: "internal",
   program: "internal",
   region: "internal",

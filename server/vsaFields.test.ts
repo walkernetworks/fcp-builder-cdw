@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getTableColumns } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/mysql-core";
 import { engagements, type Engagement } from "../drizzle/schema";
 import { createDefaultDocument } from "../shared/fcp";
 import { customerFacingColumns, ENGAGEMENT_COLUMN_VISIBILITY, trackerPatchSchema } from "../shared/vsaFields";
@@ -37,5 +38,19 @@ describe("tracker field edits", () => {
     for (const field of ["stage", "workspaceId", "ownerId", "rowVersion", "importSnapshot", "isFundingExtension", "intakeAnswers", "buildLockUserId"]) {
       expect(trackerPatchSchema.safeParse({ [field]: null }).success, field).toBe(false);
     }
+  });
+});
+
+describe("engagement keys", () => {
+  const indexes = Object.fromEntries(getTableConfig(engagements).indexes.map(index => [index.config.name, index.config.unique]));
+
+  it("keeps one engagement per plan: opportunity, SharePoint item, and intake submission are unique", () => {
+    expect(indexes).toMatchObject({ engagements_opportunity_number_uq: true, engagements_sharepoint_item_uq: true, engagements_intake_submission_uq: true, engagements_sf_opportunity_uq: true });
+  });
+
+  it("lets one Salesforce account carry many engagements, and groups alternative plans as peers", () => {
+    expect(indexes).toMatchObject({ engagements_sf_customer_idx: false, engagements_entitlement_group_idx: false });
+    expect(indexes).not.toHaveProperty("engagements_sf_customer_uq");
+    expect(getTableColumns(engagements)).not.toHaveProperty("parentEngagementId");
   });
 });
