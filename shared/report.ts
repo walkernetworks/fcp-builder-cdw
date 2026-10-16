@@ -27,6 +27,14 @@ export const reportEntitlementSchema = z.object({
   consumedAsOf: optionalDate,
 });
 
+/** The ways to keep hosts on vSphere 8 supported when the waves run past its end of general support. */
+export const VSPHERE8_STRATEGIES = ["bring-waves-forward", "import-before-eogs", "extended-support"] as const;
+export const VSPHERE8_STRATEGY_TEXT: Record<(typeof VSPHERE8_STRATEGIES)[number], string> = {
+  "bring-waves-forward": "bring the waves forward so those hosts move before it ends",
+  "import-before-eogs": "import the existing vCenters into VCF before it ends (import works on vSphere 8)",
+  "extended-support": "arrange extended support for the hosts still on vSphere 8",
+};
+
 export const discoveryAnswersSchema = z.object({
   /** A prior assessment exists, so the hours model skips the design discovery line. */
   assessmentCompleted: z.boolean().nullable().default(null),
@@ -55,6 +63,10 @@ export const discoveryAnswersSchema = z.object({
   hyperscalers: z.array(z.string().max(200)).default([]),
   /** New hosts the customer has bought for the build, from the brief. */
   newHostsPurchased: z.object({ management: optionalNumber, workload: optionalNumber }).default({ management: null, workload: null }),
+  /** Other storage types in use beside the principal one (discovery.storage), in the same terms; more than one type is mixed storage. */
+  storageSecondary: z.array(z.enum(["vsan", "nfs-v3", "vmfs-fc", "other-existing"])).default([]),
+  /** How hosts still on vSphere 8 are kept supported when waves run past its end of general support; null until chosen. */
+  vsphere8Strategy: z.enum(VSPHERE8_STRATEGIES).nullable().default(null),
 });
 
 const rowSchemas = {

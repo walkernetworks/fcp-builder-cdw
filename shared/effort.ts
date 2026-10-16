@@ -4,7 +4,7 @@ import { BUILD_STAGE_WEIGHTS, HOURS_V2 } from "./hoursConfig";
 import { lineRoles, loadedOf, scopeV2, type Pass1, type V2Code } from "./hoursV2";
 import { fitV2, type FitV2 } from "./hoursFit";
 import type { Timeline } from "./fcp";
-import { activityOwner, calculateEntitlementEndDate, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
+import { activityOwner, calculateEntitlementEndDate, domainBuildWeight, domainHosts, domainPackages, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
 /**
  * Hours model for the Condensed FCP, after the fcp-builder skill's fcp_hours.py.
@@ -112,6 +112,8 @@ export type WorkPackageEffort = RoleHours & {
   baseline: RoleHours;
   /** True when the planner set hours for at least one role. */
   adjusted: boolean;
+  /** Customer-facing notes on what the package also covers. */
+  notes?: string[];
 };
 
 export type DeferralReason = "not funded" | "after the entitlement window" | "over budget" | "planned for later";
@@ -412,7 +414,7 @@ const GOVERNANCE_BARS = /^bar-(platform-plan|platform-execution-decision|platfor
 const DISCOVERY_BARS = /^bar-playbook-design-requirements$/;
 const CORE_DESIGN_BARS = /^bar-(playbook-design-|platform-operating-readiness$|hcl-review$|design-access-mapping$|design-edge-sites$)/;
 const COMPONENT_DESIGN_BARS = /^bar-playbook-component-design-/;
-const BUILD_BARS = /^bar-(management-domain(-\d+)?|workload-domain(-\d+)?|import-domain-\d+|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover|platform-enablement|playbook-adoption-vcf-management$)/;
+const BUILD_BARS = /^bar-(management-domain(-\d+)?|workload-domain(-\d+)?|import-domain-\d+|converge-management-domain|vvf-|import-foundation-validation|in-place-preparation|platform-licensing|platform-handover|platform-enablement|platform-runbook-transfer|playbook-adoption-vcf-management$)/;
 /**
  * Relative effort of each build package, used to split the deploy line instead of window length. Sized from the
  * VCF 9.1 Planning and Preparation Workbook: deploying and configuring the management domain with its fleet
@@ -424,7 +426,9 @@ const BUILD_WEIGHTS: Array<[RegExp, number]> = [
   [/^bar-workload-domain(-\d+)?$/, BUILD_STAGE_WEIGHTS.workloadDomain.value],
   [/^bar-vvf-workload-clusters$/, BUILD_STAGE_WEIGHTS.vvfCluster.value],
   [/^bar-(import-foundation-validation|in-place-preparation)$/, BUILD_STAGE_WEIGHTS.preparation.value],
-  [/^bar-(platform-handover|platform-enablement)$/, BUILD_STAGE_WEIGHTS.handover.value],
+  [/^bar-platform-handover$/, BUILD_STAGE_WEIGHTS.handover.value],
+  // Training is one handover-sized package split in two: hands-on enablement with the build, and the runbook transfer.
+  [/^bar-(platform-enablement|platform-runbook-transfer)$/, BUILD_STAGE_WEIGHTS.handover.value / 2],
   [/^bar-platform-licensing$/, BUILD_STAGE_WEIGHTS.licensing.value],
 ];
 const buildWeight = (id: string) => BUILD_WEIGHTS.find(([pattern]) => pattern.test(id))?.[1] ?? 0.4;
@@ -469,13 +473,19 @@ function barsForLine(item: EffortLine, discoveryInScope = true): (id: string) =>
   // v2: remediation runs before the converge or upgrade; the VCF upgrade runs on the upgrade packages.
   if (item.code === "R_remed") return id => /^bar-(in-place-preparation|converge-management-domain|vvf-foundation)$/.test(id);
   if (item.code === "U3") return id => /^bar-(in-place-preparation|playbook-execution-upgrade-waves|playbook-adoption-vcf-management)$/.test(id);
-  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain(-\d+)?|import-domain-\d+|platform-handover|platform-enablement|playbook-adoption-vcf-management)$/.test(id);
+  if (item.code === "X1") return id => /^bar-(import-foundation-validation|import-workload-domain(-\d+)?|import-domain-\d+|platform-handover|platform-enablement|platform-runbook-transfer|playbook-adoption-vcf-management)$/.test(id);
   if (item.code === "FILL" || item.code === "FILL_mig" || item.code === "FILL_ip") return id => /^bar-playbook-execution-/.test(id);
+  if (item.code === "NX") return id => FIRST_MANAGEMENT_DOMAIN.test(id);
   const addOn = addOnBars(item.code);
   if (!addOn) return () => false;
   if (item.reduction === "design only") return componentDesign(addOn);
   return id => addOn.bars.test(id);
 }
+
+/** The first management domain package: the one the VCF Installer deploys NSX with. */
+const FIRST_MANAGEMENT_DOMAIN = /^bar-(management-domain|converge-management-domain)$/;
+/** Shown with the first management domain when it carries the NSX design because the full NSX design is not funded. */
+export const NSX_VLAN_NOTE = "NSX is deployed with VLAN-backed transport zones; overlay design follows after the entitlement.";
 
 /** Rounds each column so it foots to its target: floors, then hands the remainder to the largest fractions. */
 function footedColumn(values: number[], target: number): number[] {
@@ -552,6 +562,8 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   const governance = live(id => GOVERNANCE_BARS.test(id));
   let designPm = 0;
   const discoveryInScope = lines.some(item => DISCOVERY_CODES.test(item.code));
+  // Domain packages from the brief take their build share from their pathway and host count.
+  const domainWeights = new Map(domainPackages(document.fields).map(({ id, domain }) => [id, domainBuildWeight(domain, domainHosts(domain, document.inventory).hosts)]));
   for (const item of lines) {
     let roles = rolesOf(item);
     if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && governance.length) {
@@ -588,7 +600,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     const current = matches.filter(({ bar }) => inEntitlement(bar.id));
     // The deploy line is split by how much work each build package is, not by how long its window is.
     // The hardware review and the access mapping are focused pieces of design: half a design package's share.
-    const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => buildWeight(bar.id) : (bar: TimelineBar) => lengthWeight(bar) * (/^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(bar.id) ? 0.5 : 1);
+    const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => domainWeights.get(bar.id) ?? buildWeight(bar.id) : (bar: TimelineBar) => lengthWeight(bar) * (/^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(bar.id) ? 0.5 : 1);
     if (current.length) spread(current, roles, () => true, inWindow, weightOf);
     else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     // Deferred packages of the line get their share as a follow-on estimate.
@@ -629,6 +641,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   ]);
   const entries = Array.from(baselines.entries());
   const lanes = new Map(bars.map(({ lane, bar }) => [bar.id, { lane, bar }]));
+  const carriesNsxDesign = lines.some(item => item.code === "NX");
   const ids = [...bars.map(({ bar }) => bar.id), ...entries.map(([id]) => id).filter(id => !lanes.has(id))];
 
   return ids.map((id): WorkPackageEffort => {
@@ -659,6 +672,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       adjusted: Boolean(editable && (override.architect !== null || override.srConsultant !== null || override.projectManager !== null)),
       placement: override?.placement ?? "auto",
       owner,
+      ...(carriesNsxDesign && FIRST_MANAGEMENT_DOMAIN.test(id) ? { notes: [NSX_VLAN_NOTE] } : {}),
       ...(note ? { note } : !reason && sum === 0 ? { note: "not in the scoped hours" as const } : {}),
     };
   }).sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));
@@ -771,7 +785,9 @@ export function buildScopedEffort(document: EngagementDocument, options: ScopedE
 
 /** v2 Pass 1 lines as effort lines, so they spread across the same stages as v1; `bases` limits each line to part of its hours. */
 export function effortLinesFromPass1(pass1: Pass1, bases?: Map<V2Code, number>): EffortLine[] {
-  return pass1.lines.flatMap(line => {
+  // The management domain's NSX design is not a scope line: it is in the plan only where the fit placed it.
+  const nsx = pass1.nsxMinimalDesign && bases?.has("NX") && !pass1.lines.includes(pass1.nsxMinimalDesign) ? [pass1.nsxMinimalDesign] : [];
+  return [...pass1.lines, ...nsx].flatMap(line => {
     const base = bases ? bases.get(line.code) ?? 0 : line.computedBase;
     if (base <= 0) return [];
     return [{
@@ -822,7 +838,12 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
   const envelopeSource: ScopedEffort["internal"]["envelopeSource"] = entitled !== null ? "entitled hours" : envelopeHours !== null ? options.envelopeSource ?? "entitlement value" : "none";
   const fullScopeHours = pass1.lines.reduce((sum, line) => sum + loadedOf(pass1, line, line.computedBase), 0);
   if (envelopeHours === null || envelopeHours <= 0) {
-    return assembleScopedEffort(document, effortLinesFromPass1(pass1), { envelopeHours, envelopeSource, fullScopeHours, status: "no-envelope", shortfallHours: 0, headroomHours: 0 }, { pass1 });
+    // Without an entitlement to fit, everything is planned except what the brief only considers, which is follow-on.
+    const later = new Set(pass1.lines.filter(line => line.followOnOnly).map(line => line.code));
+    const bases = (keep: boolean) => new Map(pass1.lines.filter(line => later.has(line.code) !== keep).map(line => [line.code, line.computedBase]));
+    const funded = bases(true);
+    const effort = assembleScopedEffort(document, effortLinesFromPass1(pass1, funded), { envelopeHours, envelopeSource, fullScopeHours, status: "no-envelope", shortfallHours: 0, headroomHours: 0 }, { pass1 });
+    return later.size ? withDisplacedLines(document, effort, effortLinesFromPass1(pass1, bases(false))) : effort;
   }
   const inputs = document.fields.estimateInputs;
   const fit = fitV2(pass1, {
@@ -832,6 +853,7 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
     wantThisYear: inputs.wantThisYear,
     datedWaves: pass1.inputs.datedWaves,
     ...(inputs.reservePercent !== undefined ? { reserveShare: inputs.reservePercent / 100 } : {}),
+    customerRunsLaterWaves: customerRunsRemainingWaves(document),
   });
   const fundedBases = new Map<V2Code, number>();
   const displacedBases = new Map<V2Code, number>();
@@ -846,9 +868,11 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
   const displacedLines = effortLinesFromPass1(pass1, displacedBases).map(line => (designShared.has(line.code as V2Code) ? { ...line, skipDesignShare: true } : line));
   const status: FitStatus = fit.underFunded ? "short" : displacedLines.length ? "fits-reduced" : "fits";
   const effort = assembleScopedEffort(document, fundedLines, { envelopeHours, envelopeSource, fullScopeHours, status, shortfallHours: fit.underFunded?.gapHours ?? 0, headroomHours: fit.entitlementRemaining }, { pass1, fit: { ...fit, burndown: fitBurndown(document, fit) } });
-  if (!displacedLines.length) return effort;
+  return displacedLines.length ? withDisplacedLines(document, effort, displacedLines) : effort;
+}
 
-  // Displaced hours sit on their stages as follow-on scope; a stage with nothing left in the entitlement moves to the Two-Year Notional.
+/** Displaced hours sit on their stages as follow-on scope; a stage with nothing left in the entitlement moves to the Two-Year Notional. */
+function withDisplacedLines(document: EngagementDocument, effort: ScopedEffort, displacedLines: EffortLine[]): ScopedEffort {
   const displacedRows = workPackageEffort(document, displacedLines, totalsOf(rowsFromLines(displacedLines)));
   const later = new Map(displacedRows.map(row => [row.id, row.total > 0 ? row : row.followOn ? { ...row, ...row.followOn } : row]));
   const merged = effort.workPackages.map((row): WorkPackageEffort => {
@@ -930,6 +954,8 @@ export type CustomerEffortPhase = {
   phase: string;
   window: string;
   startDate: string;
+  /** The work packages and customer-run work the phase covers; its window is their span. */
+  sources: Array<{ label: string; start: string; end: string }>;
   platformLead: number;
   operations: number;
   network: number;
@@ -988,29 +1014,42 @@ export function customerRemainingWaves(document: EngagementDocument): { label: s
   return { label: `Remaining ${upgrade ? "upgrade" : "migration"} waves, run by ${customer} with the proven runbook`, start: month(last, 1), end: month(last, months) };
 }
 
+/** Labels that name migration or upgrade waves. */
+export const WAVES_LABEL = /\bwaves?\b/i;
+
+/**
+ * True when the customer's team runs the waves after CDW's: the report has its own wave row, or the plan's generated
+ * one is not hidden. Those waves are then customer work only, never CDW follow-on scope as well.
+ */
+export function customerRunsRemainingWaves(document: EngagementDocument): boolean {
+  if (completedReport(document.report).customerOwnedWork.some(row => WAVES_LABEL.test(row.label))) return true;
+  const generated = customerRemainingWaves(document);
+  return Boolean(generated && !document.report.hiddenGenerated.includes(`customerOwnedWork:${generated.label.trim().toLowerCase()}`));
+}
+
 /** Customer effort per phase from the plan's windows and the default hours per week. */
 export function buildCustomerEffort(document: EngagementDocument): { phases: CustomerEffortPhase[]; peak: CustomerEffortPhase | null } {
   const timeline = document.adoptionTimeline;
-  const windows = new Map<PhaseKey, { start: string; end: string }>();
+  const sources = new Map<PhaseKey, CustomerEffortPhase["sources"]>();
+  const add = (key: PhaseKey, source: CustomerEffortPhase["sources"][number]) => sources.set(key, [...(sources.get(key) ?? []), source]);
   for (const activity of timeline.lanes.flatMap(lane => lane.bars)) {
     const key = phaseOf(activity);
     const window = key ? barWindow(timeline, activity) : null;
-    if (!key || !window) continue;
-    const current = windows.get(key);
-    windows.set(key, current ? { start: window.start < current.start ? window.start : current.start, end: window.end > current.end ? window.end : current.end } : window);
+    if (key && window) add(key, { label: activity.label, ...window });
   }
-  // Customer-run work: the waves the customer's team runs itself are their own, heavier phase; other customer work extends migration.
+  // Customer-run work: the waves the customer's team runs itself are their own, heavier phase; other customer work
+  // (site prerequisites, hardware) prepares the build, never the migration waves.
   for (const work of completedReport(document.report).customerOwnedWork) {
     const start = work.start.length === 7 ? `${work.start}-01` : work.start;
     const end = work.end.length === 7 ? `${work.end}-28` : work.end;
-    const key: PhaseKey = /\bwaves?\b/i.test(work.label) ? "customerWaves" : "migration";
-    const current = windows.get(key);
-    windows.set(key, current ? { start: start < current.start ? start : current.start, end: end > current.end ? end : current.end } : { start, end });
+    add(WAVES_LABEL.test(work.label) ? "customerWaves" : "build", { label: work.label, start, end });
   }
-  const phases = Array.from(windows.entries()).map(([key, window]) => {
+  const phases = Array.from(sources.entries()).map(([key, items]) => {
     const defaults = CUSTOMER_EFFORT_DEFAULTS[key];
     const total = defaults.platformLead + defaults.operations + defaults.network;
-    return { phase: defaults.phase, window: formatWindow(window.start, window.end), startDate: window.start, platformLead: defaults.platformLead, operations: defaults.operations, network: defaults.network, total, fte: Math.round((total / 40) * 100) / 100 };
+    const start = items.map(item => item.start).sort()[0];
+    const end = items.map(item => item.end).sort().at(-1)!;
+    return { phase: defaults.phase, window: formatWindow(start, end), startDate: start, sources: items, platformLead: defaults.platformLead, operations: defaults.operations, network: defaults.network, total, fte: Math.round((total / 40) * 100) / 100 };
   }).sort((left, right) => left.startDate.localeCompare(right.startDate));
   const peak = phases.reduce<CustomerEffortPhase | null>((best, phase) => (!best || phase.total > best.total ? phase : best), null);
   return { phases, peak };

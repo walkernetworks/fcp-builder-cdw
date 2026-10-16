@@ -1,8 +1,9 @@
 import { barWindow } from "../shared/buildingBlocks";
 import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
-import { activityOwner, calculateEntitlementEndDate, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
-import { effectiveReport, minimumTargetRelease, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
+import { activityOwner, calculateEntitlementEndDate, domainHosts, domainPackages, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
+import { effectiveReport, minimumTargetRelease, planKeyDates, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
 import { VCF_CORPUS } from "../shared/vcfCorpus";
+import { DOMAIN_BUILD_WEIGHTS } from "../shared/hoursConfig";
 import { summarizeHclFindings } from "../shared/hcl";
 import { deliveryBriefing, renewalStartsCurrentTerm } from "../shared/deliveryBriefing";
 import { getIndustryDiscoveryTemplate } from "../shared/industryDiscovery";
@@ -298,11 +299,24 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
 
   // ---- Executive summary
   const situation = report.situation.map(esc);
+  // Every in-entitlement package is listed; the domain packages are grouped under one count so the line stays readable.
+  const domainKinds = new Map(domainPackages(fields).map(({ id, domain }) => [id, domain.kind]));
   const planOnPage = FIXED_GANTT_CATEGORIES.map(category => {
     // CDW work on the entitlement timeline in this category, governance and design stages included.
-    const work = document.adoptionTimeline.lanes.filter(lane => lane.category === category).flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "cdw").map(bar => bar.label.replace(UNDECIDED_DEPTH, "").replace(/^(Month \d+|Weeks? [\d–-]+): /, ""));
+    const bars = document.adoptionTimeline.lanes.filter(lane => lane.category === category).flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "cdw");
+    const label = (value: string) => value.replace(UNDECIDED_DEPTH, "").replace(/^(Month \d+|Weeks? [\d–-]+): /, "");
+    const domains = bars.filter(bar => domainKinds.has(bar.id));
+    const management = domains.filter(bar => domainKinds.get(bar.id) === "management").length;
+    const domainGroup = domains.length > 1
+      ? `${domains.length} domains (${[management ? `${management} management` : "", domains.length - management ? `${domains.length - management} workload` : ""].filter(Boolean).join(", ")}): ${domains.map(bar => label(bar.label)).join(", ")}`
+      : "";
+    const items: string[] = [];
+    for (const bar of bars) {
+      if (domainGroup && domainKinds.has(bar.id)) { if (!items.includes(domainGroup)) items.push(domainGroup); continue; }
+      if (!items.includes(label(bar.label))) items.push(label(bar.label));
+    }
     const later = deferredWork.filter(row => row.category === category).map(row => row.label.replace(UNDECIDED_DEPTH, ""));
-    const text = `${work.length ? esc(Array.from(new Set(work)).slice(0, 4).join("; ")) : later.length ? "nothing in the entitlement window" : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; after the entitlement: ${esc(later.join("; "))}` : ""}`;
+    const text = `${items.length ? esc(items.join("; ")) : later.length ? "nothing in the entitlement window" : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; after the entitlement: ${esc(later.join("; "))}` : ""}`;
     return `<li><b>${esc(category)}</b> — ${text}</li>`;
   }).join("");
   const lead = `A design-led plan to move ${esc(customer)} onto ${esc(platform)} — ${esc(plan.label.toLowerCase())}${termEnd ? ` — consuming the services entitlement before it ends on ${esc(longDate(termEnd))}${assumedEnd ? " (12 months from the start; to be confirmed)" : ""}` : ""}.`;
@@ -335,6 +349,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
       const after = Array.from(new Set((bar?.prerequisites ?? []).flatMap(id => (bars.has(id) ? [bars.get(id)!.label.replace(UNDECIDED_DEPTH, "")] : []))));
       const parts = [
         sentence(playbook?.outcome ?? firstSentence(bar?.outcome, 400) ?? "").replace(/^\.$/, ""),
+        ...(row.notes ?? []).map(sentence),
         playbook?.acceptance ? sentence(`Accepted when: ${playbook.acceptance}`) : "",
         after.length ? sentence(`Starts after: ${after.slice(0, 3).map(item => item.replace(/[.\s]+$/, "")).join("; ")}`) : "",
       ].filter(Boolean);
@@ -373,6 +388,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ["This entitlement: depth", "Selected outcomes, remaining waves and depth tiers, in priority order", fit.buckets.E2],
     ["Follow-on entitlement", "Year two, with design already complete; depends on a future purchase", fit.buckets.F],
     ["Customer-funded", "Work wanted this year beyond the entitlement, through CDW", fit.buckets.C],
+    ...(fit.reserveHours >= 1 ? [["This entitlement: reserve", "Held back for change requests and estimate variance; reviewed at month 6 and released to follow-on work if unused", fit.reserveHours] as [string, string, number]] : []),
   ] : [];
   // Rounded to agree with the work package tables: the two entitlement buckets foot to the entitlement total, and
   // follow-on to the follow-on table, whenever they differ from them only by rounding.
@@ -380,9 +396,9 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const depthShown = fit ? Math.round(fit.buckets.E2) : 0;
   const coreShown = fit && Math.abs(fit.buckets.E1 + fit.buckets.E2 - inEntitlementTotal) < 2 ? inEntitlementTotal - depthShown : Math.round(fit?.buckets.E1 ?? 0);
   const followOnShown = fit && followOnRows.length && Math.abs(fit.buckets.F - followOnTotals.total) < 2 ? Math.round(followOnTotals.total) : Math.round(fit?.buckets.F ?? 0);
-  const roundedBuckets = fit ? [coreShown, depthShown, followOnShown, Math.round(fit.buckets.C)] : [];
+  const roundedBuckets = fit ? [coreShown, depthShown, followOnShown, Math.round(fit.buckets.C), ...(fit.reserveHours >= 1 ? [Math.round(fit.reserveHours)] : [])] : [];
   const bucketSection = fit
-    ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority.${fit.reserveHours >= 1 ? ` ${hours(Math.round(fit.reserveHours))} hours of the entitlement are held in reserve until month 6.` : ""}</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.</p>`
+    ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority.</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.</p>`
     : "";
 
   // ---- Customer effort
@@ -437,12 +453,20 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
 
   // ---- Estimating basis (v2): the estate facts and the defaults the hours were built on, in hours only
   const pass1 = effort.internal.pass1;
+  // Each domain's build hours: its share of the build line, from its pathway and host count.
+  const domainList = domainPackages(fields);
+  const w = DOMAIN_BUILD_WEIGHTS;
+  const domainRows = domainList.length ? [
+    ...domainList.map(({ domain }) => { const known = domainHosts(domain, document.inventory); return [esc(`Hosts in ${domain.name}`), known.hosts === null ? "Set in design" : esc(known.hosts), esc(known.source)]; }),
+    ["Domain build hours", "Share of the build", esc(`Each domain takes a share of the build hours: a base by pathway (management domain ${w.managementBase.value}, new workload domain ${w.greenfieldBase.value}, converge ${w.convergeBase.value}, import ${w.importBase.value}) plus ${w.perHostGreenfield.value} per host built new (${w.perHostConverge.value} converged, ${w.perHostImport.value} imported), so more hosts never mean fewer hours`)],
+  ] : [];
   const basis = (source: string) => /\bspec\b|worked example|section \d/i.test(source) ? "Assumed: planning default; confirm in design" : `Assumed: ${source}`;
   const estimatingBasis = pass1
     ? `<h3>Estimating Basis</h3><p class="lead">The hours are built from the estate and scope below. Values marked as assumed were not stated and use the planning default; a confirmed value replaces it.</p>${table(["Driver", "Value", "Basis"], [
       ...[["ESX hosts", pass1.inputs.hosts], ["Clusters", pass1.inputs.clusters], ["VMs", pass1.inputs.vms], ["vCenters", pass1.inputs.vcenters], ["Sites", pass1.inputs.sites], ["VCF instances", pass1.inputs.instances], ["Workload domains", pass1.inputs.workloadDomains]]
         .map(([label, value]) => { const assumed = pass1.assumptions.find(item => item.label.toLowerCase() === String(label).toLowerCase()); return [esc(label), esc(value), esc(assumed ? basis(assumed.source) : "From RVTools or the brief")]; }),
-      ...pass1.assumptions.filter(item => !["hosts", "clusters", "vms", "vcenters", "sites", "instances", "workloadDomains"].includes(item.key)).map(item => [esc(item.label), esc(typeof item.value === "boolean" ? (item.value ? "Yes" : "No") : item.value), esc(basis(item.source))]),
+      ...pass1.assumptions.filter(item => !["hosts", "clusters", "vms", "vcenters", "sites", "instances", "workloadDomains"].includes(item.key)).map(item => [esc(item.label), esc(item.display ?? (typeof item.value === "boolean" ? (item.value ? "Yes" : "No") : item.value)), esc(item.derived ? item.source : basis(item.source))]),
+      ...domainRows,
     ])}`
     : "";
 
@@ -461,11 +485,12 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ? `<h3>Engagement Milestones to Date</h3>${report.milestonesToDate.map(item => `<div class="ms"><b>${esc(shortDate(item.date))}</b><span><b>${esc(item.event)}</b>${item.detail ? ` — ${esc(item.detail)}` : ""}</span></div>`).join("")}`
     : "";
   // The build starts with the foundation build or the first execution stage, which can be months after services start.
-  const buildStart = customerTimelines.adoption.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-(management-domain|workload-domain|import-domain)(-\d+)?$/.test(bar.id) || bar.id.startsWith("bar-playbook-execution-")).map(bar => barWindow(customerTimelines.adoption, bar)?.start).filter((start): start is string => Boolean(start)).sort()[0];
-  const implementationStart = fields.plannedImplementationStart;
-  const buildLater = Boolean(buildStart && implementationStart && buildStart.slice(0, 7) > implementationStart.slice(0, 7));
+  // The same dates the sequencing constraint states.
+  const { implementationStart, buildStart, buildLater } = planKeyDates(document);
+  // What the first build package also carries, such as the NSX design when the full NSX design is not funded.
+  const buildNotes = effort.workPackages.filter(row => !row.deferred && row.total > 0).flatMap(row => row.notes ?? []);
   const forward = (implementationStart ? `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>` : "")
-    + (buildLater ? `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.</span></div>` : "")
+    + (buildLater ? `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.${buildNotes.length ? ` ${esc(buildNotes.join(" "))}` : ""}</span></div>` : "")
     + (fields.targetComplete ? `<div class="ms"><b>${esc(shortDate(fields.targetComplete))}</b><span>${esc(customer)}'s target completion.</span></div>` : "")
     + (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption: all hours consumed ahead of expiry.${assumedEnd ? " The end date is 12 months from the start and is still to be confirmed." : ""}</span></div>` : "")
     + (deferredWork.length ? `<div class="ms"><b>After ${esc(termEnd ? shortDate(termEnd) : "the entitlement")}</b><span>${esc(deferredWork.map(row => row.label.replace(UNDECIDED_DEPTH, "")).join("; "))} — shown in the Two-Year Notional as follow-on scope.</span></div>` : "");
