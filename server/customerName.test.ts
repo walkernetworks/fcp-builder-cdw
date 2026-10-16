@@ -1,22 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { resolveCustomerNameOnFcpSave } from "../shared/customerName";
+import { renameInTitle, resolveFcpSaveNames } from "../shared/customerName";
 
-describe("customer name shared by the tracker and the FCP document", () => {
-  it("keeps a name changed in the tracker when a stale FCP copy saves", () => {
-    // Tracker renamed "-Northwind Mfg" to "Northwind Mfg"; the open FCP still holds the old name it loaded.
-    expect(resolveCustomerNameOnFcpSave({ incoming: "-Northwind Mfg", base: "-Northwind Mfg", storedDocName: "Northwind Mfg", column: "Northwind Mfg" })).toEqual({ column: "Northwind Mfg", docName: "Northwind Mfg" });
+const save = (overrides: Partial<Parameters<typeof resolveFcpSaveNames>[0]>) =>
+  resolveFcpSaveNames({ incomingName: "Northwind Mfg", incomingTitle: "Northwind Mfg", baseName: "Northwind Mfg", baseTitle: "Northwind Mfg", storedDocName: "Northwind Mfg", storedTitle: "Northwind Mfg", column: "Northwind Mfg", ...overrides });
+
+describe("one name across the record, the FCP document, and the title", () => {
+  it("renames the title with the customer: exact titles and titles that contain the name", () => {
+    expect(renameInTitle("-Northwind Mfg", "-Northwind Mfg", "Northwind Mfg")).toBe("Northwind Mfg");
+    expect(renameInTitle("-Northwind Mfg VCF Adoption", "-Northwind Mfg", "Northwind Mfg")).toBe("Northwind Mfg VCF Adoption");
+    expect(renameInTitle("Q3 platform plan", "Northwind", "Northwind Mfg")).toBe("Q3 platform plan");
   });
 
-  it("takes a name edited in the FCP", () => {
-    expect(resolveCustomerNameOnFcpSave({ incoming: "Northwind", base: "Northwind Mfg", storedDocName: "Northwind Mfg", column: "Northwind Mfg" })).toEqual({ column: "Northwind", docName: "Northwind" });
+  it("keeps a tracker rename when a stale FCP copy saves", () => {
+    // The drawer renamed "-Northwind Mfg"; the open FCP still holds the old name and title it loaded.
+    expect(save({ incomingName: "-Northwind Mfg", incomingTitle: "-Northwind Mfg", baseName: "-Northwind Mfg", baseTitle: "-Northwind Mfg" })).toEqual({ column: "Northwind Mfg", docName: "Northwind Mfg", title: "Northwind Mfg" });
   });
 
-  it("without a base from an older client, compares with the stored document", () => {
-    expect(resolveCustomerNameOnFcpSave({ incoming: "Acme", storedDocName: "Acme", column: "Acme Corp" })).toEqual({ column: "Acme Corp", docName: "Acme Corp" });
-    expect(resolveCustomerNameOnFcpSave({ incoming: "Acme Inc", storedDocName: "Acme", column: "Acme Corp" })).toEqual({ column: "Acme Inc", docName: "Acme Inc" });
+  it("renames the record from the FCP's customer name, and the title follows", () => {
+    expect(save({ incomingName: "Northwind", storedTitle: "Northwind Mfg VCF Adoption", incomingTitle: "Northwind Mfg VCF Adoption", baseTitle: "Northwind Mfg VCF Adoption" })).toEqual({ column: "Northwind", docName: "Northwind", title: "Northwind VCF Adoption" });
   });
 
-  it("never blanks the column from an empty FCP name", () => {
-    expect(resolveCustomerNameOnFcpSave({ incoming: "  ", base: "", storedDocName: null, column: "Imported Co" })).toEqual({ column: "Imported Co", docName: "Imported Co" });
+  it("renames the record from the workspace title when the title was the customer name", () => {
+    expect(save({ incomingTitle: "Northwind" })).toEqual({ column: "Northwind", docName: "Northwind", title: "Northwind" });
+  });
+
+  it("keeps the customer name when a custom title is edited", () => {
+    expect(save({ storedTitle: "Northwind Mfg VCF Adoption", baseTitle: "Northwind Mfg VCF Adoption", incomingTitle: "Northwind Mfg VCF and NSX" })).toEqual({ column: "Northwind Mfg", docName: "Northwind Mfg", title: "Northwind Mfg VCF and NSX" });
+  });
+
+  it("never blanks the name from an empty FCP field", () => {
+    expect(save({ incomingName: " ", baseName: "", storedDocName: null })).toMatchObject({ column: "Northwind Mfg", docName: "Northwind Mfg" });
   });
 });
