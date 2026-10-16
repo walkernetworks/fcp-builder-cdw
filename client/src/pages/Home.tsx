@@ -10,7 +10,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { EmptyState as DesignEmptyState, HeroBand, HeroKpi, KpiCard, Pill, SectionBar } from "@/components/vsa/elements";
-import { RecordDrawer } from "@/components/vsa/RecordDrawer";
+import { RecordDrawer, type DrawerTab } from "@/components/vsa/RecordDrawer";
+import { FcpRecordStrip, FcpVersionsSheet } from "@/components/vsa/FcpRecordPanels";
+import { useBuildLock } from "@/lib/useBuildLock";
 import { Link } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
@@ -20,7 +22,7 @@ import { trpc } from "@/lib/trpc";
 import { isCommercialCustomer } from "@shared/buildingBlocks";
 import { exportFilename, type ExportDocumentType } from "@shared/exportFilename";
 import { createDefaultDocument, DELIVERY_ROLE_BY_WORKSTREAM, getFollowOnReadinessGuidance, migrateDocument, refreshDerivedDocument, summarizeDeliveryStaffing, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
-import { ArrowLeft, ArrowRight, BriefcaseBusiness, CheckCircle2, ChevronDown, KanbanSquare, ListChecks, FileText, CalendarRange, ClipboardCheck, Coins, Copy, Download, FileCheck2, FileSpreadsheet, Layers3, Loader2, MoreHorizontal, PackageCheck, Plus, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
+import { ArrowLeft, ArrowRight, History, LockKeyhole, BriefcaseBusiness, CheckCircle2, ChevronDown, KanbanSquare, ListChecks, FileText, CalendarRange, ClipboardCheck, Coins, Copy, Download, FileCheck2, FileSpreadsheet, Layers3, Loader2, MoreHorizontal, PackageCheck, Plus, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -46,7 +48,8 @@ export default function Home() {
     return requested === "plan" || requested === "staffing" || requested === "technical" || requested === "report" || requested === "package" ? requested : "engagement";
   });
   const hydratedId = useRef<number | null>(null);
-  const [trackerOpen, setTrackerOpen] = useState(false);
+  const [trackerTab, setTrackerTab] = useState<DrawerTab | null>(null);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   /** The customer name this workspace loaded or last saved; sent with saves so the server can tell an FCP edit from a stale copy. */
   const baseCustomerName = useRef<string | null>(null);
   const baseTitle = useRef<string | null>(null);
@@ -56,6 +59,9 @@ export default function Home() {
   const canReconcileSelection = list.isSuccess && !list.isFetching;
   const shouldQuerySelected = shouldQuerySelectedEngagement(selectedId, list.data, list.isFetching);
   const getInput = useMemo(() => ({ id: selectedId ?? 0 }), [selectedId]);
+  // One editor per FCP: while someone else holds the build lock, this workspace is read-only.
+  const buildLock = useBuildLock(selectedIsListed ? selectedId : null);
+  const readOnly = buildLock.readOnly;
   const selected = trpc.engagement.get.useQuery(getInput, {
     enabled: shouldQuerySelected,
     retry: false,
@@ -86,9 +92,14 @@ export default function Home() {
       baseTitle.current = row.title;
       if (savedName !== sentName) setFcpDocument(current => (current.fields.customerName === sentName ? { ...current, fields: { ...current.fields, customerName: savedName } } : current));
       if (row.title !== sent.title) setTitle(current => (current === sent.title ? row.title : current));
-      await utils.engagement.list.invalidate();
+      // A save can tick off sources (RVTools, brief, signed hours), so the record strip re-reads the checklist.
+      await Promise.all([utils.engagement.list.invalidate(), utils.tracker.get.invalidate({ id: sent.id })]);
     },
-    onError: error => { setSaveState("unsaved"); toast.error(error.message); },
+    onError: error => {
+      setSaveState("unsaved");
+      toast.error(error.message);
+      if (error.data?.code === "CONFLICT") void buildLock.refresh();
+    },
   });
   const duplicate = trpc.engagement.duplicate.useMutation({ onSuccess: async row => { await utils.engagement.list.invalidate(); setSelectedId(row.id); toast.success("Engagement duplicated"); } });
   const remove = trpc.engagement.delete.useMutation({ onSuccess: async () => { setSelectedId(null); hydratedId.current = null; setFcpDocument(createDefaultDocument()); setTitle(DEFAULT_ENGAGEMENT_TITLE); await utils.engagement.list.invalidate(); toast.success("Engagement deleted"); } });
@@ -148,12 +159,14 @@ export default function Home() {
       setFcpDocument(current => (current.fields.customerName === previous ? { ...current, fields: { ...current.fields, customerName: serverName } } : current));
     }
   }, [selected.data]);
+  // Autosave only while this person holds the build lock; before the lock answers, or while someone else holds it, nothing is sent.
+  const holdsLock = buildLock.lock.status === "held";
   useEffect(() => {
-    if (!selectedId || !dirty) return;
+    if (!selectedId || !dirty || !holdsLock) return;
     setSaveState("unsaved");
     const timer = window.setTimeout(() => { setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument, baseCustomerName: baseCustomerName.current, baseTitle: baseTitle.current }); }, 1300);
     return () => window.clearTimeout(timer);
-  }, [fcpDocument, title, selectedId, dirty]);
+  }, [fcpDocument, title, selectedId, dirty, holdsLock]);
   useEffect(() => {
     if (!selectedId) return;
     const timer = window.setTimeout(() => preview.mutate({ title, data: fcpDocument }), 350);
@@ -178,7 +191,11 @@ export default function Home() {
     () => getFollowOnReadinessGuidance(fcpDocument.fields, fcpDocument.inventory),
     [fcpDocument.fields, fcpDocument.inventory],
   );
-  const mutateDocument = (next: EngagementDocument) => { setFcpDocument(next); setDirty(true); };
+  const mutateDocument = (next: EngagementDocument) => {
+    if (readOnly) return void toast.error(`${buildLock.lock.holder ?? "Someone"} is editing this FCP. Take over editing to make changes.`);
+    setFcpDocument(next);
+    setDirty(true);
+  };
   const buildPlan = () => {
     if (fcpDocument.planAuthority === "manual" && !window.confirm("Apply the VCF 9.1 playbook template? This replaces the current manually edited Entitlement Adoption Timeline and Two-Year Notional with a newly generated plan from the confirmed pathway, design decisions, outcomes, dates, and hardware readiness.")) return;
     mutateDocument(refreshDerivedDocument(fcpDocument, { forceRebuild: true }));
@@ -273,14 +290,15 @@ export default function Home() {
               {list.data?.length ? list.data.map(item => <DropdownMenuItem key={item.id} onSelect={() => { setSelectedId(item.id); hydratedId.current = null; }} className={selectedId === item.id ? "font-bold" : undefined}><span className="min-w-0"><span className="block truncate">{item.title}</span><span className="block truncate text-xs text-ink-muted">{item.customerName}</span></span></DropdownMenuItem>) : <DropdownMenuItem disabled>No engagements yet</DropdownMenuItem>}
             </DropdownMenuContent>
           </DropdownMenu>
-          {selectedIsListed && <Input className="h-8 min-w-0 max-w-[440px] border-transparent bg-transparent px-2 text-base font-bold shadow-none focus-visible:border-s200" value={title} onChange={event => { setTitle(event.target.value); setDirty(true); }} aria-label="Engagement title" />}
+          {selectedIsListed && <Input disabled={readOnly} className="h-8 min-w-0 max-w-[440px] border-transparent bg-transparent px-2 text-base font-bold shadow-none focus-visible:border-s200" value={title} onChange={event => { setTitle(event.target.value); setDirty(true); }} aria-label="Engagement title" />}
         </div>
         <div className="flex items-center gap-2">
           {selectedIsListed ? <>
-            <span className="hidden text-xs text-ink-muted sm:inline" aria-live="polite">{saveState === "saving" ? "Saving…" : saveState === "unsaved" ? "Unsaved changes" : "Saved"}</span>
-            <Button variant="outline" size="sm" onClick={() => setTrackerOpen(true)}><ListChecks className="size-4" /> Tracker details</Button>
-            <Button variant="outline" size="sm" disabled={update.isPending} onClick={saveNow}>{update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button>
-            <Button size="sm" onClick={buildPlan}><RefreshCw className="size-4" /> {fcpDocument.planAuthority === "manual" ? "Apply playbook template" : "Rebuild plans"}</Button>
+            <span className="hidden text-xs text-ink-muted sm:inline" aria-live="polite">{readOnly ? "Read only" : buildLock.lock.status === "pending" ? "Checking who is editing…" : saveState === "saving" ? "Saving…" : saveState === "unsaved" ? "Unsaved changes" : "Saved"}</span>
+            <Button variant="outline" size="sm" onClick={() => setTrackerTab("overview")}><ListChecks className="size-4" /> Tracker details</Button>
+            <Button variant="outline" size="sm" onClick={() => setVersionsOpen(true)}><History className="size-4" /> Versions</Button>
+            <Button variant="outline" size="sm" disabled={update.isPending || readOnly} onClick={saveNow}>{update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button>
+            <Button size="sm" disabled={readOnly} onClick={buildPlan}><RefreshCw className="size-4" /> {fcpDocument.planAuthority === "manual" ? "Apply playbook template" : "Rebuild plans"}</Button>
           </> : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="outline" size="icon-sm" aria-label="More actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
@@ -296,16 +314,23 @@ export default function Home() {
         </div>
       </header>
 
+      {readOnly && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-state-warn/30 bg-state-warn-soft px-5 py-2.5" role="status">
+          <p className="flex items-center gap-2 text-sm text-state-warn-text"><LockKeyhole className="size-4" /> <strong>{buildLock.lock.holder ?? "Someone"} is editing this FCP</strong>{buildLock.lock.since ? ` (since ${buildLock.lock.since.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })})` : ""}. You can read it; changes, saving, and exports are off until they finish or you take over.</p>
+          <Button variant="outline" size="sm" className="bg-white" onClick={() => { if (window.confirm(`Take over editing from ${buildLock.lock.holder ?? "the other editor"}? Their unsaved changes will be refused when they next save.`)) void buildLock.takeOver().then(() => { hydratedId.current = null; void utils.engagement.get.invalidate(); }); }}>Take over editing</Button>
+        </div>
+      )}
       <div className="mx-auto max-w-[1600px]">
         <main className="min-w-0 p-4 md:p-6">
           {!selectedIsListed ? <NoSelection engagements={list.data ?? []} onSelect={id => { setSelectedId(id); hydratedId.current = null; }} onCreate={openCreateDialog} /> : selected.isLoading || !selected.data ? <div className="grid min-h-[65vh] place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div> : (
             <div className="space-y-5">
               <EngagementCommandBar document={fcpDocument} title={title} onOpenPackage={() => setStage("package")} />
+              <FcpRecordStrip engagementId={selectedId!} document={fcpDocument} onOpenSources={() => setTrackerTab("sources")} />
               <div className="space-y-5">
                 <nav className="flex gap-1 overflow-x-auto rounded-xl border border-s100 bg-white p-1 shadow-[var(--shadow-card)]" aria-label="Consumption plan workflow">
                   {stageDefinitions.map(stage => <StageNavigationItem key={stage.id} stage={stage} active={workspaceStage === stage.id} onSelect={() => setStage(stage.id)} />)}
                 </nav>
-                <div className="min-w-0 space-y-5">
+                <fieldset disabled={readOnly} className="min-w-0 space-y-5">
                   <StageHeader stage={activeStage} />
                   {workspaceStage === "engagement" && <div className="space-y-5"><CustomerBriefImport document={fcpDocument} onChange={mutateDocument} /><PlanSetup step="upload" document={fcpDocument} onChange={mutateDocument} onExportPlanOutput={format => void startExport(format, "plan-output")} exportingPlanOutput={activeExport?.documentType === "plan-output" && activeExport.format !== "xlsx" ? activeExport.format : null} /><PlanSetup step="customer" document={fcpDocument} onChange={mutateDocument} onExportPlanOutput={format => void startExport(format, "plan-output")} exportingPlanOutput={activeExport?.documentType === "plan-output" && activeExport.format !== "xlsx" ? activeExport.format : null} /><StageAdvance label="Continue to Service Plan" onClick={() => setStage("plan")} /></div>}
                   {workspaceStage === "plan" && <div className="space-y-5"><ScopeAtGlance document={fcpDocument} /><PlanSetup step="timeline" document={fcpDocument} onChange={mutateDocument} onExportPlanOutput={format => void startExport(format, "plan-output")} exportingPlanOutput={activeExport?.documentType === "plan-output" && activeExport.format !== "xlsx" ? activeExport.format : null} />{fcpDocument.planAuthority === "manual" && <section className="border border-state-warn/30 bg-state-warn-soft p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><p className="text-xs font-black uppercase tracking-[.16em] text-state-warn-text">Existing manual timeline is still active</p><h3 className="mt-1 text-lg font-semibold text-ink">The playbook packages above are a preview and have not replaced the saved plan.</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-s600">Apply the template when you are ready to replace both saved timeline views with the exact design, implementation, validation, adoption, and handoff packages generated from these inputs.</p></div><Button className="shrink-0 bg-s600 hover:bg-ink" onClick={buildPlan}><RefreshCw className="size-4" /> Apply Playbook Template</Button></div></section>}<WorkPackageRegister document={fcpDocument} /><StageAdvance label="Open Entitlement Adoption Timeline" onClick={() => setStage("staffing")} /></div>}
@@ -313,14 +338,15 @@ export default function Home() {
                   {workspaceStage === "technical" && <div className="space-y-5"><PlanSetup step="review" document={fcpDocument} onChange={mutateDocument} onExportPlanOutput={format => void startExport(format, "plan-output")} exportingPlanOutput={activeExport?.documentType === "plan-output" && activeExport.format !== "xlsx" ? activeExport.format : null} /><DeliveryBriefing document={fcpDocument} /><StageAdvance label="Assemble Delivery Package" onClick={() => setStage("package")} /></div>}
                   {workspaceStage === "report" && <div className="space-y-5"><ReportContentEditor document={fcpDocument} onChange={mutateDocument} /></div>}
                   {workspaceStage === "package" && <div className="space-y-4"><DeliveryPackageHeader document={fcpDocument} /><CondensedReportPanel document={fcpDocument} onChange={mutateDocument} /><section className="rounded-xl grid gap-3 border border-s100 bg-white p-4 lg:grid-cols-2"><ExportPreferenceCard title="Compatibility summary in the FCP" description="Include the target-release compatibility posture in the FCP: hosts by decision, the top compatibility actions, and the planning considerations from RVTools. The detailed evidence stays in the Compatibility Delivery Handoff." checked={fcpDocument.fields.exportPreferences.includeVcfReadiness} onCheckedChange={includeVcfReadiness => mutateDocument({ ...fcpDocument, fields: { ...fcpDocument.fields, exportPreferences: { ...fcpDocument.fields.exportPreferences, includeVcfReadiness } } })} switchId="include-vcf-readiness-export" /><ExportPreferenceCard title="Delivery adoption timeline" description="Include the entitlement adoption timeline in the FCP so delivery leadership can align resources to the work-package windows. When it is off, the Two-Year Notional covers the whole plan from the project start." checked={fcpDocument.fields.exportPreferences.includeOperationalTimeline} onCheckedChange={includeOperationalTimeline => mutateDocument({ ...fcpDocument, fields: { ...fcpDocument.fields, exportPreferences: { ...fcpDocument.fields.exportPreferences, includeOperationalTimeline } } })} switchId="include-operational-timeline-export" /></section><section className="grid gap-px overflow-hidden border border-s100 bg-s100 lg:grid-cols-2"><DeliverableCard title="Condensed FCP" label="FCP 2.0 · for customer review" description="The Make Amazing Happen condensed plan: entitlement burndown, scoped effort, customer effort, design profile, timeline, and the adoption recommendation. Content checks run before every download." icon={FileCheck2} activeExport={activeExport} documentType="condensed-fcp" onExport={startExport} /><DeliverableCard title="Functional Consumption Plan" label="Customer plan + adoption schedule" description="High-level SOW-style consumption plan covering delivery context, work packages, entitlement-aligned sequencing, adoption timeline, assumptions, milestones, and customer outcomes." icon={FileCheck2} activeExport={activeExport} documentType="fcp" onExport={startExport} /><DeliverableCard title="Compatibility Delivery Handoff" label="Technical engineer evidence pack" description="Maintained-catalog host cohorts, release support, blockers, evidence gaps, owners, and the actions required before platform build." icon={ShieldCheck} activeExport={activeExport} documentType="plan-output" onExport={startExport} />{isCommercialCustomer(fcpDocument.fields) && <DeliverableCard title="Building Blocks Workbook" label="Commercial customer · VCF 9 Building Blocks" description="Every Building Blocks tool block with its category start date, status, projected dates, and dependencies taken from this plan. Out-of-scope blocks start hidden." icon={FileSpreadsheet} activeExport={activeExport} documentType="building-blocks" formats={["xlsx"]} onExport={startExport} />}</section><div className="overflow-hidden border border-s100 bg-white shadow-sm"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-s100 bg-s50 px-4 py-3"><div className="flex items-center gap-2 text-xs font-semibold text-state-pass-text"><ClipboardCheck className="size-4" /> Delivery Package Preview</div><span className="text-xs text-s400">Auto-updating from the same plan source</span></div>{preview.isPending && !previewHtml ? <div className="grid h-[720px] place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div> : <iframe title="Live FCP Preview" srcDoc={previewHtml} className="h-[calc(100vh-210px)] min-h-[720px] w-full bg-white" sandbox="allow-scripts" />}</div></div>}
-                </div>
+                </fieldset>
               </div>
             </div>
           )}
         </main>
       </div>
       </div>
-      <RecordDrawer id={trackerOpen && selectedIsListed ? selectedId : null} onClose={() => setTrackerOpen(false)} />
+      <RecordDrawer id={trackerTab && selectedIsListed ? selectedId : null} initialTab={trackerTab ?? "overview"} onClose={() => setTrackerTab(null)} />
+      {selectedIsListed && selectedId && <FcpVersionsSheet engagementId={selectedId} open={versionsOpen} onClose={() => setVersionsOpen(false)} readOnly={readOnly} onRestored={() => { hydratedId.current = null; void utils.engagement.get.invalidate({ id: selectedId }); void utils.tracker.get.invalidate({ id: selectedId }); }} />}
     </>
   );
 }
