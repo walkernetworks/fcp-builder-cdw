@@ -1,56 +1,64 @@
 # App design system
 
-The app UI follows the CDW design system for the **application surface**, from the `cdw-branding` and `cdw-report-design` skills. This file records how it is applied here. `server/designSystem.test.ts` enforces the parts that can be checked.
+The app UI uses the CDW brand: the official logo, CDW Red as its one accent, and the cool grays. The layout is a calm, dense dashboard. This file covers brand and compliance rules. `docs/VSA-TRACKER-UI.md` covers screens, components, and patterns. `server/designSystem.test.ts` enforces the parts that can be checked.
 
-Exported FCP documents (HTML/PDF, condensed FCP, handoff, Building Blocks) are **out of scope**. The design skills leave FCP documents to `fcp-builder`, which keeps its own palette. Do not restyle the renderers to match the app.
+Exported FCP documents (HTML/PDF, condensed FCP, handoff, Building Blocks) are **out of scope**. They keep their own palette. Do not restyle the renderers to match the app.
 
 ## Tokens
 
-One token block on `:root` in `client/src/index.css`. Values come from `cdw-branding/assets/brand-tokens.json` and `cdw-report-design/assets/tokens.js` (`APP.rootVars`). Do not hand-type a brand hex anywhere else; use the Tailwind utilities generated from the tokens (`bg-cdw-red`, `text-ink`, `border-s100`, `bg-state-warn-soft`, …).
+There is one token block on `:root` and one on `.dark`, both in `client/src/index.css`. Brand values come from `cdw-branding/assets/brand-tokens.json`. Never hand-type a brand hex anywhere else. Use the Tailwind utilities generated from the tokens (`bg-surface`, `text-ink`, `border-s100`, `bg-state-warn-soft`, …).
 
 | Role | Tokens | Rule |
 |---|---|---|
-| Brand | `--cdw-red` `#CC0000` (PMS 186c), `--cdw-red-bright`, `--cdw-red-deep` | Red leads: hero band, primary button, active nav, first chart series |
+| Brand | `--cdw-red` `#CC0000` (PMS 186c), `--cdw-red-deep`, `--cdw-red-text`, `--accent-soft` | The one accent: primary buttons, active navigation, focus, and a key metric. Never a large fill or a hero field |
 | Secondary | `--cool-11`, `--cool-8`, `--cool-4` | Support red; never replace it |
-| Neutral | `--s50` to `--s600`, `--ink`, `--ink-muted`, `--surface` | One ramp, one naming scheme |
-| State | `--state-pass`, `--state-warn`, `--state-blocked`, `--state-unknown` (+ `-text`, `-soft`) | Verdicts only, never decoration. `--state-blocked` shares the brand hex and keeps its own name |
+| Neutral | `--s50` to `--s600`, `--surface`, `--surface-sunken`, `--ink`, `--ink-muted`, `--ink-subtle` | One ramp, one naming scheme |
+| State | `--state-pass`, `--state-warn`, `--state-blocked`, `--state-unknown` (each with `-text` and `-soft`) | Verdicts only, shown as low-saturation badges, never decoration. `--state-blocked` shares the brand hex and keeps its own name |
 | Figures | `--fig-pos`, `--fig-neg` | Signed money; not a state |
+
+Every color token has a dark value, except the brand red fills and the white text on them. A test checks this.
 
 No teal, and no `#E31837` or `#c8102e`. The test fails on these and on the retired navy chrome.
 
 ## Type
 
-Plus Jakarta Sans, **bundled** through `@fontsource-variable/plus-jakarta-sans`. The skill's Google Fonts link is not used, because the app makes no outbound calls. No remote font links.
+Inter, **bundled** through `@fontsource-variable/inter`. The brand guides specify no typeface. The app makes no outbound calls, so there are no remote font links.
 
 ## Elements
 
-`client/src/components/vsa/elements.tsx` provides the elements; the class names match the design vocabulary, with styles in `index.css` under "Element set".
+`client/src/components/vsa/elements.tsx` provides the elements. Their styles are in `index.css` under "Element set".
 
-- `HeroBand` (`hero-band`, `mah-*`, `hero-kpi-*`): the red field with the orbit behind it. One per screen at most; the board uses it.
-- `KpiCard` (`kpi-card`): every figure carries a `sub` that states its basis.
-- `Pill` (`pill-go`, `-ready`, `-warn`, `-stop`, `-refresh`, `-remediate`, `-unknown`): a verdict, always a word plus an icon.
-- `Chip` (`chip`): a label or a filter. Neutral; never colored by state.
-- Buttons: two styles only. The `Button` component maps `default` to `btn-pill-primary` and everything else to `btn-pill-ghost`. Destructive actions are ghost plus a confirm step, never a red primary.
-- `EmptyState` and `DataMount`: every data area renders exactly one of loading, error, empty, or ready, and records it in `data-state`. In development, `AppShell` logs any `[data-tile-mount]` without a state.
-- Tables use `.tbl`: cool-gray header, zebra rows, a totals rule, and `.num` for figures.
-- Detail views open in the right-side drawer (`Sheet`). Esc and the backdrop close it.
+- **`PageHeader`** and **`Panel`**: the page title row, and bordered sections with a header row.
+- **`KpiCard`** (`kpi-card`): a small tile. Every figure carries a `sub` that states its basis or its change.
+- **`Pill`** (`pill-go`, `-ready`, `-warn`, `-stop`, `-refresh`, `-remediate`, `-unknown`): a verdict, shown as a small badge that is always a word plus an icon.
+- **`Chip`** (`chip`): a label or a filter. Neutral; never colored by state.
+- **Buttons:** two styles only. The `Button` component maps `default` to `btn-primary` and everything else to `btn-secondary`; `ghost` is the secondary style without a border. Destructive actions are secondary plus a confirm step, never a red primary.
+- **`EmptyState`** and **`DataMount`:** every data area renders exactly one of loading (skeleton), error, empty, or ready, and records it in `data-state`. In development, `AppShell` logs any `[data-tile-mount]` without a state.
+- **Tables** use `.tbl`: a sunken header row, hairline rows, hover, and `.num` for figures. Risk shows as a 2px left rule plus a pill.
+- **Detail views** open in the shared right-side record drawer (`useShell().openRecord`). Esc and the backdrop close it.
 
 ## FCP workspace (`/fcp`)
 
-- **Toolbar:** back to the board, switch engagement, title, Tracker details (opens the record drawer), Save, Rebuild plans, and a More menu (New FCP, Duplicate, Delete). The board is the engagement list, so the workspace has no sidebar.
-- **Hero band:** the red field carries the work plan headline and its dates and value as hero KPIs, each stating its basis.
-- **Steps:** a horizontal stepper; the active step is red, and a completed step shows a check. Each step opens with a section bar.
-- **Panels:** rounded cards on the neutral ramp. Statuses use the state tokens; compatibility decisions, reconciliation, readiness, and action priority render as pills, while evidence state and catalog notes are chips. Data tables use `.tbl`; the report-content editing grid keeps its own layout.
+- **Toolbar:** back to the Pipeline, switch engagement, title, Tracker details (opens the record drawer), Versions, Save, Rebuild plans, and a More menu (New FCP, Duplicate, Delete).
+- **Header band:** a neutral panel with the work plan headline, and its dates and value as figure tiles that each state their basis.
+- **Steps:** a horizontal stepper. The active step has a sunken background and a red underline; a completed step shows a check.
+- **Panels:** bordered surfaces on the neutral ramp. Statuses use the state tokens. Compatibility decisions, reconciliation, readiness, and action priority render as pills; evidence state and catalog notes are chips.
 - **Exception:** the Entitlement Adoption Timeline bars and their legend keep the workstream colors the FCP document defines, so the preview matches the exported FCP.
 - **Money:** every client money formatter shows double zeros.
-## Reports (`/reports`)
 
-- **Engine:** reports run on `shared/vsaReports.ts`, which the screen, the CSV export, and the server's Excel export all share. Totals of VSA amount count each alternative-plan group once.
-- **Charts:** one measure by group, drawn as horizontal bars in a single series of CDW Red. The design system's series order (red, then cool grays 11, 8, and 4) fails the data-visualization palette check as a categorical palette: the grays fall below the chroma floor and Cool Gray 4 is under 3:1 contrast. So comparisons across a second dimension use the pivot table, not colored series. The chart title names the measure, and the table carries every value.
+## Charts
+
+- One measure per chart, drawn in a single neutral series (`--chart-bar`). The title names what is plotted, and bars carry direct labels.
+- Risk bands on the Expiry & Burndown page use the soft state colors with a solid edge, plus a text label on every bar, so color is never the only signal.
+- The brand's series order (red, then cool grays 11, 8, and 4) fails the data-visualization palette check as a categorical palette. The grays fall below the chroma floor, and Cool Gray 4 is under 3:1 contrast. So comparisons across a second dimension use the pivot table, not colored series.
+- No dual axes.
 - **Exports:** CSV and XLSX both end with the proprietary legend. The XLSX header uses the table-contract fill (Cool Gray 11, white bold).
 
 ## Shell and compliance
 
-- **AppShell** (`client/src/components/vsa/AppShell.tsx`): the official logo with its ® (asserted at nine subpaths), the main navigation, the role-view selector, and the proprietary legend on every view: "CDW — Proprietary and confidential. Copying restricted."
+- **AppShell** (`client/src/components/vsa/AppShell.tsx`):
+  - the official logo with its ® (asserted at nine subpaths);
+  - the sidebar, top bar, and breadcrumbs;
+  - the proprietary legend on every view: "CDW — Proprietary and confidential. Copying restricted."
 - **Money** uses double zeros (`formatMoney`).
 - **US spellings only.** The test fails on "programme", "modelled", and similar.

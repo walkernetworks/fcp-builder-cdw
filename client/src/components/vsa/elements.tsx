@@ -1,9 +1,10 @@
 /**
- * CDW design system elements for the application surface (cdw-report-design references/elements.md).
- * Class names match the design vocabulary; styles live in index.css under "Element set".
+ * The app's design elements (docs/VSA-TRACKER-UI.md). Class names match the design vocabulary; styles live in index.css
+ * under "Element set".
  */
 import logoSvg from "@/assets/brand/cdw-logo-currentcolor.svg?raw";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, CheckCircle2, CircleHelp, Inbox, OctagonX, RefreshCw, Wrench, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -11,11 +12,6 @@ import type { ReactNode } from "react";
 /** The official mark, with its registered symbol. Inherits `color`; never redrawn. */
 export function CdwLogo({ className, label = "CDW" }: { className?: string; label?: string }) {
   return <span className={cn("cdw-logo block", className)} role="img" aria-label={label} dangerouslySetInnerHTML={{ __html: logoSvg }} />;
-}
-
-/** The orbit: the mark as a low-opacity graphic behind a red field. */
-export function Orbit() {
-  return <span aria-hidden className="mah-orbit" dangerouslySetInnerHTML={{ __html: logoSvg }} />;
 }
 
 export type Verdict = "go" | "ready" | "warn" | "stop" | "refresh" | "remediate" | "unknown";
@@ -48,14 +44,48 @@ export function EmptyState({ icon: Icon = Inbox, title, sub, action }: { icon?: 
   );
 }
 
-/** A headline number with its basis. `sub` states how the figure was derived. */
-export function KpiCard({ label, value, sub }: { label: string; value: ReactNode; sub: ReactNode }) {
-  return (
-    <div className="kpi-card">
-      <p className="kpi-label">{label}</p>
-      <p className="kpi-value">{value}</p>
+/**
+ * A stat tile: tiny label, big number, and one line that states its basis or its change. `keyMetric` gives the number
+ * the accent; use it for at most one tile per row. `onClick` makes the tile a link to the records behind it.
+ */
+export function KpiCard({ label, value, sub, keyMetric, onClick, icon: Icon }: { label: string; value: ReactNode; sub: ReactNode; keyMetric?: boolean; onClick?: () => void; icon?: LucideIcon }) {
+  const body = (
+    <>
+      <p className="kpi-label flex items-center gap-1.5">{Icon && <Icon className="size-3.5" aria-hidden />}{label}</p>
+      <p className="kpi-value" data-key={keyMetric ? "true" : undefined}>{value}</p>
       <p className="kpi-sub">{sub}</p>
+    </>
+  );
+  if (onClick) return <button type="button" onClick={onClick} className="kpi-card flex flex-col items-stretch justify-start text-left transition-colors hover:border-s200 hover:bg-surface-sunken/40">{body}</button>;
+  return <div className="kpi-card">{body}</div>;
+}
+
+/** The top of every screen: title, one line of context, and the screen's actions on the right. */
+export function PageHeader({ title, sub, children }: { title: ReactNode; sub?: ReactNode; children?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="page-title">{title}</h1>
+        {sub && <p className="page-sub mt-1">{sub}</p>}
+      </div>
+      {children && <div className="flex flex-wrap items-center gap-2">{children}</div>}
     </div>
+  );
+}
+
+/** A bordered panel with a header row: title, optional context, and actions. */
+export function Panel({ title, sub, actions, children, className, bodyClassName }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode; children: ReactNode; className?: string; bodyClassName?: string }) {
+  return (
+    <section className={cn("panel flex min-w-0 flex-col", className)}>
+      <header className="panel-head">
+        <div className="min-w-0">
+          <h2 className="panel-title">{title}</h2>
+          {sub && <p className="panel-sub mt-0.5">{sub}</p>}
+        </div>
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      </header>
+      <div className={cn("min-w-0 flex-1", bodyClassName)}>{children}</div>
+    </section>
   );
 }
 
@@ -69,11 +99,10 @@ export function HeroKpi({ label, value, sub, compact }: { label: string; value: 
   );
 }
 
-/** The red anchor field: eyebrow, headline, lead, and KPI tiles, with the orbit behind. */
+/** A neutral header panel: eyebrow, headline, lead, and figure tiles. The FCP workspace uses it for the work plan. */
 export function HeroBand({ eyebrow, head, lead, children }: { eyebrow: string; head: ReactNode; lead?: ReactNode; children?: ReactNode }) {
   return (
     <section className="hero-band">
-      <Orbit />
       <p className="mah-eyebrow">{eyebrow}</p>
       <h1 className="mah-head mt-2">{head}</h1>
       {lead && <p className="mah-lead mt-2">{lead}</p>}
@@ -111,7 +140,14 @@ export function DataMount<T>({ id, query, isEmpty, empty, children, className }:
   const state = query.isLoading ? "loading" : query.error ? "error" : query.data === undefined || (isEmpty?.(query.data) ?? false) ? "empty" : "ready";
   return (
     <div id={id} data-tile-mount data-state={state} className={className}>
-      {state === "loading" && <div className="h-28 animate-pulse rounded-xl bg-s100/60" aria-label="Loading" />}
+      {state === "loading" && (
+        <div className="space-y-2 p-1" aria-label="Loading" role="status">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      )}
       {state === "error" && <EmptyState icon={OctagonX} title="Could not load" sub={query.error!.message} action={<Button variant="outline" size="sm" onClick={() => void query.refetch()}>Retry</Button>} />}
       {state === "empty" && <EmptyState {...empty} />}
       {state === "ready" && children(query.data as T)}

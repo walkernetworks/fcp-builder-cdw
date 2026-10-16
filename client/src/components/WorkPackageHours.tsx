@@ -48,12 +48,12 @@ export function CostMeter({ cost, hours, assignments = false, fit }: { cost: Pla
   const style = reserveOnly ? { ...COST_STYLE.over, text: "Over the hours left after the reserve" } : COST_STYLE[cost.status];
   const percent = cost.ratio === null ? 0 : Math.round(cost.ratio * 100);
   return (
-    <div className={`rounded-xl border p-3 text-xs ${style.box}`}>
+    <div className={`rounded-lg border p-3 text-xs ${style.box}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-[10px] font-black uppercase tracking-[.14em]">{assignments ? "Signed assignments cost" : "Plan cost"} · internal, not in the report</span>
+        <span className="text-[11px] font-medium uppercase tracking-wide">{assignments ? "Signed assignments cost" : "Plan cost"} · internal, not in the report</span>
         <span className="font-semibold">{style.text}</span>
       </div>
-      <p className="mt-1 text-sm font-bold">
+      <p className="mt-1 text-sm font-semibold">
         {dollars(cost.planCost)} for {hours.toLocaleString("en-US")} hours
         {cost.entitlementValue > 0 && <> of {dollars(cost.entitlementValue)} ({percent}%){cost.status === "over" && !reserveOnly ? ` · over by ${dollars(cost.planCost - cost.entitlementValue)}` : ` · ${dollars(cost.entitlementValue - cost.planCost)} left`}</>}
       </p>
@@ -110,24 +110,24 @@ export function RoleHoursEditor({ document, effort, barId, onChange }: { documen
     </div>
   );
   if (row.owner !== "cdw") return (
-    <div className="space-y-2 rounded-xl border border-s100 bg-white p-3">
+    <div className="space-y-2 rounded-lg border border-s100 bg-surface p-3">
       {ownedBy}
       <p className="text-xs text-s500">{row.owner === "checkpoint" ? "A checkpoint marks a confirmation point; it takes no time and carries no CDW hours." : "Customer-owned work is run by the customer's team; it carries no CDW hours and is listed as customer-owned work in the report."} Choose CDW to give it hours.</p>
     </div>
   );
   return (
-    <div className="grid gap-3 rounded-xl border border-s100 bg-white p-3 lg:grid-cols-[1fr_1.2fr]">
+    <div className="grid gap-3 rounded-lg border border-s100 bg-surface p-3 lg:grid-cols-[1fr_1.2fr]">
       <div>
         <div className="mb-2">{ownedBy}</div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-s400">{row.deferred ? "Follow-on hours by role · Two-Year Notional" : "Hours by role · entitlement"}</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-s400">{row.deferred ? "Follow-on hours by role · Two-Year Notional" : "Hours by role · entitlement"}</p>
           {row.adjusted && <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => write({ ...override, architect: null, srConsultant: null, projectManager: null })}><RotateCcw className="size-3.5" /> Back to baseline</Button>}
         </div>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {ROLES.map(([role, label]) => (
             <label key={role} className="space-y-1 text-[11px] font-semibold text-s500">{label}
-              <Input type="number" min={0} className="bg-white" value={override[role] ?? ""} placeholder={String(row.baseline[role])} onChange={event => write({ ...override, [role]: event.target.value === "" ? null : Math.max(0, Math.round(Number(event.target.value))) })} />
-              <span className="block text-[10px] font-normal text-s400">Baseline {row.baseline[role]}</span>
+              <Input type="number" min={0} className="bg-surface" value={override[role] ?? ""} placeholder={String(row.baseline[role])} onChange={event => write({ ...override, [role]: event.target.value === "" ? null : Math.max(0, Math.round(Number(event.target.value))) })} />
+              <span className="block text-[11px] font-normal text-s400">Baseline {row.baseline[role]}</span>
             </label>
           ))}
         </div>
@@ -156,10 +156,10 @@ export function AssignmentsInForce({ document, effort, onChange }: { document: E
   const planHours = effort.workPackages.filter(row => !row.deferred).reduce((sum, row) => sum + row.total, 0);
   const clear = () => onChange({ ...document, report: { ...document.report, resourceAssignments: [] } });
   return (
-    <div className="rounded-xl border border-s200 bg-s50 p-3 text-xs leading-5 text-s600">
+    <div className="rounded-lg border border-s200 bg-s50 p-3 text-xs leading-5 text-s600">
       <p><b>Signed resource assignments are in force ({effort.totals.total.toLocaleString("en-US")} hours).</b> They are the hours from the signed resource assignment document, entered on the FCP Report Content step, and they replace this plan in the report and in the cost check, so changing hours or moving work here does not change either. This plan is {planHours.toLocaleString("en-US")} hours in the entitlement.</p>
       <div className="mt-2 flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant="outline" className="h-7 bg-white text-xs" onClick={clear}>Clear assignments</Button>
+        <Button type="button" size="sm" variant="outline" className="h-7 bg-surface text-xs" onClick={clear}>Clear assignments</Button>
       </div>
     </div>
   );
@@ -179,13 +179,13 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
   return (
     <div className="space-y-4">
       {moved.length > 0 && (
-        <div className="rounded-xl border border-s100 bg-s50 px-4 py-3 text-xs leading-5 text-s600">
+        <div className="rounded-lg border border-s100 bg-s50 px-4 py-3 text-xs leading-5 text-s600">
           <b>{moved.length} work package{moved.length === 1 ? " is" : "s are"} in the Two-Year Notional</b>, after the entitlement ends: {moved.map(row => row.label).join("; ")}. Open the Two-Year Notional tab to see them or bring one back.
         </div>
       )}
       <AdoptionTimelineEditor timeline={withoutBars(withOwnership(document).adoptionTimeline, hidden)} onChange={edited => onTimelineChange(withHiddenBars(unstampActivityOwners(edited), document.adoptionTimeline, hidden))} title="Entitlement Adoption Timeline" description={`${description} Click a work package to adjust its hours by role or plan it in the Two-Year Notional.`} selectionDetail={barId => <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} />} />
-      <section className="rounded-xl border border-s100 bg-white p-5 shadow-sm">
-        <p className="text-xs font-black uppercase tracking-[.16em] text-cdw-red">Hours by work package</p>
+      <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm">
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Hours by work package</p>
         <p className="mt-2 max-w-4xl text-xs leading-5 text-s500">
           Baseline hours come from the services catalog for this plan, placed on the work packages that deliver them; adjusted rows are marked. The entitlement window is held to the entitlement value; work beyond it moves to the Two-Year Notional as follow-on scope. The Condensed FCP and the Delivery Package show this same table.
         </p>
@@ -211,7 +211,7 @@ export function NotionalTimelineWithHours({ document, onChange, description }: {
       onChange={twoYearPlan => onChange({ ...document, planAuthority: "manual", twoYearPlan: unstampActivityOwners(twoYearPlan) })}
       title="Two-Year Notional"
       description={`${description} Work moved out of the entitlement starts the month after it ends; click it to change its follow-on hours or bring it back into the entitlement.`}
-      selectionDetail={barId => known.has(barId) ? <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} /> : <p className="rounded-xl border border-s100 bg-white px-3 py-2 text-xs text-s500">Notional roadmap activity; it carries no entitlement hours.</p>}
+      selectionDetail={barId => known.has(barId) ? <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} /> : <p className="rounded-lg border border-s100 bg-surface px-3 py-2 text-xs text-s500">Notional roadmap activity; it carries no entitlement hours.</p>}
     />
   );
 }
@@ -233,21 +233,21 @@ export function WorkPackageTable({ effort }: { effort: ScopedEffort }) {
     <div className="overflow-x-auto">
       <table className="tbl w-full">
         <thead>
-          <tr className="text-left text-[10px]">
+          <tr className="text-left text-[11px]">
             <th className="px-2 py-1.5">Work package</th><th className="px-2 py-1.5">Window</th><th className="px-2 py-1.5">Lead delivery role</th>
             <th className="px-2 py-1.5 text-right">Architect</th><th className="px-2 py-1.5 text-right">Sr. Consultant</th><th className="px-2 py-1.5 text-right">Sr. PM</th><th className="px-2 py-1.5 text-right">Total</th>
           </tr>
         </thead>
         <tbody>
           {groups.map(group => [
-            <tr key={`group-${group.title}`}><td colSpan={7} className="bg-s100 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-s500">{group.title}</td></tr>,
+            <tr key={`group-${group.title}`}><td colSpan={7} className="bg-s100 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-s500">{group.title}</td></tr>,
             ...group.rows.map(row => {
               const shown = row.followOn ?? row;
               const muted = shown.total === 0;
               const tag = row.deferred ? DEFERRED[row.deferred] : row.note ? NOTE[row.note] : row.adjusted ? "Adjusted" : null;
               return (
                 <tr key={row.id} className="border-b border-s100 align-top">
-                  <td className={`px-2 py-1.5 font-semibold ${muted ? "text-s300" : "text-ink"}`}>{row.label}{tag && <span className="ml-2 rounded bg-s100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-s400">{tag}</span>}</td>
+                  <td className={`px-2 py-1.5 font-semibold ${muted ? "text-s300" : "text-ink"}`}>{row.label}{tag && <span className="ml-2 rounded bg-s100 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-s400">{tag}</span>}</td>
                   <td className="whitespace-nowrap px-2 py-1.5 text-s500">{row.deferred ? "After the entitlement" : row.start && row.end ? formatWindow(row.start, row.end) : "—"}</td>
                   <td className="px-2 py-1.5 text-s500">{row.leadRole || "—"}</td>
                   {numberCell(shown.architect, muted)}{numberCell(shown.srConsultant, muted)}{numberCell(shown.projectManager, muted)}{numberCell(shown.total, muted)}
@@ -255,7 +255,7 @@ export function WorkPackageTable({ effort }: { effort: ScopedEffort }) {
               );
             }),
           ])}
-          <tr className="border-t-2 border-s600 font-bold text-ink">
+          <tr className="border-t-2 border-s600 font-semibold text-ink">
             <td className="px-2 py-1.5" colSpan={3}>Total entitlement hours</td>
             {numberCell(totals.architect, false)}{numberCell(totals.srConsultant, false)}{numberCell(totals.projectManager, false)}{numberCell(totals.total, false)}
           </tr>

@@ -40,7 +40,7 @@ describe("CDW design system in the app", () => {
   it("bundles the typeface instead of loading remote fonts", () => {
     expect(read(path.join(client, "index.html"))).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
     expect(sources.filter(file => /fonts\.(googleapis|gstatic)\.com/.test(read(file)))).toEqual([]);
-    expect(read(path.join(client, "src/main.tsx"))).toMatch(/@fontsource-variable\/plus-jakarta-sans/);
+    expect(read(path.join(client, "src/main.tsx"))).toMatch(/@fontsource-variable\/inter/);
   });
 
   it("carries the proprietary legend in the app shell", () => {
@@ -55,6 +55,29 @@ describe("CDW design system in the app", () => {
     const panel = read(path.join(client, "src/components/CompatibilityHandoffPanel.tsx"));
     expect(panel).toMatch(/DECISION_VERDICT/);
     expect(panel).not.toMatch(/<Badge/);
+  });
+
+  it("gives every color token a dark-theme value, except the brand red, which stays fixed", () => {
+    const css = read(path.join(client, "src/index.css"));
+    const block = (selector: string) => css.slice(css.indexOf(`${selector} {`), css.indexOf("}", css.indexOf(`${selector} {`)));
+    const names = (text: string) => new Set(Array.from(text.matchAll(/(--[a-z0-9-]+):\s*#/gi), match => match[1]));
+    const light = names(block(":root"));
+    const dark = new Set(Array.from(block(".dark").matchAll(/(--[a-z0-9-]+):/gi), match => match[1]));
+    // Brand fills and the white text on them read the same in both themes.
+    const fixed = new Set(["--cdw-red", "--cdw-red-bright", "--cdw-red-deep", "--primary-foreground", "--sidebar-primary-foreground"]);
+    expect(Array.from(light).filter(name => !fixed.has(name) && !dark.has(name))).toEqual([]);
+    expect(block(".dark")).not.toMatch(/--cdw-red:/);
+  });
+
+  it("uses surface tokens rather than hard-coded white panels, so dark mode holds", () => {
+    const app = sources.filter(file => !file.includes(`${path.sep}ui${path.sep}`));
+    expect(app.filter(file => /\bbg-white\b(?!\/)/.test(read(file))).map(file => path.relative(root, file))).toEqual([]);
+  });
+
+  it("routes every sidebar item", () => {
+    const nav = read(path.join(client, "src/components/vsa/navigation.ts"));
+    const app = read(path.join(client, "src/App.tsx"));
+    for (const [, href] of Array.from(nav.matchAll(/href: "([^"]+)"/g))) expect(app, href).toMatch(new RegExp(`path="${href}"`));
   });
 
   it("uses US spellings in client copy", () => {

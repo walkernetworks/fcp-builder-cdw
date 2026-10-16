@@ -35,11 +35,11 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
   const pass1 = effort?.internal.pass1;
 
   return (
-    <div className="space-y-4 rounded-xl border border-s100 bg-s50 p-4 text-xs leading-5 text-ink">
+    <div className="space-y-4 rounded-lg border border-s100 bg-s50 p-4 text-xs leading-5 text-ink">
       <div className="flex flex-wrap items-end gap-4">
         <label className="grid gap-1" htmlFor="hours-model">
-          <span className="text-[10px] font-black uppercase tracking-[.14em] text-s500">Hours model</span>
-          <select id="hours-model" className="rounded-md border border-s200 bg-white px-2 py-1.5 text-sm" value={model} onChange={event => setModel(event.target.value as HoursModel)}>
+          <span className="text-[11px] font-medium uppercase tracking-wide text-s500">Hours model</span>
+          <select id="hours-model" className="rounded-md border border-s200 bg-surface px-2 py-1.5 text-sm" value={model} onChange={event => setModel(event.target.value as HoursModel)}>
             <option value="v1">v1: host brackets</option>
             <option value="v2">v2: topology formulas with entitlement fit</option>
           </select>
@@ -47,12 +47,12 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
         {model === "v2" && (
           <>
             <label className="grid gap-1" htmlFor="blended-rate">
-              <span className="text-[10px] font-black uppercase tracking-[.14em] text-s500">Blended rate override ($/hr)</span>
-              <Input id="blended-rate" type="number" min={1} className="w-40 bg-white" value={inputs.blendedRate ?? ""} placeholder={money && money.rateSource === "rate card" ? String(Math.round(money.blendedRate)) : "rate card"} onChange={event => setInput("blendedRate", event.target.value ? Number(event.target.value) : undefined)} />
+              <span className="text-[11px] font-medium uppercase tracking-wide text-s500">Blended rate override ($/hr)</span>
+              <Input id="blended-rate" type="number" min={1} className="w-40 bg-surface" value={inputs.blendedRate ?? ""} placeholder={money && money.rateSource === "rate card" ? String(Math.round(money.blendedRate)) : "rate card"} onChange={event => setInput("blendedRate", event.target.value ? Number(event.target.value) : undefined)} />
             </label>
             <label className="grid gap-1" htmlFor="months-remaining">
-              <span className="text-[10px] font-black uppercase tracking-[.14em] text-s500">Months remaining</span>
-              <Input id="months-remaining" type="number" min={1} max={36} className="w-28 bg-white" value={inputs.monthsRemaining ?? ""} placeholder={fit ? String(fit.monthsRemaining) : ""} onChange={event => setInput("monthsRemaining", event.target.value ? Number(event.target.value) : undefined)} />
+              <span className="text-[11px] font-medium uppercase tracking-wide text-s500">Months remaining</span>
+              <Input id="months-remaining" type="number" min={1} max={36} className="w-28 bg-surface" value={inputs.monthsRemaining ?? ""} placeholder={fit ? String(fit.monthsRemaining) : ""} onChange={event => setInput("monthsRemaining", event.target.value ? Number(event.target.value) : undefined)} />
             </label>
           </>
         )}
@@ -72,14 +72,14 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
             <div className="overflow-x-auto">
               <p className="mb-1 font-semibold">Core work by line (what has to fit first)</p>
               <table className="tbl w-full min-w-[420px]">
-                <thead><tr className="text-left text-[10px]]"><th className="py-1 pr-2">Line</th><th className="py-1 pr-2 text-right">Hours</th><th className="py-1">Fill step</th></tr></thead>
+                <thead><tr className="text-left text-[11px]]"><th className="py-1 pr-2">Line</th><th className="py-1 pr-2 text-right">Hours</th><th className="py-1">Fill step</th></tr></thead>
                 <tbody>{fit.coreByLine.map(row => <tr key={row.code} className="border-t border-s100"><td className="py-1 pr-2"><b>{row.code}</b> {row.line}</td><td className="py-1 pr-2 text-right tabular-nums">{hours(row.loaded)}</td><td className="py-1">{CORE_STEP[row.step] ?? row.step}</td></tr>)}</tbody>
               </table>
             </div>
           )}
           <div className="overflow-x-auto">
             <table className="tbl w-full min-w-[560px]">
-              <thead><tr className="text-left text-[10px]]"><th className="py-1 pr-2">Bucket</th><th className="py-1 pr-2">What goes here</th><th className="py-1 pr-2 text-right">Hours</th><th className="py-1 text-right">Dollars</th></tr></thead>
+              <thead><tr className="text-left text-[11px]]"><th className="py-1 pr-2">Bucket</th><th className="py-1 pr-2">What goes here</th><th className="py-1 pr-2 text-right">Hours</th><th className="py-1 text-right">Dollars</th></tr></thead>
               <tbody>
                 {BUCKETS.map(([key, name, detail]) => (
                   <tr key={key} className="border-t border-s100"><td className="py-1 pr-2 font-semibold">{key} {name}</td><td className="py-1 pr-2 text-s500">{detail}</td><td className="py-1 pr-2 text-right tabular-nums">{hours(fit.buckets[key])}</td><td className="py-1 text-right tabular-nums">{money ? dollars(money.buckets[key]) : ""}</td></tr>
@@ -102,7 +102,7 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
             <div className="overflow-x-auto">
               <p className="mb-1 font-semibold">Not funded in this window</p>
               <table className="tbl w-full min-w-[560px]">
-                <thead><tr className="text-left text-[10px]]"><th className="py-1 pr-2">Line</th><th className="py-1 pr-2">Units</th><th className="py-1 pr-2 text-right">Hours</th><th className="py-1 pr-2">Bucket</th><th className="py-1">Reason</th></tr></thead>
+                <thead><tr className="text-left text-[11px]]"><th className="py-1 pr-2">Line</th><th className="py-1 pr-2">Units</th><th className="py-1 pr-2 text-right">Hours</th><th className="py-1 pr-2">Bucket</th><th className="py-1">Reason</th></tr></thead>
                 <tbody>{fit.notFunded.map(row => <tr key={`${row.code}-${row.bucket}`} className="border-t border-s100"><td className="py-1 pr-2 font-semibold">{row.line}</td><td className="py-1 pr-2 text-s500">{row.label}</td><td className="py-1 pr-2 text-right tabular-nums">{hours(row.loaded)}</td><td className="py-1 pr-2">{row.bucket}</td><td className="py-1">{row.reason}</td></tr>)}</tbody>
               </table>
             </div>
@@ -112,7 +112,7 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
             <div className="overflow-x-auto">
               <p className="mb-1 font-semibold">Burn-down</p>
               <table className="tbl w-full min-w-[420px]">
-                <thead><tr className="text-left text-[10px]]"><th className="py-1 pr-2">Month</th><th className="py-1 pr-2 text-right">Target used</th><th className="py-1 text-right">Actual used</th></tr></thead>
+                <thead><tr className="text-left text-[11px]]"><th className="py-1 pr-2">Month</th><th className="py-1 pr-2 text-right">Target used</th><th className="py-1 text-right">Actual used</th></tr></thead>
                 <tbody>{fit.burndown.map(row => <tr key={row.month} className="border-t border-s100"><td className="py-1 pr-2">{monthLabel(row.month)}</td><td className="py-1 pr-2 text-right tabular-nums">{hours(row.target)}</td><td className="py-1 text-right tabular-nums">{row.actual === null ? "" : hours(row.actual)}</td></tr>)}</tbody>
               </table>
             </div>
@@ -125,7 +125,7 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
           <div className="overflow-x-auto">
             <p className="mb-1 font-semibold">Scope by line (Pass 1, before the fit)</p>
             <table className="tbl w-full min-w-[560px]">
-              <thead><tr className="text-left text-[10px]]"><th className="py-1 pr-2">Line</th><th className="py-1 pr-2 text-right">Base</th><th className="py-1 pr-2 text-right">Depth</th><th className="py-1">Drivers</th></tr></thead>
+              <thead><tr className="text-left text-[11px]]"><th className="py-1 pr-2">Line</th><th className="py-1 pr-2 text-right">Base</th><th className="py-1 pr-2 text-right">Depth</th><th className="py-1">Drivers</th></tr></thead>
               <tbody>{pass1.lines.map(line => <tr key={line.code} className="border-t border-s100"><td className="py-1 pr-2"><b>{line.code}</b> {line.name}{line.designOnly ? " (design only)" : ""}</td><td className="py-1 pr-2 text-right tabular-nums">{line.computedBase.toFixed(1)}</td><td className="py-1 pr-2 text-right tabular-nums">x{line.depthMultiplier}</td><td className="py-1 text-s500">{Object.entries(line.drivers).map(([key, value]) => `${key} ${typeof value === "number" ? Math.round(value * 100) / 100 : value}`).join(", ")}</td></tr>)}</tbody>
             </table>
             <p className="mt-1 text-s500">Project management: {hours(pass1.pm)} hours ({pass1.pmFloorApplied ? "the floor" : "15% of technical hours"}).</p>
@@ -137,7 +137,7 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
                 const key = item.key as keyof EstimateInputs;
                 const canEdit = editable.has(item.key);
                 return (
-                  <label key={item.key} className="grid gap-0.5 rounded-lg border border-s100 bg-white p-2" htmlFor={`assumption-${item.key}`}>
+                  <label key={item.key} className="grid gap-0.5 rounded-lg border border-s100 bg-surface p-2" htmlFor={`assumption-${item.key}`}>
                     <span className="font-semibold">{item.label}</span>
                     <span className="text-s400">{item.source}</span>
                     {!canEdit ? <span>{String(item.value)} (from RVTools or the brief when known)</span>

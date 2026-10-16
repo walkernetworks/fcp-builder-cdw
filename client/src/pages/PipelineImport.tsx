@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { AppShell } from "@/components/vsa/AppShell";
 import { Chip, EmptyState, KpiCard, Pill, SectionBar } from "@/components/vsa/elements";
 import { trpc } from "@/lib/trpc";
 import type { FieldValue, ImportPlan, RowReport } from "@shared/sharepointImport";
@@ -73,15 +72,15 @@ export default function PipelineImport() {
   const busy = preview.isPending || apply.isPending;
 
   return (
-    <AppShell>
-      <main className="mx-auto max-w-7xl space-y-5 px-5 py-6">
+    <>
+      <main className="mx-auto max-w-[1600px] space-y-5 px-6 py-6">
         <SectionBar label="Import" title="SharePoint VSA Pipeline List" />
-        <section className="rounded-xl border border-s100 bg-white p-5 shadow-[var(--shadow-card)]">
+        <section className="rounded-lg border border-s100 bg-surface p-5 shadow-[var(--shadow-card)]">
           <p className="max-w-3xl text-sm leading-6 text-ink-muted">
             In SharePoint, open the VSA Pipeline List, choose Export to CSV, and select the file here. You see what would change before anything is written. Changes made in SharePoint come in; changes made here are never overwritten; a field changed in both places is listed as a conflict and keeps the value from here. Records are never deleted.
           </p>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <label className="btn-pill-ghost inline-flex h-9 cursor-pointer items-center gap-2 px-4 text-sm">
+            <label className="btn-secondary inline-flex h-9 cursor-pointer items-center gap-2 px-4 text-sm">
               <FileUp className="size-4" /> {fileName ? "Choose a different file" : "Choose CSV"}
               <input type="file" accept=".csv,text/csv" className="sr-only" onChange={event => void chooseFile(event.target.files?.[0])} disabled={busy} />
             </label>
@@ -115,7 +114,7 @@ export default function PipelineImport() {
               ))}
             </section>
 
-            <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-s100 bg-white p-4">
+            <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-s100 bg-surface p-4">
               {applied ? (
                 <p className="flex items-center gap-2 text-sm font-semibold text-ink"><Pill verdict="go">Applied</Pill> The report below shows what was written.</p>
               ) : (
@@ -135,7 +134,7 @@ export default function PipelineImport() {
               {rows.length === 0 ? (
                 <EmptyState icon={SearchX} title="No rows in this filter" sub="Choose another filter to see the rest of the report." />
               ) : (
-                <div className="overflow-x-auto rounded-xl border border-s100 bg-white">
+                <div className="overflow-x-auto rounded-lg border border-s100 bg-surface">
                   <table className="tbl">
                     <thead><tr><th className="num w-14">Row</th><th>Customer</th><th className="w-28">Result</th><th>Details</th></tr></thead>
                     <tbody>
@@ -163,8 +162,8 @@ export default function PipelineImport() {
             </section>
 
             {plan.missing.length > 0 && (
-              <section className="rounded-xl border border-s100 bg-white p-4">
-                <h3 className="text-sm font-bold text-ink">Not in this file ({plan.missing.length})</h3>
+              <section className="rounded-lg border border-s100 bg-surface p-4">
+                <h3 className="text-sm font-semibold text-ink">Not in this file ({plan.missing.length})</h3>
                 <p className="mt-1 text-xs text-ink-muted">Imported before but missing from this export. They are kept as they are.</p>
                 <ul className="mt-2 space-y-1 text-sm text-ink">{plan.missing.map(record => <li key={record.id}>#{record.id} {record.customerName} {record.opportunityNumber ? `· ${record.opportunityNumber}` : ""}</li>)}</ul>
               </section>
@@ -173,7 +172,7 @@ export default function PipelineImport() {
         )}
         </div>
       </main>
-    </AppShell>
+    </>
   );
 }
 

@@ -52,10 +52,10 @@ export function CondensedReportPanel({ document, onChange }: Props) {
   };
 
   return (
-    <section className="rounded-xl border border-s100 bg-white p-5">
+    <section className="rounded-lg border border-s100 bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[.16em] text-cdw-red">Condensed FCP</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Condensed FCP</p>
           <h3 className="mt-1 text-lg font-semibold text-ink">Scoped effort and report content</h3>
           <p className="mt-1 max-w-3xl text-xs leading-5 text-s400">Hours are priced from the services catalog for this plan and placed on the adoption timeline's work packages. Signed resource assignments replace them in the report. The fit figures below are internal and never appear in the document.</p>
         </div>
@@ -71,10 +71,10 @@ export function CondensedReportPanel({ document, onChange }: Props) {
               <div className="mb-3 space-y-2"><AssignmentsInForce document={document} effort={data} onChange={onChange} />{data.internal.cost && <CostMeter fit={data.internal.fit} cost={data.internal.cost} hours={data.totals.total} assignments />}</div>
               <p className="mb-1 text-xs font-semibold text-s500">Signed resource assignments (shown in the report)</p>
               <table className="tbl w-full">
-                <thead><tr className="text-left text-[10px]"><th className="p-2">Workstream</th><th className="p-2 text-right">Architect</th><th className="p-2 text-right">Sr. Consultant</th><th className="p-2 text-right">PM</th><th className="p-2 text-right">Total</th></tr></thead>
+                <thead><tr className="text-left text-[11px]"><th className="p-2">Workstream</th><th className="p-2 text-right">Architect</th><th className="p-2 text-right">Sr. Consultant</th><th className="p-2 text-right">PM</th><th className="p-2 text-right">Total</th></tr></thead>
                 <tbody>
                   {data.rows.map(row => <tr key={row.workstream} className="border-b border-s100"><td className="p-2 font-semibold text-ink">{row.workstream}</td><td className="p-2 text-right">{row.architect}</td><td className="p-2 text-right">{row.srConsultant}</td><td className="p-2 text-right">{row.projectManager}</td><td className="p-2 text-right font-semibold">{row.total}</td></tr>)}
-                  <tr className="font-bold text-ink"><td className="p-2">Total</td><td className="p-2 text-right">{data.totals.architect}</td><td className="p-2 text-right">{data.totals.srConsultant}</td><td className="p-2 text-right">{data.totals.projectManager}</td><td className="p-2 text-right">{data.totals.total}</td></tr>
+                  <tr className="font-semibold text-ink"><td className="p-2">Total</td><td className="p-2 text-right">{data.totals.architect}</td><td className="p-2 text-right">{data.totals.srConsultant}</td><td className="p-2 text-right">{data.totals.projectManager}</td><td className="p-2 text-right">{data.totals.total}</td></tr>
                 </tbody>
               </table>
             </> : <>
@@ -83,14 +83,14 @@ export function CondensedReportPanel({ document, onChange }: Props) {
               <WorkPackageTable effort={data} />
             </>}
           </div>
-          <div className="rounded-xl border border-state-warn/30 bg-state-warn-soft p-4 text-xs leading-5 text-state-warn-text">
-            <p className="text-[10px] font-black uppercase tracking-[.14em]">Internal fit check · not in the report</p>
+          <div className="rounded-lg border border-state-warn/30 bg-state-warn-soft p-4 text-xs leading-5 text-state-warn-text">
+            <p className="text-[11px] font-medium uppercase tracking-wide">Internal fit check · not in the report</p>
             <p className="mt-2 font-semibold">{STATUS_TEXT[data.internal.status]}</p>
             <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
               <dt>Envelope</dt><dd className="text-right">{data.internal.envelopeHours === null ? "—" : `${Math.round(data.internal.envelopeHours)} hrs`} <span className="text-state-warn-text">({data.internal.envelopeSource})</span></dd>
               <dt>Full catalog scope</dt><dd className="text-right">{data.internal.fullScopeHours} hrs</dd>
               <dt>Plan after fitting</dt><dd className="text-right">{data.internal.planHours} hrs</dd>
-              {data.internal.shortfallHours > 0 && <><dt>Unfunded hours</dt><dd className="text-right font-bold">{data.internal.shortfallHours} hrs</dd></>}
+              {data.internal.shortfallHours > 0 && <><dt>Unfunded hours</dt><dd className="text-right font-semibold">{data.internal.shortfallHours} hrs</dd></>}
               {data.internal.headroomHours > 0 && <><dt>Hours to spare</dt><dd className="text-right">{data.internal.headroomHours} hrs</dd></>}
             </dl>
             {data.internal.status === "short" && <p className="mt-2">Options: CDW does the one-time work and the customer repeats it; stage the scope; or redirect the entitlement. Express any gap to the customer as hours, never dollars.</p>}

@@ -29,7 +29,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 function YesNo({ value, onChange }: { value: boolean | null; onChange: (value: boolean | null) => void }) {
   return (
     <Select value={value === null ? "unknown" : value ? "yes" : "no"} onValueChange={next => onChange(next === "unknown" ? null : next === "yes")}>
-      <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+      <SelectTrigger className="bg-surface"><SelectValue /></SelectTrigger>
       <SelectContent><SelectItem value="unknown">Not confirmed</SelectItem><SelectItem value="yes">Yes</SelectItem><SelectItem value="no">No</SelectItem></SelectContent>
     </Select>
   );
@@ -57,7 +57,7 @@ function RestoreHidden({ count, onRestore }: { count: number; onRestore: () => v
   return <Button type="button" variant="ghost" size="sm" className="text-xs text-s500" onClick={onRestore}><RotateCcw className="size-3.5" /> Restore {count} hidden</Button>;
 }
 
-const FROM_PLAN = <span className="mr-2 inline-block rounded bg-s100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-s500">From the plan</span>;
+const FROM_PLAN = <span className="mr-2 inline-block rounded bg-s100 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-s500">From the plan</span>;
 
 /** A list of lines; generated lines appear first and can be overridden or hidden. */
 function TextList({ items, onChange, placeholder, generated }: { items: string[]; onChange: (items: string[]) => void; placeholder: string; generated?: GeneratedProps<string> }) {
@@ -71,7 +71,7 @@ function TextList({ items, onChange, placeholder, generated }: { items: string[]
       ))}
       {items.map((item, index) => (
         <div key={index} className="flex gap-2">
-          <Input className="bg-white" value={item} placeholder={placeholder} onChange={event => onChange(items.map((current, position) => (position === index ? event.target.value : current)))} />
+          <Input className="bg-surface" value={item} placeholder={placeholder} onChange={event => onChange(items.map((current, position) => (position === index ? event.target.value : current)))} />
           <Button type="button" variant="ghost" size="icon" aria-label="Remove line" onClick={() => onChange(items.filter((_, position) => position !== index))}><Trash2 className="size-4" /></Button>
         </div>
       ))}
@@ -89,9 +89,9 @@ function RowTable<Row extends Record<string, unknown>>({ rows, columns, blank, o
   const display = (value: unknown) => (Array.isArray(value) ? (value.length ? value.join(", ") : "to be named") : value === null || value === undefined || value === "" ? "—" : String(value));
   const cell = (row: Row, index: number, column: Column<Row>) => {
     const value = row[column.key];
-    const common = { className: "bg-white text-xs", placeholder: column.placeholder ?? column.label, "aria-label": column.label };
+    const common = { className: "bg-surface text-xs", placeholder: column.placeholder ?? column.label, "aria-label": column.label };
     switch (column.type) {
-      case "longtext": return <Textarea {...common} className="min-h-16 bg-white text-xs" value={String(value ?? "")} onChange={event => update(index, column.key, event.target.value)} />;
+      case "longtext": return <Textarea {...common} className="min-h-16 bg-surface text-xs" value={String(value ?? "")} onChange={event => update(index, column.key, event.target.value)} />;
       case "number": return <Input {...common} type="number" min={0} value={value === null || value === undefined ? "" : String(value)} onChange={event => update(index, column.key, numberOrNull(event.target.value) ?? 0)} />;
       case "date": return <Input {...common} type="date" value={String(value ?? "")} onChange={event => update(index, column.key, event.target.value)} />;
       case "month": return <Input {...common} type="month" value={String(value ?? "").slice(0, 7)} onChange={event => update(index, column.key, event.target.value)} />;
@@ -105,7 +105,7 @@ function RowTable<Row extends Record<string, unknown>>({ rows, columns, blank, o
       {anyRows && (
         <div className="overflow-x-auto">
           <table className="w-full border-separate border-spacing-y-1 text-xs">
-            <thead><tr>{columns.map(column => <th key={column.key} className="px-1 text-left text-[10px] font-bold uppercase tracking-wide text-s400" style={{ width: column.width }}>{column.label}</th>)}<th className="w-10" /></tr></thead>
+            <thead><tr>{columns.map(column => <th key={column.key} className="px-1 text-left text-[11px] font-medium uppercase tracking-wide text-s400" style={{ width: column.width }}>{column.label}</th>)}<th className="w-10" /></tr></thead>
             <tbody>
               {generated?.generated.map(item => (
                 <tr key={item.key} className="align-top text-s600">
@@ -151,7 +151,7 @@ function Section({ value, title, heading, filled, hint, children }: { value: str
 function Group({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
     <div className="mt-6">
-      <p className="text-[10px] font-black uppercase tracking-[.16em] text-s400">{title}</p>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-s400">{title}</p>
       <p className="mt-1 text-xs leading-5 text-s400">{description}</p>
       {children}
     </div>
@@ -168,9 +168,9 @@ export function ReportContentEditor({ document, onChange }: Props) {
   const set = <K extends keyof ReportContent>(key: K, value: ReportContent[K]) => onChange({ ...document, report: { ...report, [key]: value } });
   const setEntitlement = (patch: Partial<ReportContent["entitlement"]>) => set("entitlement", { ...report.entitlement, ...patch });
   const setDiscovery = (patch: Partial<ReportContent["discovery"]>) => set("discovery", { ...report.discovery, ...patch });
-  const textInput = (value: string | null, onValue: (value: string | null) => void, placeholder = "") => <Input className="bg-white" value={value ?? ""} placeholder={placeholder} onChange={event => onValue(event.target.value === "" ? null : event.target.value)} />;
-  const numberInput = (value: number | null, onValue: (value: number | null) => void, placeholder = "") => <Input className="bg-white" type="number" min={0} value={value ?? ""} placeholder={placeholder} onChange={event => onValue(numberOrNull(event.target.value))} />;
-  const dateInput = (value: string | null, onValue: (value: string | null) => void) => <Input className="bg-white" type="date" value={value ?? ""} onChange={event => onValue(event.target.value || null)} />;
+  const textInput = (value: string | null, onValue: (value: string | null) => void, placeholder = "") => <Input className="bg-surface" value={value ?? ""} placeholder={placeholder} onChange={event => onValue(event.target.value === "" ? null : event.target.value)} />;
+  const numberInput = (value: number | null, onValue: (value: number | null) => void, placeholder = "") => <Input className="bg-surface" type="number" min={0} value={value ?? ""} placeholder={placeholder} onChange={event => onValue(numberOrNull(event.target.value))} />;
+  const dateInput = (value: string | null, onValue: (value: string | null) => void) => <Input className="bg-surface" type="date" value={value ?? ""} onChange={event => onValue(event.target.value || null)} />;
 
   /** Wiring for a section the app partly generates: override copies the row into the planner's rows and hides the original. */
   function generatedFor<S extends GeneratedSection>(section: S): GeneratedProps<GeneratedReport[S][number]["row"]> {
@@ -197,11 +197,11 @@ export function ReportContentEditor({ document, onChange }: Props) {
   ].filter((item): item is string => Boolean(item));
 
   return (
-    <section className="rounded-xl border border-s100 bg-white p-5">
-      <p className="text-[10px] font-black uppercase tracking-[.16em] text-cdw-red">Condensed FCP content</p>
+    <section className="rounded-lg border border-s100 bg-surface p-5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Condensed FCP content</p>
       <h3 className="mt-1 text-lg font-semibold text-ink">Report content</h3>
       <p className="mt-1 max-w-3xl text-xs leading-5 text-s400">Fill this in by hand, or import a Copilot brief above to pre-fill it. Grey rows marked “From the plan” are generated and print as shown; override or hide any of them. A section with nothing in it is left out of the report, never printed as a placeholder. Changes save automatically.</p>
-      <div className={`mt-4 rounded-xl border p-3 text-xs ${missing.length ? "border-state-warn/30 bg-state-warn-soft text-state-warn-text" : "border-state-pass/30 bg-state-pass-soft text-state-pass-text"}`}>
+      <div className={`mt-4 rounded-lg border p-3 text-xs ${missing.length ? "border-state-warn/30 bg-state-warn-soft text-state-warn-text" : "border-state-pass/30 bg-state-pass-soft text-state-pass-text"}`}>
         {missing.length ? <><b>Not captured yet, so left out of the report:</b> {missing.join(" · ")}</> : <b>Everything the report needs from the customer is filled in.</b>}
       </div>
 
@@ -254,7 +254,7 @@ export function ReportContentEditor({ document, onChange }: Props) {
           <Section value="profile" title="Design profile" heading="VCF Design Profile" hint="The grey text is generated from the plan and prints as shown. Type to replace it; clear the field to go back to the generated text.">
             <div className="grid gap-3 md:grid-cols-2">
               {([["consumption", "Consumption"], ["physicalSite", "Physical site configuration"], ["availability", "Availability"], ["isolation", "Isolation"], ["recoverability", "Recoverability"], ["expansion", "Expansion"]] as const).map(([key, label]) => (
-                <Field key={key} label={label}><Textarea className="min-h-16 bg-white text-xs" value={report.designProfile[key] ?? ""} placeholder={generated.designProfile[key]} onChange={event => set("designProfile", { ...report.designProfile, [key]: event.target.value || null })} /></Field>
+                <Field key={key} label={label}><Textarea className="min-h-16 bg-surface text-xs" value={report.designProfile[key] ?? ""} placeholder={generated.designProfile[key]} onChange={event => set("designProfile", { ...report.designProfile, [key]: event.target.value || null })} /></Field>
               ))}
             </div>
           </Section>
@@ -303,7 +303,7 @@ export function ReportContentEditor({ document, onChange }: Props) {
               <Field label="Networking">{textInput(report.discovery.networking, value => setDiscovery({ networking: value }), "Cisco Nexus, VLAN-backed")}</Field>
               <Field label="Jumbo frames" hint="With overlay networking in scope, changes the MTU gate. Mixed when some switches run them and others do not.">
                 <Select value={report.discovery.jumboFrames === null ? "unknown" : report.discovery.jumboFrames === "mixed" ? "mixed" : report.discovery.jumboFrames ? "yes" : "no"} onValueChange={next => setDiscovery({ jumboFrames: next === "unknown" ? null : next === "mixed" ? "mixed" : next === "yes" })}>
-                  <SelectTrigger className="bg-white"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="bg-surface"><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="unknown">Not confirmed</SelectItem><SelectItem value="yes">Yes</SelectItem><SelectItem value="no">No</SelectItem><SelectItem value="mixed">Mixed</SelectItem></SelectContent>
                 </Select>
               </Field>
@@ -311,7 +311,7 @@ export function ReportContentEditor({ document, onChange }: Props) {
               <Field label="Disaster recovery" hint="With resilience in scope, adds a DR design element.">{textInput(report.discovery.drSolution, value => setDiscovery({ drSolution: value }), "Zerto")}</Field>
               <Field label="Security tooling" hint="With security in scope, adds a design element.">{textInput(report.discovery.securityTooling, value => setDiscovery({ securityTooling: value }), "CrowdStrike, Palo Alto")}</Field>
               <Field label="Container platform" hint="With Kubernetes in scope, adds a design element.">{textInput(report.discovery.containerPlatform, value => setDiscovery({ containerPlatform: value }), "OpenShift")}</Field>
-              <Field label="Public cloud (comma separated)"><Input className="bg-white" value={listToText(report.discovery.hyperscalers)} onChange={event => setDiscovery({ hyperscalers: textToList(event.target.value) })} /></Field>
+              <Field label="Public cloud (comma separated)"><Input className="bg-surface" value={listToText(report.discovery.hyperscalers)} onChange={event => setDiscovery({ hyperscalers: textToList(event.target.value) })} /></Field>
             </div>
           </Section>
 
@@ -320,8 +320,8 @@ export function ReportContentEditor({ document, onChange }: Props) {
               <Field label="VCF licensed"><YesNo value={report.discovery.vcfLicensed} onChange={value => setDiscovery({ vcfLicensed: value })} /></Field>
               <Field label="Licensed VCF cores">{numberInput(report.discovery.licensedCores, value => setDiscovery({ licensedCores: value }))}</Field>
               <Field label="Subscription renewal">{dateInput(report.discovery.renewalDate, value => setDiscovery({ renewalDate: value }))}</Field>
-              <Field label="Add-ons purchased (comma separated)"><Input className="bg-white" value={listToText(report.discovery.addOnsPurchased)} placeholder="VCF Operations for networks, vDefend" onChange={event => setDiscovery({ addOnsPurchased: textToList(event.target.value) })} /></Field>
-              <Field label="Not requested (comma separated)" hint="Shown where a category has no work, e.g. Kubernetes, Private AI."><Input className="bg-white" value={listToText(report.declined)} onChange={event => set("declined", textToList(event.target.value))} /></Field>
+              <Field label="Add-ons purchased (comma separated)"><Input className="bg-surface" value={listToText(report.discovery.addOnsPurchased)} placeholder="VCF Operations for networks, vDefend" onChange={event => setDiscovery({ addOnsPurchased: textToList(event.target.value) })} /></Field>
+              <Field label="Not requested (comma separated)" hint="Shown where a category has no work, e.g. Kubernetes, Private AI."><Input className="bg-surface" value={listToText(report.declined)} onChange={event => set("declined", textToList(event.target.value))} /></Field>
             </div>
           </Section>
 

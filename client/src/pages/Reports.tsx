@@ -2,16 +2,14 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { AppShell } from "@/components/vsa/AppShell";
-import { DataMount, EmptyState, KpiCard, Pill, SectionBar, type Verdict } from "@/components/vsa/elements";
-import { RecordDrawer } from "@/components/vsa/RecordDrawer";
+import { DataMount, EmptyState, KpiCard, PageHeader, Pill, type Verdict } from "@/components/vsa/elements";
+import { useShell } from "@/components/vsa/ShellContext";
 import { ReportBuilder } from "@/components/vsa/ReportBuilder";
 import { ReportChart } from "@/components/vsa/ReportChart";
 import { downloadBase64, downloadText } from "@/lib/downloads";
 import { trpc } from "@/lib/trpc";
 import { todayIso } from "@/lib/vsa";
 import { FIELD_BY_KEY, formatMeasure, measureLabel, PROPRIETARY_LEGEND, REPORT_PRESETS, reportCsv, runReport, type ReportConfig } from "@shared/vsaReports";
-import { inRoleView, ROLE_VIEW_LABELS } from "@shared/vsaViews";
 import { BarChart3, ChevronDown, ChevronUp, Download, FileSpreadsheet, Loader2, Save, SearchX, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -39,7 +37,7 @@ export default function Reports() {
   const [dirty, setDirty] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(true);
   const [saveAs, setSaveAs] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<number | null>(null);
+  const { openRecord } = useShell();
 
   // Load the chosen preset or saved report, and keep the URL shareable.
   useEffect(() => {
@@ -61,11 +59,10 @@ export default function Reports() {
     window.history.replaceState({}, "", url);
   }, [current.kind, current.id, saved.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const source = useMemo(() => (list.data ?? []).filter(row => !user || inRoleView(row, user.id, user.vsaRole ?? null)), [list.data, user]);
+  const source = useMemo(() => list.data ?? [], [list.data]);
   const result = useMemo(() => runReport(source, config, today), [source, config, today]);
   const canEditSaved = current.kind === "saved" && user && (current.ownerId === user.id || user.role === "admin");
   const description = current.kind === "preset" ? REPORT_PRESETS.find(item => item.id === current.id)?.description : `Saved report${saved.data?.find(item => item.id === current.id)?.ownerName ? ` by ${saved.data.find(item => item.id === current.id)!.ownerName}` : ""}.`;
-  const roleLabel = user?.vsaRole ? `${ROLE_VIEW_LABELS[user.vsaRole]} view` : "All records";
 
   const save = trpc.reports.save.useMutation({
     onSuccess: async ({ id }, input) => {
@@ -91,11 +88,11 @@ export default function Reports() {
   const filename = (extension: string) => `${name.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "VSA-report"}-${today}.${extension}`;
 
   return (
-    <AppShell>
-      <main className="mx-auto max-w-[1500px] space-y-5 px-5 py-6">
-        <SectionBar label={`Reports · ${roleLabel}`} title={<span>{name}{dirty && <span className="ml-2 align-middle text-xs font-semibold text-ink-muted">(unsaved changes)</span>}</span>}>
+    <>
+      <main className="mx-auto max-w-[1600px] space-y-5 px-6 py-6">
+        <PageHeader title={<span>{name}{dirty && <span className="ml-2 align-middle text-xs font-normal text-ink-muted">Unsaved changes</span>}</span>} sub={description ?? "Reports run on every record in the workspace."}>
           <select
-            className="h-9 max-w-[320px] rounded-full border border-s200 bg-white px-3 text-sm font-semibold text-ink"
+            className="h-7 max-w-[320px] rounded-md border border-s200 bg-surface px-2 text-[13px] font-medium text-ink"
             aria-label="Choose a report"
             value={current.kind === "preset" ? `preset:${current.id}` : `saved:${current.id}`}
             onChange={event => {
@@ -112,19 +109,18 @@ export default function Reports() {
           {canEditSaved && <Button variant="outline" size="sm" onClick={() => { if (window.confirm(`Delete the saved report "${name}"?`)) remove.mutate({ id: current.id }); }}><Trash2 className="size-4" /> Delete</Button>}
           {canEditSaved && <Button variant="outline" size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate({ id: current.id, name, config })}><Save className="size-4" /> Save</Button>}
           <Button size="sm" onClick={() => setSaveAs(current.kind === "preset" ? `${name} (copy)` : name)}><Save className="size-4" /> Save as</Button>
-        </SectionBar>
-        {description && <p className="-mt-2 text-sm text-ink-muted">{description}</p>}
+        </PageHeader>
 
         <section>
-          <button type="button" className="mb-2 inline-flex items-center gap-2 text-sm font-bold text-ink" onClick={() => setBuilderOpen(open => !open)} aria-expanded={builderOpen}>
+          <button type="button" className="mb-2 inline-flex items-center gap-2 text-[13px] font-medium text-ink" onClick={() => setBuilderOpen(open => !open)} aria-expanded={builderOpen}>
             <SlidersHorizontal className="size-4" /> Customize {builderOpen ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
           </button>
           {builderOpen && <ReportBuilder config={config} onChange={changeConfig} />}
         </section>
 
-        <DataMount id="reportResult" query={list} isEmpty={data => data.length === 0} empty={{ icon: BarChart3, title: "No engagements yet", sub: "Import the SharePoint VSA Pipeline List or create engagements on the board, then run reports here." }}>
+        <DataMount id="reportResult" query={list} isEmpty={data => data.length === 0} empty={{ icon: BarChart3, title: "No engagements yet", sub: "Import the SharePoint VSA Pipeline List or create engagements in the Pipeline, then run reports here." }}>
           {() => result.rows.length === 0 ? (
-            <EmptyState icon={SearchX} title="No engagements match this report" sub={`Nothing in the ${roleLabel.toLowerCase()} passes these filters. Loosen a filter, include closed engagements, or change the view in the header.`} />
+            <EmptyState icon={SearchX} title="No engagements match this report" sub="Nothing passes these filters. Loosen a filter or include closed engagements." />
           ) : (
             <div className="space-y-5">
               <div className="kpi-grid">
@@ -137,11 +133,11 @@ export default function Reports() {
               {result.groups && groupField && (
                 <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <ReportChart groups={result.groups} measure={config.measures[0]} groupLabel={groupField.label} />
-                  <div className="overflow-x-auto rounded-xl border border-s100 bg-white">
+                  <div className="overflow-x-auto rounded-lg border border-s100 bg-surface">
                     {result.pivot ? (
                       <table className="tbl">
                         <thead><tr><th>{groupField.label} by {result.pivot.compare.label}</th>{result.pivot.columns.map(col => <th key={col.key} className="num">{col.label}</th>)}<th className="num">Total</th></tr></thead>
-                        <tbody>{result.groups.map((group, index) => <tr key={group.key}><td className="font-semibold">{group.label}</td>{result.pivot!.cells[index].map((value, c) => <td key={c} className="num">{formatMeasure(config.measures[0], value)}</td>)}<td className="num font-bold">{formatMeasure(config.measures[0], group.values[0])}</td></tr>)}</tbody>
+                        <tbody>{result.groups.map((group, index) => <tr key={group.key}><td className="font-semibold">{group.label}</td>{result.pivot!.cells[index].map((value, c) => <td key={c} className="num">{formatMeasure(config.measures[0], value)}</td>)}<td className="num font-semibold">{formatMeasure(config.measures[0], group.values[0])}</td></tr>)}</tbody>
                         <tfoot><tr><td>Total</td>{result.pivot.columnTotals.map((value, c) => <td key={c} className="num">{formatMeasure(config.measures[0], value)}</td>)}<td className="num">{formatMeasure(config.measures[0], result.totals[0])}</td></tr></tfoot>
                       </table>
                     ) : (
@@ -156,7 +152,7 @@ export default function Reports() {
                 </div>
               )}
 
-              <div className="overflow-x-auto rounded-xl border border-s100 bg-white">
+              <div className="overflow-x-auto rounded-lg border border-s100 bg-surface">
                 <table className="tbl">
                   <thead>
                     <tr>
@@ -174,7 +170,7 @@ export default function Reports() {
                   </thead>
                   <tbody>
                     {result.rows.map((row, rowIndex) => (
-                      <tr key={row.id} className="cursor-pointer hover:[&>td]:bg-s100/60" onClick={() => setOpenId(row.id)}>
+                      <tr key={row.id} data-selectable tabIndex={0} onClick={() => openRecord(row.id)} onKeyDown={event => event.key === "Enter" && openRecord(row.id)}>
                         {result.columns.map((field, index) => {
                           const text = result.table[rowIndex][index];
                           // Expiry is a verdict, so it renders as a pill (word plus icon) rather than bare text.
@@ -192,16 +188,15 @@ export default function Reports() {
         </DataMount>
       </main>
 
-      <RecordDrawer id={openId} onClose={() => setOpenId(null)} />
       <Dialog open={saveAs !== null} onOpenChange={open => !open && setSaveAs(null)}>
         <DialogContent className="sm:max-w-md">
           <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (saveAs?.trim()) save.mutate({ name: saveAs.trim(), config }); }}>
             <DialogHeader>
               <p className="cta-eyebrow">Save report</p>
-              <DialogTitle className="text-lg font-black tracking-tight">Save as a new report</DialogTitle>
+              <DialogTitle className="text-lg font-semibold tracking-tight">Save as a new report</DialogTitle>
               <DialogDescription>Saved reports are shared with everyone in the workspace. Only you or an admin can change or delete it.</DialogDescription>
             </DialogHeader>
-            <Input autoFocus maxLength={120} value={saveAs ?? ""} onChange={event => setSaveAs(event.target.value)} aria-label="Report name" className="h-9 rounded-full" />
+            <Input autoFocus maxLength={120} value={saveAs ?? ""} onChange={event => setSaveAs(event.target.value)} aria-label="Report name" className="h-9 rounded-md" />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setSaveAs(null)}>Cancel</Button>
               <Button type="submit" disabled={!saveAs?.trim() || save.isPending}>Save</Button>
@@ -209,6 +204,6 @@ export default function Reports() {
           </form>
         </DialogContent>
       </Dialog>
-    </AppShell>
+    </>
   );
 }

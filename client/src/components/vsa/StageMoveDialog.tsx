@@ -21,17 +21,17 @@ export function StageMoveDialog({ move, pending, onCancel, onConfirm }: { move: 
           <form onSubmit={event => { event.preventDefault(); onConfirm(effectiveOn, note.trim()); }} className="space-y-4">
             <DialogHeader>
               <p className="cta-eyebrow">Move stage</p>
-              <DialogTitle className="text-lg font-black tracking-tight">{move.customerName}</DialogTitle>
+              <DialogTitle className="text-lg font-semibold tracking-tight">{move.customerName}</DialogTitle>
               <DialogDescription>{STAGE_LABELS[move.from]} → <strong className="text-ink">{STAGE_LABELS[move.to]}</strong></DialogDescription>
             </DialogHeader>
             {move.warnings.length > 0 && <div className="space-y-1">{move.warnings.map(warning => <p key={warning} className="text-xs"><Pill verdict="warn">Open</Pill> {warning}</p>)}</div>}
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-cool-8">
+            <label className="block text-[11px] font-medium uppercase tracking-wide text-cool-8">
               Date of the change
-              <Input type="date" required value={effectiveOn} min={move.stageEnteredOn} max={todayIso()} onChange={event => setEffectiveOn(event.target.value)} className="mt-1 h-9 rounded-full" />
+              <Input type="date" required value={effectiveOn} min={move.stageEnteredOn} max={todayIso()} onChange={event => setEffectiveOn(event.target.value)} className="mt-1 h-9 rounded-md" />
             </label>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-cool-8">
+            <label className="block text-[11px] font-medium uppercase tracking-wide text-cool-8">
               {move.noteRequired ? "Why (required: this skips, reverses, or reopens a stage)" : "Note (optional)"}
-              <Textarea value={note} onChange={event => setNote(event.target.value)} rows={3} className="mt-1 rounded-xl normal-case tracking-normal" required={move.noteRequired} />
+              <Textarea value={note} onChange={event => setNote(event.target.value)} rows={3} className="mt-1 rounded-lg normal-case tracking-normal" required={move.noteRequired} />
             </label>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
