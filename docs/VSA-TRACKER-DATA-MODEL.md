@@ -91,6 +91,7 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 | `intakeSource` | enum `manual`, `sharepoint_import`, `intake_import` | no | `manual` | I | How the record was created (section 12). Existing rows backfill to `manual` |
 | `intakeSubmissionId` | varchar(64) | yes | | I | **Unique.** The form response ID from the intake import, so re-importing the same file never creates a duplicate |
 | `lastImportedAt` | timestamp | yes | | I | Last time an import touched this record |
+| `intakeAnswers` | json | yes | | I | Intake form answers that are context, not tracker fields: industry codes, engagement scope, contract length, prior sales or services, MSA, services provided so far, evaluation notes. Read-only after import. Typed by a zod schema in `shared/vsaIntake.ts` |
 | `isFundingExtension` | boolean | no | false | I | "Funding Extension". **Legacy only.** Funding extensions are no longer offered; this keeps the 12 imported historical records identifiable. Import-only: not on the new-record form or the edit form |
 
 ### 3.2 Classification
@@ -256,7 +257,7 @@ Who is on each record. This drives role views ("my records as architect").
 |---|---|---|---|
 | `id` | int PK auto | no | |
 | `engagementId` | int | no | FK, `ON DELETE CASCADE` |
-| `role` | enum `sales_rep`, `account_manager`, `presales`, `architect`, `pm`, `sr_consultant` | no | |
+| `role` | enum `sales_rep`, `account_manager`, `presales`, `architect`, `pm`, `sr_consultant`, `broadcom_ad` | no | `broadcom_ad` is the Broadcom account director named on the intake form (email only; never an app user) |
 | `userId` | int | yes | FK `users.id`. NULL when the person has not signed in yet |
 | `displayName` | varchar(240) | no | |
 | `email` | varchar(320) | yes | CDW email. Used to link `userId` when that person first signs in |
@@ -448,46 +449,75 @@ Decided in review on 2026-10-15:
 
 ## 12. Intake and the Power Automate flow
 
-### 12.1 What exists today
+Based on the exported flow definition (`ServiceEngagementFlow`, exported 2026-10-16). The flow's run history was not available, so the failure points below are read from the definition, not observed.
 
-A form submission starts a Power Automate flow that (a) creates the Salesforce opportunity, which is where the `C-OPP-` number comes from, (b) adds the row to the SharePoint VSA Pipeline List, and (c) sends notification emails. The flow breaks often and takes ongoing effort to fix. The `AWC-OPP-` placeholders date from before the flow created opportunities.
+### 12.1 What the flow does
 
-### 12.2 The constraint
+Trigger: a response to the Broadcom Services Engagement Participation Request form. In order:
 
-The kickoff locks the app as standalone. It makes no calls to Salesforce, SharePoint, or mail, and no outbound network calls except the database; data moves in and out as files. That keeps the IT and InfoSec approval simple. So the app cannot replace the Salesforce-opportunity or email steps without reopening that decision, which would add an integration review to the approval track.
+1. Reads the response and cleans the client name (strips 16 punctuation characters) for use in folder paths.
+2. Looks up the Salesforce Account whose `CustomerID__c` equals the form's Customer ID. If none is found, it emails the rep **and continues**.
+3. Looks up the rep, the rep's manager, and the DC architect in the directory.
+4. Creates the client folder `Discovery/Clients/<name>`, plus `RVTools Exports`, and moves uploaded RVTools files into it.
+5. For each matching account: creates the Opportunity ("<name> - VMware LLC", stage Discovery, close date = booking date + 14 days) and a product line at the entitlement amount. It then creates the Pipeline List item (Title = the `C-OPP-` number, stage "1 Customer Discovery & Scoping", RA "1 Not Started", risk "Submitted", VSA Expiration = booking date + 364 days) and sends four emails: rep and manager, DC architect, the SDDC team (asking them to copy the data by hand into Broadcom's Google form, the SER), and the Broadcom account director (risk-assessment terms).
 
-### 12.3 Options
+This confirms the account key: the form's Customer ID is Salesforce `Account.CustomerID__c`, the value `salesforceCustomerId` holds.
 
-| Option | What the flow keeps doing | What the app does | Trade-off |
-|---|---|---|---|
-| A. Work alongside, no flow change | Everything, including the SharePoint list | Re-imports the SharePoint list export on a schedule (the Phase 2 importer, re-run) | No flow work, but the flow keeps all of its failure points and the list stays a second copy |
-| **B. Slim the flow (recommended)** | Form, Salesforce opportunity, emails | Becomes the only tracker. Imports the form-response file (with the `C-OPP-` number the flow wrote back) instead of the SharePoint list | Removes the list-writing steps, and any folder-creation steps if you choose, from the flow. The app stays standalone. Intake needs a person to run the import (a minute, daily or on demand) |
-| C. App replaces the form | Salesforce opportunity and emails, triggered by a file the app exports into a watched SharePoint folder | Owns intake from the first keystroke | Least duplication, but the flow still runs, the hand-off is a manual file drop, and the `C-OPP-` number still has to come back by import |
-| D. App replaces the flow | Nothing | Calls Salesforce and sends email | Breaks the standalone decision. Needs integration approval and credentials. Not recommended |
+### 12.2 Why it keeps breaking
 
-B is recommended because it cuts the flow down to the steps only Power Automate can do (Salesforce and email connectors), and moves the part that becomes the app's job, the tracker record, out of the flow. Before choosing, it is worth confirming which flow steps actually break. If the failures are mostly in the Salesforce step, slimming the flow helps less, and C becomes more attractive.
+| # | Issue | Effect |
+|---|---|---|
+| 1 | **No error handling.** The "Go Here If Failed" scope is empty; there is no terminate, retry, or failure notice | Any failed step leaves a half-finished intake, and no one is told unless they check run history |
+| 2 | **Not safe to re-run.** Nothing checks for an existing opportunity, folder, or list item | Resubmitting or resubmitting a failed run creates a second opportunity and list item |
+| 3 | **Account-not-found does not stop the flow** | The folder is created and RVTools files are moved, but no opportunity or list item is made. The rep's fix (resubmit) then runs into issue 2 |
+| 4 | **Directory lookups gate everything.** The rep's manager and the DC architect must resolve before any real work starts | A rep with no manager set, or a blank or guest architect, fails the whole run before anything is created |
+| 5 | **One long chain.** The opportunity, product, list item, and four emails run strictly in sequence, each after the previous succeeds | A product-line failure leaves an opportunity with no list row and no emails. A failed email skips every later email |
+| 6 | **RVTools file selection takes the whole folder.** It lists every file in the form's upload folder, not just this response's files, then moves and deletes them all | If a previous run failed partway or two submissions overlap, **one customer's RVTools exports are moved into another customer's folder**. This is a data-handling problem, not just a reliability one |
+| 7 | **The list item uses people fields** (sales rep and DC FSA as user claims) and choice values typed as text | An unresolvable person, or a renamed choice value, fails the list write |
+| 8 | **The For-each over matched accounts** | Two accounts with the same Customer ID create two opportunities and two list items |
+| 9 | Hard-coded IDs (list GUID, product ID, site URLs) and an always-false condition (`1 = 2`) left over from testing | Fragile to any SharePoint or Salesforce change; confusing to maintain |
 
-### 12.4 What the schema already supports
+The list write (7) is only one of nine. Replacing the list with the app removes it, but most of the breakage is in 1 to 6.
 
-The schema works for A, B, and C without change:
+### 12.3 The constraint
 
-- `intakeSource` records how each record arrived.
-- `intakeSubmissionId` (unique) makes re-importing the same form-response file idempotent.
-- `opportunityNumber` (unique) is the match key between a form response, the SharePoint list, and an existing record. Imports fall back to `serNumber`, then to customer name plus SER, and report every fallback match.
-- `lastImportedAt` shows staleness.
+The kickoff locks the app as standalone. It makes no calls to Salesforce, SharePoint, or mail, and no outbound network calls except the database; data moves as files. So the app cannot take over steps 2, 4, or 5 (account lookup, folders and files, opportunity, emails) without reopening that decision.
 
-### 12.5 Transition (any option)
+### 12.4 Recommendation
 
-While SharePoint is still fed by the flow, the Phase 2 importer is re-run against fresh list exports. Import rules once a record exists in the app:
+**Keep the flow for what only it can do, restructure it, and stop it writing the 46-column list.**
+
+Flow changes (Power Automate work, outside this repo):
+
+1. **Validate first, then act.** Look up the account before anything is created. If it is not found or matches more than one, email the rep and **terminate** (fixes 3, 8).
+2. **Make directory lookups optional.** Treat a failed manager or architect lookup as "unknown", and carry on (fixes 4).
+3. **Check before create.** Search for an existing opportunity for this account before creating one. Folder creation tolerates an existing folder (fixes 2).
+4. **Pick only this response's RVTools files** using the file list in the response's upload answer, not the whole folder (fixes 6). This one should be fixed even if nothing else changes.
+5. **Wrap the main work in a Try scope and add a Catch scope** that runs on failure or timeout and emails the SDDC team the run link and what was already created (fixes 1, 5).
+6. **Run the emails in parallel branches** after the opportunity exists, so one failure does not skip the rest (fixes 5).
+7. **Replace the Pipeline List write with an "Intake Log"**: a plain SharePoint list or Excel table with text-only columns (response ID, submit date, Customer ID, client name, `C-OPP-` number, opportunity ID, flow result). No people or choice fields (fixes 7). The app imports this log, plus the form-response export for the answers.
+
+App side, the intake import (Phase 5, possibly earlier):
+
+- Matches on `intakeSubmissionId`, then `opportunityNumber`, then `salesforceCustomerId`. A rerun of the same file changes nothing.
+- Creates the record at stage `intake` (the SER is still submitted by hand by the SDDC team, so `broadcom_request` starts when `serSubmittedOn` is set), with `riskAssessment = submitted`, as the flow does today.
+- Maps the answers: Y1 VCF consulting amount → `entitlementValue`; estimated booking date → `estimatedCloseOn`; booking date + 364 days → `deliveryWindowEnd`, marked as an estimate until confirmed; estimated cores → `coreCount`; estimated ABV → `estimatedDealValue`; rep, DC architect, and Broadcom AD → assignments; everything else → `intakeAnswers`.
+- Never handles RVTools files. The upload stays in SharePoint as today; the architect loads RVTools in the browser, so raw data still never reaches the app.
+
+If you later want the app to own the form itself (option C in the earlier draft), it would export an intake file to a watched SharePoint folder, and the restructured flow would start from that file instead of from Forms. Nothing in the schema changes for that.
+
+### 12.5 Transition
+
+Until the Intake Log exists, the Phase 2 importer is re-run against fresh Pipeline List exports. Import rules once a record exists in the app:
 
 - Import creates new records and fills empty fields.
 - It never overwrites a field someone edited in the app. Conflicts go to the reconciliation report.
 - Stage changes from import are written as `stageEvents` with `source = import`.
 
-Cutover is per option: for B, remove the list-writing step from the flow once the team works from the app, then switch the importer from the list export to the form-response file. Phase 5's intake import is that switch. It may move earlier than Phase 5 if the flow problems justify it.
+When the team works from the app, the flow's list write is swapped for the Intake Log write, and the importer switches source.
 
-### 12.6 Needed to decide
+### 12.6 Smaller findings
 
-- An export of the flow's steps (Power Automate: flow → Export, or a screenshot of each step) and which steps break most.
-- The form's field list, so the intake import can map it.
-
+- The flow writes five list fields that are not in the 46-column export (`VSEStage`, `AccelerationFundStage`, `DiscoveryReadinessStage`, `Alignment`, and a "Professional Services" field). They look unused. The importer ignores them unless told otherwise.
+- The form collects the Broadcom account director's email. That is now the `broadcom_ad` assignment role.
+- The VSA Expiration the flow sets is an estimate (booking + 364 days), so imported expiry dates from intake are only as good as the booking date.
