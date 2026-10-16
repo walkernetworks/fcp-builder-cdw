@@ -54,7 +54,7 @@ export function CompatibilityHandoffPanel({ platforms, estateHosts }: { platform
 
   return <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><p className="text-xs font-black uppercase tracking-[.14em] text-[#c8102e]">Presales-to-delivery evidence</p><h3 className="mt-1 text-base font-semibold text-slate-950">{handoff.targetRelease} estate posture</h3><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">The maintained catalog establishes server-and-CPU release evidence. Configuration components, firmware, drivers, OEM image, storage, vSAN, and topology remain explicit delivery checks.</p></div>
+      <div><p className="text-xs font-black uppercase tracking-[.14em] text-cdw-red">Presales-to-delivery evidence</p><h3 className="mt-1 text-base font-semibold text-slate-950">{handoff.targetRelease} estate posture</h3><p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600">The maintained catalog establishes server-and-CPU release evidence. Configuration components, firmware, drivers, OEM image, storage, vSAN, and topology remain explicit delivery checks.</p></div>
       <a href={handoff.catalog.source} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100">Open authoritative catalog <ExternalLink className="size-3.5" /></a>
     </div>
 

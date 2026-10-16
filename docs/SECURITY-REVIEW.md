@@ -122,7 +122,7 @@ The app records creation and update timestamps. The deployment owner should appl
 | Planning transparency | Every planning consideration includes status, observed evidence, and an explicit non-assessable boundary. |
 | Injection resistance | Drizzle parameterized queries, context-escaped HTML export values, and XML-escaped workbook cell values. |
 | Export integrity | One renderer derives inventory, planning considerations, Adoption Timeline, and Two-Year Notional Adoption Plan from one engagement JSON and removes unresolved tokens. |
-| Data-egress minimization | No analytics, telemetry, CDNs, remote fonts, or public inventory services. |
+| Data-egress minimization | No analytics, telemetry, CDNs, remote fonts, or public inventory services. The UI typeface is bundled into the client build. |
 | Container minimization | Node 22 slim plus Debian Chromium and CA certificates; one application process. |
 | Availability | Stateless request handling except database state; no in-container cron or detached worker. |
 
