@@ -1,7 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { ROLE_VIEW_LABELS, type VsaRole } from "@shared/vsaViews";
-import { CalendarClock, FileText, KanbanSquare, Upload } from "lucide-react";
+import { BarChart3, FileText, KanbanSquare, Upload } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
@@ -9,7 +9,7 @@ import { CdwLogo } from "./elements";
 
 const NAV = [
   { href: "/", label: "Board", icon: KanbanSquare },
-  { href: "/expiry", label: "Expiry", icon: CalendarClock },
+  { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/fcp", label: "FCP workspace", icon: FileText },
   { href: "/import", label: "Import", icon: Upload },
 ] as const;

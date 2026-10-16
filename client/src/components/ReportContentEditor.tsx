@@ -23,7 +23,7 @@ const listToText = (value: string[]) => value.join(", ");
 const textToList = (value: string) => value.split(",").map(item => item.trim()).filter(Boolean);
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
-  return <div className="space-y-1"><Label className="text-xs font-semibold text-slate-700">{label}</Label>{children}{hint && <p className="text-[11px] leading-4 text-slate-500">{hint}</p>}</div>;
+  return <div className="space-y-1"><Label className="text-xs font-semibold text-s600">{label}</Label>{children}{hint && <p className="text-[11px] leading-4 text-s400">{hint}</p>}</div>;
 }
 
 function YesNo({ value, onChange }: { value: boolean | null; onChange: (value: boolean | null) => void }) {
@@ -54,17 +54,17 @@ function GeneratedActions({ onOverride, onHide }: { onOverride: () => void; onHi
 
 function RestoreHidden({ count, onRestore }: { count: number; onRestore: () => void }) {
   if (!count) return null;
-  return <Button type="button" variant="ghost" size="sm" className="text-xs text-slate-600" onClick={onRestore}><RotateCcw className="size-3.5" /> Restore {count} hidden</Button>;
+  return <Button type="button" variant="ghost" size="sm" className="text-xs text-s500" onClick={onRestore}><RotateCcw className="size-3.5" /> Restore {count} hidden</Button>;
 }
 
-const FROM_PLAN = <span className="mr-2 inline-block rounded bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-600">From the plan</span>;
+const FROM_PLAN = <span className="mr-2 inline-block rounded bg-s100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-s500">From the plan</span>;
 
 /** A list of lines; generated lines appear first and can be overridden or hidden. */
 function TextList({ items, onChange, placeholder, generated }: { items: string[]; onChange: (items: string[]) => void; placeholder: string; generated?: GeneratedProps<string> }) {
   return (
     <div className="space-y-2">
       {generated?.generated.map(item => (
-        <div key={item.key} className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700">
+        <div key={item.key} className="flex items-center gap-2 rounded-md border border-s100 bg-s50 px-3 py-1.5 text-xs text-s600">
           <span className="flex-1">{FROM_PLAN}{item.row}</span>
           <GeneratedActions onOverride={() => generated.onOverride(item)} onHide={() => generated.onHide(item.key)} />
         </div>
@@ -105,12 +105,12 @@ function RowTable<Row extends Record<string, unknown>>({ rows, columns, blank, o
       {anyRows && (
         <div className="overflow-x-auto">
           <table className="w-full border-separate border-spacing-y-1 text-xs">
-            <thead><tr>{columns.map(column => <th key={column.key} className="px-1 text-left text-[10px] font-bold uppercase tracking-wide text-slate-500" style={{ width: column.width }}>{column.label}</th>)}<th className="w-10" /></tr></thead>
+            <thead><tr>{columns.map(column => <th key={column.key} className="px-1 text-left text-[10px] font-bold uppercase tracking-wide text-s400" style={{ width: column.width }}>{column.label}</th>)}<th className="w-10" /></tr></thead>
             <tbody>
               {generated?.generated.map(item => (
-                <tr key={item.key} className="align-top text-slate-700">
-                  {columns.map((column, position) => <td key={column.key} className="rounded-sm bg-slate-50 px-2 py-1.5">{position === 0 && FROM_PLAN}{display(item.row[column.key])}</td>)}
-                  <td className="bg-slate-50"><GeneratedActions onOverride={() => generated.onOverride(item)} onHide={() => generated.onHide(item.key)} /></td>
+                <tr key={item.key} className="align-top text-s600">
+                  {columns.map((column, position) => <td key={column.key} className="rounded-sm bg-s50 px-2 py-1.5">{position === 0 && FROM_PLAN}{display(item.row[column.key])}</td>)}
+                  <td className="bg-s50"><GeneratedActions onOverride={() => generated.onOverride(item)} onHide={() => generated.onHide(item.key)} /></td>
                 </tr>
               ))}
               {rows.map((row, index) => (
@@ -136,12 +136,12 @@ function Section({ value, title, heading, filled, hint, children }: { value: str
     <AccordionItem value={value}>
       <AccordionTrigger className="text-sm font-semibold">
         <span className="flex items-center gap-2">
-          {filled === undefined ? null : filled ? <CircleCheck className="size-4 text-emerald-600" /> : <CircleDashed className="size-4 text-amber-600" />}
+          {filled === undefined ? null : filled ? <CircleCheck className="size-4 text-state-pass-text" /> : <CircleDashed className="size-4 text-state-warn-text" />}
           {title}
         </span>
       </AccordionTrigger>
       <AccordionContent>
-        <p className="pb-3 text-xs leading-5 text-slate-500">{hint}{heading ? <span className="mt-1 block text-[11px] text-slate-400">In the report as “{heading}”.</span> : null}</p>
+        <p className="pb-3 text-xs leading-5 text-s400">{hint}{heading ? <span className="mt-1 block text-[11px] text-s300">In the report as “{heading}”.</span> : null}</p>
         <div className="pb-4">{children}</div>
       </AccordionContent>
     </AccordionItem>
@@ -151,8 +151,8 @@ function Section({ value, title, heading, filled, hint, children }: { value: str
 function Group({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
     <div className="mt-6">
-      <p className="text-[10px] font-black uppercase tracking-[.16em] text-slate-500">{title}</p>
-      <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
+      <p className="text-[10px] font-black uppercase tracking-[.16em] text-s400">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-s400">{description}</p>
       {children}
     </div>
   );
@@ -197,16 +197,16 @@ export function ReportContentEditor({ document, onChange }: Props) {
   ].filter((item): item is string => Boolean(item));
 
   return (
-    <section className="border border-slate-200 bg-white p-5">
+    <section className="rounded-xl border border-s100 bg-white p-5">
       <p className="text-[10px] font-black uppercase tracking-[.16em] text-cdw-red">Condensed FCP content</p>
-      <h3 className="mt-1 text-lg font-semibold text-slate-950">Report content</h3>
-      <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">Fill this in by hand, or import a Copilot brief above to pre-fill it. Grey rows marked “From the plan” are generated and print as shown; override or hide any of them. A section with nothing in it is left out of the report, never printed as a placeholder. Changes save automatically.</p>
-      <div className={`mt-4 rounded-xl border p-3 text-xs ${missing.length ? "border-amber-200 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+      <h3 className="mt-1 text-lg font-semibold text-ink">Report content</h3>
+      <p className="mt-1 max-w-3xl text-xs leading-5 text-s400">Fill this in by hand, or import a Copilot brief above to pre-fill it. Grey rows marked “From the plan” are generated and print as shown; override or hide any of them. A section with nothing in it is left out of the report, never printed as a placeholder. Changes save automatically.</p>
+      <div className={`mt-4 rounded-xl border p-3 text-xs ${missing.length ? "border-state-warn/30 bg-state-warn-soft text-state-warn-text" : "border-state-pass/30 bg-state-pass-soft text-state-pass-text"}`}>
         {missing.length ? <><b>Not captured yet, so left out of the report:</b> {missing.join(" · ")}</> : <b>Everything the report needs from the customer is filled in.</b>}
       </div>
 
       <Group title="From the customer" description="What only a conversation with the customer can provide.">
-        <Accordion type="multiple" defaultValue={["entitlement", "heard"]} className="border-t border-slate-200">
+        <Accordion type="multiple" defaultValue={["entitlement", "heard"]} className="border-t border-s100">
           <Section value="entitlement" title="Entitlement hours" filled={Boolean(report.entitlement.hours && report.entitlement.hoursConsumed !== null)} hint="From the signed resource assignments and the latest consumption record. These drive the KPI tiles, burndown and weekly pace. The entitlement value and start date are on the Engagement step.">
             <div className="grid gap-3 md:grid-cols-3">
               <Field label="Entitled hours">{numberInput(report.entitlement.hours, value => setEntitlement({ hours: value }))}</Field>
@@ -246,7 +246,7 @@ export function ReportContentEditor({ document, onChange }: Props) {
       </Group>
 
       <Group title="Generated from the plan" description="Already filled in from the plan, RVTools and the entitlement. Review it; add rows, override, or hide as needed.">
-        <Accordion type="multiple" className="border-t border-slate-200">
+        <Accordion type="multiple" className="border-t border-s100">
           <Section value="situation" title="Situation" heading="Situation" hint="Estate facts from RVTools, plus anything RVTools cannot show (new sites, refreshes, deadlines).">
             <TextList items={report.situation} onChange={items => set("situation", items)} placeholder="DR site being built: 8 new hosts and a replicated array" generated={generatedFor("situation")} />
           </Section>
@@ -282,7 +282,7 @@ export function ReportContentEditor({ document, onChange }: Props) {
       </Group>
 
       <Group title="Estate, discovery and details" description="Optional. Each answer is used only where this plan makes it matter: in the design elements, constraints and open items of the report, and in the Technical Handoff for the delivery team.">
-        <Accordion type="multiple" className="border-t border-slate-200">
+        <Accordion type="multiple" className="border-t border-s100">
           <Section value="sizing" title="Sizing inputs" hint="Used for the hours estimate. Blank values fall back to RVTools.">
             <div className="grid gap-3 md:grid-cols-3">
               <Field label="Prior VCF assessment delivered" hint="Yes leaves design discovery out of the hours."><YesNo value={report.discovery.assessmentCompleted} onChange={value => setDiscovery({ assessmentCompleted: value })} /></Field>

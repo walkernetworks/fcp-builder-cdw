@@ -9,13 +9,14 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import PipelineImport from "./pages/PipelineImport";
 import Board from "./pages/Board";
-import Expiry from "./pages/Expiry";
+import Reports from "./pages/Reports";
 
 function Router() {
   return (
     <Switch>
       <Route path="/">{() => (/[?&]engagement=/.test(window.location.search) ? <Redirect to={`/fcp${window.location.search}`} replace /> : <Board />)}</Route>
-      <Route path="/expiry" component={Expiry} />
+      <Route path="/reports" component={Reports} />
+      <Route path="/expiry">{() => <Redirect to="/reports?preset=expiry" replace />}</Route>
       <Route path="/fcp">{() => <AppShell><Home /></AppShell>}</Route>
       <Route path="/import" component={PipelineImport} />
       <Route component={NotFound} />
