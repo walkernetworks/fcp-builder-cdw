@@ -73,6 +73,7 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 | `salesforceAccountId` | varchar(32) | yes | | I | **Unique.** The VSA-only account number ("New CDW Account #", 8 digits today). NULL until the account exists; MySQL allows many NULLs in a unique index. See open question 1 |
 | `salesforceOpportunityId` | varchar(32) | yes | | I | Unique. Extracted from the "Opportunity ID" HTML link; the link itself is not stored |
 | `serNumber` | varchar(32) | yes | | I | "SER Number". Indexed, not unique (two duplicate groups in the export are duplicate rows; import flags them) |
+| `broadcomDealId` | varchar(64) | yes | | I | "Deal ID or Name". Filled on every exported row, mostly shaped like a Broadcom deal ID; a few are short numbers or names. Indexed, not unique (same duplicate rows as above) |
 | `parentEngagementId` | int | yes | | I | Self-reference, `ON DELETE SET NULL`. A funding extension or follow-on points to the original record. One level deep; enforced in code |
 | `isFundingExtension` | boolean | no | false | I | "Funding Extension" |
 
@@ -160,6 +161,7 @@ Several tracker columns overlap with FCP inputs in `data.fields`: `entitlementVa
 - `engagements_workspace_stage_idx (workspaceId, stage, stageEnteredOn)`: board
 - `engagements_workspace_expiry_idx (workspaceId, deliveryWindowEnd)`: expiry view
 - `engagements_ser_idx (serNumber)`
+- `engagements_deal_idx (broadcomDealId)`
 - `engagements_parent_idx (parentEngagementId)`
 - existing `engagements_owner_updated_idx (ownerId, updatedAt)` stays
 
@@ -352,6 +354,61 @@ This shows the stage enum covers every SharePoint state. Phase 2 owns the detail
 | 5 Update From Sales Pending | 2 | Stage derived from dates, `waitingOn = 'sales'` |
 | 6 Customer Paused | 1 | `paused`, `fromStage` unknown |
 | 7 Lost | 12 | `lost` |
+
+### 10.1 Column coverage
+
+Every column in the current SharePoint list (46, confirmed against a header-only export of the live list) has a destination:
+
+| SharePoint column | Destination |
+|---|---|
+| Customer Name | `customerName` |
+| Customer State | `customerState` |
+| Opportunity ID | `salesforceOpportunityId` (ID extracted from the link) |
+| Deal ID or Name | `broadcomDealId` |
+| West vs East | `region` |
+| Program | `program` |
+| BC Segment | `segment` |
+| Customer Entitlement Interest | `entitlementInterest` |
+| VSA Approval Stage | `stage` (with the mapping above) |
+| Resource Assignments | `raStatus`, and refines `stage` |
+| Nat. Presales | assignment `presales` |
+| DC FSA | assignment `architect` |
+| VCF Assessment | `vcfAssessment` |
+| FCP Draft Created Date | `fcpDraftCreatedOn` |
+| FCP Submitted | refines `stage`; `fcpSubmittedOn` stays NULL and is flagged |
+| FCP Customer Acceptance Date | `fcpCustomerAcceptedOn` |
+| FCP Done | not stored; checked against `fcpCustomerAcceptedOn` |
+| IKOM Date | `ikomOn` |
+| CDW Risk Assessment | `riskAssessment` |
+| Next Steps | `nextSteps` |
+| CKOM Date | `ckomOn` |
+| FCP Broadcom Acceptance Date | `fcpBroadcomAcceptedOn` |
+| Work Auth Rec'd Date | `workAuthReceivedOn` |
+| Project Status | `health` |
+| VSA Amount | `entitlementValue` |
+| PO Received | `poReceivedOn` |
+| Project Status Notes | `statusNotes` |
+| Estimated Close Date | `estimatedCloseOn` |
+| Sales Rep / Owner | assignment `sales_rep` |
+| VSA Expiration | `deliveryWindowEnd` |
+| CDW Account Manager | assignment `account_manager` |
+| New CDW Account # | `salesforceAccountId` (open question 1) |
+| Estimated Deal Value ($) | `estimatedDealValue` |
+| Broadcom PO | `broadcomPo` |
+| PM: Broadcom email | `broadcomEmail` on assignment `pm` |
+| Architect: Broadcom email | `broadcomEmail` on assignment `architect` |
+| PM | assignment `pm` |
+| Sr. Consultant: Broadcom email | `broadcomEmail` on assignment `sr_consultant` |
+| Architect | assignment `architect` (flagged when it differs from DC FSA) |
+| Project Start Date | `projectStartOn` |
+| Sr. Consultant | assignment `sr_consultant` |
+| Is VSA? | not stored. True on every exported row; every tracker record is a VSA. Import skips and reports rows where it is false |
+| Funding Extension | `isFundingExtension` |
+| Modified | not stored on the record. SharePoint's own last-edit time; Phase 2 uses it in the reconciliation report and as the `effectiveOn` fallback for imported `stageEvents` when no gate date fits |
+| SER Number | `serNumber` |
+| Client Folder | `clientFolderUrl` |
+
+New fields with no SharePoint column: `termStart`, `termEnd`, `coreCount`, `serSubmittedOn`, `serApprovedOn`, `workPlanAcceptedOn`, `raReceivedOn`, `completedOn`, `waitingOn`, `parentEngagementId`.
 
 Data-quality flags already visible in the export: 39 rows with no segment, 49 with no account number, 2 account numbers shared by different customers, 2 duplicate rows (same account, SER, and customer), 28 with no opportunity link, boolean "FCP Submitted" with no date, and a "$9.99"-shaped placeholder amount on 2 rows.
 
