@@ -1,10 +1,10 @@
 # VSA Tracker Data Model
 
-Status: **Phase 0 draft for review.** The Phase 1 migration is built from this document. Nothing here is in the schema yet.
+Status: **Phase 0, reviewed.** Decisions from review are recorded in [section 11](#11-review-decisions). The Phase 1 migration is built from this document.
 
 This document locks the relational shape of the VSA engagement record that absorbs the SharePoint VSA Pipeline List. It extends the existing `engagements` table and adds three tables. The FCP document model (`engagements.data`, typed by `shared/fcp.ts`) is unchanged and becomes the output of the FCP Draft stage.
 
-Sources: `VSA-TRACKER-KICKOFF.md` (locked decisions), the CDW VSA end-to-end handbook (gate definitions), and the column headers and category values of the SharePoint `VSA Pipeline List.csv` export (118 rows, 46 columns). `docs/VSA-TRACKER-EXPANSION-PLAN.md` was not available when this was written. Choices that plan may already settle are listed under [Open questions](#11-open-questions-for-review).
+Sources: `VSA-TRACKER-KICKOFF.md` (locked decisions), the CDW VSA end-to-end handbook (gate definitions), and the column headers and category values of the SharePoint `VSA Pipeline List.csv` export (118 rows, 46 columns). `docs/VSA-TRACKER-EXPANSION-PLAN.md` was not available when this was written. Choices that plan might have settled were decided in review instead (section 11).
 
 ## 1. Principles
 
@@ -30,7 +30,7 @@ One `stage` column replaces the five SharePoint status fields (VSA Approval Stag
 | 4 | `source_chain` | Source Chain | The required source items (section 5) are received or waived |
 | 5 | `fcp_draft` | FCP Draft | The FCP is submitted for review (`fcpSubmittedOn`) |
 | 6 | `broadcom_approval` | Broadcom Approval | Broadcom accepts the FCP (`fcpBroadcomAcceptedOn`). Corporate and Strategic only |
-| 7 | `customer_approval` | Customer Approval | Customer accepts the FCP (`fcpCustomerAcceptedOn`) and the Broadcom work plan (`workPlanAcceptedOn`) |
+| 7 | `customer_approval` | Customer Approval | Customer accepts the FCP (`fcpCustomerAcceptedOn`). Corporate and Strategic also need the Broadcom work plan accepted (`workPlanAcceptedOn`); see 2.3 |
 | 8 | `ra_staffing` | RA / Staffing | RA completed, onboarding done, WA received, PO received (`poReceivedOn`) |
 | 9 | `kickoff` | Kickoff | Customer kickoff held (`ckomOn`) |
 | 10 | `in_delivery` | In Delivery | Delivery closed out (`completedOn`) |
@@ -46,11 +46,25 @@ One `stage` column replaces the five SharePoint status fields (VSA Approval Stag
 | Stage | Corporate | Strategic | Commercial | Segment not set |
 |---|---|---|---|---|
 | `broadcom_approval` | Required | Required | **Skipped** | Required (conservative), flagged as a data-quality issue |
+| Work plan inside `customer_approval` | Required | Required | **Not applicable** | Required (conservative), flagged |
 | All other main-line stages | Required | Required | Required | Required |
 
-"Skipped" means `nextStage()` goes from `fcp_draft` straight to `customer_approval` and the board does not show the column for that record. A Commercial record placed in `broadcom_approval` (for example by import) is allowed but flagged.
+"Skipped" means `nextStage()` goes from `fcp_draft` straight to `customer_approval` and the board does not show the column for that record. A Commercial record placed in `broadcom_approval` (for example by import) is allowed but flagged. For Commercial, the work-plan dates are hidden and ignored.
 
-### 2.3 Transition rules (`shared/vsaStage.ts`, pure, tested)
+### 2.3 Work plan call-out (Corporate and Strategic)
+
+For Corporate and Strategic customers, Customer Approval holds **two separate approvals**, and the record shows them as two items rather than one stage date:
+
+1. **FCP approval:** the customer accepts the FCP (`fcpCustomerAcceptedOn`).
+2. **Work plan approval:** Broadcom sends the customer its work plan (`workPlanSentOn`) and the customer accepts it (`workPlanAcceptedOn`). Broadcom cannot book the entitlement order until this is done.
+
+They can happen in either order. The record leaves `customer_approval` cleanly only when both are dated. While one is missing, the board card shows which one ("Work plan sent 9/12, not accepted"), and a work plan sent more than 14 days ago without acceptance gets a warning. Both are soft gates, like the other dates in 2.1.
+
+Commercial customers have no work plan step: Customer Approval is FCP approval only.
+
+`shared/vsaStage.ts` exposes this as `customerApprovalItems(record) -> { fcp, workPlan? }` so the board, the record page, and the warnings all read one definition.
+
+### 2.4 Transition rules (`shared/vsaStage.ts`, pure, tested)
 
 - **Forward:** to the next applicable stage for the record's segment. Skipping ahead more than one stage is allowed with a note (imports and catch-up entries need it).
 - **Backward:** to any earlier main-line stage, with a required note.
@@ -70,12 +84,11 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 | Column | Type | Null | Default | Vis | Notes / SharePoint source |
 |---|---|---|---|---|---|
 | `workspaceId` | int | no | 1 | I | FK `workspaces.id`. Visibility boundary (section 8) |
-| `salesforceAccountId` | varchar(32) | yes | | I | **Unique.** The VSA-only account number ("New CDW Account #", 8 digits today). NULL until the account exists; MySQL allows many NULLs in a unique index. See open question 1 |
+| `salesforceCustomerId` | varchar(32) | yes | | I | **Unique.** The "Customer ID" of the VSA-only account in CDW's Salesforce tenant, imported from "New CDW Account #" (8 digits today). NULL until the account exists; MySQL allows many NULLs in a unique index. Replaces the kickoff's working name `salesforceAccountId` |
 | `salesforceOpportunityId` | varchar(32) | yes | | I | Unique. Extracted from the "Opportunity ID" HTML link; the link itself is not stored |
 | `serNumber` | varchar(32) | yes | | I | "SER Number". Indexed, not unique (two duplicate groups in the export are duplicate rows; import flags them) |
 | `broadcomDealId` | varchar(64) | yes | | I | "Deal ID or Name". Filled on every exported row, mostly shaped like a Broadcom deal ID; a few are short numbers or names. Indexed, not unique (same duplicate rows as above) |
-| `parentEngagementId` | int | yes | | I | Self-reference, `ON DELETE SET NULL`. A funding extension or follow-on points to the original record. One level deep; enforced in code |
-| `isFundingExtension` | boolean | no | false | I | "Funding Extension" |
+| `isFundingExtension` | boolean | no | false | I | "Funding Extension". **Legacy only.** Funding extensions are no longer offered; this keeps the 12 imported historical records identifiable. Import-only: not on the new-record form or the edit form |
 
 ### 3.2 Classification
 
@@ -111,7 +124,8 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 | `fcpSubmittedOn` | I | "FCP Submitted" (boolean in SharePoint; import leaves the date NULL and flags it when true) | |
 | `fcpBroadcomAcceptedOn` | I | "FCP Broadcom Acceptance Date" | Corporate/Strategic only |
 | `fcpCustomerAcceptedOn` | C | "FCP Customer Acceptance Date" | |
-| `workPlanAcceptedOn` | I | (none; new) | Customer accepts the Broadcom work plan |
+| `workPlanSentOn` | I | (none; new) | Broadcom sends the customer its work plan. Corporate/Strategic only (2.3) |
+| `workPlanAcceptedOn` | I | (none; new) | Customer accepts the Broadcom work plan. Corporate/Strategic only (2.3) |
 | `ikomOn` | I | "IKOM Date" | Internal kickoff |
 | `raReceivedOn` | I | (none; new) | RA issued by Broadcom |
 | `workAuthReceivedOn` | I | "Work Auth Rec'd Date" | WA |
@@ -156,13 +170,12 @@ Several tracker columns overlap with FCP inputs in `data.fields`: `entitlementVa
 
 ### 3.8 Indexes
 
-- unique `engagements_sf_account_uq (salesforceAccountId)`
+- unique `engagements_sf_customer_uq (salesforceCustomerId)`
 - unique `engagements_sf_opportunity_uq (salesforceOpportunityId)`
 - `engagements_workspace_stage_idx (workspaceId, stage, stageEnteredOn)`: board
 - `engagements_workspace_expiry_idx (workspaceId, deliveryWindowEnd)`: expiry view
 - `engagements_ser_idx (serNumber)`
 - `engagements_deal_idx (broadcomDealId)`
-- `engagements_parent_idx (parentEngagementId)`
 - existing `engagements_owner_updated_idx (ownerId, updatedAt)` stays
 
 ## 4. `stageEvents` (new, append-only)
@@ -261,7 +274,7 @@ The tag is structural: `shared/vsaFields.ts` exports
 ```ts
 export const ENGAGEMENT_COLUMN_VISIBILITY = {
   customerName: "customer",
-  salesforceAccountId: "internal",
+  salesforceCustomerId: "internal",
   // ...every column of engagements
 } as const satisfies Record<keyof Engagement, "customer" | "internal">;
 ```
@@ -392,7 +405,7 @@ Every column in the current SharePoint list (46, confirmed against a header-only
 | Sales Rep / Owner | assignment `sales_rep` |
 | VSA Expiration | `deliveryWindowEnd` |
 | CDW Account Manager | assignment `account_manager` |
-| New CDW Account # | `salesforceAccountId` (open question 1) |
+| New CDW Account # | `salesforceCustomerId` |
 | Estimated Deal Value ($) | `estimatedDealValue` |
 | Broadcom PO | `broadcomPo` |
 | PM: Broadcom email | `broadcomEmail` on assignment `pm` |
@@ -403,21 +416,25 @@ Every column in the current SharePoint list (46, confirmed against a header-only
 | Project Start Date | `projectStartOn` |
 | Sr. Consultant | assignment `sr_consultant` |
 | Is VSA? | not stored. True on every exported row; every tracker record is a VSA. Import skips and reports rows where it is false |
-| Funding Extension | `isFundingExtension` |
+| Funding Extension | `isFundingExtension` (legacy flag) |
 | Modified | not stored on the record. SharePoint's own last-edit time; Phase 2 uses it in the reconciliation report and as the `effectiveOn` fallback for imported `stageEvents` when no gate date fits |
 | SER Number | `serNumber` |
 | Client Folder | `clientFolderUrl` |
 
-New fields with no SharePoint column: `termStart`, `termEnd`, `coreCount`, `serSubmittedOn`, `serApprovedOn`, `workPlanAcceptedOn`, `raReceivedOn`, `completedOn`, `waitingOn`, `parentEngagementId`.
+New fields with no SharePoint column: `termStart`, `termEnd`, `coreCount`, `serSubmittedOn`, `serApprovedOn`, `workPlanSentOn`, `workPlanAcceptedOn`, `raReceivedOn`, `completedOn`, `waitingOn`.
 
 Data-quality flags already visible in the export: 39 rows with no segment, 49 with no account number, 2 account numbers shared by different customers, 2 duplicate rows (same account, SER, and customer), 28 with no opportunity link, boolean "FCP Submitted" with no date, and a "$9.99"-shaped placeholder amount on 2 rows.
 
-## 11. Open questions for review
+## 11. Review decisions
 
-1. **`salesforceAccountId` naming and source.** The export has no Salesforce record ID for the account. It has "New CDW Account #" (8-digit number of the VSA-only account) and an opportunity link that contains a Salesforce opportunity ID. The handbook says each VSA gets its own VSA-only account, so a unique key on the account number is consistent with the process. This draft keeps the locked name `salesforceAccountId` and fills it from "New CDW Account #". Confirm, or rename it `cdwAccountNumber`.
-2. **Funding extensions.** All 12 extension rows in the export have their own account number and none points to a parent. `parentEngagementId` is in the schema but import cannot fill it automatically. Is linking done by hand, or is there a rule (same customer and SER)?
-3. **Customer Approval scope.** This draft puts both customer gates (FCP acceptance and the Broadcom work-plan acceptance) inside `customer_approval`. The alternative is to move work-plan acceptance into `ra_staffing`.
-4. **Hard vs soft gates.** Only "no kickoff or delivery without a PO" is a hard block. Should partner approval (`serApprovedOn`) also hard-block `discovery` and later stages?
-5. **Source Chain meaning.** Without the plan doc, Source Chain is read as "collect the inputs the FCP is built from" (section 5). Correct this if the plan defines it differently.
-6. **Seeding the FCP edition from the segment.** `segment = commercial` and `data.fields.customerSegment = "commercial"` mean different things but often coincide. Should a new FCP's `customerSegment` be pre-filled from `segment` once (never synced)? This draft does not do it.
-7. **Delete.** Owner or admin can hard-delete, matching today. Leadership may prefer archive-only once records are shared; `status = archived` already exists for that.
+Decided in review on 2026-10-15:
+
+1. **Account key is `salesforceCustomerId`**, matching the "Customer ID" name in CDW's Salesforce tenant. Unique, nullable, imported from "New CDW Account #".
+2. **Funding extensions are legacy only.** They are no longer offered. `isFundingExtension` stays as an import-only flag for historical records. `parentEngagementId` is **dropped** from the kickoff list: its only use was linking extensions. It is a nullable column, so adding it later is cheap if a parent-child need appears.
+3. **The work plan gets its own call-out** (section 2.3). For Corporate and Strategic customers, Customer Approval is two approvals, FCP and work plan, tracked separately with `workPlanSentOn` and `workPlanAcceptedOn`. Commercial has no work plan step.
+4. **Only one hard gate:** no `kickoff` or `in_delivery` without `poReceivedOn`. Everything else warns.
+5. **Source Chain** means collecting the inputs the FCP is built from (section 5).
+6. **The FCP edition is not seeded from `segment`.** The two fields stay independent.
+7. **Delete stays owner-or-admin**, matching today. `status = archived` remains available for anyone who prefers to archive.
+
+The work plan rule follows "Corporate customers" from review and applies it to Strategic too, matching how Broadcom Approval is gated. Strategic is one record in the current list. If Strategic should skip the work plan, it is one constant in `shared/vsaStage.ts`.
