@@ -15,7 +15,7 @@ type Props = {
 
 function List({ title, items, tone }: { title: string; items: string[]; tone: "slate" | "amber" | "blue" }) {
   if (!items.length) return null;
-  const colors = { slate: "border-slate-200 bg-slate-50 text-slate-800", amber: "border-amber-200 bg-amber-50 text-amber-900", blue: "border-blue-200 bg-blue-50 text-blue-950" }[tone];
+  const colors = { slate: "border-s100 bg-s50 text-ink", amber: "border-state-warn/30 bg-state-warn-soft text-state-warn-text", blue: "border-s200 bg-s50 text-s600" }[tone];
   return (
     <section className={`rounded-xl border p-3 ${colors}`}>
       <p className="text-xs font-bold uppercase tracking-wide">{title} ({items.length})</p>
@@ -71,12 +71,12 @@ export function CustomerBriefImport({ document, onChange }: Props) {
   };
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
+    <section className="rounded-2xl border border-s100 bg-white p-5 shadow-sm md:p-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[.16em] text-cdw-red">Customer brief</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Start from a Copilot brief</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Copilot reads the call notes, emails and questionnaire answers and returns one JSON brief. It fills the engagement details, the adoption plan (pathway, outcomes and depth), and the Condensed FCP content: what we heard, open questions, personnel and milestones. Read in this browser; nothing is applied until you confirm.</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">Start from a Copilot brief</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-s500">Copilot reads the call notes, emails and questionnaire answers and returns one JSON brief. It fills the engagement details, the adoption plan (pathway, outcomes and depth), and the Condensed FCP content: what we heard, open questions, personnel and milestones. Read in this browser; nothing is applied until you confirm.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void copyPrompt()}><ClipboardCopy className="size-4" /> Copy Copilot prompt</Button>
@@ -86,9 +86,9 @@ export function CustomerBriefImport({ document, onChange }: Props) {
       </div>
       <input ref={inputRef} type="file" accept=".json,application/json" className="hidden" onChange={event => void readFile(event.target.files?.[0])} />
       {report.briefVersion !== null && (
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 p-4">
-          <FileJson className="mt-0.5 size-5 text-emerald-700" />
-          <p className="text-sm text-slate-700">
+        <div className="mt-5 flex items-start gap-3 rounded-xl border border-s100 p-4">
+          <FileJson className="mt-0.5 size-5 text-state-pass-text" />
+          <p className="text-sm text-s600">
             Brief imported {report.importedAt ? new Date(report.importedAt).toLocaleString() : ""}{report.asOf ? ` · notes as of ${report.asOf}` : ""}.
             {" "}{report.whatWeHeard.length} heard · {report.openQuestions.length} open questions · {report.openItems.length} open items · {report.personnel.length} personnel rows · {report.milestonesToDate.length} milestones.
           </p>
@@ -121,7 +121,7 @@ export function CustomerBriefImport({ document, onChange }: Props) {
               <List title="Wording mapped to allowed values" items={preview.result.coerced} tone="blue" />
               <List title="Not used" items={preview.result.warnings} tone="amber" />
               <List title="Missing — will show as open items" items={preview.result.missing} tone="amber" />
-              {preview.result.ok && <p className="text-xs leading-5 text-slate-500">RVTools inventory is never changed. A plan you have edited by hand keeps its timelines; an unedited plan is rebuilt from the new inputs.</p>}
+              {preview.result.ok && <p className="text-xs leading-5 text-s400">RVTools inventory is never changed. A plan you have edited by hand keeps its timelines; an unedited plan is rebuilt from the new inputs.</p>}
             </div>
           )}
           <DialogFooter>
