@@ -29,7 +29,8 @@ Don't add unrelated work to a branch whose PR is already open. Start a new branc
 - `shared/fcp.ts`: engagement document model, schema, and plan/timeline generation. This is the core domain logic.
 - `server/fcpRenderer.ts`: FCP HTML document; the PDF is rendered from this HTML by `server/pdf.ts`
 - `server/compatibilityHandoffRenderer.ts`: compatibility delivery handoff document
-- `server/routers.ts`: all tRPC procedures; `server/db.ts`: data access (always owner-scoped)
+- `server/routers.ts`: all tRPC procedures; `server/db.ts`: data access (always through `server/visibility.ts`)
+- VSA tracker: `docs/VSA-TRACKER-DATA-MODEL.md` (schema and decisions), `shared/vsaStage.ts` (stage rules, pure), `shared/vsaFields.ts` (enums, editable fields, internal vs customer-facing tags)
 - `server/trustedSso.ts`: sign-in; `server/exportTickets.ts` + `server/exportDownloadRoutes.ts`: signed download links
 - `client/src/pages/Home.tsx`: main workspace; `client/src/components/`: `PlanSetup`, `AdoptionTimelineEditor`, `DetailedAdoptionIntake`, `CompatibilityHandoffPanel`
 - `client/src/lib/rvtools.ts`: RVTools XLSX/CSV parsing, in the browser only
@@ -41,7 +42,7 @@ Don't add unrelated work to a branch whose PR is already open. Start a new branc
 - **No Manus or other third-party platform code.** `server/noThirdPartyPlatform.test.ts` must keep passing.
 - **Raw RVTools data never leaves the browser.** Only aggregate facts are sent to the server and stored.
 - **No outbound network calls from the app** other than the database. Exported HTML must be self-contained, with no external fonts, scripts, or images.
-- **Every engagement query stays scoped to the signed-in owner.**
+- **Every engagement query goes through `server/visibility.ts`.** Records are visible to users in the same workspace; `ownerId` is attribution, and delete is limited to the owner or an admin. Never filter engagements, or tables that hang off them, any other way. `server/visibility.test.ts` enforces this for `server/db.ts`.
 - **Configuration and docs change together.** New environment variables go in `docs/CONFIGURATION.md`, and security-relevant changes also update `docs/SECURITY-REVIEW.md`.
 
 ## Reading large files cheaply

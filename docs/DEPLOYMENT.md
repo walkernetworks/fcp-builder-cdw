@@ -21,7 +21,7 @@ Create deployment secrets and configuration from [CONFIGURATION.md](./CONFIGURAT
 
 ## Database preparation
 
-Provision a MySQL-compatible database and least-privilege application account. Require TLS. Apply the SQL migrations in `drizzle/` in order. The application stores the versioned FCP document in the `engagements.data` JSON column and keeps customer name and status columns only for efficient owner-scoped listing.
+Provision a MySQL-compatible database and least-privilege application account. Require TLS. Apply the SQL migrations in `drizzle/` in order. The application stores the versioned FCP document in the `engagements.data` JSON column and keeps customer name, status, and the VSA tracker fields (stage, gate dates, identifiers, commercials) as columns for workspace-scoped listing and filtering. Migration `0002_vsa_tracker_core.sql` creates workspace 1, moves every existing engagement into it, and places existing FCPs in the FCP Draft stage.
 
 Raw RVTools workbook files are not uploaded or stored. The saved JSON contains only aggregate counts and capacities, version and model distributions, source filename/size/worksheet metadata, parser warnings, readiness indicators, the minimal confirmed fields, and the timeline.
 

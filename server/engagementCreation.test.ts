@@ -18,6 +18,8 @@ function authenticatedContext(): TrpcContext {
     name: "Test SA",
     loginMethod: "trusted-proxy",
     role: "user",
+    workspaceId: 1,
+    vsaRole: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     lastSignedIn: new Date(),
@@ -38,9 +40,10 @@ describe("engagement naming at creation", () => {
     });
 
     expect(db.createEngagement).toHaveBeenCalledWith(
-      23,
+      { id: 23, workspaceId: 1, role: "user" },
       "Meridian Health VCF Adoption",
       expect.objectContaining({ version: expect.any(Number) }),
+      { stage: "fcp_draft" },
     );
     const [, , createdDocument] = vi.mocked(db.createEngagement).mock.calls[0]!;
     const baselineLanes = createdDocument.twoYearPlan.lanes.filter(lane => lane.id.startsWith("lane-two-year-baseline-"));

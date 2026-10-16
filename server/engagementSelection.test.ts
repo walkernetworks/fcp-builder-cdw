@@ -19,6 +19,8 @@ function authenticatedContext(): TrpcContext {
     name: "Test SA",
     loginMethod: "trusted-proxy",
     role: "user",
+    workspaceId: 1,
+    vsaRole: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     lastSignedIn: new Date(),
@@ -46,7 +48,7 @@ describe("engagement selection recovery", () => {
     expect(reconcileSelectedEngagementId(1, undefined)).toBe(1);
   });
 
-  it("blocks stale cached IDs while the owner-scoped list refreshes, then permits only a current list member", () => {
+  it("blocks stale cached IDs while the visible list refreshes, then permits only a current list member", () => {
     const staleCachedList = [{ id: 1 }];
     const currentList = [{ id: 24 }];
 
@@ -64,12 +66,12 @@ describe("engagement selection recovery", () => {
     expect(engagementIdFromSearch("?engagement=4abc")).toBeNull();
   });
 
-  it("returns null instead of a query error when an owner-scoped engagement no longer exists", async () => {
+  it("returns null instead of a query error when a visible engagement no longer exists", async () => {
     vi.mocked(db.getEngagement).mockResolvedValueOnce(undefined);
 
     const result = await appRouter.createCaller(authenticatedContext()).engagement.get({ id: 999 });
 
     expect(result).toBeNull();
-    expect(db.getEngagement).toHaveBeenCalledWith(7, 999);
+    expect(db.getEngagement).toHaveBeenCalledWith({ id: 7, workspaceId: 1, role: "user" }, 999);
   });
 });
