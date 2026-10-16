@@ -1,38 +1,32 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { SEGMENT_LABELS, todayIso, type TrackerRecord } from "@/lib/vsa";
-import type { SourceItemStatus } from "@shared/vsaFields";
 import { canTransition, customerApprovalItems, STAGE_LABELS, STAGES, stageWarnings, type Stage } from "@shared/vsaStage";
 import { expiryVerdict, formatDay, formatMoney } from "@shared/vsaViews";
 import { ArrowRight, ExternalLink, FileText, History, ListChecks, UsersRound } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
-import { Chip, DataMount, Pill, type Verdict } from "./elements";
-
-const SOURCE_VERDICT: Record<SourceItemStatus, { verdict: Verdict; label: string }> = {
-  needed: { verdict: "warn", label: "Needed" },
-  requested: { verdict: "refresh", label: "Requested" },
-  received: { verdict: "ready", label: "Received" },
-  verified: { verdict: "go", label: "Verified" },
-  waived: { verdict: "unknown", label: "Waived" },
-};
-
-const ROLE_LABELS: Record<string, string> = { sales_rep: "Sales rep", account_manager: "Account manager", presales: "Presales", architect: "Architect", pm: "PM", sr_consultant: "Sr. consultant", broadcom_ad: "Broadcom AD" };
+import { Chip, DataMount, Pill } from "./elements";
+import { RecordEditor } from "./RecordEditor";
+import { PeopleEditor, SourcesEditor } from "./RecordPeopleSources";
 
 /** Right-side detail for one engagement. Esc and the backdrop close it; focus returns to the card that opened it. */
-export function RecordDrawer({ id, onClose }: { id: number | null; onClose: () => void }) {
+export type DrawerTab = "overview" | "details" | "people" | "sources" | "history";
+
+export function RecordDrawer({ id, onClose, initialTab = "overview" }: { id: number | null; onClose: () => void; initialTab?: DrawerTab }) {
   const record = trpc.tracker.get.useQuery({ id: id ?? 0 }, { enabled: id !== null });
   const query = { ...record, data: record.data ?? undefined, error: record.error ? { message: record.error.message } : null };
   return (
     <Sheet open={id !== null} onOpenChange={open => !open && onClose()}>
-      <SheetContent side="right" className="w-full gap-0 overflow-y-auto bg-s50 p-0 sm:max-w-[560px]">
+      <SheetContent side="right" className="w-full gap-0 overflow-y-auto bg-s50 p-0 sm:max-w-[640px]">
         {!record.data && <SheetTitle className="sr-only">Engagement details</SheetTitle>}
         <DataMount id="recordDrawer" query={query} empty={{ title: "Engagement not found", sub: "It may have been deleted, or it belongs to another workspace." }} className="min-h-full">
-          {data => <RecordDetail data={data} />}
+          {data => <RecordDetail key={`${data.record.id}-${initialTab}`} data={data} initialTab={initialTab} />}
         </DataMount>
       </SheetContent>
     </Sheet>
@@ -57,7 +51,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function RecordDetail({ data }: { data: TrackerRecord }) {
+function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: DrawerTab }) {
   const today = todayIso();
   const { record, events, sources, assignments } = data;
   const warnings = stageWarnings(record, today);
@@ -79,68 +73,70 @@ function RecordDetail({ data }: { data: TrackerRecord }) {
         </div>
       </SheetHeader>
 
-      {warnings.length > 0 && (
-        <div className="space-y-1 border-t border-s100 bg-white px-5 py-3">
-          {warnings.map(warning => <p key={warning} className="callout-red">{warning}</p>)}
-        </div>
-      )}
+      <Tabs defaultValue={initialTab} className="gap-0">
+        <TabsList className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-t border-s100 bg-white px-4 py-2">
+          <TabsTrigger value="overview" className="rounded-full px-3">Overview</TabsTrigger>
+          <TabsTrigger value="details" className="rounded-full px-3">Details</TabsTrigger>
+          <TabsTrigger value="people" className="rounded-full px-3">People ({assignments.length})</TabsTrigger>
+          <TabsTrigger value="sources" className="rounded-full px-3">Sources ({sources.length})</TabsTrigger>
+          <TabsTrigger value="history" className="rounded-full px-3">History</TabsTrigger>
+        </TabsList>
 
-      <Section icon={ListChecks} title="Key facts">
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
-          <Fact label="VSA amount">{formatMoney(record.entitlementValue)}</Fact>
-          <Fact label="Delivery window ends">{formatDay(record.deliveryWindowEnd)}</Fact>
-          <Fact label="PO received">{formatDay(record.poReceivedOn)}</Fact>
-          <Fact label="Customer kickoff">{formatDay(record.ckomOn)}</Fact>
-          <Fact label="FCP submitted">{formatDay(record.fcpSubmittedOn)}</Fact>
-          <Fact label="In stage since">{formatDay(record.stageEnteredOn)}</Fact>
-        </dl>
-        {record.nextSteps && <p className="callout-dark whitespace-pre-line">{record.nextSteps}</p>}
-        {record.clientFolderUrl && <a href={record.clientFolderUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs font-semibold text-cdw-red hover:underline">Client folder <ExternalLink className="size-3" /></a>}
-      </Section>
-
-      <Section icon={UsersRound} title="Customer approval">
-        <ul className="space-y-1.5 text-sm">
-          <li className="flex items-center justify-between gap-2">FCP approval {approvals.fcp.acceptedOn ? <Pill verdict="ready">Accepted {formatDay(approvals.fcp.acceptedOn)}</Pill> : <Pill verdict="warn">Not accepted</Pill>}</li>
-          {approvals.workPlan ? (
-            <li className="flex items-center justify-between gap-2">Broadcom work plan {approvals.workPlan.acceptedOn ? <Pill verdict="ready">Accepted {formatDay(approvals.workPlan.acceptedOn)}</Pill> : approvals.workPlan.sentOn ? <Pill verdict="warn">Sent {formatDay(approvals.workPlan.sentOn)}, not accepted</Pill> : <Pill verdict="warn">Not sent</Pill>}</li>
-          ) : (
-            <li className="text-xs text-ink-muted">Commercial customers have no work plan step.</li>
+        <TabsContent value="overview" className="mt-0">
+          {warnings.length > 0 && (
+            <div className="space-y-1 border-t border-s100 bg-white px-5 py-3">
+              {warnings.map(warning => <p key={warning} className="callout-red">{warning}</p>)}
+            </div>
           )}
-        </ul>
-      </Section>
 
-      <MoveStage data={data} />
+          <Section icon={ListChecks} title="Key facts">
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+              <Fact label="VSA amount">{formatMoney(record.entitlementValue)}</Fact>
+              <Fact label="Delivery window ends">{formatDay(record.deliveryWindowEnd)}</Fact>
+              <Fact label="PO received">{formatDay(record.poReceivedOn)}</Fact>
+              <Fact label="Customer kickoff">{formatDay(record.ckomOn)}</Fact>
+              <Fact label="FCP submitted">{formatDay(record.fcpSubmittedOn)}</Fact>
+              <Fact label="In stage since">{formatDay(record.stageEnteredOn)}</Fact>
+            </dl>
+            {record.nextSteps && <p className="callout-dark whitespace-pre-line">{record.nextSteps}</p>}
+            {record.clientFolderUrl && <a href={record.clientFolderUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs font-semibold text-cdw-red hover:underline">Client folder <ExternalLink className="size-3" /></a>}
+          </Section>
 
-      <Section icon={History} title="Stage history">
-        <ol className="space-y-1.5 text-sm">
-          {[...events].reverse().map(event => (
-            <li key={event.id} className="flex items-start justify-between gap-3">
-              <span>{event.fromStage ? `${STAGE_LABELS[event.fromStage]} → ` : ""}<strong>{STAGE_LABELS[event.toStage]}</strong>{event.note && <span className="block text-xs text-ink-muted">{event.note}</span>}</span>
-              <span className="shrink-0 text-xs text-ink-muted">{formatDay(event.effectiveOn)} · {event.source}</span>
-            </li>
-          ))}
-        </ol>
-      </Section>
+          <Section icon={UsersRound} title="Customer approval">
+            <ul className="space-y-1.5 text-sm">
+              <li className="flex items-center justify-between gap-2">FCP approval {approvals.fcp.acceptedOn ? <Pill verdict="ready">Accepted {formatDay(approvals.fcp.acceptedOn)}</Pill> : <Pill verdict="warn">Not accepted</Pill>}</li>
+              {approvals.workPlan ? (
+                <li className="flex items-center justify-between gap-2">Broadcom work plan {approvals.workPlan.acceptedOn ? <Pill verdict="ready">Accepted {formatDay(approvals.workPlan.acceptedOn)}</Pill> : approvals.workPlan.sentOn ? <Pill verdict="warn">Sent {formatDay(approvals.workPlan.sentOn)}, not accepted</Pill> : <Pill verdict="warn">Not sent</Pill>}</li>
+              ) : (
+                <li className="text-xs text-ink-muted">Commercial customers have no work plan step.</li>
+              )}
+            </ul>
+          </Section>
 
-      <Section icon={ListChecks} title="Sources">
-        {sources.length === 0 ? <p className="text-xs text-ink-muted">No sources listed.</p> : (
-          <ul className="space-y-1.5 text-sm">
-            {sources.map(source => <li key={source.id} className="flex items-center justify-between gap-2"><span>{source.label}{!source.required && <span className="text-xs text-ink-muted"> (optional)</span>}</span><Pill verdict={SOURCE_VERDICT[source.status].verdict}>{SOURCE_VERDICT[source.status].label}</Pill></li>)}
-          </ul>
-        )}
-      </Section>
+          <MoveStage data={data} />
 
-      <Section icon={UsersRound} title="People">
-        {assignments.length === 0 ? <p className="text-xs text-ink-muted">No one assigned.</p> : (
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
-            {assignments.map(assignment => <Fact key={assignment.id} label={ROLE_LABELS[assignment.role] ?? assignment.role}>{assignment.displayName}{assignment.broadcomEmail && <span className="block text-xs text-ink-muted">{assignment.broadcomEmail}</span>}</Fact>)}
-          </dl>
-        )}
-      </Section>
+          <div className="border-t border-s100 bg-white px-5 py-4">
+            <Button asChild variant="outline" size="sm"><Link href={`/fcp?engagement=${record.id}`}><FileText className="size-4" /> Open FCP</Link></Button>
+          </div>
+        </TabsContent>
 
-      <div className="border-t border-s100 bg-white px-5 py-4">
-        <Button asChild variant="outline" size="sm"><Link href={`/fcp?engagement=${record.id}`}><FileText className="size-4" /> Open FCP</Link></Button>
-      </div>
+        <TabsContent value="details" className="mt-0 border-t border-s100"><RecordEditor data={data} /></TabsContent>
+        <TabsContent value="people" className="mt-0 border-t border-s100"><PeopleEditor data={data} /></TabsContent>
+        <TabsContent value="sources" className="mt-0 border-t border-s100"><SourcesEditor data={data} /></TabsContent>
+
+        <TabsContent value="history" className="mt-0">
+          <Section icon={History} title="Stage history">
+            <ol className="space-y-1.5 text-sm">
+              {[...events].reverse().map(event => (
+                <li key={event.id} className="flex items-start justify-between gap-3">
+                  <span>{event.fromStage ? `${STAGE_LABELS[event.fromStage]} → ` : ""}<strong>{STAGE_LABELS[event.toStage]}</strong>{event.note && <span className="block text-xs text-ink-muted">{event.note}</span>}</span>
+                  <span className="shrink-0 text-xs text-ink-muted">{formatDay(event.effectiveOn)} · {event.source}</span>
+                </li>
+              ))}
+            </ol>
+          </Section>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
