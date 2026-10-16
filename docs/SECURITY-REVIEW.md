@@ -37,7 +37,7 @@ sequenceDiagram
   GW->>IDP: OIDC authorization
   IDP-->>GW: Validated corporate identity
   GW->>APP: Trusted identity headers
-  APP->>DB: Owner-scoped engagement CRUD
+  APP->>DB: Workspace-scoped engagement CRUD
   SA->>B: Select one or more RVTools files
   B->>B: Parse and deduplicate workbooks in memory
   Note over B: Raw file bytes and object names stay in browser memory
@@ -55,16 +55,20 @@ sequenceDiagram
 
 | Data element | Classification | Stored | Location | Notes |
 |---|---|---:|---|---|
-| Customer name, location, account identifier, and contact | CDW confidential / customer confidential | Yes | Engagement JSON | Access is owner-scoped by authenticated user ID. |
+| Customer name, location, account identifier, and contact | CDW confidential / customer confidential | Yes | Engagement JSON | Access is workspace-scoped (see Authentication and authorization). |
 | Entitled physical cores, dollar value, and start/end dates | CDW confidential / customer confidential | Yes | Engagement JSON | Drives entitlement-term summaries and calendar-month views. |
 | Raw RVTools workbook bytes | Customer confidential | No | Browser memory only | Never submitted to the application API. |
 | VM, host, datastore, and network object names | Customer confidential | No | Browser memory only | Used transiently for local deduplication, then discarded. |
 | Aggregate counts, capacities, versions, and hardware-model totals | Customer confidential | Yes | Engagement JSON | Contains no per-object inventory rows. |
 | RVTools source filename, size, worksheet list, and parser warnings | Customer confidential | Yes | Engagement JSON | Supports traceability without storing workbook content. |
 | Planning considerations and both adoption-plan views | Customer confidential | Yes | Engagement JSON | Editable structured data derived from confirmed fields and aggregate inventory. |
-| Customer brief content (contacts and personnel names, what we heard, open questions and items, milestones, resource-assignment hours) | Customer confidential / internal personal data | Yes | Engagement JSON (`report`) | Imported from the Copilot customer brief JSON in the browser; the file itself is not uploaded. Owner-scoped like the rest of the engagement. |
-| Internal rate card and staffing mix | CDW confidential | No (code) | Server code only (`server/rateCard.ts`) | Per-role rates never leave the server. The `effort.scoped` procedure returns derived totals (plan cost, cost per work package, the entitlement value, and the threshold status) to the signed-in owner's planner screens, so hours can be kept inside the entitlement. Under the v2 hours model it also returns the blended rate used to turn the entitlement value into hours, and dollars per bucket, for the planner only; a planner may store an override rate on the engagement (`estimateInputs.blendedRate`). No rate or cost figure is rendered in any exported document; the Condensed FCP content gates allow only the entitlement value as a dollar figure and block "blended rate" and "rate card". |
+| Customer brief content (contacts and personnel names, what we heard, open questions and items, milestones, resource-assignment hours) | Customer confidential / internal personal data | Yes | Engagement JSON (`report`) | Imported from the Copilot customer brief JSON in the browser; the file itself is not uploaded. Workspace-scoped like the rest of the engagement. |
+| Internal rate card and staffing mix | CDW confidential | No (code) | Server code only (`server/rateCard.ts`) | Per-role rates never leave the server. The `effort.scoped` procedure returns derived totals (plan cost, cost per work package, the entitlement value, and the threshold status) to the signed-in planner's screens, so hours can be kept inside the entitlement. Under the v2 hours model it also returns the blended rate used to turn the entitlement value into hours, and dollars per bucket, for the planner only; a planner may store an override rate on the engagement (`estimateInputs.blendedRate`). No rate or cost figure is rendered in any exported document; the Condensed FCP content gates allow only the entitlement value as a dollar figure and block "blended rate" and "rate card". |
 | User name and email | Internal personal data | Yes | Users table | Supplied by the approved identity provider. |
+| VSA tracker commercials (entitlement value, estimated deal value, Broadcom PO number, opportunity and Customer IDs, SER number) | CDW confidential | Yes | Engagements table columns | Workspace-scoped. Tagged internal or customer-facing per column in `shared/vsaFields.ts`; only customer-facing columns may reach a customer document, through `customerFacingColumns()`. |
+| VSA tracker status (stage, stage history, gate dates, health, notes, source checklist) | CDW confidential | Yes | `engagements`, `stageEvents`, `sourceChainItems` | Workspace-scoped. Stage history is append-only. Source checklist items record file names or folder paths as text; no file content is uploaded or stored. |
+| Assignment names, CDW emails, and Broadcom emails | Internal personal data | Yes | `engagementAssignments` | Workspace-scoped. Linked to a user account by CDW email when that person signs in. |
+| Client folder link | CDW confidential | Yes | `engagements.clientFolderUrl` | `https://` only. Rendered as a link; the server never fetches it. |
 | Corporate password, MFA secret, and IdP access token | Restricted | No | Not handled by the app | Remains with Entra ID / Okta and the approved gateway. |
 | Database credential and session secret | Restricted secret | No | Runtime secret manager | Never sent to the browser or included in exports. |
 | HTML/PDF export bytes | Customer confidential | No server retention | Response memory only | Direct browser download; the temporary Chromium page is closed immediately. |
@@ -75,7 +79,7 @@ sequenceDiagram
 
 The app has no login flow of its own. `FCP_AUTH_MODE=trusted-proxy` activates the corporate identity bridge, and without it no request is authenticated. The reverse proxy must be the only network path to the container and must strip user-supplied identity headers before injecting validated values.
 
-Every engagement query includes the authenticated local `ownerId`. Create, read, update, duplicate, and delete operations cannot access another user’s rows. Every business-data route—engagement CRUD, document preview, HTML export, and PDF export—requires an authenticated user. The only unauthenticated exceptions are the sign-in boundary, OAuth callback/session bootstrap, logout cookie clearing, and the health probe; these return no customer, inventory, timeline, or export data.
+Engagements are visible to every user in the same workspace. All users who pass the gateway join workspace 1 on first sign-in, so assignment to the app at the CDW SSO gateway is the access-control boundary for who can see engagement data. Every engagement query goes through `server/visibility.ts`: reads and edits are limited to the viewer's workspace, and delete is limited to the record's owner or an admin. Tables that hang off an engagement (stage history, source checklist, assignments) are reached only through a visible engagement. `ownerId` is kept on every engagement for attribution, alongside `updatedByUserId`. Tracker edits use optimistic concurrency (`rowVersion`), so one user cannot silently overwrite another's change. Signed download tickets carry the requesting user's ID, and the download route reloads that user and rechecks visibility when the link is used. A test (`server/visibility.test.ts`) fails if a `db.ts` function touches engagement data without the helper. Every business-data route—engagement CRUD, document preview, HTML export, and PDF export—requires an authenticated user. The only unauthenticated exceptions are the sign-in boundary, OAuth callback/session bootstrap, logout cookie clearing, and the health probe; these return no customer, inventory, timeline, or export data.
 
 ## Secrets handling
 
@@ -102,13 +106,13 @@ The planning view summarizes RVTools-observable inventory. It can surface observ
 
 ## Retention and deletion
 
-The app records creation and update timestamps. The deployment owner should apply CDW’s approved engagement-retention period at the database layer. User-initiated deletion removes the owner-scoped engagement row. Database backups and legal holds remain governed by the selected database platform and are outside the application container.
+The app records creation and update timestamps. The deployment owner should apply CDW’s approved engagement-retention period at the database layer. User-initiated deletion (by the record's owner or an admin) removes the engagement row and, by cascade, its stage history, source checklist, and assignments. Database backups and legal holds remain governed by the selected database platform and are outside the application container.
 
 ## Application security controls
 
 | Control | Implementation |
 |---|---|
-| Access control | Protected business-data procedures and owner-scoped database predicates. |
+| Access control | Protected business-data procedures and workspace-scoped database predicates from one helper (`server/visibility.ts`); owner-or-admin delete. |
 | Password elimination | Corporate OIDC gateway; no local password collection. |
 | Raw inventory minimization | Browser-only XLSX/CSV parsing; no file-upload procedure and no workbook storage. |
 | Input validation | Zod schemas for the versioned engagement document, minimal fields, aggregate inventory, and both adoption views. |

@@ -8,11 +8,45 @@ import { createExportTicket } from "./exportTickets";
 import { renderFcpHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 import { scopedEffortForDocument } from "./rateCard";
+import { canDeleteEngagement, viewerFor } from "./visibility";
+import { ASSIGNMENT_ROLES, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, trackerPatchSchema } from "../shared/vsaFields";
+import { STAGES } from "../shared/vsaStage";
 
 function requireRow<T>(row: T | undefined): T {
   if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Engagement not found" });
   return row;
 }
+
+/** Turns a db write result into the procedure's return value or the matching tRPC error. */
+function unwrap<T>(result: db.WriteResult<T>): T {
+  switch (result.status) {
+    case "ok":
+      return result.value;
+    case "not_found":
+      throw new TRPCError({ code: "NOT_FOUND", message: "Engagement not found" });
+    case "conflict":
+      throw new TRPCError({ code: "CONFLICT", message: "Someone else changed this record. Reload it and try again." });
+    case "duplicate":
+      throw new TRPCError({ code: "CONFLICT", message: "Another record already uses that Customer ID, opportunity, or SharePoint item." });
+    case "blocked":
+      throw new TRPCError({ code: "PRECONDITION_FAILED", message: result.reason });
+    case "note_required":
+      throw new TRPCError({ code: "BAD_REQUEST", message: "This stage change needs a note." });
+  }
+}
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const recordId = z.number().int().positive();
+const sourceItemFields = {
+  kind: z.enum(SOURCE_ITEM_KINDS),
+  label: z.string().trim().min(1).max(240),
+  required: z.boolean().optional(),
+  status: z.enum(SOURCE_ITEM_STATUSES).optional(),
+  requestedOn: isoDay.nullable().optional(),
+  receivedOn: isoDay.nullable().optional(),
+  reference: z.string().trim().max(1024).nullable().optional(),
+  note: z.string().trim().max(5000).nullable().optional(),
+};
 
 function safeFilename(title: string, extension: string) {
   const stem = title.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "FCP";
@@ -25,12 +59,56 @@ export const appRouter = router({
     me: publicProcedure.query(options => options.ctx.user),
   }),
   engagement: router({
-    list: protectedProcedure.query(({ ctx }) => db.listEngagements(ctx.user.id)),
-    get: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ ctx, input }) => (await db.getEngagement(ctx.user.id, input.id)) ?? null),
-    create: protectedProcedure.input(z.object({ title: z.string().trim().min(1).max(240).default("New FCP engagement") })).mutation(async ({ ctx, input }) => requireRow(await db.createEngagement(ctx.user.id, input.title, createDefaultDocument()))),
-    update: protectedProcedure.input(z.object({ id: z.number().int().positive(), title: z.string().trim().min(1).max(240), data: engagementDocumentSchema })).mutation(async ({ ctx, input }) => requireRow(await db.updateEngagement(ctx.user.id, input.id, input.title, input.data))),
-    duplicate: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => requireRow(await db.duplicateEngagement(ctx.user.id, input.id))),
-    delete: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => ({ success: await db.deleteEngagement(ctx.user.id, input.id) })),
+    list: protectedProcedure.query(({ ctx }) => db.listEngagements(viewerFor(ctx.user))),
+    get: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.getEngagement(viewerFor(ctx.user), input.id)) ?? null),
+    create: protectedProcedure.input(z.object({ title: z.string().trim().min(1).max(240).default("New FCP engagement") })).mutation(async ({ ctx, input }) => requireRow(await db.createEngagement(viewerFor(ctx.user), input.title, createDefaultDocument(), { stage: "fcp_draft" }))),
+    update: protectedProcedure.input(z.object({ id: recordId, title: z.string().trim().min(1).max(240), data: engagementDocumentSchema })).mutation(async ({ ctx, input }) => requireRow(await db.updateEngagement(viewerFor(ctx.user), input.id, input.title, input.data))),
+    duplicate: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => requireRow(await db.duplicateEngagement(viewerFor(ctx.user), input.id))),
+    delete: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => {
+      const viewer = viewerFor(ctx.user);
+      const row = requireRow(await db.getEngagement(viewer, input.id));
+      if (!canDeleteEngagement(viewer, row)) throw new TRPCError({ code: "FORBIDDEN", message: "Only the record's owner or an admin can delete it." });
+      return { success: await db.deleteEngagement(viewer, input.id) };
+    }),
+  }),
+  tracker: router({
+    list: protectedProcedure
+      .input(z.object({ stages: z.array(z.enum(STAGES)).optional(), mine: z.boolean().optional(), role: z.enum(ASSIGNMENT_ROLES).optional() }).default({}))
+      .query(({ ctx, input }) => db.listTracker(viewerFor(ctx.user), { stages: input.stages, assignedUserId: input.mine ? ctx.user.id : undefined, assignedRole: input.mine ? input.role : undefined })),
+    get: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.getTrackerRecord(viewerFor(ctx.user), input.id)) ?? null),
+    create: protectedProcedure
+      .input(z.object({ customerName: z.string().trim().min(1).max(240) }))
+      .mutation(async ({ ctx, input }) => {
+        const data = createDefaultDocument();
+        data.fields.customerName = input.customerName;
+        const row = requireRow(await db.createEngagement(viewerFor(ctx.user), input.customerName, data, { stage: "intake" }));
+        return { id: row.id };
+      }),
+    update: protectedProcedure
+      .input(z.object({ id: recordId, rowVersion: z.number().int().min(0), patch: trackerPatchSchema }))
+      .mutation(async ({ ctx, input }) => unwrap(await db.updateTrackerFields(viewerFor(ctx.user), input.id, input.rowVersion, input.patch))),
+    transition: protectedProcedure
+      .input(z.object({ id: recordId, rowVersion: z.number().int().min(0), to: z.enum(STAGES), effectiveOn: isoDay, note: z.string().trim().max(5000).optional() }))
+      .mutation(async ({ ctx, input }) => unwrap(await db.transitionStage(viewerFor(ctx.user), input.id, { to: input.to, effectiveOn: input.effectiveOn, note: input.note, expectedRowVersion: input.rowVersion }))),
+    addSource: protectedProcedure
+      .input(z.object({ id: recordId, item: z.object(sourceItemFields) }))
+      .mutation(async ({ ctx, input }) => ({ itemId: unwrap(await db.addSourceItem(viewerFor(ctx.user), input.id, input.item)) })),
+    updateSource: protectedProcedure
+      .input(z.object({ id: recordId, itemId: recordId, patch: z.object(sourceItemFields).partial().strict() }))
+      .mutation(async ({ ctx, input }) => ({ itemId: unwrap(await db.updateSourceItem(viewerFor(ctx.user), input.id, input.itemId, input.patch)) })),
+    deleteSource: protectedProcedure
+      .input(z.object({ id: recordId, itemId: recordId }))
+      .mutation(async ({ ctx, input }) => ({ success: await db.deleteSourceItem(viewerFor(ctx.user), input.id, input.itemId) })),
+    setAssignment: protectedProcedure
+      .input(z.object({ id: recordId, role: z.enum(ASSIGNMENT_ROLES), displayName: z.string().trim().min(1).max(240), email: z.string().trim().email().max(320).nullable().optional(), broadcomEmail: z.string().trim().email().max(320).nullable().optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...assignment } = input;
+        unwrap(await db.setAssignment(viewerFor(ctx.user), id, assignment));
+        return { success: true };
+      }),
+    removeAssignment: protectedProcedure
+      .input(z.object({ id: recordId, role: z.enum(ASSIGNMENT_ROLES) }))
+      .mutation(async ({ ctx, input }) => ({ success: await db.removeAssignment(viewerFor(ctx.user), input.id, input.role) })),
   }),
   effort: router({
     /** Scoped effort and the internal fit check; rates stay on the server. A mutation so the document travels in the body. */
@@ -40,7 +118,7 @@ export const appRouter = router({
     preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ html: renderFcpHtml(input.title, input.data) })),
     downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum(["fcp", "condensed-fcp", "plan-output", "building-blocks"]).default("fcp") })).mutation(async ({ ctx, input }) => {
       if ((input.format === "xlsx") !== (input.documentType === "building-blocks")) throw new TRPCError({ code: "BAD_REQUEST", message: "The Building Blocks workbook is only available as XLSX." });
-      requireRow(await db.getEngagement(ctx.user.id, input.id));
+      requireRow(await db.getEngagement(viewerFor(ctx.user), input.id));
       return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, input.documentType)}` };
     }),
     html: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ filename: safeFilename(input.title, "html"), mime: "text/html;charset=utf-8", content: renderFcpHtml(input.title, input.data) })),

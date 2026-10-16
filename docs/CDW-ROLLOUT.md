@@ -21,7 +21,7 @@ The app has no external hosting or third-party platform dependency. The recommen
 |---|---|
 | Application | One OCI container, one Node process, one inbound application port, and `/api/health` for health checks |
 | Identity | Entra ID or Okta authentication enforced at the approved gateway; direct container access blocked |
-| Authorization | Named CDW group for pilot and production access; engagement records remain owner-scoped |
+| Authorization | Named CDW group for pilot and production access; engagement records are shared within the workspace; delete is limited to the record's owner or an admin |
 | Database | Approved managed MySQL-compatible database over private networking with encryption, backups, and restricted credentials |
 | Network | Private ingress where available; deny unrestricted internet egress; allow only database, identity-gateway, logging, and required platform services |
 | Secrets | Platform secret store or managed identity; no `.env` files or credentials in the image |
@@ -49,7 +49,7 @@ Submit the following repository files with the internal intake request:
 3. Create a non-production environment with a private hostname and a pilot Entra ID/Okta group.
 4. Build the image in the approved CI pipeline, generate the organization’s required SBOM, run SAST and dependency checks, and scan the final image.
 5. Deploy with a non-production database, secrets from the approved vault, and synthetic or sanitized RVTools files.
-6. Validate sign-in, owner-scoped engagement access, HTML/PDF exports, logs, backup/restore, and rollback.
+6. Validate sign-in, workspace-scoped engagement access, HTML/PDF exports, logs, backup/restore, and rollback.
 7. Submit the same image and evidence for production approval; promote by immutable image digest rather than rebuilding manually.
 
 ## Questions for CDW platform and security teams
