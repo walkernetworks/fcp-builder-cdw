@@ -47,6 +47,9 @@ export default function Home() {
   });
   const hydratedId = useRef<number | null>(null);
   const [trackerOpen, setTrackerOpen] = useState(false);
+  /** The customer name this workspace loaded or last saved; sent with saves so the server can tell an FCP edit from a stale copy. */
+  const baseCustomerName = useRef<string | null>(null);
+  const baseTitle = useRef<string | null>(null);
 
   const list = trpc.engagement.list.useQuery();
   const selectedIsListed = engagementExists(selectedId, list.data);
@@ -72,7 +75,21 @@ export default function Home() {
     },
     onError: error => toast.error(error.message),
   });
-  const update = trpc.engagement.update.useMutation({ onSuccess: async () => { setDirty(false); setSaveState("saved"); await utils.engagement.list.invalidate(); }, onError: error => { setSaveState("unsaved"); toast.error(error.message); } });
+  const update = trpc.engagement.update.useMutation({
+    onSuccess: async (row, sent) => {
+      setDirty(false);
+      setSaveState("saved");
+      // The server may keep a customer name changed in the tracker; adopt it unless the name was edited here since this save.
+      const savedName = row.data.fields.customerName;
+      const sentName = (sent.data as EngagementDocument).fields.customerName;
+      baseCustomerName.current = savedName;
+      baseTitle.current = row.title;
+      if (savedName !== sentName) setFcpDocument(current => (current.fields.customerName === sentName ? { ...current, fields: { ...current.fields, customerName: savedName } } : current));
+      if (row.title !== sent.title) setTitle(current => (current === sent.title ? row.title : current));
+      await utils.engagement.list.invalidate();
+    },
+    onError: error => { setSaveState("unsaved"); toast.error(error.message); },
+  });
   const duplicate = trpc.engagement.duplicate.useMutation({ onSuccess: async row => { await utils.engagement.list.invalidate(); setSelectedId(row.id); toast.success("Engagement duplicated"); } });
   const remove = trpc.engagement.delete.useMutation({ onSuccess: async () => { setSelectedId(null); hydratedId.current = null; setFcpDocument(createDefaultDocument()); setTitle(DEFAULT_ENGAGEMENT_TITLE); await utils.engagement.list.invalidate(); toast.success("Engagement deleted"); } });
   const preview = trpc.document.preview.useMutation({ onSuccess: result => setPreviewHtml(result.html) });
@@ -109,14 +126,32 @@ export default function Home() {
     const migratedDocument = migrateDocument(selected.data.data);
     const needsPersistence = JSON.stringify(migratedDocument) !== JSON.stringify(selected.data.data);
     setTitle(selected.data.title);
+    baseTitle.current = selected.data.title;
+    baseCustomerName.current = migratedDocument.fields.customerName;
     setFcpDocument(migratedDocument);
     setDirty(needsPersistence);
     setSaveState(needsPersistence ? "unsaved" : "saved");
   }, [selected.data]);
+  // A rename made elsewhere (the record drawer, the import) reaches an open workspace, unless the name or title was edited here.
+  useEffect(() => {
+    if (!selected.data || hydratedId.current !== selected.data.id) return;
+    const serverName = selected.data.data.fields.customerName;
+    const serverTitle = selected.data.title;
+    if (serverTitle !== baseTitle.current) {
+      const previous = baseTitle.current;
+      baseTitle.current = serverTitle;
+      setTitle(current => (current === previous ? serverTitle : current));
+    }
+    if (serverName !== baseCustomerName.current) {
+      const previous = baseCustomerName.current;
+      baseCustomerName.current = serverName;
+      setFcpDocument(current => (current.fields.customerName === previous ? { ...current, fields: { ...current.fields, customerName: serverName } } : current));
+    }
+  }, [selected.data]);
   useEffect(() => {
     if (!selectedId || !dirty) return;
     setSaveState("unsaved");
-    const timer = window.setTimeout(() => { setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument }); }, 1300);
+    const timer = window.setTimeout(() => { setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument, baseCustomerName: baseCustomerName.current, baseTitle: baseTitle.current }); }, 1300);
     return () => window.clearTimeout(timer);
   }, [fcpDocument, title, selectedId, dirty]);
   useEffect(() => {
@@ -149,14 +184,14 @@ export default function Home() {
     mutateDocument(refreshDerivedDocument(fcpDocument, { forceRebuild: true }));
     toast.success("VCF 9.1 playbook template applied to both planning views");
   };
-  const saveNow = () => { if (!selectedId) return; setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument }); };
+  const saveNow = () => { if (!selectedId) return; setSaveState("saving"); update.mutate({ id: selectedId, title, data: fcpDocument, baseCustomerName: baseCustomerName.current, baseTitle: baseTitle.current }); };
   const startExport = async (format: ExportFormat, documentType: ExportDocumentType = "fcp") => {
     if (!selectedId || activeExport) return;
 
     setActiveExport({ format, documentType });
     try {
       setSaveState("saving");
-      await update.mutateAsync({ id: selectedId, title, data: fcpDocument });
+      await update.mutateAsync({ id: selectedId, title, data: fcpDocument, baseCustomerName: baseCustomerName.current, baseTitle: baseTitle.current });
       const result = await downloadTicket.mutateAsync({ id: selectedId, format, documentType });
       const response = await fetch(result.url, { credentials: "same-origin" });
       const fallbackName = exportFilename(title, documentType, format);

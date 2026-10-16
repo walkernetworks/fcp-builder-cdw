@@ -56,7 +56,8 @@ export function RecordEditor({ data }: { data: TrackerRecord }) {
   const save = trpc.tracker.update.useMutation({
     onSuccess: async () => {
       toast.success("Saved");
-      await Promise.all([utils.tracker.get.invalidate({ id: record.id }), utils.tracker.list.invalidate(), utils.engagement.list.invalidate()]);
+      // An open FCP workspace re-reads the record so a rename reaches its title and customer name.
+      await Promise.all([utils.tracker.get.invalidate({ id: record.id }), utils.tracker.list.invalidate(), utils.engagement.list.invalidate(), utils.engagement.get.invalidate({ id: record.id })]);
     },
     onError: error => toast.error(error.message),
   });

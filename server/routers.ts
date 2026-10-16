@@ -71,7 +71,9 @@ export const appRouter = router({
     list: protectedProcedure.query(({ ctx }) => db.listEngagements(viewerFor(ctx.user))),
     get: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.getEngagement(viewerFor(ctx.user), input.id)) ?? null),
     create: protectedProcedure.input(z.object({ title: z.string().trim().min(1).max(240).default("New FCP engagement") })).mutation(async ({ ctx, input }) => requireRow(await db.createEngagement(viewerFor(ctx.user), input.title, createDefaultDocument(), { stage: "fcp_draft" }))),
-    update: protectedProcedure.input(z.object({ id: recordId, title: z.string().trim().min(1).max(240), data: engagementDocumentSchema })).mutation(async ({ ctx, input }) => requireRow(await db.updateEngagement(viewerFor(ctx.user), input.id, input.title, input.data))),
+    update: protectedProcedure
+      .input(z.object({ id: recordId, title: z.string().trim().min(1).max(240), data: engagementDocumentSchema, baseCustomerName: z.string().max(240).nullable().optional(), baseTitle: z.string().max(240).nullable().optional() }))
+      .mutation(async ({ ctx, input }) => requireRow(await db.updateEngagement(viewerFor(ctx.user), input.id, input.title, input.data, { customerName: input.baseCustomerName, title: input.baseTitle }))),
     duplicate: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => requireRow(await db.duplicateEngagement(viewerFor(ctx.user), input.id))),
     delete: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => {
       const viewer = viewerFor(ctx.user);
