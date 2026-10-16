@@ -28,9 +28,9 @@ const costOf = (roles: RoleHours & WorkPlanRoles) => roles.architect * RATE.arch
  * still fits and its prerequisites stayed. Design and governance work and work the planner pinned to the
  * entitlement never move; if they alone exceed the entitlement the plan stays over.
  */
-function withinBudget(document: EngagementDocument, effort: ScopedEffort, value: number, hoursCap: number | null = document.report.entitlement.hours): ScopedEffort {
+function withinBudget(document: EngagementDocument, effort: ScopedEffort, value: number, hoursCap: number | null = document.report.entitlement.hours, evenWithAssignments = false): ScopedEffort {
   const hours = hoursCap;
-  if ((!value && !hours) || effort.source === "assignments") return effort;
+  if ((!value && !hours) || (effort.source === "assignments" && !evenWithAssignments)) return effort;
   const bars = document.adoptionTimeline.lanes.flatMap(lane => lane.bars);
   const dependents = new Map<string, string[]>();
   for (const bar of bars) for (const prerequisite of bar.prerequisites ?? []) dependents.set(prerequisite, [...(dependents.get(prerequisite) ?? []), bar.id]);
@@ -39,8 +39,9 @@ function withinBudget(document: EngagementDocument, effort: ScopedEffort, value:
   const movable = (id: string) => { const row = rows.get(id); return Boolean(row && row.total > 0 && !row.deferred && row.placement === "auto" && row.category && !isDesignWorkPackage(id)); };
   const candidates = effort.workPackages.filter(row => movable(row.id)).sort((left, right) => (right.start ?? "").localeCompare(left.start ?? "") || right.total - left.total);
   const moves = new Map<string, DeferralReason>();
+  // The plan's own hours: the work packages, which a signed work plan's totals do not replace.
   let cost = costOf(effort.totals);
-  let planned = effort.totals.total;
+  let planned = planHours(effort);
   const fits = () => (!value || cost <= value) && (!hours || planned <= hours);
   const move = (id: string) => {
     if (moves.has(id) || !movable(id)) return;
@@ -75,7 +76,8 @@ function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEff
   const value = document.fields.entitlementAmount > 0 ? document.fields.entitlementAmount : 0;
   const envelope = document.report.entitlement.hours === null && value ? value / blendedRate : null;
   const built = buildScopedEffort(document, { envelopeHours: envelope, envelopeSource: "entitlement value", today });
-  const effort = built.internal.fit?.underFunded && built.source !== "assignments" ? fitUnderCap(document, built, built.internal.fit) : built;
+  // Under a signed work plan too: the plan's work packages never exceed the hours left after the reserve.
+  const effort = built.internal.fit?.underFunded ? fitUnderCap(document, built, built.internal.fit) : built;
   const fit = effort.internal.fit;
   const dollars = (hours: number) => Math.round(hours * blendedRate);
   const money: FitMoney | undefined = fit ? {
@@ -94,10 +96,10 @@ function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEff
 
 /** Moves the latest work packages to the follow-on until the plan fits the hours left after the reserve, and keeps the buckets in step. */
 function fitUnderCap(document: EngagementDocument, effort: ScopedEffort, fit: NonNullable<ScopedEffort["internal"]["fit"]>): ScopedEffort {
-  const squeezed = withinBudget(document, effort, 0, Math.floor(fit.fillableHours));
-  const moved = effort.totals.total - squeezed.totals.total;
+  const squeezed = withinBudget(document, effort, 0, Math.floor(fit.fillableHours), true);
+  const moved = planHours(effort) - planHours(squeezed);
   const labels = squeezed.workPackages.filter(row => row.deferred === "over budget" && !effort.workPackages.find(item => item.id === row.id)?.deferred).map(row => row.label);
-  const stillOver = squeezed.totals.total > Math.floor(fit.fillableHours);
+  const stillOver = planHours(squeezed) > Math.floor(fit.fillableHours);
   return {
     ...squeezed,
     internal: {
@@ -106,13 +108,16 @@ function fitUnderCap(document: EngagementDocument, effort: ScopedEffort, fit: No
         ...fit,
         buckets: { ...fit.buckets, E1: fit.buckets.E1 - moved, F: fit.buckets.F + moved },
         // Still over only when design and governance alone exceed what the entitlement funds.
-        underFunded: stillOver ? { gapHours: squeezed.totals.total - fit.fillableHours } : null,
+        underFunded: stillOver ? { gapHours: planHours(squeezed) - fit.fillableHours } : null,
         movedToFollowOn: { hours: moved, packages: labels },
         notes: [...fit.notes, `The core needed ${Math.round(fit.coreRequiredHours)} hours against ${Math.round(fit.fillableHours)} after the reserve; ${Math.round(moved)} hours (${labels.join(", ") || "none"}) moved to the Two-Year Notional as follow-on.`],
       },
     },
   };
 }
+
+/** The plan's hours in the entitlement: its work packages, whatever the totals are taken from. */
+const planHours = (effort: ScopedEffort) => effort.workPackages.reduce((sum, row) => sum + row.total, 0);
 
 /** Scoped effort with the envelope filled from the entitlement value when entitled hours are missing, kept within the value, and its cost. */
 export function scopedEffortForDocument(document: EngagementDocument, today?: string): ScopedEffort {
