@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, getTableColumns, inArray, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { createDefaultDocument, EngagementDocument } from "../shared/fcp";
+import { resolveCustomerNameOnFcpSave } from "../shared/customerName";
 import { IMPORT_FIELDS, IMPORT_ROLES, planImport, type ExistingRecord, type ImportPlan, type ImportRole } from "../shared/sharepointImport";
 import type { AssignmentRole, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
 import { canTransition, DEFAULT_SOURCE_CHAIN, effectiveDateProblem, type Stage, type StageRecord } from "../shared/vsaStage";
@@ -167,16 +168,28 @@ export async function createEngagement(viewer: Viewer, title: string, data: Enga
   return getEngagement(viewer, id);
 }
 
-/** FCP saves stay last-write-wins, as before. They never touch tracker columns, so they do not bump `rowVersion`. */
-export async function updateEngagement(viewer: Viewer, id: number, title: string, data: EngagementDocument) {
+/**
+ * FCP saves stay last-write-wins for the document and do not bump `rowVersion`. The customer name is shared with the
+ * tracker: the column changes only when the name was edited in the FCP; otherwise the document takes the column's name,
+ * so a stale FCP copy cannot revert a name changed in the tracker or by the import.
+ */
+export async function updateEngagement(viewer: Viewer, id: number, title: string, data: EngagementDocument, baseCustomerName?: string | null) {
   const db = await requireDb();
+  const [current] = await db
+    .select({ customerName: engagements.customerName, storedDocName: sql<string | null>`JSON_UNQUOTE(JSON_EXTRACT(${engagements.data}, '$.fields.customerName'))` })
+    .from(engagements)
+    .where(and(visibleEngagements(viewer), eq(engagements.id, id)))
+    .limit(1);
+  if (!current) return undefined;
+  const name = resolveCustomerNameOnFcpSave({ incoming: data.fields.customerName ?? "", base: baseCustomerName, storedDocName: current.storedDocName, column: current.customerName });
+  const document = name.docName === data.fields.customerName ? data : { ...data, fields: { ...data.fields, customerName: name.docName } };
   await db
     .update(engagements)
     .set({
       title,
-      customerName: data.fields.customerName || "Untitled customer",
+      customerName: name.column || "Untitled customer",
       customerShortName: data.fields.accountId || "TBD",
-      data,
+      data: document,
       status: data.fields.customerName && data.fields.entitlementEnd && data.inventory.hosts > 0 ? "ready" : "draft",
       updatedByUserId: viewer.id,
     })
@@ -261,10 +274,23 @@ export type WriteResult<T> =
 /** Tracker field edits use optimistic concurrency: a write based on a stale `rowVersion` is rejected. */
 export async function updateTrackerFields(viewer: Viewer, id: number, expectedRowVersion: number, patch: TrackerPatch): Promise<WriteResult<NonNullable<Awaited<ReturnType<typeof getTrackerRecord>>>>> {
   const db = await requireDb();
+  // A title that is just the customer name follows a rename; a title someone wrote stays as it is.
+  let titlePatch: { title?: string } = {};
+  if (patch.customerName) {
+    const current = await requireVisibleEngagement(db, viewer, id);
+    if (current && current.title === current.customerName) titlePatch = { title: patch.customerName };
+  }
   try {
     const result = await db
       .update(engagements)
-      .set({ ...patch, rowVersion: sql`${engagements.rowVersion} + 1`, updatedByUserId: viewer.id })
+      .set({
+        ...patch,
+        ...titlePatch,
+        // The FCP document carries its own copy of the customer name; keep it in step with the column.
+        ...(patch.customerName ? { data: sql`JSON_SET(${engagements.data}, '$.fields.customerName', ${patch.customerName})` } : {}),
+        rowVersion: sql`${engagements.rowVersion} + 1`,
+        updatedByUserId: viewer.id,
+      })
       .where(and(visibleEngagements(viewer), eq(engagements.id, id), eq(engagements.rowVersion, expectedRowVersion)));
     if (result[0].affectedRows === 0) return (await requireVisibleEngagement(db, viewer, id)) ? { status: "conflict" } : { status: "not_found" };
   } catch (error) {
@@ -443,6 +469,7 @@ export async function runSharePointImport(viewer: Viewer, csv: string, mode: "pr
         .update(engagements)
         .set({
           ...(update.fields as Partial<InsertEngagement>),
+          ...(typeof update.fields.customerName === "string" ? { data: sql`JSON_SET(${engagements.data}, '$.fields.customerName', ${update.fields.customerName})` } : {}),
           ...(update.stageChange ? { stage: update.stageChange.to, stageEnteredOn: update.stageChange.effectiveOn } : {}),
           importSnapshot: update.snapshot,
           lastImportedAt: now,
