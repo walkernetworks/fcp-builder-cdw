@@ -59,11 +59,11 @@ export function KpiCard({ label, value, sub }: { label: string; value: ReactNode
   );
 }
 
-export function HeroKpi({ label, value, sub }: { label: string; value: ReactNode; sub: ReactNode }) {
+export function HeroKpi({ label, value, sub, compact }: { label: string; value: ReactNode; sub: ReactNode; compact?: boolean }) {
   return (
     <div className="hero-kpi-tile">
       <p className="hero-kpi-label">{label}</p>
-      <p className="hero-kpi-value">{value}</p>
+      <p className={cn("hero-kpi-value", compact && "text-base leading-snug")}>{value}</p>
       <p className="hero-kpi-sub">{sub}</p>
     </div>
   );
