@@ -11,6 +11,7 @@ import { scopedEffortForDocument } from "./rateCard";
 import { canDeleteEngagement, viewerFor } from "./visibility";
 import { ASSIGNMENT_ROLES, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, trackerPatchSchema } from "../shared/vsaFields";
 import { STAGES } from "../shared/vsaStage";
+import { MAX_IMPORT_CSV_BYTES } from "../shared/sharepointImport";
 
 function requireRow<T>(row: T | undefined): T {
   if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Engagement not found" });
@@ -109,6 +110,12 @@ export const appRouter = router({
     removeAssignment: protectedProcedure
       .input(z.object({ id: recordId, role: z.enum(ASSIGNMENT_ROLES) }))
       .mutation(async ({ ctx, input }) => ({ success: await db.removeAssignment(viewerFor(ctx.user), input.id, input.role) })),
+  }),
+  pipelineImport: router({
+    /** Plans the SharePoint Pipeline List import and writes nothing. A mutation so the file travels in the body. */
+    preview: protectedProcedure.input(z.object({ csv: z.string().min(1).max(MAX_IMPORT_CSV_BYTES) })).mutation(({ ctx, input }) => db.runSharePointImport(viewerFor(ctx.user), input.csv, "preview")),
+    /** Re-plans on locked rows and applies the import in one transaction. The returned report is what was written. */
+    commit: protectedProcedure.input(z.object({ csv: z.string().min(1).max(MAX_IMPORT_CSV_BYTES) })).mutation(({ ctx, input }) => db.runSharePointImport(viewerFor(ctx.user), input.csv, "apply")),
   }),
   effort: router({
     /** Scoped effort and the internal fit check; rates stay on the server. A mutation so the document travels in the body. */

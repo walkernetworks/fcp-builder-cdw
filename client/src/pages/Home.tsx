@@ -16,10 +16,11 @@ import { Switch } from "@/components/ui/switch";
 import { downloadServerAttachment } from "@/lib/downloads";
 import { engagementExists, engagementIdFromSearch, reconcileSelectedEngagementId, shouldQuerySelectedEngagement } from "@/lib/engagementSelection";
 import { trpc } from "@/lib/trpc";
+import { Link } from "wouter";
 import { isCommercialCustomer } from "@shared/buildingBlocks";
 import { exportFilename, type ExportDocumentType } from "@shared/exportFilename";
 import { createDefaultDocument, DELIVERY_ROLE_BY_WORKSTREAM, getFollowOnReadinessGuidance, migrateDocument, refreshDerivedDocument, summarizeDeliveryStaffing, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
-import { ArrowRight, BriefcaseBusiness, FileText, CalendarRange, ClipboardCheck, Coins, Copy, Download, FileCheck2, FileSpreadsheet, Layers3, Loader2, MoreHorizontal, PackageCheck, Plus, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, FileText, CalendarRange, ClipboardCheck, Coins, Copy, Download, FileCheck2, FileSpreadsheet, Layers3, Loader2, MoreHorizontal, PackageCheck, Plus, RefreshCw, Save, ShieldCheck, Trash2, Upload, UsersRound, Workflow } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -228,7 +229,7 @@ export default function Home() {
       <div className="workspace-shell min-h-screen bg-[#f4f6f8]">
       <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3 xl:sticky xl:top-0 xl:z-30 xl:h-16 xl:flex-nowrap">
         <div className="flex min-w-0 items-center gap-3"><div className="rounded-md bg-[#c8102e] px-2.5 py-1 text-sm font-black tracking-[-0.08em] text-white">CDW</div><Separator orientation="vertical" className="h-7" /><div className="min-w-0"><div className="flex items-center gap-2"><Input className="h-8 max-w-[440px] border-transparent bg-transparent px-1 text-base font-semibold shadow-none focus-visible:border-slate-200" value={title} onChange={event => { setTitle(event.target.value); setDirty(true); }} aria-label="Engagement title" /><Badge variant="outline" className="hidden md:inline-flex">Internal</Badge></div><p className="px-1 text-xs text-slate-500">Services Entitlement Work Plan &amp; Delivery Handoff</p></div></div>
-        <div className="flex items-center gap-2">{selectedIsListed ? <><span className="hidden text-xs text-slate-500 sm:inline">{saveState === "saving" ? "Saving…" : saveState === "unsaved" ? "Unsaved Changes" : "Saved"}</span><Button variant="outline" size="sm" disabled={update.isPending} onClick={saveNow}>{update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button><Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={buildPlan}><RefreshCw className="size-4" /> {fcpDocument.planAuthority === "manual" ? "Apply Playbook Template" : "Rebuild Plans"}</Button></> : <Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={openCreateDialog}><Plus className="size-4" /> New Engagement</Button>}</div>
+        <div className="flex items-center gap-2"><Button asChild variant="ghost" size="sm"><Link href="/import"><Upload className="size-4" /> Import pipeline</Link></Button>{selectedIsListed ? <><span className="hidden text-xs text-slate-500 sm:inline">{saveState === "saving" ? "Saving…" : saveState === "unsaved" ? "Unsaved Changes" : "Saved"}</span><Button variant="outline" size="sm" disabled={update.isPending} onClick={saveNow}>{update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button><Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={buildPlan}><RefreshCw className="size-4" /> {fcpDocument.planAuthority === "manual" ? "Apply Playbook Template" : "Rebuild Plans"}</Button></> : <Button size="sm" className="bg-[#c8102e] hover:bg-[#a80d27]" onClick={openCreateDialog}><Plus className="size-4" /> New Engagement</Button>}</div>
       </header>
 
       <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 xl:grid-cols-[270px_minmax(0,1fr)]">

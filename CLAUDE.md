@@ -30,7 +30,7 @@ Don't add unrelated work to a branch whose PR is already open. Start a new branc
 - `server/fcpRenderer.ts`: FCP HTML document; the PDF is rendered from this HTML by `server/pdf.ts`
 - `server/compatibilityHandoffRenderer.ts`: compatibility delivery handoff document
 - `server/routers.ts`: all tRPC procedures; `server/db.ts`: data access (always through `server/visibility.ts`)
-- VSA tracker: `docs/VSA-TRACKER-DATA-MODEL.md` (schema and decisions), `shared/vsaStage.ts` (stage rules, pure), `shared/vsaFields.ts` (enums, editable fields, internal vs customer-facing tags)
+- VSA tracker: `docs/VSA-TRACKER-DATA-MODEL.md` (schema and decisions), `shared/vsaStage.ts` (stage rules, pure), `shared/vsaFields.ts` (enums, editable fields, internal vs customer-facing tags), `shared/sharepointImport.ts` (Pipeline List CSV import: mapping, matching, merge; pure)
 - `server/trustedSso.ts`: sign-in; `server/exportTickets.ts` + `server/exportDownloadRoutes.ts`: signed download links
 - `client/src/pages/Home.tsx`: main workspace; `client/src/components/`: `PlanSetup`, `AdoptionTimelineEditor`, `DetailedAdoptionIntake`, `CompatibilityHandoffPanel`
 - `client/src/lib/rvtools.ts`: RVTools XLSX/CSV parsing, in the browser only
