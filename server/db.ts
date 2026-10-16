@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, getTableColumns, inArray, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { createDefaultDocument, EngagementDocument } from "../shared/fcp";
-import { resolveCustomerNameOnFcpSave } from "../shared/customerName";
+import { renameInTitle, resolveFcpSaveNames } from "../shared/customerName";
 import { IMPORT_FIELDS, IMPORT_ROLES, planImport, type ExistingRecord, type ImportPlan, type ImportRole } from "../shared/sharepointImport";
 import type { AssignmentRole, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
 import { canTransition, DEFAULT_SOURCE_CHAIN, effectiveDateProblem, type Stage, type StageRecord } from "../shared/vsaStage";
@@ -169,25 +169,25 @@ export async function createEngagement(viewer: Viewer, title: string, data: Enga
 }
 
 /**
- * FCP saves stay last-write-wins for the document and do not bump `rowVersion`. The customer name is shared with the
- * tracker: the column changes only when the name was edited in the FCP; otherwise the document takes the column's name,
- * so a stale FCP copy cannot revert a name changed in the tracker or by the import.
+ * FCP saves stay last-write-wins for the document and do not bump `rowVersion`. The customer name and title are shared
+ * with the tracker (shared/customerName.ts): a rename made in the FCP renames the record, and a stale FCP copy cannot
+ * revert a rename made in the tracker or by the import.
  */
-export async function updateEngagement(viewer: Viewer, id: number, title: string, data: EngagementDocument, baseCustomerName?: string | null) {
+export async function updateEngagement(viewer: Viewer, id: number, title: string, data: EngagementDocument, base: { customerName?: string | null; title?: string | null } = {}) {
   const db = await requireDb();
   const [current] = await db
-    .select({ customerName: engagements.customerName, storedDocName: sql<string | null>`JSON_UNQUOTE(JSON_EXTRACT(${engagements.data}, '$.fields.customerName'))` })
+    .select({ customerName: engagements.customerName, title: engagements.title, storedDocName: sql<string | null>`JSON_UNQUOTE(JSON_EXTRACT(${engagements.data}, '$.fields.customerName'))` })
     .from(engagements)
     .where(and(visibleEngagements(viewer), eq(engagements.id, id)))
     .limit(1);
   if (!current) return undefined;
-  const name = resolveCustomerNameOnFcpSave({ incoming: data.fields.customerName ?? "", base: baseCustomerName, storedDocName: current.storedDocName, column: current.customerName });
-  const document = name.docName === data.fields.customerName ? data : { ...data, fields: { ...data.fields, customerName: name.docName } };
+  const names = resolveFcpSaveNames({ incomingName: data.fields.customerName ?? "", incomingTitle: title, baseName: base.customerName, baseTitle: base.title, storedDocName: current.storedDocName, storedTitle: current.title, column: current.customerName });
+  const document = names.docName === data.fields.customerName ? data : { ...data, fields: { ...data.fields, customerName: names.docName } };
   await db
     .update(engagements)
     .set({
-      title,
-      customerName: name.column || "Untitled customer",
+      title: names.title.slice(0, 240) || title,
+      customerName: names.column || "Untitled customer",
       customerShortName: data.fields.accountId || "TBD",
       data: document,
       status: data.fields.customerName && data.fields.entitlementEnd && data.inventory.hosts > 0 ? "ready" : "draft",
@@ -274,11 +274,11 @@ export type WriteResult<T> =
 /** Tracker field edits use optimistic concurrency: a write based on a stale `rowVersion` is rejected. */
 export async function updateTrackerFields(viewer: Viewer, id: number, expectedRowVersion: number, patch: TrackerPatch): Promise<WriteResult<NonNullable<Awaited<ReturnType<typeof getTrackerRecord>>>>> {
   const db = await requireDb();
-  // A title that is just the customer name follows a rename; a title someone wrote stays as it is.
+  // The title follows a rename: the old name is replaced wherever it appears in the title.
   let titlePatch: { title?: string } = {};
   if (patch.customerName) {
     const current = await requireVisibleEngagement(db, viewer, id);
-    if (current && current.title === current.customerName) titlePatch = { title: patch.customerName };
+    if (current) titlePatch = { title: renameInTitle(current.title, current.customerName, patch.customerName).slice(0, 240) };
   }
   try {
     const result = await db
@@ -464,12 +464,18 @@ export async function runSharePointImport(viewer: Viewer, csv: string, mode: "pr
     }
 
     for (const update of plan.updates) {
+      // A rename from SharePoint renames the title too, like a rename in the tracker.
+      let titlePatch: { title?: string } = {};
+      if (typeof update.fields.customerName === "string") {
+        const [current] = await tx.select({ title: engagements.title, customerName: engagements.customerName }).from(engagements).where(and(visibleEngagements(viewer), eq(engagements.id, update.id))).limit(1);
+        if (current) titlePatch = { title: renameInTitle(current.title, current.customerName, update.fields.customerName).slice(0, 240) };
+      }
       const changed = Object.keys(update.fields).length > 0 || Boolean(update.stageChange) || Object.keys(update.assignments).length > 0;
       await tx
         .update(engagements)
         .set({
           ...(update.fields as Partial<InsertEngagement>),
-          ...(typeof update.fields.customerName === "string" ? { data: sql`JSON_SET(${engagements.data}, '$.fields.customerName', ${update.fields.customerName})` } : {}),
+          ...(typeof update.fields.customerName === "string" ? { data: sql`JSON_SET(${engagements.data}, '$.fields.customerName', ${update.fields.customerName})`, ...titlePatch } : {}),
           ...(update.stageChange ? { stage: update.stageChange.to, stageEnteredOn: update.stageChange.effectiveOn } : {}),
           importSnapshot: update.snapshot,
           lastImportedAt: now,
