@@ -52,6 +52,16 @@ const sourceItemFields = {
   note: z.string().trim().max(5000).nullable().optional(),
 };
 
+/** A save refused because someone else holds the FCP build lock becomes a CONFLICT with the holder's name. */
+async function lockAware<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    if (error instanceof db.BuildLockedError) throw new TRPCError({ code: "CONFLICT", message: error.message });
+    throw error;
+  }
+}
+
 function safeFilename(title: string, extension: string) {
   const stem = title.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "FCP";
   return `${stem}.${extension}`;
@@ -73,7 +83,7 @@ export const appRouter = router({
     create: protectedProcedure.input(z.object({ title: z.string().trim().min(1).max(240).default("New FCP engagement") })).mutation(async ({ ctx, input }) => requireRow(await db.createEngagement(viewerFor(ctx.user), input.title, createDefaultDocument(), { stage: "fcp_draft" }))),
     update: protectedProcedure
       .input(z.object({ id: recordId, title: z.string().trim().min(1).max(240), data: engagementDocumentSchema, baseCustomerName: z.string().max(240).nullable().optional(), baseTitle: z.string().max(240).nullable().optional() }))
-      .mutation(async ({ ctx, input }) => requireRow(await db.updateEngagement(viewerFor(ctx.user), input.id, input.title, input.data, { customerName: input.baseCustomerName, title: input.baseTitle }))),
+      .mutation(async ({ ctx, input }) => requireRow(await lockAware(() => db.updateEngagement(viewerFor(ctx.user), input.id, input.title, input.data, { customerName: input.baseCustomerName, title: input.baseTitle })))),
     duplicate: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => requireRow(await db.duplicateEngagement(viewerFor(ctx.user), input.id))),
     delete: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => {
       const viewer = viewerFor(ctx.user);
@@ -127,6 +137,18 @@ export const appRouter = router({
     /** Re-plans on locked rows and applies the import in one transaction. The returned report is what was written. */
     commit: protectedProcedure.input(z.object({ csv: z.string().min(1).max(MAX_IMPORT_CSV_BYTES) })).mutation(({ ctx, input }) => db.runSharePointImport(viewerFor(ctx.user), input.csv, "apply")),
   }),
+  fcpRecord: router({
+    /** Takes or renews the FCP build lock; `takeOver` takes it from someone else. */
+    acquireLock: protectedProcedure.input(z.object({ id: recordId, takeOver: z.boolean().default(false) })).mutation(async ({ ctx, input }) => requireRow(await db.acquireBuildLock(viewerFor(ctx.user), input.id, input.takeOver))),
+    releaseLock: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => { await db.releaseBuildLock(viewerFor(ctx.user), input.id); return { success: true }; }),
+    versions: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.listFcpVersions(viewerFor(ctx.user), input.id)) ?? []),
+    version: protectedProcedure.input(z.object({ id: recordId, versionId: recordId })).query(async ({ ctx, input }) => {
+      const version = requireRow(await db.getFcpVersion(viewerFor(ctx.user), input.id, input.versionId));
+      return { id: version.id, versionNumber: version.versionNumber, title: version.title, label: version.label, data: version.data };
+    }),
+    saveVersion: protectedProcedure.input(z.object({ id: recordId, label: z.string().trim().min(1).max(160) })).mutation(async ({ ctx, input }) => requireRow(await db.createFcpVersion(viewerFor(ctx.user), input.id, input.label, "manual"))),
+    restoreVersion: protectedProcedure.input(z.object({ id: recordId, versionId: recordId })).mutation(async ({ ctx, input }) => requireRow(await lockAware(() => db.restoreFcpVersion(viewerFor(ctx.user), input.id, input.versionId)))),
+  }),
   reports: router({
     list: protectedProcedure.query(({ ctx }) => db.listSavedReports(viewerFor(ctx.user))),
     save: protectedProcedure
@@ -160,6 +182,10 @@ export const appRouter = router({
     downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum(["fcp", "condensed-fcp", "plan-output", "building-blocks"]).default("fcp") })).mutation(async ({ ctx, input }) => {
       if ((input.format === "xlsx") !== (input.documentType === "building-blocks")) throw new TRPCError({ code: "BAD_REQUEST", message: "The Building Blocks workbook is only available as XLSX." });
       requireRow(await db.getEngagement(viewerFor(ctx.user), input.id));
+      // Every customer document export keeps the FCP as it was sent.
+      if (input.documentType === "fcp" || input.documentType === "condensed-fcp") {
+        await db.createFcpVersion(viewerFor(ctx.user), input.id, `Exported ${input.documentType === "fcp" ? "FCP" : "Condensed FCP"} (${input.format.toUpperCase()})`, "export");
+      }
       return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, input.documentType)}` };
     }),
     html: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ filename: safeFilename(input.title, "html"), mime: "text/html;charset=utf-8", content: renderFcpHtml(input.title, input.data) })),

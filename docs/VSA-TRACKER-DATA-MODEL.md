@@ -1,6 +1,6 @@
 # VSA Tracker Data Model
 
-Status: **Phase 1 implemented** (migration `drizzle/0002_vsa_tracker_core.sql`). **Phase 2 implemented** (daily SharePoint import: `shared/sharepointImport.ts`, `runSharePointImport` in `server/db.ts`, the Import page at `/import`; no schema change). Decisions from review are recorded in [section 11](#11-review-decisions).
+Status: **Phase 1 implemented** (migration `drizzle/0002_vsa_tracker_core.sql`). **Phase 4 implemented** (FCP workspace per record, migration `0004_fcp_versions.sql`; section 13). **Phase 2 implemented** (daily SharePoint import: `shared/sharepointImport.ts`, `runSharePointImport` in `server/db.ts`, the Import page at `/import`; no schema change). Decisions from review are recorded in [section 11](#11-review-decisions).
 
 This document locks the relational shape of the VSA engagement record that absorbs the SharePoint VSA Pipeline List. It extends the existing `engagements` table and adds three tables. The FCP document model (`engagements.data`, typed by `shared/fcp.ts`) is unchanged and becomes the output of the FCP Draft stage.
 
@@ -164,7 +164,7 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 |---|---|---|---|---|
 | `clientFolderUrl` | varchar(1024) | yes | I | "Client Folder". Stored as text, rendered as a link; the server never fetches it. Validated as `https:` only |
 | `buildLockUserId` | int | yes | I | FK `users.id`. Who holds the FCP build lock (Phase 4) |
-| `buildLockAt` | timestamp | yes | I | When the lock was taken. A lock older than a code constant (proposed 30 minutes) is treated as released |
+| `buildLockAt` | timestamp | yes | I | When the lock was taken or last renewed. The holder renews it every minute; a lock not renewed for 3 minutes is treated as released (section 13) |
 | `rowVersion` | int | no | I | Default 0. Optimistic concurrency for tracker edits now that several people can edit one record. Incremented on every tracker update; a stale write is rejected |
 | `updatedByUserId` | int | yes | I | Last editor, for attribution alongside `updatedAt` |
 
@@ -580,3 +580,54 @@ Cutover from the baseline: once the Intake Log is live and the team works from t
 - The flow writes five list fields that are not in the 46-column export (`VSEStage`, `AccelerationFundStage`, `DiscoveryReadinessStage`, `Alignment`, and a "Professional Services" field). They look unused. The importer ignores them unless told otherwise.
 - The form collects the Broadcom account director's email. That is now the `broadcom_ad` assignment role.
 - The VSA Expiration the flow sets is an estimate (booking + 364 days), so imported expiry dates from intake are only as good as the booking date.
+
+## 13. FCP workspace per record (Phase 4)
+
+Each FCP belongs to its tracker record. The workspace shows the record's stage, FCP Draft readiness, and hours source; keeps a version history; and allows one editor at a time. Rules are in `shared/fcpRecord.ts`.
+
+### 13.1 Source checklist in the FCP
+
+- The workspace shows FCP Draft readiness from `sourceChainItems` (section 5), for example "3 of 4 sources in", with the open items named and a link to the Sources tab.
+- **Evidence ticks items off.** An FCP save moves a checklist item from needed or requested to received, with a date, a reference, and a note saying why, when the document holds the evidence:
+  - **`rvtools`:** RVTools was imported. The reference is the file names; the date is the import date. Only aggregates and file metadata are in the document, as before.
+  - **`customer_brief`:** the brief was imported ("what we heard", personnel, questions, or sources are present).
+  - **`hours_source`:** signed resource-assignment hours are entered.
+- **Evidence never undoes a decision.** It never changes a verified or waived item, never moves anything backward, and never touches discovery notes, which stay with people.
+
+### 13.2 Hours source
+
+- Where the plan's hours come from: the **signed resource assignment** (hours by role from the signed Broadcom work plan) when one is recorded, otherwise the calculated estimate (services catalog, hours model v2; or host brackets, v1).
+- Shown in the workspace; a signed RA reads as a verdict pill with its total hours.
+
+### 13.3 `fcpVersions` (new, migration 0004)
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | int PK auto | no | |
+| `engagementId` | int | no | FK `engagements.id`, `ON DELETE CASCADE` |
+| `versionNumber` | int | no | 1, 2, 3, … per engagement. Unique with `engagementId` |
+| `title` | varchar(240) | no | The engagement title at the time |
+| `data` | json | no | The full FCP document. Customer-facing content, same classification as `engagements.data` |
+| `dataHash` | varchar(64) | no | SHA-256 of the document JSON |
+| `label` | varchar(160) | no | For example "Sent to customer for review", "Submitted: moved to Broadcom Approval", "Exported Condensed FCP (PDF)" |
+| `reason` | enum `manual`, `submitted`, `export`, `restore` | no | |
+| `createdByUserId` | int | yes | FK `users.id`, `ON DELETE SET NULL` |
+| `createdAt` | timestamp | no | |
+
+- **When versions are made:**
+  - when someone saves one, with a label;
+  - when the record leaves FCP Draft forward, which is always recorded as a milestone;
+  - on every FCP or Condensed FCP export. A repeat export of an unchanged FCP is not saved again.
+- **Restore:** it saves the current FCP as a "Before restoring version N" version first, so a restore can itself be undone. It restores document content only; the engagement keeps its current customer name and title (decision 12 and the connected-name rules).
+- **Versions can be previewed and downloaded as HTML.** They are reached only through a visible engagement, and `server/visibility.test.ts` enforces that.
+
+### 13.4 Build lock
+
+- **One editor per FCP.** Opening an FCP takes the lock (`buildLockUserId`, `buildLockAt`). The holder's workspace renews it every 60 seconds and releases it on leaving, including closing the tab. A lock not renewed for 3 minutes is free. That is shorter than the 30 minutes first proposed, because the heartbeat keeps an active editor's lock alive.
+- **While someone else holds a live lock:**
+  - the workspace is read-only, with a banner naming the holder and controls disabled;
+  - the server refuses that user's FCP saves and restores (CONFLICT, with the holder's name);
+  - autosave runs only while the user holds the lock.
+- **Take over editing** (with confirmation) moves the lock. The previous holder's next save is refused, and their workspace turns read-only.
+- **Scope:** tracker edits in the record drawer are not covered by the lock; they keep their `rowVersion` check. Saving an FCP renews the lock.
+
