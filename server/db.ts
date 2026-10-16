@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, getTableColumns, inArray, isNull, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { EngagementDocument } from "../shared/fcp";
+import { createDefaultDocument, EngagementDocument } from "../shared/fcp";
+import { IMPORT_FIELDS, IMPORT_ROLES, planImport, type ExistingRecord, type ImportPlan, type ImportRole } from "../shared/sharepointImport";
 import type { AssignmentRole, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
 import { canTransition, DEFAULT_SOURCE_CHAIN, effectiveDateProblem, type Stage, type StageRecord } from "../shared/vsaStage";
 import {
@@ -354,3 +355,102 @@ export async function removeAssignment(viewer: Viewer, engagementId: number, rol
   const result = await db.delete(engagementAssignments).where(and(eq(engagementAssignments.engagementId, engagementId), eq(engagementAssignments.role, role)));
   return result[0].affectedRows > 0;
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// SharePoint Pipeline List import (docs/VSA-TRACKER-DATA-MODEL.md section 12.4)
+
+async function loadImportState(tx: Db | Tx, viewer: Viewer, lock = false): Promise<ExistingRecord[]> {
+  const query = tx.select({ ...trackerColumns, importSnapshot: engagements.importSnapshot }).from(engagements).where(visibleEngagements(viewer));
+  const rows = lock ? await query.for("update") : await query;
+  const visibleIds = tx.select({ id: engagements.id }).from(engagements).where(visibleEngagements(viewer));
+  const assignments = await tx.select().from(engagementAssignments).where(inArray(engagementAssignments.engagementId, visibleIds));
+  const byRecord = new Map<number, ExistingRecord["assignments"]>();
+  for (const assignment of assignments) {
+    if (!(IMPORT_ROLES as readonly string[]).includes(assignment.role)) continue;
+    const roles = byRecord.get(assignment.engagementId) ?? {};
+    roles[assignment.role as ImportRole] = { displayName: assignment.displayName, broadcomEmail: assignment.broadcomEmail };
+    byRecord.set(assignment.engagementId, roles);
+  }
+  return rows.map(row => ({
+    ...Object.fromEntries(IMPORT_FIELDS.map(field => [field, row[field] ?? null])),
+    id: row.id,
+    customerName: row.customerName,
+    stage: row.stage,
+    stageEnteredOn: row.stageEnteredOn,
+    intakeSource: row.intakeSource,
+    importSnapshot: (row.importSnapshot as ExistingRecord["importSnapshot"]) ?? null,
+    assignments: byRecord.get(row.id) ?? {},
+  }));
+}
+
+/**
+ * Plans the import against the records the viewer can see. "preview" writes nothing; "apply" re-plans on locked rows and
+ * writes every create, update, stage event, and assignment change in one transaction. Records are never deleted.
+ */
+export async function runSharePointImport(viewer: Viewer, csv: string, mode: "preview" | "apply"): Promise<ImportPlan> {
+  const db = await requireDb();
+  const day = today();
+  if (mode === "preview") return planImport(csv, await loadImportState(db, viewer), day);
+
+  return db.transaction(async tx => {
+    const plan = planImport(csv, await loadImportState(tx, viewer, true), day);
+    const now = new Date();
+    const note = (rowNumber: number) => `SharePoint import, row ${rowNumber}`;
+
+    for (const create of plan.creates) {
+      const data = createDefaultDocument();
+      data.fields.customerName = String(create.fields.customerName ?? "");
+      const result = await tx.insert(engagements).values({
+        ...(create.fields as Partial<InsertEngagement>),
+        ownerId: viewer.id,
+        workspaceId: viewer.workspaceId,
+        title: String(create.fields.customerName ?? "Imported engagement").slice(0, 240),
+        customerName: String(create.fields.customerName ?? "Untitled customer"),
+        data,
+        stage: create.stage,
+        stageEnteredOn: create.stageEffectiveOn,
+        intakeSource: "sharepoint_import",
+        importSnapshot: create.snapshot,
+        lastImportedAt: now,
+        updatedByUserId: viewer.id,
+      });
+      const engagementId = Number(result[0].insertId);
+      await tx.insert(stageEvents).values({ engagementId, fromStage: null, toStage: create.stage, effectiveOn: create.stageEffectiveOn, actorUserId: viewer.id, source: "import", note: note(create.rowNumber) });
+      await tx.insert(sourceChainItems).values(DEFAULT_SOURCE_CHAIN.map(item => ({ ...item, engagementId, createdByUserId: viewer.id })));
+      const assignments = Object.entries(create.assignments).map(([role, value]) => ({ engagementId, role: role as ImportRole, displayName: value!.displayName, broadcomEmail: value!.broadcomEmail, createdByUserId: viewer.id }));
+      if (assignments.length) await tx.insert(engagementAssignments).values(assignments);
+      const report = plan.rows.find(row => row.rowNumber === create.rowNumber);
+      if (report) report.recordId = engagementId;
+    }
+
+    for (const update of plan.updates) {
+      const changed = Object.keys(update.fields).length > 0 || Boolean(update.stageChange) || Object.keys(update.assignments).length > 0;
+      await tx
+        .update(engagements)
+        .set({
+          ...(update.fields as Partial<InsertEngagement>),
+          ...(update.stageChange ? { stage: update.stageChange.to, stageEnteredOn: update.stageChange.effectiveOn } : {}),
+          importSnapshot: update.snapshot,
+          lastImportedAt: now,
+          // An unchanged record keeps its updatedAt and rowVersion, so a daily import does not reorder lists or cause edit conflicts.
+          ...(changed ? { rowVersion: sql`${engagements.rowVersion} + 1`, updatedByUserId: viewer.id } : { updatedAt: sql`${engagements.updatedAt}` }),
+        })
+        .where(and(visibleEngagements(viewer), eq(engagements.id, update.id)));
+      if (update.stageChange) {
+        await tx.insert(stageEvents).values({ engagementId: update.id, fromStage: update.stageChange.from, toStage: update.stageChange.to, effectiveOn: update.stageChange.effectiveOn, actorUserId: viewer.id, source: "import", note: note(update.rowNumber) });
+      }
+      for (const [role, value] of Object.entries(update.assignments)) {
+        if (!value) {
+          await tx.delete(engagementAssignments).where(and(eq(engagementAssignments.engagementId, update.id), eq(engagementAssignments.role, role as ImportRole)));
+        } else {
+          await tx
+            .insert(engagementAssignments)
+            .values({ engagementId: update.id, role: role as ImportRole, displayName: value.displayName, broadcomEmail: value.broadcomEmail, createdByUserId: viewer.id })
+            .onDuplicateKeyUpdate({ set: { displayName: value.displayName, broadcomEmail: value.broadcomEmail } });
+        }
+      }
+    }
+    return plan;
+  });
+}
+
