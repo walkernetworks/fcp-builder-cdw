@@ -47,6 +47,16 @@ describe("CDW design system in the app", () => {
     expect(read(path.join(client, "src/components/vsa/AppShell.tsx"))).toMatch(/CDW (\u2014|\\u2014) Proprietary and confidential\. Copying restricted\./);
   });
 
+  it("formats client money with double zeros (no whole-dollar currency formatters)", () => {
+    expect(sources.filter(file => /currency: "USD", maximumFractionDigits: 0/.test(read(file))).map(file => path.relative(root, file))).toEqual([]);
+  });
+
+  it("renders compatibility decisions as pills, not badges", () => {
+    const panel = read(path.join(client, "src/components/CompatibilityHandoffPanel.tsx"));
+    expect(panel).toMatch(/DECISION_VERDICT/);
+    expect(panel).not.toMatch(/<Badge/);
+  });
+
   it("uses US spellings in client copy", () => {
     const british = /\b(programme|modelled|labour|analyse[sd]?|organisation|colour)\b/i;
     expect(sources.filter(file => british.test(read(file))).map(file => path.relative(root, file))).toEqual([]);

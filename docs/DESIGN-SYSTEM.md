@@ -35,6 +35,14 @@ Plus Jakarta Sans, **bundled** through `@fontsource-variable/plus-jakarta-sans`.
 - Tables use `.tbl`: cool-gray header, zebra rows, a totals rule, and `.num` for figures.
 - Detail views open in the right-side drawer (`Sheet`). Esc and the backdrop close it.
 
+## FCP workspace (`/fcp`)
+
+- **Toolbar:** back to the board, switch engagement, title, Tracker details (opens the record drawer), Save, Rebuild plans, and a More menu (New FCP, Duplicate, Delete). The board is the engagement list, so the workspace has no sidebar.
+- **Hero band:** the red field carries the work plan headline and its dates and value as hero KPIs, each stating its basis.
+- **Steps:** a horizontal stepper; the active step is red, and a completed step shows a check. Each step opens with a section bar.
+- **Panels:** rounded cards on the neutral ramp. Statuses use the state tokens; compatibility decisions, reconciliation, readiness, and action priority render as pills, while evidence state and catalog notes are chips. Data tables use `.tbl`; the report-content editing grid keeps its own layout.
+- **Exception:** the Entitlement Adoption Timeline bars and their legend keep the workstream colors the FCP document defines, so the preview matches the exported FCP.
+- **Money:** every client money formatter shows double zeros.
 ## Reports (`/reports`)
 
 - **Engine:** reports run on `shared/vsaReports.ts`, which the screen, the CSV export, and the server's Excel export all share. Totals of VSA amount count each alternative-plan group once.

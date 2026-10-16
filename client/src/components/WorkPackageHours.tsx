@@ -32,12 +32,13 @@ export function useScopedEffort(document: EngagementDocument): ScopedEffort | un
   return effort.data;
 }
 
-const dollars = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
+// CDW written style: money carries double zeros.
+const dollars = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 const COST_STYLE: Record<PlanCost["status"], { bar: string; box: string; text: string }> = {
-  within: { bar: "bg-emerald-600", box: "border-emerald-200 bg-emerald-50 text-emerald-950", text: "Within the entitlement" },
-  near: { bar: "bg-amber-500", box: "border-amber-200 bg-amber-50 text-amber-950", text: `Near the limit (${Math.round(COST_THRESHOLDS.near * 100)}% or more)` },
-  over: { bar: "bg-red-600", box: "border-red-200 bg-red-50 text-red-950", text: "Over the entitlement" },
-  "no-value": { bar: "bg-slate-400", box: "border-slate-200 bg-slate-50 text-slate-800", text: "No entitlement value on the Engagement step" },
+  within: { bar: "bg-state-pass", box: "border-state-pass/30 bg-state-pass-soft text-state-pass-text", text: "Within the entitlement" },
+  near: { bar: "bg-state-warn", box: "border-state-warn/30 bg-state-warn-soft text-state-warn-text", text: `Near the limit (${Math.round(COST_THRESHOLDS.near * 100)}% or more)` },
+  over: { bar: "bg-state-blocked", box: "border-state-blocked/30 bg-state-blocked-soft text-state-blocked-text", text: "Over the entitlement" },
+  "no-value": { bar: "bg-s300", box: "border-s100 bg-s50 text-ink", text: "No entitlement value on the Engagement step" },
 };
 
 /** INTERNAL: the plan's cost at the rate card against the entitlement value. Never printed in a document. */
@@ -69,7 +70,7 @@ export function CostMeter({ cost, hours, assignments = false, fit }: { cost: Pla
       {cost.entitlementValue > 0 && (
         <div className="relative mt-2 h-2 rounded-full bg-white/70">
           <div className={`h-2 rounded-full ${style.bar}`} style={{ width: `${Math.min(100, percent)}%` }} />
-          <div className="absolute inset-y-[-3px] w-px bg-slate-700" style={{ left: `${COST_THRESHOLDS.near * 100}%` }} title={`${Math.round(COST_THRESHOLDS.near * 100)}% threshold`} />
+          <div className="absolute inset-y-[-3px] w-px bg-s500" style={{ left: `${COST_THRESHOLDS.near * 100}%` }} title={`${Math.round(COST_THRESHOLDS.near * 100)}% threshold`} />
         </div>
       )}
     </div>
@@ -85,7 +86,7 @@ type Settings = EngagementDocument["report"]["workPackageHours"][number];
 /** Hours per role for one work package: the calculated baseline, which the planner can adjust, and where it is planned. */
 export function RoleHoursEditor({ document, effort, barId, onChange }: { document: EngagementDocument; effort: ScopedEffort | undefined; barId: string; onChange: (document: EngagementDocument) => void }) {
   const row = effort?.workPackages.find(item => item.id === barId);
-  if (!effort || !row) return <p className="text-xs text-slate-500">Calculating hours…</p>;
+  if (!effort || !row) return <p className="text-xs text-s400">Calculating hours…</p>;
   const override: Settings = document.report.workPackageHours.find(item => item.id === barId) ?? { id: barId, architect: null, srConsultant: null, projectManager: null, placement: "auto", owner: "auto" };
   const write = (next: Settings | null) => {
     const others = document.report.workPackageHours.filter(item => item.id !== barId);
@@ -102,41 +103,41 @@ export function RoleHoursEditor({ document, effort, barId, onChange }: { documen
   };
   // Choosing the default owner clears the choice, so a later change to the defaults still applies.
   const ownedBy = (
-    <div className="flex flex-wrap items-center gap-1 text-xs text-slate-700">
+    <div className="flex flex-wrap items-center gap-1 text-xs text-s600">
       <span className="mr-1 font-semibold">Owned by</span>
       {OWNERS.map(([value, label]) => <Button key={value} type="button" size="sm" variant={row.owner === value ? "default" : "outline"} className="h-7 px-2 text-[11px]" onClick={() => write({ ...override, owner: value })}>{label}</Button>)}
       {override.owner !== "auto" && <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-[11px]" onClick={() => write({ ...override, owner: "auto" })}><RotateCcw className="size-3.5" /> Default</Button>}
     </div>
   );
   if (row.owner !== "cdw") return (
-    <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+    <div className="space-y-2 rounded-xl border border-s100 bg-white p-3">
       {ownedBy}
-      <p className="text-xs text-slate-600">{row.owner === "checkpoint" ? "A checkpoint marks a confirmation point; it takes no time and carries no CDW hours." : "Customer-owned work is run by the customer's team; it carries no CDW hours and is listed as customer-owned work in the report."} Choose CDW to give it hours.</p>
+      <p className="text-xs text-s500">{row.owner === "checkpoint" ? "A checkpoint marks a confirmation point; it takes no time and carries no CDW hours." : "Customer-owned work is run by the customer's team; it carries no CDW hours and is listed as customer-owned work in the report."} Choose CDW to give it hours.</p>
     </div>
   );
   return (
-    <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 lg:grid-cols-[1fr_1.2fr]">
+    <div className="grid gap-3 rounded-xl border border-s100 bg-white p-3 lg:grid-cols-[1fr_1.2fr]">
       <div>
         <div className="mb-2">{ownedBy}</div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[10px] font-black uppercase tracking-[.14em] text-slate-500">{row.deferred ? "Follow-on hours by role · Two-Year Notional" : "Hours by role · entitlement"}</p>
+          <p className="text-[10px] font-black uppercase tracking-[.14em] text-s400">{row.deferred ? "Follow-on hours by role · Two-Year Notional" : "Hours by role · entitlement"}</p>
           {row.adjusted && <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => write({ ...override, architect: null, srConsultant: null, projectManager: null })}><RotateCcw className="size-3.5" /> Back to baseline</Button>}
         </div>
         <div className="mt-2 grid grid-cols-3 gap-2">
           {ROLES.map(([role, label]) => (
-            <label key={role} className="space-y-1 text-[11px] font-semibold text-slate-600">{label}
+            <label key={role} className="space-y-1 text-[11px] font-semibold text-s500">{label}
               <Input type="number" min={0} className="bg-white" value={override[role] ?? ""} placeholder={String(row.baseline[role])} onChange={event => write({ ...override, [role]: event.target.value === "" ? null : Math.max(0, Math.round(Number(event.target.value))) })} />
-              <span className="block text-[10px] font-normal text-slate-500">Baseline {row.baseline[role]}</span>
+              <span className="block text-[10px] font-normal text-s400">Baseline {row.baseline[role]}</span>
             </label>
           ))}
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-700">
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-s600">
           <span><b>{hoursNow.total.toLocaleString("en-US")} hours</b>{cost ? <> · {dollars(cost.byPackage[barId] ?? 0)}</> : null}</span>
           <span className="ml-auto flex items-center gap-1">Planned in
             {PLACEMENT.map(([value, label]) => <Button key={value} type="button" size="sm" variant={override.placement === value ? "default" : "outline"} className="h-7 px-2 text-[11px]" onClick={() => write({ ...override, placement: value })}>{label}</Button>)}
           </span>
         </div>
-        {row.deferred && <p className="mt-2 rounded-lg bg-slate-50 px-2 py-1.5 text-[11px] leading-4 text-slate-600">{placementNote[row.deferred]}</p>}
+        {row.deferred && <p className="mt-2 rounded-lg bg-s50 px-2 py-1.5 text-[11px] leading-4 text-s500">{placementNote[row.deferred]}</p>}
       </div>
       <div className="space-y-2">
         <AssignmentsInForce document={document} effort={effort} onChange={onChange} />
@@ -155,7 +156,7 @@ export function AssignmentsInForce({ document, effort, onChange }: { document: E
   const planHours = effort.workPackages.filter(row => !row.deferred).reduce((sum, row) => sum + row.total, 0);
   const clear = () => onChange({ ...document, report: { ...document.report, resourceAssignments: [] } });
   return (
-    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs leading-5 text-blue-950">
+    <div className="rounded-xl border border-s200 bg-s50 p-3 text-xs leading-5 text-s600">
       <p><b>Signed resource assignments are in force ({effort.totals.total.toLocaleString("en-US")} hours).</b> They are the hours from the signed resource assignment document, entered on the FCP Report Content step, and they replace this plan in the report and in the cost check, so changing hours or moving work here does not change either. This plan is {planHours.toLocaleString("en-US")} hours in the entitlement.</p>
       <div className="mt-2 flex flex-wrap gap-2">
         <Button type="button" size="sm" variant="outline" className="h-7 bg-white text-xs" onClick={clear}>Clear assignments</Button>
@@ -178,20 +179,20 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
   return (
     <div className="space-y-4">
       {moved.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-700">
+        <div className="rounded-xl border border-s100 bg-s50 px-4 py-3 text-xs leading-5 text-s600">
           <b>{moved.length} work package{moved.length === 1 ? " is" : "s are"} in the Two-Year Notional</b>, after the entitlement ends: {moved.map(row => row.label).join("; ")}. Open the Two-Year Notional tab to see them or bring one back.
         </div>
       )}
       <AdoptionTimelineEditor timeline={withoutBars(withOwnership(document).adoptionTimeline, hidden)} onChange={edited => onTimelineChange(withHiddenBars(unstampActivityOwners(edited), document.adoptionTimeline, hidden))} title="Entitlement Adoption Timeline" description={`${description} Click a work package to adjust its hours by role or plan it in the Two-Year Notional.`} selectionDetail={barId => <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} />} />
-      <section className="border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-s100 bg-white p-5 shadow-sm">
         <p className="text-xs font-black uppercase tracking-[.16em] text-cdw-red">Hours by work package</p>
-        <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-600">
+        <p className="mt-2 max-w-4xl text-xs leading-5 text-s500">
           Baseline hours come from the services catalog for this plan, placed on the work packages that deliver them; adjusted rows are marked. The entitlement window is held to the entitlement value; work beyond it moves to the Two-Year Notional as follow-on scope. The Condensed FCP and the Delivery Package show this same table.
         </p>
         {effort && <div className="mt-3"><AssignmentsInForce document={document} effort={effort} onChange={onChange} /></div>}
         {effort?.internal.cost && <div className="mt-3"><CostMeter cost={effort.internal.cost} hours={effort.totals.total} assignments={effort.source === "assignments"} fit={effort.internal.fit} /></div>}
         <div className="mt-3"><EntitlementFitPanel document={document} effort={effort} onChange={onChange} /></div>
-        {effort ? <div className="mt-4"><WorkPackageTable effort={effort} /></div> : <p className="mt-4 text-xs text-slate-500">Calculating…</p>}
+        {effort ? <div className="mt-4"><WorkPackageTable effort={effort} /></div> : <p className="mt-4 text-xs text-s400">Calculating…</p>}
       </section>
     </div>
   );
@@ -210,7 +211,7 @@ export function NotionalTimelineWithHours({ document, onChange, description }: {
       onChange={twoYearPlan => onChange({ ...document, planAuthority: "manual", twoYearPlan: unstampActivityOwners(twoYearPlan) })}
       title="Two-Year Notional"
       description={`${description} Work moved out of the entitlement starts the month after it ends; click it to change its follow-on hours or bring it back into the entitlement.`}
-      selectionDetail={barId => known.has(barId) ? <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} /> : <p className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">Notional roadmap activity; it carries no entitlement hours.</p>}
+      selectionDetail={barId => known.has(barId) ? <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} /> : <p className="rounded-xl border border-s100 bg-white px-3 py-2 text-xs text-s500">Notional roadmap activity; it carries no entitlement hours.</p>}
     />
   );
 }
@@ -226,39 +227,39 @@ export function WorkPackageTable({ effort }: { effort: ScopedEffort }) {
     ...[...FIXED_GANTT_CATEGORIES, null].map(category => ({ title: category ?? "Not on the timeline", rows: inWindow.filter(row => row.category === category) })),
     { title: "After the entitlement window (Two-Year Notional)", rows: rows.filter(row => row.deferred) },
   ].filter(group => group.rows.length);
-  const numberCell = (value: number, muted: boolean) => <td className={`px-2 py-1.5 text-right tabular-nums ${muted ? "text-slate-400" : "text-slate-800"}`}>{muted ? "—" : value.toLocaleString("en-US")}</td>;
+  const numberCell = (value: number, muted: boolean) => <td className={`px-2 py-1.5 text-right tabular-nums ${muted ? "text-s300" : "text-ink"}`}>{muted ? "—" : value.toLocaleString("en-US")}</td>;
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs">
+      <table className="tbl w-full">
         <thead>
-          <tr className="border-b border-slate-200 text-left text-[10px] font-bold uppercase tracking-wide text-slate-500">
+          <tr className="text-left text-[10px]">
             <th className="px-2 py-1.5">Work package</th><th className="px-2 py-1.5">Window</th><th className="px-2 py-1.5">Lead delivery role</th>
             <th className="px-2 py-1.5 text-right">Architect</th><th className="px-2 py-1.5 text-right">Sr. Consultant</th><th className="px-2 py-1.5 text-right">Sr. PM</th><th className="px-2 py-1.5 text-right">Total</th>
           </tr>
         </thead>
         <tbody>
           {groups.map(group => [
-            <tr key={`group-${group.title}`}><td colSpan={7} className="bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-slate-600">{group.title}</td></tr>,
+            <tr key={`group-${group.title}`}><td colSpan={7} className="bg-s100 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-s500">{group.title}</td></tr>,
             ...group.rows.map(row => {
               const shown = row.followOn ?? row;
               const muted = shown.total === 0;
               const tag = row.deferred ? DEFERRED[row.deferred] : row.note ? NOTE[row.note] : row.adjusted ? "Adjusted" : null;
               return (
-                <tr key={row.id} className="border-b border-slate-100 align-top">
-                  <td className={`px-2 py-1.5 font-semibold ${muted ? "text-slate-400" : "text-slate-900"}`}>{row.label}{tag && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">{tag}</span>}</td>
-                  <td className="whitespace-nowrap px-2 py-1.5 text-slate-600">{row.deferred ? "After the entitlement" : row.start && row.end ? formatWindow(row.start, row.end) : "—"}</td>
-                  <td className="px-2 py-1.5 text-slate-600">{row.leadRole || "—"}</td>
+                <tr key={row.id} className="border-b border-s100 align-top">
+                  <td className={`px-2 py-1.5 font-semibold ${muted ? "text-s300" : "text-ink"}`}>{row.label}{tag && <span className="ml-2 rounded bg-s100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-s400">{tag}</span>}</td>
+                  <td className="whitespace-nowrap px-2 py-1.5 text-s500">{row.deferred ? "After the entitlement" : row.start && row.end ? formatWindow(row.start, row.end) : "—"}</td>
+                  <td className="px-2 py-1.5 text-s500">{row.leadRole || "—"}</td>
                   {numberCell(shown.architect, muted)}{numberCell(shown.srConsultant, muted)}{numberCell(shown.projectManager, muted)}{numberCell(shown.total, muted)}
                 </tr>
               );
             }),
           ])}
-          <tr className="border-t-2 border-slate-900 font-bold text-slate-950">
+          <tr className="border-t-2 border-s600 font-bold text-ink">
             <td className="px-2 py-1.5" colSpan={3}>Total entitlement hours</td>
             {numberCell(totals.architect, false)}{numberCell(totals.srConsultant, false)}{numberCell(totals.projectManager, false)}{numberCell(totals.total, false)}
           </tr>
-          {followOn.total > 0 && <tr className="font-semibold text-slate-700">
+          {followOn.total > 0 && <tr className="font-semibold text-s600">
             <td className="px-2 py-1.5" colSpan={3}>Follow-on hours (Two-Year Notional, not in the entitlement)</td>
             {numberCell(followOn.architect, false)}{numberCell(followOn.srConsultant, false)}{numberCell(followOn.projectManager, false)}{numberCell(followOn.total, false)}
           </tr>}
