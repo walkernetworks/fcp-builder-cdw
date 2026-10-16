@@ -184,7 +184,7 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
       )}
       <AdoptionTimelineEditor timeline={withoutBars(withOwnership(document).adoptionTimeline, hidden)} onChange={edited => onTimelineChange(withHiddenBars(unstampActivityOwners(edited), document.adoptionTimeline, hidden))} title="Entitlement Adoption Timeline" description={`${description} Click a work package to adjust its hours by role or plan it in the Two-Year Notional.`} selectionDetail={barId => <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} />} />
       <section className="border border-slate-200 bg-white p-5 shadow-sm">
-        <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Hours by work package</p>
+        <p className="text-xs font-black uppercase tracking-[.16em] text-cdw-red">Hours by work package</p>
         <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-600">
           Baseline hours come from the services catalog for this plan, placed on the work packages that deliver them; adjusted rows are marked. The entitlement window is held to the entitlement value; work beyond it moves to the Two-Year Notional as follow-on scope. The Condensed FCP and the Delivery Package show this same table.
         </p>

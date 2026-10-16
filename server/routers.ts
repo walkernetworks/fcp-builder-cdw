@@ -9,7 +9,7 @@ import { renderFcpHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 import { scopedEffortForDocument } from "./rateCard";
 import { canDeleteEngagement, viewerFor } from "./visibility";
-import { ASSIGNMENT_ROLES, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, trackerPatchSchema } from "../shared/vsaFields";
+import { ASSIGNMENT_ROLES, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, trackerPatchSchema, VSA_ROLES } from "../shared/vsaFields";
 import { STAGES } from "../shared/vsaStage";
 import { MAX_IMPORT_CSV_BYTES } from "../shared/sharepointImport";
 
@@ -58,6 +58,11 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(options => options.ctx.user),
+    /** Sets the signed-in user's default role view (a filter, not a permission). */
+    setVsaRole: protectedProcedure.input(z.object({ vsaRole: z.enum(VSA_ROLES).nullable() })).mutation(async ({ ctx, input }) => {
+      await db.setUserVsaRole(ctx.user.id, input.vsaRole);
+      return { vsaRole: input.vsaRole };
+    }),
   }),
   engagement: router({
     list: protectedProcedure.query(({ ctx }) => db.listEngagements(viewerFor(ctx.user))),

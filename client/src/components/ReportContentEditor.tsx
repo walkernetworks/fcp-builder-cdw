@@ -198,7 +198,7 @@ export function ReportContentEditor({ document, onChange }: Props) {
 
   return (
     <section className="border border-slate-200 bg-white p-5">
-      <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#c8102e]">Condensed FCP content</p>
+      <p className="text-[10px] font-black uppercase tracking-[.16em] text-cdw-red">Condensed FCP content</p>
       <h3 className="mt-1 text-lg font-semibold text-slate-950">Report content</h3>
       <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">Fill this in by hand, or import a Copilot brief above to pre-fill it. Grey rows marked “From the plan” are generated and print as shown; override or hide any of them. A section with nothing in it is left out of the report, never printed as a placeholder. Changes save automatically.</p>
       <div className={`mt-4 rounded-xl border p-3 text-xs ${missing.length ? "border-amber-200 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>

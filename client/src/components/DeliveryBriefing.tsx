@@ -6,7 +6,7 @@ export function DeliveryBriefing({ document }: { document: EngagementDocument })
   const items = deliveryBriefing(document);
   return (
     <section className="border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">What delivery needs to know</p>
+      <p className="text-xs font-black uppercase tracking-[.16em] text-cdw-red">What delivery needs to know</p>
       <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-600">Discovery answers on record, from the Copilot brief or the FCP Report Content step, and what each means for the work in this plan. The Technical Handoff document carries the same list.</p>
       {items.length ? (
         <table className="mt-4 w-full text-xs">

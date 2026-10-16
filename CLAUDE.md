@@ -32,7 +32,8 @@ Don't add unrelated work to a branch whose PR is already open. Start a new branc
 - `server/routers.ts`: all tRPC procedures; `server/db.ts`: data access (always through `server/visibility.ts`)
 - VSA tracker: `docs/VSA-TRACKER-DATA-MODEL.md` (schema and decisions), `shared/vsaStage.ts` (stage rules, pure), `shared/vsaFields.ts` (enums, editable fields, internal vs customer-facing tags), `shared/sharepointImport.ts` (Pipeline List CSV import: mapping, matching, merge; pure)
 - `server/trustedSso.ts`: sign-in; `server/exportTickets.ts` + `server/exportDownloadRoutes.ts`: signed download links
-- `client/src/pages/Home.tsx`: main workspace; `client/src/components/`: `PlanSetup`, `AdoptionTimelineEditor`, `DetailedAdoptionIntake`, `CompatibilityHandoffPanel`
+- `client/src/pages/Board.tsx` (home, `/`), `Expiry.tsx`, `PipelineImport.tsx`; `client/src/components/vsa/` (AppShell, design elements, RecordDrawer)
+- `client/src/pages/Home.tsx`: FCP workspace (`/fcp`); `client/src/components/`: `PlanSetup`, `AdoptionTimelineEditor`, `DetailedAdoptionIntake`, `CompatibilityHandoffPanel`
 - `client/src/lib/rvtools.ts`: RVTools XLSX/CSV parsing, in the browser only
 - `shared/hcl.ts`, `shared/hclCatalog.ts`: hardware compatibility data; `shared/hclCorpus.ts` applies the corpus rules in `shared/vcfCorpus.ts` (generated)
 
@@ -43,6 +44,7 @@ Don't add unrelated work to a branch whose PR is already open. Start a new branc
 - **Raw RVTools data never leaves the browser.** Only aggregate facts are sent to the server and stored.
 - **No outbound network calls from the app** other than the database. Exported HTML must be self-contained, with no external fonts, scripts, or images.
 - **Every engagement query goes through `server/visibility.ts`.** Records are visible to users in the same workspace; `ownerId` is attribution, and delete is limited to the owner or an admin. Never filter engagements, or tables that hang off them, any other way. `server/visibility.test.ts` enforces this for `server/db.ts`.
+- **The UI follows `docs/DESIGN-SYSTEM.md`.** It uses tokens rather than raw brand hexes, two button styles, pills for verdicts and chips for labels, and every data area has an empty state. `server/designSystem.test.ts` enforces the checkable parts. Exported FCP documents keep their own palette.
 - **Configuration and docs change together.** New environment variables go in `docs/CONFIGURATION.md`, and security-relevant changes also update `docs/SECURITY-REVIEW.md`.
 
 ## Reading large files cheaply
