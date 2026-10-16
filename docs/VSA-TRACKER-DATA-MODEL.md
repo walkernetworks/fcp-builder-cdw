@@ -1,6 +1,6 @@
 # VSA Tracker Data Model
 
-Status: **Phase 1 implemented** (migration `drizzle/0002_vsa_tracker_core.sql`). Decisions from review are recorded in [section 11](#11-review-decisions).
+Status: **Phase 1 implemented** (migration `drizzle/0002_vsa_tracker_core.sql`). **Phase 2 implemented** (daily SharePoint import: `shared/sharepointImport.ts`, `runSharePointImport` in `server/db.ts`, the Import page at `/import`; no schema change). Decisions from review are recorded in [section 11](#11-review-decisions).
 
 This document locks the relational shape of the VSA engagement record that absorbs the SharePoint VSA Pipeline List. It extends the existing `engagements` table and adds three tables. The FCP document model (`engagements.data`, typed by `shared/fcp.ts`) is unchanged and becomes the output of the FCP Draft stage.
 
@@ -527,6 +527,21 @@ So SharePoint edits flow in, app edits are never overwritten, and only true two-
 **Rows that disappear** from the export are never deleted in the app. They are listed in the report as "not in today's export".
 
 **Idempotent:** importing the same file twice changes nothing the second time. A test covers this.
+
+**As built (Phase 2):**
+
+- **Procedures:** `pipelineImport.preview` writes nothing. `pipelineImport.commit` re-plans on locked rows and writes everything in one transaction. (`apply` is reserved by tRPC.)
+- **Who can run it:** any workspace member. Every change is attributed to the user who ran it.
+- **Unchanged rows:** a row whose record does not change keeps its `updatedAt` and `rowVersion`, so a daily import does not reorder lists or cause edit conflicts. Only `importSnapshot` and `lastImportedAt` are written.
+- **Value rules:**
+  - Person columns: `[]` means empty. Several people in one column are kept together in one assignment and flagged. A `Z_Archive:` prefix is removed and flagged.
+  - Amounts: `$0.00` is treated as a placeholder and left empty.
+  - Client folders: site-relative paths are prefixed with `https://cdw.sharepoint.com` (text only; never fetched).
+  - Opportunity numbers: read from "Deal ID or Name", else the link text of "Opportunity ID". The Salesforce opportunity ID comes from the link.
+- **Architect vs DC FSA:** "Architect" (the delivery architect, with a Broadcom email) is kept over "DC FSA" when both are set; the difference is flagged. If DC FSA should be its own role, that is an enum change in a later migration.
+- **Stage dates:** a stage taken from SharePoint is dated from its gate date (FCP draft, Broadcom or customer acceptance, PO, CKOM), else from "Modified". The date is never earlier than the record's current `stageEnteredOn` and never in the future.
+- **Fallback matches:** a fallback key never matches a record that holds a different SharePoint item ID or a different opportunity number.
+- **Conflicts** are reported once. The snapshot then records the SharePoint value, so the app value stays without being reported again until SharePoint changes the field.
 
 ### 12.5 Later, if IT allows: restructure the flow and add an Intake Log
 
