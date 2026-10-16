@@ -87,7 +87,10 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 | `salesforceCustomerId` | varchar(32) | yes | | I | **Unique.** The "Customer ID" of the VSA-only account in CDW's Salesforce tenant, imported from "New CDW Account #" (8 digits today). NULL until the account exists; MySQL allows many NULLs in a unique index. Replaces the kickoff's working name `salesforceAccountId` |
 | `salesforceOpportunityId` | varchar(32) | yes | | I | Unique. The Salesforce record ID extracted from the "Opportunity ID" HTML link; the link itself is not stored. Kept for matching; `opportunityNumber` is what people see and search |
 | `serNumber` | varchar(32) | yes | | I | "SER Number". Indexed, not unique (two duplicate groups in the export are duplicate rows; import flags them) |
-| `opportunityNumber` | varchar(32) | yes | | I | **Unique.** CDW's internal opportunity number for the opportunity under the account in Salesforce, `C-OPP-` plus digits ("Deal ID or Name"). Validated as `^[A-Z]+-OPP-\d{6,8}$`. Shown on the board card and searchable |
+| `opportunityNumber` | varchar(32) | yes | | I | **Unique.** CDW's internal opportunity number for the opportunity under the account in Salesforce, `C-OPP-` plus digits ("Deal ID or Name"). Validated as `^C-OPP-\d{6,8}$`. Shown on the board card and searchable |
+| `intakeSource` | enum `manual`, `sharepoint_import`, `intake_import` | no | `manual` | I | How the record was created (section 12). Existing rows backfill to `manual` |
+| `intakeSubmissionId` | varchar(64) | yes | | I | **Unique.** The form response ID from the intake import, so re-importing the same file never creates a duplicate |
+| `lastImportedAt` | timestamp | yes | | I | Last time an import touched this record |
 | `isFundingExtension` | boolean | no | false | I | "Funding Extension". **Legacy only.** Funding extensions are no longer offered; this keeps the 12 imported historical records identifiable. Import-only: not on the new-record form or the edit form |
 
 ### 3.2 Classification
@@ -377,7 +380,7 @@ Every column in the current SharePoint list (46, confirmed against a header-only
 | Customer Name | `customerName` |
 | Customer State | `customerState` |
 | Opportunity ID | `salesforceOpportunityId` (ID extracted from the link) |
-| Deal ID or Name | `opportunityNumber` when it matches the `…-OPP-` pattern; otherwise left NULL and the original text goes to the reconciliation report |
+| Deal ID or Name | `opportunityNumber` when it is a `C-OPP-` number; otherwise left NULL, the record is flagged "needs opportunity number", and the original text goes to the reconciliation report |
 | West vs East | `region` |
 | Program | `program` |
 | BC Segment | `segment` |
@@ -423,7 +426,7 @@ Every column in the current SharePoint list (46, confirmed against a header-only
 
 New fields with no SharePoint column: `termStart`, `termEnd`, `coreCount`, `serSubmittedOn`, `serApprovedOn`, `workPlanSentOn`, `workPlanAcceptedOn`, `raReceivedOn`, `completedOn`, `waitingOn`.
 
-Data-quality flags already visible in the export: "Deal ID or Name" is a `C-OPP-` number on 85 rows and an `AWC-OPP-` number on 17. The other 16 rows hold 4-digit numbers or free text, and one non-opportunity value is repeated across 4 different customers. Also: 39 rows with no segment, 49 with no account number, 2 account numbers shared by different customers, 2 duplicate rows (same account, SER, and customer), 28 with no opportunity link, boolean "FCP Submitted" with no date, and a "$9.99"-shaped placeholder amount on 2 rows.
+Data-quality flags already visible in the export: "Deal ID or Name" is a `C-OPP-` number on 85 rows. 17 rows hold `AWC-OPP-` placeholders created before opportunities came from Power Automate; they are not valid and are treated like missing numbers. The other 16 rows hold 4-digit numbers or free text, and one non-opportunity value is repeated across 4 different customers. Also: 39 rows with no segment, 49 with no account number, 2 account numbers shared by different customers, 2 duplicate rows (same account, SER, and customer), 28 with no opportunity link, boolean "FCP Submitted" with no date, and a "$9.99"-shaped placeholder amount on 2 rows.
 
 ## 11. Review decisions
 
@@ -440,4 +443,51 @@ Decided in review on 2026-10-15:
 8. **"Deal ID or Name" is the internal opportunity number** (`C-OPP-xxxxxxx`), stored as the unique `opportunityNumber`.
 9. **Strategic is rare.** Broadcom usually takes Strategic customers direct, so CDW seldom handles one. The enum value stays for the one record in the current list, and it is gated like Corporate (Broadcom Approval and work plan). No Strategic-specific screens or views.
 
-**Still to confirm:** what the 17 `AWC-OPP-` numbers are (another Salesforce org or a legacy prefix?). They are accepted as opportunity numbers for now.
+10. **`AWC-OPP-` numbers are placeholders**, not valid opportunity numbers. Only `C-OPP-` is accepted. The 17 placeholder rows import with no opportunity number and a "needs opportunity number" flag.
+11. **Intake and the Power Automate flow** are open; see section 12.
+
+## 12. Intake and the Power Automate flow
+
+### 12.1 What exists today
+
+A form submission starts a Power Automate flow that (a) creates the Salesforce opportunity, which is where the `C-OPP-` number comes from, (b) adds the row to the SharePoint VSA Pipeline List, and (c) sends notification emails. The flow breaks often and takes ongoing effort to fix. The `AWC-OPP-` placeholders date from before the flow created opportunities.
+
+### 12.2 The constraint
+
+The kickoff locks the app as standalone. It makes no calls to Salesforce, SharePoint, or mail, and no outbound network calls except the database; data moves in and out as files. That keeps the IT and InfoSec approval simple. So the app cannot replace the Salesforce-opportunity or email steps without reopening that decision, which would add an integration review to the approval track.
+
+### 12.3 Options
+
+| Option | What the flow keeps doing | What the app does | Trade-off |
+|---|---|---|---|
+| A. Work alongside, no flow change | Everything, including the SharePoint list | Re-imports the SharePoint list export on a schedule (the Phase 2 importer, re-run) | No flow work, but the flow keeps all of its failure points and the list stays a second copy |
+| **B. Slim the flow (recommended)** | Form, Salesforce opportunity, emails | Becomes the only tracker. Imports the form-response file (with the `C-OPP-` number the flow wrote back) instead of the SharePoint list | Removes the list-writing steps, and any folder-creation steps if you choose, from the flow. The app stays standalone. Intake needs a person to run the import (a minute, daily or on demand) |
+| C. App replaces the form | Salesforce opportunity and emails, triggered by a file the app exports into a watched SharePoint folder | Owns intake from the first keystroke | Least duplication, but the flow still runs, the hand-off is a manual file drop, and the `C-OPP-` number still has to come back by import |
+| D. App replaces the flow | Nothing | Calls Salesforce and sends email | Breaks the standalone decision. Needs integration approval and credentials. Not recommended |
+
+B is recommended because it cuts the flow down to the steps only Power Automate can do (Salesforce and email connectors), and moves the part that becomes the app's job, the tracker record, out of the flow. Before choosing, it is worth confirming which flow steps actually break. If the failures are mostly in the Salesforce step, slimming the flow helps less, and C becomes more attractive.
+
+### 12.4 What the schema already supports
+
+The schema works for A, B, and C without change:
+
+- `intakeSource` records how each record arrived.
+- `intakeSubmissionId` (unique) makes re-importing the same form-response file idempotent.
+- `opportunityNumber` (unique) is the match key between a form response, the SharePoint list, and an existing record. Imports fall back to `serNumber`, then to customer name plus SER, and report every fallback match.
+- `lastImportedAt` shows staleness.
+
+### 12.5 Transition (any option)
+
+While SharePoint is still fed by the flow, the Phase 2 importer is re-run against fresh list exports. Import rules once a record exists in the app:
+
+- Import creates new records and fills empty fields.
+- It never overwrites a field someone edited in the app. Conflicts go to the reconciliation report.
+- Stage changes from import are written as `stageEvents` with `source = import`.
+
+Cutover is per option: for B, remove the list-writing step from the flow once the team works from the app, then switch the importer from the list export to the form-response file. Phase 5's intake import is that switch. It may move earlier than Phase 5 if the flow problems justify it.
+
+### 12.6 Needed to decide
+
+- An export of the flow's steps (Power Automate: flow → Export, or a screenshot of each step) and which steps break most.
+- The form's field list, so the intake import can map it.
+
