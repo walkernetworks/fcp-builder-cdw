@@ -4,7 +4,7 @@
  * docs/VSA-TRACKER-DATA-MODEL.md section 8.
  */
 import { and, eq, type SQL } from "drizzle-orm";
-import { engagements, type Engagement, type User } from "../drizzle/schema";
+import { engagements, savedReports, type Engagement, type SavedReport, type User } from "../drizzle/schema";
 
 export type Viewer = Pick<User, "id" | "workspaceId" | "role">;
 
@@ -21,6 +21,20 @@ export function visibleEngagements(viewer: Viewer): SQL {
 export function deletableEngagements(viewer: Viewer): SQL {
   const visible = visibleEngagements(viewer);
   return viewer.role === "admin" ? visible : (and(visible, eq(engagements.ownerId, viewer.id)) as SQL);
+}
+
+/** Saved reports follow the same workspace boundary; changing one is limited to its owner or an admin. */
+export function visibleReports(viewer: Viewer): SQL {
+  return eq(savedReports.workspaceId, viewer.workspaceId);
+}
+
+export function editableReports(viewer: Viewer): SQL {
+  const visible = visibleReports(viewer);
+  return viewer.role === "admin" ? visible : (and(visible, eq(savedReports.ownerId, viewer.id)) as SQL);
+}
+
+export function canEditReport(viewer: Viewer, report: Pick<SavedReport, "workspaceId" | "ownerId">) {
+  return report.workspaceId === viewer.workspaceId && (viewer.role === "admin" || report.ownerId === viewer.id);
 }
 
 export function canEditEngagement(viewer: Viewer, row: Pick<Engagement, "workspaceId">) {

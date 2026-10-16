@@ -18,6 +18,7 @@ import {
 } from "../shared/vsaFields";
 import type { IntakeAnswers } from "../shared/vsaFields";
 import { SEGMENTS, STAGES } from "../shared/vsaStage";
+import type { ReportConfig } from "../shared/vsaReports";
 
 /** Visibility boundary for engagements. One workspace (id 1) is expected; see docs/VSA-TRACKER-DATA-MODEL.md section 6.1. */
 export const workspaces = mysqlTable("workspaces", {
@@ -213,3 +214,21 @@ export const engagementAssignments = mysqlTable(
 );
 
 export type EngagementAssignment = typeof engagementAssignments.$inferSelect;
+
+/** Report definitions saved from the Reports screen. Visible to the workspace; editable by the owner or an admin. */
+export const savedReports = mysqlTable(
+  "savedReports",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    workspaceId: int("workspaceId").default(1).notNull().references(() => workspaces.id),
+    ownerId: int("ownerId").notNull().references(() => users.id),
+    name: varchar("name", { length: 120 }).notNull(),
+    config: json("config").$type<ReportConfig>().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("saved_reports_workspace_idx").on(table.workspaceId, table.name)],
+);
+
+export type SavedReport = typeof savedReports.$inferSelect;
+
