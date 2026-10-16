@@ -6,11 +6,13 @@
 import { z } from "zod";
 import type { Engagement } from "../drizzle/schema";
 import type { AssignmentRole } from "./vsaFields";
-import { isTerminal, STAGE_LABELS, STAGES, stageWarnings } from "./vsaStage";
+import { isTerminal, STAGE_LABELS, STAGES, stageWarnings, type SourceItemSummary } from "./vsaStage";
 import { daysBetween, expiryVerdict } from "./vsaViews";
 
 export type ReportSource = Omit<Engagement, "data" | "importSnapshot"> & {
   assignments: { role: AssignmentRole; displayName: string; userId: number | null }[];
+  /** The source checklist, for FCP Draft readiness warnings. */
+  sourceItems?: SourceItemSummary[];
 };
 
 export type FieldType = "text" | "number" | "money" | "date" | "enum" | "bool";

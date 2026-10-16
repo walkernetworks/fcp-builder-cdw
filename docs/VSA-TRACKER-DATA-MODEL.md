@@ -27,14 +27,13 @@ One `stage` column replaces the five SharePoint status fields (VSA Approval Stag
 | 1 | `intake` | Intake | Pursuit registered and the participation request (SER) is submitted |
 | 2 | `broadcom_request` | Broadcom Request (SER) | Broadcom partner approval is recorded (`serApprovedOn`) |
 | 3 | `discovery` | Discovery | Customer discovery and scoping are done |
-| 4 | `source_chain` | Source Chain | The required source items (section 5) are received or waived |
-| 5 | `fcp_draft` | FCP Draft | The FCP is submitted for review (`fcpSubmittedOn`) |
-| 6 | `broadcom_approval` | Broadcom Approval | Broadcom accepts the FCP (`fcpBroadcomAcceptedOn`). Corporate and Strategic only |
-| 7 | `customer_approval` | Customer Approval | Customer accepts the FCP (`fcpCustomerAcceptedOn`). Corporate and Strategic also need the Broadcom work plan accepted (`workPlanAcceptedOn`); see 2.3 |
-| 8 | `ra_staffing` | RA / Staffing | RA completed, onboarding done, WA received, PO received (`poReceivedOn`) |
-| 9 | `kickoff` | Kickoff | Customer kickoff held (`ckomOn`) |
-| 10 | `in_delivery` | In Delivery | Delivery closed out (`completedOn`) |
-| 11 | `complete` | Complete | Terminal |
+| 4 | `fcp_draft` | FCP Draft | The FCP is submitted for review (`fcpSubmittedOn`). Readiness: the required source items (section 5) are received, verified, or waived |
+| 5 | `broadcom_approval` | Broadcom Approval | Broadcom accepts the FCP (`fcpBroadcomAcceptedOn`). Corporate and Strategic only |
+| 6 | `customer_approval` | Customer Approval | Customer accepts the FCP (`fcpCustomerAcceptedOn`). Corporate and Strategic also need the Broadcom work plan accepted (`workPlanAcceptedOn`); see 2.3 |
+| 7 | `ra_staffing` | RA / Staffing | RA completed, onboarding done, WA received, PO received (`poReceivedOn`) |
+| 8 | `kickoff` | Kickoff | Customer kickoff held (`ckomOn`) |
+| 9 | `in_delivery` | In Delivery | Delivery closed out (`completedOn`) |
+| 10 | `complete` | Complete | Terminal |
 | exit | `refused` | Refused | Customer declined the entitlement. Terminal |
 | exit | `paused` | Paused | Resumes to the stage it paused from |
 | exit | `lost` | Lost | Pursuit lost or delivery cancelled. Terminal |
@@ -72,6 +71,7 @@ Commercial customers have no work plan step: Customer Approval is FCP approval o
 - **Resume:** `paused` returns to the `fromStage` of the event that paused it. If that is unknown (imported as paused), the user picks.
 - **Dates:** a transition's `effectiveOn` cannot be before the record's current `stageEnteredOn` or in the future, so history stays in order.
 - **Hard gate:** `kickoff` and `in_delivery` cannot be entered without `poReceivedOn`. The handbook is explicit that no delivery work begins before the Broadcom PO. Every other exit criterion in 2.1 is a **soft gate**: the transition is allowed, and the record shows a warning until the date is filled.
+- `nextStage` goes from `discovery` straight to `fcp_draft`; there is no Source Chain stage (decision 13).
 - The module exports `STAGES`, `stageOrder`, `applicableStages(segment)`, `nextStage(record)`, `canTransition(record, to) -> { ok, hardBlock?, noteRequired, warnings[] }`, `exitGaps`, `customerApprovalItems`, `effectiveDateProblem`, and `stageWarnings(record, today)`. It has no database or React imports.
 - Records created from the FCP workspace (the existing "New engagement" flow, and duplicates) start in `fcp_draft`. Records created from the tracker start in `intake`.
 
@@ -214,7 +214,7 @@ A transition writes the event, `engagements.stage`, and `engagements.stageEntere
 
 ## 5. `sourceChainItems` (new)
 
-The checklist of inputs an FCP is built from. It drives the Source Chain stage now and the Phase 4 source checklist.
+The checklist of inputs an FCP is built from. It is the **FCP Draft readiness check** and the Phase 4 source checklist; it does not gate a stage of its own (decision 13).
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
@@ -234,7 +234,7 @@ The checklist of inputs an FCP is built from. It drives the Source Chain stage n
 
 Index `(engagementId, kind)`. All columns are **I**.
 
-The Source Chain soft gate is met when every `required` item is `received`, `verified`, or `waived`. New records get a default set (RVTools, discovery notes, customer brief, hours source) from a constant in `shared/vsaStage.ts`.
+FCP Draft readiness is met when every `required` item is `received`, `verified`, or `waived`. Until then, `stageWarnings` reports "Source not received: …" on a record in `fcp_draft`, and leaving FCP Draft lists the open sources with its other gaps. It is a soft check only; the PO is the one hard gate. Waiving a source needs a note, which is how an explicit, recorded decision to proceed without it is kept. New records get a default set (RVTools, discovery notes, customer brief, hours source) from a constant in `shared/vsaStage.ts`.
 
 An `rvtools` item records that an export was received and when. The aggregate facts are still saved only in `data`, exactly as today.
 
@@ -446,7 +446,7 @@ Decided in review on 2026-10-15:
 2. **Funding extensions are legacy only.** They are no longer offered. `isFundingExtension` stays as an import-only flag for historical records. `parentEngagementId` is **dropped** from the kickoff list: its only use was linking extensions. It is a nullable column, so adding it later is cheap if a parent-child need appears.
 3. **The work plan gets its own call-out** (section 2.3). For Corporate and Strategic customers, Customer Approval is two approvals, FCP and work plan, tracked separately with `workPlanSentOn` and `workPlanAcceptedOn`. Commercial has no work plan step.
 4. **Only one hard gate:** no `kickoff` or `in_delivery` without `poReceivedOn`. Everything else warns.
-5. **Source Chain** means collecting the inputs the FCP is built from (section 5).
+5. **Source Chain** meant collecting the inputs the FCP is built from (section 5). It is no longer a stage; see decision 13.
 6. **The FCP edition is not seeded from `segment`.** The two fields stay independent.
 7. **Delete stays owner-or-admin**, matching today. `status = archived` remains available for anyone who prefers to archive.
 
@@ -462,6 +462,11 @@ Decided in review on 2026-10-15:
     - `sharepointItemId`, `opportunityNumber`, `intakeSubmissionId`, and `salesforceOpportunityId` stay unique.
     - Burndown counts hours and the shared entitlement once per `entitlementGroupId`, never summed across siblings. Phase 1 adds the column only; the burndown code is Phase 3.
     - Migration 0002 was regenerated with the change. The local dev database, which already had the earlier 0002, was corrected in place (same three statements) rather than rebuilt, to keep edits made after it was applied.
+13. **Source Chain is not a stage** (2026-10-16). The team doesn't run it as a discrete step, so as a stage it was a board column nobody worked. The main line is now 10 stages: Intake, Broadcom Request (SER), Discovery, FCP Draft, Broadcom Approval, Customer Approval, RA / Staffing, Kickoff, In Delivery, Complete, with exits Refused, Paused, and Lost unchanged.
+    - `sourceChainItems` stays exactly as it was. It is now the FCP Draft readiness check (section 5): a soft warning on a record in FCP Draft while a required source is open, never a block.
+    - The explicit, recorded decision to go ahead without a source is the existing waive-with-note rule. There is no separate mechanism.
+    - Import is unaffected. Nothing mapped to `source_chain`: "1 Customer Discovery & Scoping" maps to Discovery and "2 FCP" to FCP Draft. The backfill of existing FCPs to FCP Draft is unchanged.
+    - Migration 0002 was amended in place, since `vsa-tracker` had not been released. The local dev database had one record in Source Chain. It was moved to FCP Draft, its one stage event was re-pointed with a note saying so, and the enum columns were narrowed in place rather than the database being rebuilt, to keep the data. The result was checked against a fresh build from the migrations.
 
 ## 12. Intake and the Power Automate flow
 

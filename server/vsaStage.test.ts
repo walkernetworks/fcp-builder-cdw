@@ -37,8 +37,8 @@ describe("stage path by segment", () => {
     expect(nextStage(record({ stage: "paused", pausedFrom: "discovery" }))).toBe("discovery");
   });
 
-  it("keeps 11 main-line stages and 3 exits", () => {
-    expect(STAGES).toHaveLength(14);
+  it("keeps 10 main-line stages and 3 exits", () => {
+    expect(STAGES).toHaveLength(13);
   });
 });
 
@@ -53,6 +53,7 @@ describe("transitions", () => {
   it("requires a note to skip ahead and collects every skipped stage's gaps", () => {
     const check = canTransition(record(), "discovery");
     expect(check.noteRequired).toBe(true);
+    expect(canTransition(record({ stage: "discovery" }), "fcp_draft").noteRequired).toBe(false);
     expect(check.warnings).toEqual(["SER not submitted", "Broadcom partner approval not recorded"]);
   });
 
@@ -89,13 +90,19 @@ describe("transitions", () => {
     expect(canTransition(record({ stage: "fcp_draft", segment: "commercial" }), "broadcom_approval").warnings).toContain("Commercial customers skip Broadcom Approval");
   });
 
-  it("checks the source chain when items are supplied", () => {
+  it("treats the source checklist as FCP Draft readiness, never as a stage", () => {
     const sourceItems = [
       { kind: "rvtools" as const, label: "RVTools export", required: true, status: "received" as const },
       { kind: "customer_brief" as const, label: "Customer brief", required: true, status: "needed" as const },
       { kind: "other" as const, label: "Nice to have", required: false, status: "needed" as const },
     ];
-    expect(canTransition(record({ stage: "source_chain", sourceItems }), "fcp_draft").warnings).toEqual(["Source not received: Customer brief"]);
+    expect(STAGES).not.toContain("source_chain");
+    expect(nextStage(record({ stage: "discovery" }))).toBe("fcp_draft");
+    // Leaving FCP Draft lists the open sources with the other gaps; it is never blocked by them.
+    const leaving = canTransition(record({ stage: "fcp_draft", fcpSubmittedOn: "2026-10-01", sourceItems }), "broadcom_approval");
+    expect(leaving).toMatchObject({ ok: true, noteRequired: false, warnings: ["Source not received: Customer brief"] });
+    expect(stageWarnings(record({ stage: "fcp_draft", sourceItems }), "2026-10-15")).toContain("Source not received: Customer brief");
+    expect(stageWarnings(record({ stage: "discovery", sourceItems }), "2026-10-15")).not.toContain("Source not received: Customer brief");
     expect(sourceChainComplete(sourceItems)).toBe(false);
     expect(sourceChainComplete(sourceItems.map(item => ({ ...item, status: "waived" as const })))).toBe(true);
   });

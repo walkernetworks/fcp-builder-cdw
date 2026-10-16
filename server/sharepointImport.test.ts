@@ -218,7 +218,7 @@ describe("import plan", () => {
 
   it("keeps a stage someone moved in the app when SharePoint has not changed it", () => {
     const state = applyPlan([], planImport(csv([base()]), [], TODAY));
-    state[0].stage = "source_chain";
+    state[0].stage = "fcp_draft";
     expect(planImport(csv([base()]), state, TODAY).updates[0].stageChange).toBeUndefined();
   });
 

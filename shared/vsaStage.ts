@@ -8,7 +8,6 @@ export const MAIN_STAGES = [
   "intake",
   "broadcom_request",
   "discovery",
-  "source_chain",
   "fcp_draft",
   "broadcom_approval",
   "customer_approval",
@@ -30,7 +29,6 @@ export const STAGE_LABELS: Record<Stage, string> = {
   intake: "Intake",
   broadcom_request: "Broadcom Request (SER)",
   discovery: "Discovery",
-  source_chain: "Source Chain",
   fcp_draft: "FCP Draft",
   broadcom_approval: "Broadcom Approval",
   customer_approval: "Customer Approval",
@@ -68,7 +66,7 @@ export type StageRecord = {
   poReceivedOn?: string | null;
   ckomOn?: string | null;
   completedOn?: string | null;
-  /** Source chain items; when omitted, the Source Chain gate is not checked. */
+  /** The source checklist; it is the FCP Draft readiness check. When omitted, sources are not checked. */
   sourceItems?: SourceItemSummary[];
   /** For a paused record: the stage it paused from, when known. */
   pausedFrom?: Stage | null;
@@ -123,6 +121,11 @@ export function customerApprovalItems(record: StageRecord): CustomerApprovalItem
   };
 }
 
+/** Required sources not yet received, verified, or waived (waiving needs a note, enforced where items are saved). */
+export function openSources(items: SourceItemSummary[]) {
+  return items.filter(item => item.required && !["received", "verified", "waived"].includes(item.status));
+}
+
 export function sourceChainComplete(items: SourceItemSummary[]) {
   return items.every(item => !item.required || item.status === "received" || item.status === "verified" || item.status === "waived");
 }
@@ -134,11 +137,8 @@ export function exitGaps(record: StageRecord, stage: MainStage): string[] {
       return record.serSubmittedOn ? [] : ["SER not submitted"];
     case "broadcom_request":
       return record.serApprovedOn ? [] : ["Broadcom partner approval not recorded"];
-    case "source_chain":
-      if (!record.sourceItems) return [];
-      return record.sourceItems.filter(item => item.required && !["received", "verified", "waived"].includes(item.status)).map(item => `Source not received: ${item.label}`);
     case "fcp_draft":
-      return record.fcpSubmittedOn ? [] : ["FCP not submitted"];
+      return [...(record.fcpSubmittedOn ? [] : ["FCP not submitted"]), ...openSources(record.sourceItems ?? []).map(item => `Source not received: ${item.label}`)];
     case "broadcom_approval":
       return record.fcpBroadcomAcceptedOn ? [] : ["Broadcom FCP acceptance not recorded"];
     case "customer_approval": {
@@ -223,6 +223,8 @@ export function stageWarnings(record: StageRecord, today: string): string[] {
   if (!record.segment) warnings.push("Segment not set");
   if (record.stage === "broadcom_approval" && !requiresBroadcomApproval(record.segment)) warnings.push("Commercial customers skip Broadcom Approval");
   if (PO_REQUIRED.has(record.stage) && !record.poReceivedOn) warnings.push("In a delivery stage without a PO received date");
+  // FCP Draft readiness: the FCP is built from these inputs. Soft only; the PO is the one hard gate.
+  if (record.stage === "fcp_draft") for (const item of openSources(record.sourceItems ?? [])) warnings.push(`Source not received: ${item.label}`);
   if (requiresWorkPlan(record.segment) && record.workPlanSentOn && !record.workPlanAcceptedOn && daysBetween(record.workPlanSentOn, today) > WORK_PLAN_STALE_DAYS) {
     warnings.push(`Work plan sent ${record.workPlanSentOn}, not accepted after ${WORK_PLAN_STALE_DAYS} days`);
   }
