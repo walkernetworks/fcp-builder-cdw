@@ -74,7 +74,7 @@ export function CustomerBriefImport({ document, onChange }: Props) {
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-black uppercase tracking-[.16em] text-[#c8102e]">Customer brief</p>
+          <p className="text-xs font-black uppercase tracking-[.16em] text-cdw-red">Customer brief</p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">Start from a Copilot brief</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Copilot reads the call notes, emails and questionnaire answers and returns one JSON brief. It fills the engagement details, the adoption plan (pathway, outcomes and depth), and the Condensed FCP content: what we heard, open questions, personnel and milestones. Read in this browser; nothing is applied until you confirm.</p>
         </div>

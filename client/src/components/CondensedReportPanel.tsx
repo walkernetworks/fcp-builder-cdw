@@ -55,7 +55,7 @@ export function CondensedReportPanel({ document, onChange }: Props) {
     <section className="border border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[.16em] text-[#c8102e]">Condensed FCP</p>
+          <p className="text-[10px] font-black uppercase tracking-[.16em] text-cdw-red">Condensed FCP</p>
           <h3 className="mt-1 text-lg font-semibold text-slate-950">Scoped effort and report content</h3>
           <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">Hours are priced from the services catalog for this plan and placed on the adoption timeline's work packages. Signed resource assignments replace them in the report. The fit figures below are internal and never appear in the document.</p>
         </div>

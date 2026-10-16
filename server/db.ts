@@ -90,6 +90,12 @@ export async function getUserById(id: number) {
   return result[0];
 }
 
+/** The signed-in user's default role view. Not a permission. */
+export async function setUserVsaRole(userId: number, vsaRole: User["vsaRole"]) {
+  const db = await requireDb();
+  await db.update(users).set({ vsaRole }).where(eq(users.id, userId));
+}
+
 /** Links unlinked assignments in the user's workspace whose CDW email matches the user's. */
 export async function linkAssignmentsToUser(user: User) {
   if (!user.email) return;
@@ -211,11 +217,19 @@ export async function listTracker(viewer: Viewer, filter: TrackerFilter = {}) {
       .where(and(eq(engagementAssignments.userId, filter.assignedUserId), filter.assignedRole ? eq(engagementAssignments.role, filter.assignedRole) : undefined));
     conditions.push(inArray(engagements.id, assigned));
   }
-  return db
+  const rows = await db
     .select(trackerColumns)
     .from(engagements)
     .where(and(...conditions))
     .orderBy(asc(engagements.stageEnteredOn), asc(engagements.id));
+  const ids = rows.map(row => row.id);
+  const assignments = ids.length
+    ? await db
+        .select({ engagementId: engagementAssignments.engagementId, role: engagementAssignments.role, userId: engagementAssignments.userId, displayName: engagementAssignments.displayName })
+        .from(engagementAssignments)
+        .where(inArray(engagementAssignments.engagementId, ids))
+    : [];
+  return rows.map(row => ({ ...row, assignments: assignments.filter(assignment => assignment.engagementId === row.id) }));
 }
 
 async function requireVisibleEngagement(tx: Db | Tx, viewer: Viewer, id: number, lock = false) {
