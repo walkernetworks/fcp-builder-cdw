@@ -445,7 +445,7 @@ Decided in review on 2026-10-15:
 9. **Strategic is rare.** Broadcom usually takes Strategic customers direct, so CDW seldom handles one. The enum value stays for the one record in the current list, and it is gated like Corporate (Broadcom Approval and work plan). No Strategic-specific screens or views.
 
 10. **`AWC-OPP-` numbers are placeholders**, not valid opportunity numbers. Only `C-OPP-` is accepted. The 17 placeholder rows import with no opportunity number and a "needs opportunity number" flag.
-11. **Intake and the Power Automate flow** are open; see section 12.
+11. **Intake and the Power Automate flow:** recommendation in section 12.4 (keep the flow for Salesforce, folders, and email; restructure it; replace the Pipeline List write with a plain Intake Log the app imports). Pending your decision.
 
 ## 12. Intake and the Power Automate flow
 
@@ -468,7 +468,7 @@ This confirms the account key: the form's Customer ID is Salesforce `Account.Cus
 | # | Issue | Effect |
 |---|---|---|
 | 1 | **No error handling.** The "Go Here If Failed" scope is empty; there is no terminate, retry, or failure notice | Any failed step leaves a half-finished intake, and no one is told unless they check run history |
-| 2 | **Not safe to re-run.** Nothing checks for an existing opportunity, folder, or list item | Resubmitting or resubmitting a failed run creates a second opportunity and list item |
+| 2 | **Not safe to re-run.** Nothing checks for an existing opportunity, folder, or list item | Resubmitting the form, or re-running a failed run, creates a second opportunity and list item |
 | 3 | **Account-not-found does not stop the flow** | The folder is created and RVTools files are moved, but no opportunity or list item is made. The rep's fix (resubmit) then runs into issue 2 |
 | 4 | **Directory lookups gate everything.** The rep's manager and the DC architect must resolve before any real work starts | A rep with no manager set, or a blank or guest architect, fails the whole run before anything is created |
 | 5 | **One long chain.** The opportunity, product, list item, and four emails run strictly in sequence, each after the previous succeeds | A product-line failure leaves an opportunity with no list row and no emails. A failed email skips every later email |
