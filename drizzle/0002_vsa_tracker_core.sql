@@ -65,6 +65,7 @@ ALTER TABLE `engagements` ADD `importSnapshot` json;--> statement-breakpoint
 ALTER TABLE `engagements` ADD `lastImportedAt` timestamp;--> statement-breakpoint
 ALTER TABLE `engagements` ADD `intakeAnswers` json;--> statement-breakpoint
 ALTER TABLE `engagements` ADD `isFundingExtension` boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE `engagements` ADD `entitlementGroupId` int;--> statement-breakpoint
 ALTER TABLE `engagements` ADD `segment` enum('corporate','strategic','commercial');--> statement-breakpoint
 ALTER TABLE `engagements` ADD `program` enum('entitlement','extended_expert','bsas','cash_sow','government_entitlement','government_bsas');--> statement-breakpoint
 ALTER TABLE `engagements` ADD `region` enum('west','east');--> statement-breakpoint
@@ -109,7 +110,6 @@ ALTER TABLE `engagements` ADD `rowVersion` int DEFAULT 0 NOT NULL;--> statement-
 ALTER TABLE `engagements` ADD `updatedByUserId` int;--> statement-breakpoint
 ALTER TABLE `users` ADD `workspaceId` int DEFAULT 1 NOT NULL;--> statement-breakpoint
 ALTER TABLE `users` ADD `vsaRole` enum('sales','architect','presales','pm','leadership');--> statement-breakpoint
-ALTER TABLE `engagements` ADD CONSTRAINT `engagements_sf_customer_uq` UNIQUE(`salesforceCustomerId`);--> statement-breakpoint
 ALTER TABLE `engagements` ADD CONSTRAINT `engagements_sf_opportunity_uq` UNIQUE(`salesforceOpportunityId`);--> statement-breakpoint
 ALTER TABLE `engagements` ADD CONSTRAINT `engagements_opportunity_number_uq` UNIQUE(`opportunityNumber`);--> statement-breakpoint
 ALTER TABLE `engagements` ADD CONSTRAINT `engagements_sharepoint_item_uq` UNIQUE(`sharepointItemId`);--> statement-breakpoint
@@ -129,9 +129,11 @@ ALTER TABLE `engagements` ADD CONSTRAINT `engagements_workspaceId_workspaces_id_
 ALTER TABLE `engagements` ADD CONSTRAINT `engagements_buildLockUserId_users_id_fk` FOREIGN KEY (`buildLockUserId`) REFERENCES `users`(`id`) ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `engagements` ADD CONSTRAINT `engagements_updatedByUserId_users_id_fk` FOREIGN KEY (`updatedByUserId`) REFERENCES `users`(`id`) ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE `users` ADD CONSTRAINT `users_workspaceId_workspaces_id_fk` FOREIGN KEY (`workspaceId`) REFERENCES `workspaces`(`id`) ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX `engagements_sf_customer_idx` ON `engagements` (`salesforceCustomerId`);--> statement-breakpoint
 CREATE INDEX `engagements_workspace_stage_idx` ON `engagements` (`workspaceId`,`stage`,`stageEnteredOn`);--> statement-breakpoint
 CREATE INDEX `engagements_workspace_expiry_idx` ON `engagements` (`workspaceId`,`deliveryWindowEnd`);--> statement-breakpoint
 CREATE INDEX `engagements_ser_idx` ON `engagements` (`serNumber`);--> statement-breakpoint
+CREATE INDEX `engagements_entitlement_group_idx` ON `engagements` (`entitlementGroupId`);--> statement-breakpoint
 -- Hand-added backfill (docs/VSA-TRACKER-DATA-MODEL.md section 9): existing FCPs enter the tracker in FCP Draft.
 UPDATE `engagements` SET `stage` = 'fcp_draft', `stageEnteredOn` = DATE(`createdAt`);--> statement-breakpoint
 INSERT INTO `stageEvents` (`engagementId`, `fromStage`, `toStage`, `effectiveOn`, `recordedAt`, `actorUserId`, `source`, `note`)

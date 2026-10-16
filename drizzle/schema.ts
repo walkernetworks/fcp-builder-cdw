@@ -76,6 +76,8 @@ export const engagements = mysqlTable(
     lastImportedAt: timestamp("lastImportedAt"),
     intakeAnswers: json("intakeAnswers").$type<IntakeAnswers>(),
     isFundingExtension: boolean("isFundingExtension").default(false).notNull(),
+    /** Peer group of alternative plans sharing one entitlement; NULL for a single plan. Hours and the entitlement count once per group. */
+    entitlementGroupId: int("entitlementGroupId"),
 
     // Classification
     segment: mysqlEnum("segment", SEGMENTS),
@@ -131,7 +133,7 @@ export const engagements = mysqlTable(
   },
   table => [
     index("engagements_owner_updated_idx").on(table.ownerId, table.updatedAt),
-    uniqueIndex("engagements_sf_customer_uq").on(table.salesforceCustomerId),
+    index("engagements_sf_customer_idx").on(table.salesforceCustomerId),
     uniqueIndex("engagements_sf_opportunity_uq").on(table.salesforceOpportunityId),
     uniqueIndex("engagements_opportunity_number_uq").on(table.opportunityNumber),
     uniqueIndex("engagements_sharepoint_item_uq").on(table.sharepointItemId),
@@ -139,6 +141,7 @@ export const engagements = mysqlTable(
     index("engagements_workspace_stage_idx").on(table.workspaceId, table.stage, table.stageEnteredOn),
     index("engagements_workspace_expiry_idx").on(table.workspaceId, table.deliveryWindowEnd),
     index("engagements_ser_idx").on(table.serNumber),
+    index("engagements_entitlement_group_idx").on(table.entitlementGroupId),
   ],
 );
 

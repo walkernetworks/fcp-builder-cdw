@@ -1,7 +1,7 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "a3db214c-d291-4407-a177-e36f7d300443",
+  "id": "3ed12f3e-2b27-4449-9425-e976656db8f2",
   "prevId": "07a1ada6-17ab-4a28-b3b2-af2f014a7ebc",
   "tables": {
     "engagementAssignments": {
@@ -309,6 +309,13 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
+        },
+        "entitlementGroupId": {
+          "name": "entitlementGroupId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "segment": {
           "name": "segment",
@@ -618,12 +625,12 @@
           ],
           "isUnique": false
         },
-        "engagements_sf_customer_uq": {
-          "name": "engagements_sf_customer_uq",
+        "engagements_sf_customer_idx": {
+          "name": "engagements_sf_customer_idx",
           "columns": [
             "salesforceCustomerId"
           ],
-          "isUnique": true
+          "isUnique": false
         },
         "engagements_sf_opportunity_uq": {
           "name": "engagements_sf_opportunity_uq",
@@ -674,6 +681,13 @@
           "name": "engagements_ser_idx",
           "columns": [
             "serNumber"
+          ],
+          "isUnique": false
+        },
+        "engagements_entitlement_group_idx": {
+          "name": "engagements_entitlement_group_idx",
+          "columns": [
+            "entitlementGroupId"
           ],
           "isUnique": false
         }

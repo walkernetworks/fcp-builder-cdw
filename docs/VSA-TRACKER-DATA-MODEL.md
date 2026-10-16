@@ -86,7 +86,7 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 | Column | Type | Null | Default | Vis | Notes / SharePoint source |
 |---|---|---|---|---|---|
 | `workspaceId` | int | no | 1 | I | FK `workspaces.id`. Visibility boundary (section 8) |
-| `salesforceCustomerId` | varchar(32) | yes | | I | **Unique.** The "Customer ID" of the VSA-only account in CDW's Salesforce tenant, imported from "New CDW Account #" (8 digits today). NULL until the account exists; MySQL allows many NULLs in a unique index. Replaces the kickoff's working name `salesforceAccountId` |
+| `salesforceCustomerId` | varchar(32) | yes | | I | **Indexed, not unique.** The "Customer ID" of the account in CDW's Salesforce tenant, imported from "New CDW Account #" (8 digits today). One account can carry many engagements, because one Salesforce account has many opportunities. NULL until the account exists. Replaces the kickoff's working name `salesforceAccountId`. `opportunityNumber` is the unique business key (one per plan) |
 | `salesforceOpportunityId` | varchar(32) | yes | | I | Unique. The Salesforce record ID extracted from the "Opportunity ID" HTML link; the link itself is not stored. Kept for matching; `opportunityNumber` is what people see and search |
 | `serNumber` | varchar(32) | yes | | I | "SER Number". Indexed, not unique (two duplicate groups in the export are duplicate rows; import flags them) |
 | `opportunityNumber` | varchar(32) | yes | | I | **Unique.** CDW's internal opportunity number for the opportunity under the account in Salesforce, `C-OPP-` plus digits ("Deal ID or Name"). Validated as `^C-OPP-\d{6,8}$`. Shown on the board card and searchable |
@@ -96,6 +96,7 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 | `importSnapshot` | json | yes | | I | The mapped values from the last SharePoint import of this record. The merge base that tells "changed in SharePoint" apart from "changed in the app" (12.4) |
 | `lastImportedAt` | timestamp | yes | | I | Last time an import touched this record |
 | `intakeAnswers` | json | yes | | I | Intake form answers that are context, not tracker fields: industry codes, engagement scope, contract length, prior sales or services, MSA, services provided so far, evaluation notes. Read-only after import. Typed by a zod schema in `shared/vsaIntake.ts` |
+| `entitlementGroupId` | int | yes | | I | Indexed. NULL for the normal one-plan case. Two or more engagements that are **alternative plans for the same entitlement** share one group id. It is a peer group, not a parent/child link: neither row is primary. Hours and the shared entitlement are counted **once per group, never summed across siblings** (burndown rule; the view is Phase 3). Not in the direct-edit schema; grouping gets its own procedure when the UI needs it |
 | `isFundingExtension` | boolean | no | false | I | "Funding Extension". **Legacy only.** Funding extensions are no longer offered; this keeps the 12 imported historical records identifiable. Import-only: not on the new-record form or the edit form |
 
 ### 3.2 Classification
@@ -178,7 +179,8 @@ Several tracker columns overlap with FCP inputs in `data.fields`: `entitlementVa
 
 ### 3.8 Indexes
 
-- unique `engagements_sf_customer_uq (salesforceCustomerId)`
+- `engagements_sf_customer_idx (salesforceCustomerId)`: plain index, one account to many engagements
+- `engagements_entitlement_group_idx (entitlementGroupId)`
 - unique `engagements_sf_opportunity_uq (salesforceOpportunityId)`
 - unique `engagements_opportunity_number_uq (opportunityNumber)`
 - unique `engagements_sharepoint_item_uq (sharepointItemId)`
@@ -434,13 +436,13 @@ Every column in the current SharePoint list view (46, confirmed against a header
 
 New fields with no SharePoint column: `termStart`, `termEnd`, `coreCount`, `serSubmittedOn`, `serApprovedOn`, `workPlanSentOn`, `workPlanAcceptedOn`, `raReceivedOn`, `completedOn`, `waitingOn`.
 
-Data-quality flags already visible in the export: "Deal ID or Name" is a `C-OPP-` number on 85 rows. 17 rows hold `AWC-OPP-` placeholders created before opportunities came from Power Automate; they are not valid and are treated like missing numbers. The other 16 rows hold 4-digit numbers or free text, and one non-opportunity value is repeated across 4 different customers. Also: 39 rows with no segment, 49 with no account number, 2 account numbers shared by different customers, 2 duplicate rows (same account, SER, and customer), 28 with no opportunity link, boolean "FCP Submitted" with no date, and a "$9.99"-shaped placeholder amount on 2 rows.
+Data-quality flags already visible in the export: "Deal ID or Name" is a `C-OPP-` number on 85 rows. 17 rows hold `AWC-OPP-` placeholders created before opportunities came from Power Automate; they are not valid and are treated like missing numbers. The other 16 rows hold 4-digit numbers or free text, and one non-opportunity value is repeated across 4 different customers. Also: 39 rows with no segment, 49 with no account number, 2 account numbers shared by different customers (allowed by the schema; reported for review), 2 duplicate rows (same account, SER, and customer), 28 with no opportunity link, boolean "FCP Submitted" with no date, and a "$9.99"-shaped placeholder amount on 2 rows.
 
 ## 11. Review decisions
 
 Decided in review on 2026-10-15:
 
-1. **Account key is `salesforceCustomerId`**, matching the "Customer ID" name in CDW's Salesforce tenant. Unique, nullable, imported from "New CDW Account #".
+1. **Account key is `salesforceCustomerId`**, matching the "Customer ID" name in CDW's Salesforce tenant. Nullable, imported from "New CDW Account #". Made non-unique by decision 12.
 2. **Funding extensions are legacy only.** They are no longer offered. `isFundingExtension` stays as an import-only flag for historical records. `parentEngagementId` is **dropped** from the kickoff list: its only use was linking extensions. It is a nullable column, so adding it later is cheap if a parent-child need appears.
 3. **The work plan gets its own call-out** (section 2.3). For Corporate and Strategic customers, Customer Approval is two approvals, FCP and work plan, tracked separately with `workPlanSentOn` and `workPlanAcceptedOn`. Commercial has no work plan step.
 4. **Only one hard gate:** no `kickoff` or `in_delivery` without `poReceivedOn`. Everything else warns.
@@ -453,6 +455,13 @@ Decided in review on 2026-10-15:
 
 10. **`AWC-OPP-` numbers are placeholders**, not valid opportunity numbers. Only `C-OPP-` is accepted. The 17 placeholder rows import with no opportunity number and a "needs opportunity number" flag.
 11. **Intake starts with a daily import of the SharePoint Pipeline List** (12.4). The flow stays as it is. Restructuring the flow and replacing the list write with an Intake Log is kept in the plan as a later option, if IT allows it (12.5).
+12. **One account, many engagements; alternative plans form a peer group** (2026-10-16, before the Phase 1 migration was merged). Some customers carry two alternative plans that share one entitlement, and their hours must never be summed (VSA end-to-end reference, pipeline-health section). A unique `salesforceCustomerId` made that impossible, since one Salesforce account legitimately has many opportunities. So:
+    - `opportunityNumber` is the unique business key, one per plan.
+    - `salesforceCustomerId` is a plain index (`engagements_sf_customer_idx`), not unique.
+    - New `entitlementGroupId` (nullable, indexed) groups alternative plans as peers. `parentEngagementId` stays dropped: this is not a parent/child link.
+    - `sharepointItemId`, `opportunityNumber`, `intakeSubmissionId`, and `salesforceOpportunityId` stay unique.
+    - Burndown counts hours and the shared entitlement once per `entitlementGroupId`, never summed across siblings. Phase 1 adds the column only; the burndown code is Phase 3.
+    - Migration 0002 was regenerated with the change. The local dev database, which already had the earlier 0002, was corrected in place (same three statements) rather than rebuilt, to keep edits made after it was applied.
 
 ## 12. Intake and the Power Automate flow
 
@@ -498,7 +507,9 @@ The first operating mode assumes the flow and the SharePoint list stay exactly a
 
 **One change to the SharePoint view, no IT needed:** add the built-in **ID** column to the view that gets exported. It is the only key every row has. Without it, the 33 rows with no valid `C-OPP-` number could only be matched on SER or customer name, and a renamed customer would come in as a duplicate.
 
-**Matching** (first hit wins, every fallback is reported): `sharepointItemId` → `opportunityNumber` → `serNumber` → `salesforceCustomerId`. An unmatched row creates a record with `intakeSource = sharepoint_import`. A row that matches two records is skipped and reported.
+**Matching** (first hit wins, every fallback is reported): `sharepointItemId` → `opportunityNumber` → `serNumber` → `salesforceCustomerId`. An unmatched row creates a record with `intakeSource = sharepoint_import`. A row that matches two records is skipped and reported. Because `salesforceCustomerId` is not unique, the account fallback only counts when it identifies exactly one record.
+
+**Same account, different opportunity numbers** are two engagements, and duplicate account numbers in the export are no longer an insert failure. **Same account and same opportunity number** is a duplicate row: skipped and reported.
 
 **Merge rule, per field,** using `importSnapshot` (the values from the last import) as the base:
 
@@ -535,7 +546,7 @@ Flow changes (Power Automate work, outside this repo):
 
 App side, the intake import (replaces the daily list import as the source of new records):
 
-- Matches on `intakeSubmissionId`, then `opportunityNumber`, then `salesforceCustomerId`. Records that came from the daily list import match on `opportunityNumber`, so switching sources creates no duplicates. A rerun of the same file changes nothing.
+- Matches on `intakeSubmissionId`, then `opportunityNumber`, then `salesforceCustomerId` (only when it identifies exactly one record). Records that came from the daily list import match on `opportunityNumber`, so switching sources creates no duplicates. A rerun of the same file changes nothing.
 - Creates the record at stage `intake` (the SER is still submitted by hand by the SDDC team, so `broadcom_request` starts when `serSubmittedOn` is set), with `riskAssessment = submitted`, as the flow does today.
 - Maps the answers: Y1 VCF consulting amount → `entitlementValue`; estimated booking date → `estimatedCloseOn`; booking date + 364 days → `deliveryWindowEnd`, marked as an estimate until confirmed; estimated cores → `coreCount`; estimated ABV → `estimatedDealValue`; rep, DC architect, and Broadcom AD → assignments; everything else → `intakeAnswers`.
 - Never handles RVTools files. The upload stays in SharePoint as today; the architect loads RVTools in the browser, so raw data still never reaches the app.

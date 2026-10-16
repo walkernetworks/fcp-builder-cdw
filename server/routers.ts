@@ -27,7 +27,7 @@ function unwrap<T>(result: db.WriteResult<T>): T {
     case "conflict":
       throw new TRPCError({ code: "CONFLICT", message: "Someone else changed this record. Reload it and try again." });
     case "duplicate":
-      throw new TRPCError({ code: "CONFLICT", message: "Another record already uses that Customer ID, opportunity, or SharePoint item." });
+      throw new TRPCError({ code: "CONFLICT", message: "Another record already uses that opportunity number, Salesforce opportunity, or SharePoint item." });
     case "blocked":
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: result.reason });
     case "note_required":
