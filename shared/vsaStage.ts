@@ -43,7 +43,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
 
 /** Terminal stages; leaving one is a reopening and needs a note. */
 const TERMINAL: ReadonlySet<Stage> = new Set<Stage>(["complete", "refused", "lost"]);
-/** No delivery work begins before the Broadcom PO, so these cannot be entered without one. */
+/** The delivery stages. They cannot be entered until the delivery requirements are met (deliveryRequirements). */
 const PO_REQUIRED: ReadonlySet<Stage> = new Set<Stage>(["kickoff", "in_delivery"]);
 /** A work plan sent this many days ago without acceptance gets a warning. */
 export const WORK_PLAN_STALE_DAYS = 14;
@@ -61,6 +61,11 @@ export type StageRecord = {
   fcpCustomerAcceptedOn?: string | null;
   workPlanSentOn?: string | null;
   workPlanAcceptedOn?: string | null;
+  /** Set when the PM or Broadcom said FCP approval isn't needed; it stands in for the FCP approval gate only. */
+  fcpWaivedOn?: string | null;
+  /** Hours on the accepted work plan, and on the PO / work authorization; compared when the PO came first. */
+  workPlanHours?: number | null;
+  poHours?: number | null;
   raReceivedOn?: string | null;
   workAuthReceivedOn?: string | null;
   poReceivedOn?: string | null;
@@ -80,13 +85,14 @@ export function isTerminal(stage: Stage) {
   return TERMINAL.has(stage);
 }
 
-/** Broadcom Approval and the work plan apply to Corporate and Strategic. An unset segment is treated as gated (conservative). */
+/** Broadcom Approval applies to Corporate and Strategic. An unset segment is treated as gated (conservative). */
 export function requiresBroadcomApproval(segment: Segment | null) {
   return segment !== "commercial";
 }
 
-export function requiresWorkPlan(segment: Segment | null) {
-  return segment !== "commercial";
+/** Every segment needs the customer to accept the Broadcom work plan before delivery. */
+export function requiresWorkPlan(_segment: Segment | null) {
+  return true;
 }
 
 export function applicableStages(segment: Segment | null): MainStage[] {
@@ -113,7 +119,7 @@ export type CustomerApprovalItems = {
   workPlan?: { sentOn: string | null; acceptedOn: string | null };
 };
 
-/** Customer Approval holds FCP approval and, for Corporate and Strategic, the Broadcom work plan approval. */
+/** Customer Approval holds FCP approval and the Broadcom work plan approval. */
 export function customerApprovalItems(record: StageRecord): CustomerApprovalItems {
   return {
     fcp: { acceptedOn: record.fcpCustomerAcceptedOn ?? null },
@@ -174,8 +180,9 @@ export type TransitionCheck = {
 export function canTransition(record: StageRecord, to: Stage): TransitionCheck {
   const from = record.stage;
   if (from === to) return { ok: false, hardBlock: `Already in ${STAGE_LABELS[to]}`, noteRequired: false, warnings: [] };
-  if (PO_REQUIRED.has(to) && !record.poReceivedOn) {
-    return { ok: false, hardBlock: `${STAGE_LABELS[to]} needs the Broadcom PO received date. No delivery work begins before the PO.`, noteRequired: false, warnings: [] };
+  if (PO_REQUIRED.has(to)) {
+    const unmet = deliveryRequirements(record).filter(requirement => !requirement.met);
+    if (unmet.length) return { ok: false, hardBlock: `${STAGE_LABELS[to]} needs ${listOf(unmet.map(requirement => requirement.need))}. No delivery work begins before them.`, noteRequired: false, warnings: [] };
   }
 
   const warnings: string[] = [];
@@ -213,6 +220,90 @@ export function effectiveDateProblem(stageEnteredOn: string, effectiveOn: string
   return null;
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Delivery requirements. Staffing (RA / Staffing) can start early in every segment, with no gate; entering delivery
+// (Kickoff or In Delivery) is a hard block until all three are met.
+
+/** The FCP approval delivery needs: Broadcom's for Corporate and Strategic, the customer's for Commercial. */
+export function fcpApprovalGate(segment: Segment | null): GateKey {
+  return requiresBroadcomApproval(segment) ? "fcpBroadcomAcceptedOn" : "fcpCustomerAcceptedOn";
+}
+
+export type DeliveryRequirement = {
+  key: "fcp_approval" | "work_plan" | "po";
+  gate: GateKey;
+  met: boolean;
+  /** Met by an FCP waiver rather than the approval date. A waiver never stands in for the work plan or the PO. */
+  waived: boolean;
+  /** What is missing, for messages: "the Broadcom PO received date". */
+  need: string;
+};
+
+type DeliveryRecord = Pick<StageRecord, "segment" | "fcpBroadcomAcceptedOn" | "fcpCustomerAcceptedOn" | "fcpWaivedOn" | "workPlanAcceptedOn" | "poReceivedOn">;
+
+export function deliveryRequirements(record: DeliveryRecord): DeliveryRequirement[] {
+  const gate = fcpApprovalGate(record.segment);
+  const approved = Boolean(record[gate as "fcpBroadcomAcceptedOn" | "fcpCustomerAcceptedOn"]);
+  const waived = !approved && Boolean(record.fcpWaivedOn);
+  return [
+    { key: "fcp_approval", gate, met: approved || waived, waived, need: requiresBroadcomApproval(record.segment) ? "Broadcom approval of the FCP (or an FCP waiver)" : "customer approval of the FCP (or an FCP waiver)" },
+    { key: "work_plan", gate: "workPlanAcceptedOn", met: Boolean(record.workPlanAcceptedOn), waived: false, need: "the customer's work plan acceptance" },
+    { key: "po", gate: "poReceivedOn", met: Boolean(record.poReceivedOn), waived: false, need: "the Broadcom PO received date" },
+  ];
+}
+
+/** The gates that block delivery for this segment. */
+export function hardGates(segment: Segment | null): GateKey[] {
+  return [fcpApprovalGate(segment), "workPlanAcceptedOn", "poReceivedOn"];
+}
+
+export type FcpTrailing = {
+  /** "stop" for Corporate and Strategic (it blocks delivery until Broadcom approves), "warn" for Commercial. */
+  severity: "stop" | "warn";
+  /** The FCP gate to record next. */
+  gate: GateKey;
+  label: string;
+};
+
+/**
+ * A record already in staffing or later whose FCP is not approved (or waived): the FCP is trailing the engagement.
+ * Typical for records being caught up, where staffing runs while the FCP is still being written.
+ */
+export function fcpTrailing(record: Pick<StageRecord, "stage" | "fcpSubmittedOn"> & DeliveryRecord): FcpTrailing | null {
+  if (!isMainStage(record.stage) || record.stage === "complete" || stageOrder(record.stage) < stageOrder("ra_staffing")) return null;
+  const approval = deliveryRequirements(record)[0];
+  if (approval.met) return null;
+  const broadcom = requiresBroadcomApproval(record.segment);
+  const gate: GateKey = record.fcpSubmittedOn ? approval.gate : "fcpSubmittedOn";
+  return {
+    severity: broadcom ? "stop" : "warn",
+    gate,
+    label: broadcom ? "FCP trailing: Broadcom approval of the FCP is needed before delivery" : "FCP trailing: customer approval of the FCP not recorded",
+  };
+}
+
+export type AuthorizationCheck = { key: "po_before_work_plan" | "hours_mismatch"; label: string };
+
+/**
+ * The PO or work authorization arrived before the work plan was accepted. Soft: a data-quality flag, never a block.
+ * Once the work plan is accepted, matching hours clear it and different hours raise an hours mismatch instead.
+ */
+export function authorizationCheck(record: Pick<StageRecord, "poReceivedOn" | "workAuthReceivedOn" | "workPlanAcceptedOn" | "workPlanHours" | "poHours">): AuthorizationCheck | null {
+  const received = [record.poReceivedOn, record.workAuthReceivedOn].filter((day): day is string => Boolean(day)).sort()[0];
+  if (!received) return null;
+  const bothHours = record.workPlanHours != null && record.poHours != null;
+  if (bothHours && record.workPlanAcceptedOn && Number(record.workPlanHours) !== Number(record.poHours)) {
+    return { key: "hours_mismatch", label: `Hours mismatch: work plan ${record.workPlanHours}, PO / work authorization ${record.poHours}` };
+  }
+  if (!record.workPlanAcceptedOn) return { key: "po_before_work_plan", label: "PO / work authorization before work plan acceptance" };
+  if (received < record.workPlanAcceptedOn && !bothHours) return { key: "po_before_work_plan", label: "PO / work authorization came before the work plan; record both hours to compare" };
+  return null;
+}
+
+function listOf(items: string[]) {
+  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
 function daysBetween(fromDay: string, toDay: string) {
   return Math.round((Date.parse(`${toDay}T00:00:00Z`) - Date.parse(`${fromDay}T00:00:00Z`)) / 86_400_000);
 }
@@ -225,7 +316,11 @@ export function stageWarnings(record: StageRecord, today: string, workPlanStaleD
   const warnings: string[] = [];
   if (!record.segment) warnings.push("Segment not set");
   if (record.stage === "broadcom_approval" && !requiresBroadcomApproval(record.segment)) warnings.push("Commercial customers skip Broadcom Approval");
-  if (PO_REQUIRED.has(record.stage) && !record.poReceivedOn) warnings.push("In a delivery stage without a PO received date");
+  if (PO_REQUIRED.has(record.stage)) {
+    for (const requirement of deliveryRequirements(record)) if (!requirement.met) warnings.push(`In a delivery stage without ${requirement.need}`);
+  }
+  const trailing = fcpTrailing(record);
+  if (trailing) warnings.push(trailing.label);
   // FCP Draft readiness: the FCP is built from these inputs. Soft only; the PO is the one hard gate.
   if (record.stage === "fcp_draft") for (const item of openSources(record.sourceItems ?? [])) warnings.push(`Source not received: ${item.label}`);
   if (requiresWorkPlan(record.segment) && record.workPlanSentOn && !record.workPlanAcceptedOn && daysBetween(record.workPlanSentOn, today) > workPlanStaleDays) {
@@ -244,7 +339,7 @@ export const DEFAULT_SOURCE_CHAIN: ReadonlyArray<{ kind: SourceItemKind; label: 
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Stage progression: the gate dates grouped under the stage they belong to, for the record's Stages & gates view.
-// Display only: the rules above (canTransition, exitGaps, the PO hard gate) are unchanged and still decide every move.
+// Display only: the rules above (canTransition, exitGaps, deliveryRequirements) decide every move.
 
 /** The stage each gate date is recorded in. Matches exitGaps: a stage's gates are what it takes to leave it. */
 export const STAGE_GATES: Record<MainStage, readonly GateKey[]> = {
@@ -260,8 +355,6 @@ export const STAGE_GATES: Record<MainStage, readonly GateKey[]> = {
   complete: [],
 };
 
-/** The one hard gate: Kickoff and In Delivery cannot be entered without it. */
-export const HARD_GATE: GateKey = "poReceivedOn";
 /** A forecast, not an event: it is set to a date rather than marked done, and never counts as pending. */
 export const PLANNED_GATES: ReadonlySet<GateKey> = new Set<GateKey>(["estimatedCloseOn"]);
 
@@ -277,15 +370,28 @@ export function gateApplies(gate: GateKey, segment: Segment | null) {
 }
 
 export type GateDates = Partial<Record<GateKey, string | null>>;
-export type GateRow = { gate: GateKey; day: string | null; done: boolean; hard: boolean; planned: boolean };
+export type GateRow = {
+  gate: GateKey;
+  day: string | null;
+  done: boolean;
+  /** Blocks Kickoff and In Delivery until recorded (hardGates). */
+  hard: boolean;
+  planned: boolean;
+  /** The FCP approval gate, met by a waiver instead of a date. */
+  waived: boolean;
+  /** Recorded while its stage is still ahead: the work is running ahead of the stage. */
+  ahead: boolean;
+  /** An FCP gate still open after the record moved past its stage (fcpTrailing). */
+  trailing: boolean;
+};
 export type StepStatus = "done" | "current" | "upcoming";
 export type StageStep = { stage: MainStage; status: StepStatus; gates: GateRow[] };
 
 export type NextAction =
   /** The next gate to record in the current stage. */
   | { kind: "record"; gate: GateKey; stage: MainStage }
-  /** The PO is missing and the next stage (or this one) needs it. */
-  | { kind: "unblock"; gate: GateKey; stage: MainStage }
+  /** A delivery requirement is missing and the next stage (or this one) needs it. */
+  | { kind: "unblock"; gate: GateKey; stage: MainStage; requirement: DeliveryRequirement["key"] }
   /** The current stage's gates are recorded; the record can move on. */
   | { kind: "move"; stage: MainStage }
   | { kind: "resume"; stage: Stage | null }
@@ -297,35 +403,65 @@ export type StageProgression = {
   /** Set when the record is in an exit: where it left the main line, when known. */
   exit: { stage: "refused" | "paused" | "lost"; from: MainStage | null } | null;
   next: NextAction;
+  /** What delivery needs, met or not. */
+  delivery: DeliveryRequirement[];
+  trailing: FcpTrailing | null;
 };
 
 /**
  * The record's path through the stages that apply to its segment, each with its applicable gates, and the next action.
  * `exitedFrom` is the main stage the record left for an exit (from its stage history); `dates` are the gate dates.
  */
-export function stageProgression(record: Pick<StageRecord, "stage" | "segment"> & { exitedFrom?: Stage | null }, dates: GateDates): StageProgression {
+export function stageProgression(record: Pick<StageRecord, "stage" | "segment" | "fcpWaivedOn"> & { exitedFrom?: Stage | null }, dates: GateDates): StageProgression {
   const exited = isMainStage(record.stage) ? null : record.exitedFrom && isMainStage(record.exitedFrom) ? record.exitedFrom : null;
   const anchor: MainStage | null = isMainStage(record.stage) ? record.stage : exited;
+  const facts = { ...dates, stage: record.stage, segment: record.segment, fcpWaivedOn: record.fcpWaivedOn ?? null };
+  const delivery = deliveryRequirements(facts);
+  const trailing = fcpTrailing(facts);
+  const hard = new Set(hardGates(record.segment));
+  const approvalGate = fcpApprovalGate(record.segment);
+  const waived = delivery[0].waived;
   const steps = applicableStages(record.segment).map(stage => {
     const status: StepStatus =
       anchor === null ? "upcoming" : record.stage === "complete" || stageOrder(stage) < stageOrder(anchor) ? "done" : stage === anchor ? "current" : "upcoming";
     const gates = STAGE_GATES[stage]
       .filter(gate => gateApplies(gate, record.segment))
-      .map(gate => ({ gate, day: dates[gate] || null, done: Boolean(dates[gate]), hard: gate === HARD_GATE, planned: PLANNED_GATES.has(gate) }));
+      .map(gate => {
+        const done = Boolean(dates[gate]);
+        const gateWaived = waived && gate === approvalGate;
+        return {
+          gate,
+          day: dates[gate] || null,
+          done,
+          hard: hard.has(gate),
+          planned: PLANNED_GATES.has(gate),
+          waived: gateWaived,
+          ahead: done && status === "upcoming" && anchor !== null,
+          trailing: !done && !gateWaived && trailing !== null && (gate === approvalGate || FCP_STEPS.has(gate)) && status === "done",
+        };
+      });
     return { stage, status, gates };
   });
   const exit = isMainStage(record.stage) ? null : { stage: record.stage as "refused" | "paused" | "lost", from: exited };
-  return { steps, exit, next: nextAction(record, steps, dates, exited) };
+  return { steps, exit, next: nextAction(record, steps, delivery, trailing, exited), delivery, trailing };
 }
 
-function nextAction(record: Pick<StageRecord, "stage" | "segment">, steps: StageStep[], dates: GateDates, exited: MainStage | null): NextAction {
+/** The FCP gates before approval. With the segment's approval gate, they are what a trailing FCP still owes. */
+const FCP_STEPS: ReadonlySet<GateKey> = new Set<GateKey>(["fcpDraftCreatedOn", "fcpSubmittedOn"]);
+
+function nextAction(record: Pick<StageRecord, "stage" | "segment">, steps: StageStep[], delivery: DeliveryRequirement[], trailing: FcpTrailing | null, exited: MainStage | null): NextAction {
   if (record.stage === "complete") return { kind: "complete" };
   if (record.stage === "refused" || record.stage === "lost") return { kind: "closed", stage: record.stage };
   if (record.stage === "paused") return { kind: "resume", stage: exited };
   const stage = record.stage as MainStage;
   const next = nextStage({ stage, segment: record.segment });
-  if (!dates[HARD_GATE] && (requiresPo(stage) || (next && requiresPo(next)))) return { kind: "unblock", gate: HARD_GATE, stage: requiresPo(stage) ? stage : next! };
-  const pending = steps.find(step => step.stage === stage)?.gates.find(gate => !gate.done && !gate.planned);
+  const unmet = delivery.find(requirement => !requirement.met);
+  if (unmet && (requiresPo(stage) || (next && requiresPo(next)))) {
+    // A trailing FCP that was never submitted is submitted first, then approved.
+    const gate = unmet.key === "fcp_approval" && trailing ? trailing.gate : unmet.gate;
+    return { kind: "unblock", gate, stage: requiresPo(stage) ? stage : next!, requirement: unmet.key };
+  }
+  const pending = steps.find(step => step.stage === stage)?.gates.find(gate => !gate.done && !gate.planned && !gate.waived);
   if (pending) return { kind: "record", gate: pending.gate, stage };
   return next ? { kind: "move", stage: next } : { kind: "complete" };
 }

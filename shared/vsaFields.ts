@@ -16,6 +16,8 @@ export const SOURCE_ITEM_KINDS = ["rvtools", "discovery_notes", "customer_brief"
 export const SOURCE_ITEM_STATUSES = ["needed", "requested", "received", "verified", "waived"] as const;
 export const ASSIGNMENT_ROLES = ["sales_rep", "account_manager", "presales", "architect", "pm", "sr_consultant", "broadcom_ad"] as const;
 export const VSA_ROLES = ["sales", "architect", "presales", "pm", "leadership"] as const;
+/** Who said FCP approval isn't needed. */
+export const FCP_WAIVER_PARTIES = ["pm", "broadcom"] as const;
 
 export type Program = (typeof PROGRAMS)[number];
 export type AssignmentRole = (typeof ASSIGNMENT_ROLES)[number];
@@ -86,6 +88,13 @@ export const ENGAGEMENT_COLUMN_VISIBILITY = {
   fcpCustomerAcceptedOn: "customer",
   workPlanSentOn: "internal",
   workPlanAcceptedOn: "internal",
+  workPlanHours: "internal",
+  poHours: "internal",
+  fcpWaiverParty: "internal",
+  fcpWaiverBy: "internal",
+  fcpWaivedOn: "internal",
+  fcpWaiverSource: "internal",
+  fcpWaiverRecordedByUserId: "internal",
   ikomOn: "internal",
   raReceivedOn: "internal",
   workAuthReceivedOn: "internal",
@@ -123,6 +132,22 @@ const optionalText = (max: number) => z.string().trim().max(max).transform(value
 /** Dollar amounts travel as strings ("123456.78") so DECIMAL values never pass through a float. */
 const optionalMoney = z.string().trim().regex(/^\d{1,12}(\.\d{1,2})?$/, "Use a dollar amount like 125000.00").nullable().optional();
 
+const optionalHours = z.number().int("Use whole hours").min(0).max(1_000_000).nullable().optional();
+
+/**
+ * An FCP waiver: the PM or Broadcom said FCP approval isn't required. It satisfies the FCP approval gate for delivery,
+ * never the work plan or the PO. Saved through its own procedure, which records who entered it.
+ */
+export const fcpWaiverSchema = z
+  .object({
+    party: z.enum(FCP_WAIVER_PARTIES),
+    by: z.string().trim().min(1, "Say who said it").max(120),
+    on: isoDay,
+    source: z.string().trim().min(1, "Say where it was said").max(500),
+  })
+  .strict();
+export type FcpWaiver = z.infer<typeof fcpWaiverSchema>;
+
 /** Tracker fields a user may edit directly. Stage moves go through the transition procedure; import, intake, and lock fields are not editable. */
 /**
  * The gate dates, in the order the record's Stage & gates timeline shows them, with their default display labels.
@@ -133,10 +158,10 @@ export const GATE_DATES = [
   { key: "serApprovedOn", label: "Broadcom partner approval" },
   { key: "fcpDraftCreatedOn", label: "FCP draft created" },
   { key: "fcpSubmittedOn", label: "FCP submitted" },
-  { key: "fcpBroadcomAcceptedOn", label: "FCP Broadcom acceptance", hint: "Corporate and Strategic" },
-  { key: "fcpCustomerAcceptedOn", label: "FCP customer acceptance" },
-  { key: "workPlanSentOn", label: "Work plan sent", hint: "Corporate and Strategic" },
-  { key: "workPlanAcceptedOn", label: "Work plan accepted", hint: "Corporate and Strategic" },
+  { key: "fcpBroadcomAcceptedOn", label: "FCP Broadcom acceptance", hint: "Corporate and Strategic; required for delivery" },
+  { key: "fcpCustomerAcceptedOn", label: "FCP customer acceptance", hint: "Required for delivery on Commercial" },
+  { key: "workPlanSentOn", label: "Work plan sent", hint: "To the AD or customer, pending acknowledgment" },
+  { key: "workPlanAcceptedOn", label: "Work plan accepted", hint: "Required for Kickoff and In Delivery" },
   { key: "ikomOn", label: "Internal kickoff (IKOM)" },
   { key: "raReceivedOn", label: "RA received" },
   { key: "workAuthReceivedOn", label: "Work authorization received" },
@@ -175,6 +200,8 @@ export const trackerPatchSchema = z
     fcpCustomerAcceptedOn: optionalDay,
     workPlanSentOn: optionalDay,
     workPlanAcceptedOn: optionalDay,
+    workPlanHours: optionalHours,
+    poHours: optionalHours,
     ikomOn: optionalDay,
     raReceivedOn: optionalDay,
     workAuthReceivedOn: optionalDay,

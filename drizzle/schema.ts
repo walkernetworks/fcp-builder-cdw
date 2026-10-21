@@ -4,6 +4,7 @@ import type { EngagementDocument } from "../shared/fcp";
 import {
   ASSIGNMENT_ROLES,
   ENTITLEMENT_INTEREST,
+  FCP_WAIVER_PARTIES,
   HEALTH,
   INTAKE_SOURCES,
   PROGRAMS,
@@ -110,6 +111,15 @@ export const engagements = mysqlTable(
     fcpCustomerAcceptedOn: day("fcpCustomerAcceptedOn"),
     workPlanSentOn: day("workPlanSentOn"),
     workPlanAcceptedOn: day("workPlanAcceptedOn"),
+    /** Hours on the accepted work plan, and on the PO / work authorization; compared when the PO came first. */
+    workPlanHours: int("workPlanHours"),
+    poHours: int("poHours"),
+    /** FCP waiver: the PM or Broadcom said FCP approval isn't required. Stands in for the FCP approval gate only. */
+    fcpWaiverParty: mysqlEnum("fcpWaiverParty", FCP_WAIVER_PARTIES),
+    fcpWaiverBy: varchar("fcpWaiverBy", { length: 120 }),
+    fcpWaivedOn: day("fcpWaivedOn"),
+    fcpWaiverSource: varchar("fcpWaiverSource", { length: 500 }),
+    fcpWaiverRecordedByUserId: int("fcpWaiverRecordedByUserId").references(() => users.id, { onDelete: "set null" }),
     ikomOn: day("ikomOn"),
     raReceivedOn: day("raReceivedOn"),
     workAuthReceivedOn: day("workAuthReceivedOn"),

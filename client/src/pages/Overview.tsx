@@ -8,7 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { useOperationalSettings } from "@/lib/settings";
 import { todayIso } from "@/lib/vsa";
 import { awaitingAction, stageCounts } from "@shared/vsaDashboard";
-import { STAGE_LABELS } from "@shared/vsaStage";
+import { fcpTrailing, STAGE_LABELS } from "@shared/vsaStage";
 import { daysBetween, entitlementTotal, expiryRows, formatDay, formatMoney } from "@shared/vsaViews";
 import { CheckCircle2, LayoutDashboard, Plus } from "lucide-react";
 import { useMemo } from "react";
@@ -48,6 +48,9 @@ export default function Overview() {
       attention,
       stale: attention.filter(item => item.attention.stale.stale).length,
       flagged: attention.filter(item => item.attention.flags.length).length,
+      trailing: open.filter(row => fcpTrailing(row)).length,
+      poBeforeWorkPlan: attention.filter(item => item.attention.flags.some(flag => flag.key === "po_before_work_plan")).length,
+      hoursMismatch: attention.filter(item => item.attention.flags.some(flag => flag.key === "hours_mismatch")).length,
       stages: stageCounts(open),
     };
   }, [list.data, today, user, settings]);
@@ -146,7 +149,7 @@ export default function Overview() {
                           <span className="flex flex-wrap justify-end gap-1">
                             {attention.stale.stale && <Pill verdict="warn">Stale {attention.stale.days}d</Pill>}
                             {sourcesPill(attention.warnings)}
-                            {attention.warnings.filter(warning => !warning.startsWith("Source not received")).map(warning => <Pill key={warning} verdict={warning.startsWith("In a delivery stage") ? "stop" : "warn"} title={warning}>{shortWarning(warning)}</Pill>)}
+                            {attention.warnings.filter(warning => !warning.startsWith("Source not received")).map(warning => <Pill key={warning} verdict={warning.startsWith("In a delivery stage") || warning.startsWith("FCP trailing: Broadcom") ? "stop" : "warn"} title={warning}>{shortWarning(warning)}</Pill>)}
                             {attention.flags.map(flag => <Pill key={flag.key} verdict="unknown">{flag.label}</Pill>)}
                           </span>
                         </button>
@@ -162,6 +165,9 @@ export default function Overview() {
                   <QualityRow label="With any data-quality flag" count={data.flagged} href="/pipeline?flagged=1" />
                   <QualityRow label="Past their stage's threshold" count={data.stale} href="/queue?q=attention" />
                   <QualityRow label="Without a VSA amount" count={data.money.missing} href="/expiry" />
+                  <QualityRow label="FCP trailing (staffing ahead of FCP approval)" count={data.trailing} href="/pipeline?trailing=1" />
+                  <QualityRow label="PO / work authorization before work plan" count={data.poBeforeWorkPlan} href="/pipeline?flag=po_before_work_plan" />
+                  <QualityRow label="Hours mismatch, work plan vs PO" count={data.hoursMismatch} href="/pipeline?flag=hours_mismatch" />
                 </ul>
               </Panel>
             </div>
@@ -193,6 +199,9 @@ function sourcesPill(warnings: string[]) {
 function shortWarning(warning: string) {
   if (warning.startsWith("Commercial customers skip")) return "Skips approval";
   if (warning.startsWith("Work plan sent")) return "Work plan stale";
-  if (warning.startsWith("In a delivery stage")) return "No PO";
+  if (warning.endsWith("PO received date")) return "No PO";
+  if (warning.endsWith("work plan acceptance")) return "No work plan acceptance";
+  if (warning.startsWith("In a delivery stage without") && warning.includes("FCP")) return "No FCP approval";
+  if (warning.startsWith("FCP trailing")) return "FCP trailing";
   return "Check";
 }

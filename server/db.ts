@@ -6,7 +6,7 @@ import { renameInTitle, resolveFcpSaveNames } from "../shared/customerName";
 import { buildLockState, sourceUpdatesFromDocument } from "../shared/fcpRecord";
 import { IMPORT_FIELDS, IMPORT_ROLES, planMappedRows, type ExistingRecord, type ImportPlan, type ImportRole } from "../shared/sharepointImport";
 import type { PipelineBatch } from "./pipelineSource";
-import type { AssignmentRole, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
+import type { AssignmentRole, FcpWaiver, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
 import { canTransition, DEFAULT_SOURCE_CHAIN, effectiveDateProblem, STAGE_LABELS, stageOrder, type Stage, type StageRecord } from "../shared/vsaStage";
 import { alias } from "drizzle-orm/mysql-core";
 import { applySettingChanges, resolveOperationalSettings, type AppSettingValue, type ResolvedSettings } from "../shared/appSettings";
@@ -330,7 +330,8 @@ export async function getTrackerRecord(viewer: Viewer, id: number) {
     db.select().from(sourceChainItems).where(eq(sourceChainItems.engagementId, record.id)).orderBy(asc(sourceChainItems.id)),
     db.select().from(engagementAssignments).where(eq(engagementAssignments.engagementId, record.id)).orderBy(asc(engagementAssignments.role)),
   ]);
-  return { record, events, sources, assignments };
+  const [waiverRecorder] = record.fcpWaiverRecordedByUserId ? await db.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, record.fcpWaiverRecordedByUserId)).limit(1) : [];
+  return { record, events, sources, assignments, waiverRecordedBy: waiverRecorder ? (waiverRecorder.name ?? waiverRecorder.email) : null };
 }
 
 export type WriteResult<T> =
@@ -369,6 +370,29 @@ export async function updateTrackerFields(viewer: Viewer, id: number, expectedRo
   }
   const value = await getTrackerRecord(viewer, id);
   return value ? { status: "ok", value } : { status: "not_found" };
+}
+
+/**
+ * Records or removes the FCP waiver (null removes it), with the person who entered it. Uses the record's rowVersion
+ * like any tracker edit. The waiver stands in for the FCP approval gate only (shared/vsaStage.ts deliveryRequirements).
+ */
+export async function setFcpWaiver(viewer: Viewer, id: number, expectedRowVersion: number, waiver: FcpWaiver | null): Promise<WriteResult<null>> {
+  const db = await requireDb();
+  if (waiver && waiver.on > today()) return { status: "blocked", reason: "A waiver cannot be dated in the future" };
+  const result = await db
+    .update(engagements)
+    .set({
+      fcpWaiverParty: waiver?.party ?? null,
+      fcpWaiverBy: waiver?.by ?? null,
+      fcpWaivedOn: waiver?.on ?? null,
+      fcpWaiverSource: waiver?.source ?? null,
+      fcpWaiverRecordedByUserId: waiver ? viewer.id : null,
+      rowVersion: sql`${engagements.rowVersion} + 1`,
+      updatedByUserId: viewer.id,
+    })
+    .where(and(visibleEngagements(viewer), eq(engagements.id, id), eq(engagements.rowVersion, expectedRowVersion)));
+  if (result[0].affectedRows === 0) return (await requireVisibleEngagement(db, viewer, id)) ? { status: "conflict" } : { status: "not_found" };
+  return { status: "ok", value: null };
 }
 
 export type StageTransition = { to: Stage; effectiveOn: string; note?: string; expectedRowVersion: number };

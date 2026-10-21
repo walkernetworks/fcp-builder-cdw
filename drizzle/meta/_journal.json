@@ -57,6 +57,13 @@
       "when": 1792588875230,
       "tag": "0007_seed_gate_labels",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1792599599589,
+      "tag": "0008_delivery_requirements",
+      "breakpoints": true
     }
   ]
 }

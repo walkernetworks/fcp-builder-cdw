@@ -97,7 +97,7 @@ export function useRecordForm(record: TrackerRecord["record"]) {
     },
     onError: error => toast.error(error.message),
   });
-  function saveField(key: EditableField, value: string | null, message: string) {
+  function saveField(key: EditableField, value: string | number | null, message: string) {
     saveOne.mutate({ id: record.id, rowVersion: record.rowVersion, patch: { [key]: value } as TrackerPatch }, { onSuccess: () => void toast.success(message) });
   }
 

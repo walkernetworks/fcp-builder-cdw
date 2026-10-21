@@ -9,7 +9,7 @@ import { renderFcpHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 import { scopedEffortForDocument } from "./rateCard";
 import { canDeleteEngagement, viewerFor } from "./visibility";
-import { ASSIGNMENT_ROLES, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, trackerPatchSchema, VSA_ROLES } from "../shared/vsaFields";
+import { ASSIGNMENT_ROLES, fcpWaiverSchema, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, trackerPatchSchema, VSA_ROLES } from "../shared/vsaFields";
 import { STAGES } from "../shared/vsaStage";
 import { MAX_IMPORT_CSV_BYTES } from "../shared/sharepointImport";
 import { getRecordFiles } from "./fileSource";
@@ -118,6 +118,13 @@ export const appRouter = router({
     update: protectedProcedure
       .input(z.object({ id: recordId, rowVersion: z.number().int().min(0), patch: trackerPatchSchema }))
       .mutation(async ({ ctx, input }) => unwrap(await db.updateTrackerFields(viewerFor(ctx.user), input.id, input.rowVersion, input.patch))),
+    /** Records (or, with null, removes) the FCP waiver. It satisfies the FCP approval gate for delivery only. */
+    setFcpWaiver: protectedProcedure
+      .input(z.object({ id: recordId, rowVersion: z.number().int().min(0), waiver: fcpWaiverSchema.nullable() }))
+      .mutation(async ({ ctx, input }) => {
+        unwrap(await db.setFcpWaiver(viewerFor(ctx.user), input.id, input.rowVersion, input.waiver));
+        return { success: true } as const;
+      }),
     transition: protectedProcedure
       .input(z.object({ id: recordId, rowVersion: z.number().int().min(0), to: z.enum(STAGES), effectiveOn: isoDay, note: z.string().trim().max(5000).optional() }))
       .mutation(async ({ ctx, input }) => unwrap(await db.transitionStage(viewerFor(ctx.user), input.id, { to: input.to, effectiveOn: input.effectiveOn, note: input.note, expectedRowVersion: input.rowVersion }))),

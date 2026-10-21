@@ -174,7 +174,7 @@ export const REPORT_PRESETS: { id: string; name: string; description: string; co
   {
     id: "work-plans",
     name: "Work plans awaiting acceptance",
-    description: "Broadcom work plans sent to Corporate and Strategic customers and not yet accepted.",
+    description: "Broadcom work plans sent to customers and not yet accepted.",
     config: { columns: ["customerName", "segment", "stage", "workPlanSentOn", "fcpCustomerAcceptedOn", "nextSteps"], filters: [{ field: "workPlanSentOn", op: "notEmpty" }, { field: "workPlanAcceptedOn", op: "empty" }], groupBy: null, compareBy: null, measures: [{ kind: "count", field: null }], sort: { field: "workPlanSentOn", dir: "asc" }, includeClosed: false },
   },
   {

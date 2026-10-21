@@ -87,7 +87,7 @@ All in `client/src/components/vsa/`.
   - `HeroBand`: neutral header panel used by the FCP workspace.
 - **`EngagementTable.tsx`**
   - `EngagementTable`: dense table with columns customer, stage, segment, architect, days in stage, expiry, VSA amount, health, and attention. Click a column header to sort; `aria-sort` is set. Rows are focusable: arrow keys move between rows, Enter opens the record. Empty values sort last in either direction.
-  - `FilterBar`: one row containing search, multi-select filters (stage, segment, health, architect), a Needs attention only toggle, Clear, and saved views.
+  - `FilterBar`: one row containing search, multi-select filters (stage, segment, health, architect), Needs attention only and FCP trailing toggles, Clear, and views: the built-in ones (`BUILT_IN_VIEWS`: FCP trailing) and those saved in the browser. The Overview's data-quality rows link in with `?trailing=1` and `?flag=po_before_work_plan` or `?flag=hours_mismatch`.
 - **`cells.tsx`:** `HealthPill`, `SegmentText`, `DaysLeft`, `ExpiryCell`, `AttentionPill`. Use these so every screen shows the same fact the same way.
 - **`PipelineBoard.tsx`:** the secondary board.
   - Columns have no fill; headers are quiet text with a count.
@@ -96,9 +96,10 @@ All in `client/src/components/vsa/`.
 - **`RecordDrawer.tsx`:** a 720px sheet with six tabs. One form (`useRecordForm` in `RecordEditor.tsx`) sits above the tabs, so unsaved edits survive switching tabs. A sticky save bar shows the unsaved count on any tab. Saves send only changed fields with the record's `rowVersion`, so a stale save is refused. Each field has exactly one place it is edited.
   - **Overview:** the editable record. Open items and Customer approval (read-only, derived from the gate dates) sit at the top. Below them, the record-level fields are grouped: identity, classification, status, commercials and term, notes and links.
   - **Stage & gates** (`StageProgress.tsx`, model in `stageProgression` in `shared/vsaStage.ts`):
-    - **Next action:** the next gate to record, the PO when it blocks the next stage, or the move the record is ready for.
-    - **Stepper:** the stages that apply to the record's segment (Commercial has no Broadcom Approval stage and no work plan gates). Done stages are checked, the current one is highlighted, and later ones are muted. An exit (Refused, Paused, Lost) is shown at the stage it left from.
-    - **Gates:** each stage's gates (`STAGE_GATES`) are rows. A pending gate has **Mark done** (today, one click) and a calendar to pick or backdate. A recorded gate shows its date with an edit button that can also clear it. Each gate saves on its own through `tracker.update`; other unsaved edits on the record are kept. The PO is drawn as the hard gate. Estimated close is a planned date: it is set, never marked done.
+    - **Next action:** the next gate to record, the delivery requirement that blocks the next stage, or the move the record is ready for. A trailing FCP is named here, red for Corporate and Strategic, amber for Commercial.
+    - **Before delivery** (`DeliveryReadiness.tsx`): FCP approval, work plan accepted, and PO received, each met or not; **Record waiver** (who said it, PM or Broadcom, the date, where) or the recorded waiver with **Remove waiver**; and the **hours check** (work plan hours vs PO / work authorization hours, saved together), with its flag.
+    - **Stepper:** the stages that apply to the record's segment (Commercial has no Broadcom Approval stage). Done stages are checked, the current one is highlighted, and later ones are muted. An exit (Refused, Paused, Lost) is shown at the stage it left from.
+    - **Gates:** each stage's gates (`STAGE_GATES`) are rows. A pending gate has **Mark done** (today, one click) and a calendar to pick or backdate. A recorded gate shows its date with an edit button that can also clear it. Each gate saves on its own through `tracker.update`; other unsaved edits on the record are kept. The delivery requirements are drawn as hard gates (lock, red edge until recorded). A gate recorded while its stage is still ahead shows **Recorded ahead**; an FCP gate still open after the record moved past it shows **Trailing**. Estimated close is a planned date: it is set, never marked done.
     - **Move stage** (unchanged rules; "Move to …" in the next action pre-selects it) and the stage history.
   - **Sources.**
   - **People.**
