@@ -19,6 +19,7 @@ const NOTE: Record<NonNullable<WorkPackageEffort["note"]>, string> = {
   "customer-owned": "Customer-owned",
   checkpoint: "Checkpoint",
   "not in the scoped hours": "No hours scoped",
+  merged: "Merged into the pathway package",
 };
 
 /** Scoped effort for the document, recalculated shortly after the plan stops changing. */

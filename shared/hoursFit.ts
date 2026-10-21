@@ -45,6 +45,8 @@ export type FitV2 = {
   underFunded: { gapHours: number } | null;
   /** Set by the server when the core did not fit: the hours and work packages moved to the Two-Year Notional. */
   movedToFollowOn?: { hours: number; packages: string[] };
+  /** Work packages moved out of the entitlement after the fill, in the order they moved, with why; shown under Scope by Bucket. */
+  scopeMoves?: ScopeMove[];
   monthsRemaining: number;
   requiredMonthlyBurn: number;
   /** Displaced lines whose design share did not fit in E2 and moved with the line. */
@@ -55,6 +57,8 @@ export type FitV2 = {
   warnings: string[];
   notes: string[];
 };
+
+export type ScopeMove = { label: string; hours: number; reason: "after the entitlement window" | "over budget" | "merged" };
 
 export type FitOptions = {
   entitlementHours: number;

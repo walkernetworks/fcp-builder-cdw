@@ -46,7 +46,7 @@ function twoSite(patch: (raw: any) => void = () => {}): EngagementDocument {
     addOnsConsidered: ["vcf-operations", "vcf-automation", "nsx"], notInterested: [], sitePrerequisitesOpen: ["tor-switch-design"],
     componentDepth: { operations: "tier-2", automation: null, networkingSecurity: "tier-1", kubernetesAi: null, efficiency: null },
     outcomesWanted: { operations: ["lifecycle", "observability", "capacity-cost"], automation: [], networking: ["physical-fabric"], security: ["identity-rbac"], resilience: ["recovery-architecture"], kubernetes: [], privateAi: [] },
-    domains: DOMAINS, planningNotes: null, industry: "healthcare-life-sciences",
+    domains: DOMAINS.map(domain => ({ ...domain })), planningNotes: null, industry: "healthcare-life-sciences",
   });
   patch(raw);
   const base = createDefaultDocument();
@@ -404,3 +404,89 @@ describe("Riverbend review: the rebuild", () => {
   });
 });
 
+
+describe("Riverbend review: a later start", () => {
+  /** The fixture with the project start moved later (for a PO lead time), the entitlement unchanged. */
+  const startingOn = (projectStart: string, implementationStart: string | null = null) => twoSite(raw => { raw.schedule = { ...raw.schedule, projectStart, implementationStart }; });
+  const shifted = (months: number) => { const date = new Date(Date.UTC(2026, 9 + months, months ? 2 : 16)); return date.toISOString().slice(0, 10); };
+  /** CDW packages that carry hours in the entitlement or as follow-on scope. */
+  const packages = (document: EngagementDocument) => scopedEffortForDocument(document).workPackages.filter(row => row.owner === "cdw" && (row.total > 0 || (row.followOn?.total ?? 0) > 0));
+
+  it("never loses a package when the start moves later, and the domain packages do not grow to absorb freed hours", () => {
+    const before = packages(twoSite());
+    const domainIds = new Set(domainPackages(twoSite().fields).map(({ id }) => id));
+    for (let months = 1; months <= 4; months += 1) {
+      const after = packages(startingOn(shifted(months)));
+      expect(after.length, `start + ${months} months`).toBeGreaterThanOrEqual(before.length);
+      for (const row of before) expect(after.some(item => item.id === row.id), `${row.id} at + ${months} months`).toBe(true);
+      // Each role column is rounded on its own, so a package can differ by an hour per role.
+      for (const row of after.filter(item => domainIds.has(item.id) && !item.deferred)) {
+        expect(row.total, `${row.id} at + ${months} months`).toBeLessThanOrEqual(before.find(item => item.id === row.id)!.total + 3);
+      }
+      const domainHours = (rows: typeof before) => rows.filter(item => domainIds.has(item.id) && !item.deferred).reduce((sum, item) => sum + item.total, 0);
+      expect(domainHours(after), `domains at + ${months} months`).toBeLessThanOrEqual(domainHours(before) + 1);
+    }
+    // Work the later start pushes past the entitlement is follow-on scope, listed after the entitlement and in the bucket note.
+    const document = startingOn(shifted(4));
+    const effort = scopedEffortForDocument(document);
+    const late = effort.workPackages.filter(row => row.deferred === "after the entitlement window" && row.owner === "cdw");
+    expect(late.map(row => row.id)).toContain("bar-operations-capacity-cost");
+    for (const row of late) expect(row.followOn!.total, row.id).toBeGreaterThan(0);
+    const visible = text(render(document));
+    const plan = visible.split("Plan on a Page")[1].split(/Entitlement Burndown|No consumption data/)[0];
+    expect(plan).toContain("after the entitlement: ");
+    expect(plan).toContain("Capacity and Cost Visibility");
+    expect(visible.split("Follow-on Scope — Two-Year Notional")[1]).toContain("Capacity and Cost Visibility");
+    expect(visible).toMatch(/Moved out of this entitlement: .*Capacity and Cost Visibility \(\d+ hours\) moved to the follow-on because it is scheduled after the entitlement ends/);
+    // The entitlement hours the late work leaves unused are held in the reserve, not handed to other packages.
+    expect(effort.internal.fit!.reserveHours).toBeGreaterThan(scopedEffortForDocument(twoSite()).internal.fit!.reserveHours);
+  });
+
+  it("keeps handover inside the entitlement whenever a wave is, alongside the runbook knowledge transfer", () => {
+    for (let months = 0; months <= 4; months += 1) {
+      const document = months ? startingOn(shifted(months)) : twoSite();
+      const effort = scopedEffortForDocument(document);
+      const wave = effort.workPackages.find(row => /^bar-playbook-execution-/.test(row.id) && !row.deferred && row.total > 0);
+      if (!wave) continue;
+      const handover = effort.workPackages.find(row => row.id === "bar-platform-handover");
+      expect(handover?.deferred, `+ ${months} months`).toBeUndefined();
+      expect(handover!.total).toBeGreaterThan(0);
+      expect(bars(document).some(bar => bar.id === "bar-platform-handover")).toBe(true);
+      for (const id of ["bar-platform-runbook-transfer", "bar-platform-enablement", "bar-platform-licensing", "bar-management-domain", "bar-management-domain-2"]) {
+        expect(effort.workPackages.find(row => row.id === id)?.deferred, `${id} at + ${months} months`).toBeUndefined();
+      }
+    }
+    // At a 2 November start the waves end in the last entitlement month: handover runs in that month with the runbook transfer.
+    const late = startingOn("2026-11-02");
+    expect(windowOf(late, "bar-platform-handover")!.start.slice(0, 7)).toBe(windowOf(late, "bar-platform-runbook-transfer")!.start.slice(0, 7));
+    expect(text(render(late))).toContain("Handover and Service Acceptance");
+  });
+
+  it("states one start date: the timeline, Key Dates and the constraint all start on the project start", () => {
+    const document = startingOn("2026-11-02", "2026-11-26");
+    expect(document.adoptionTimeline.startDate).toBe("2026-11-02");
+    expect(barWindow(document.adoptionTimeline, bars(document).find(bar => bar.id === "bar-platform-plan")!)!.start).toBe("2026-11-02");
+    // Nothing starts before the project start.
+    for (const bar of bars(document)) expect(barWindow(document.adoptionTimeline, bar)!.start >= "2026-11-02", bar.id).toBe(true);
+    const visible = text(render(document));
+    const keyDate = /(\d{1,2} \w{3} \d{4}) Implementation services start/.exec(visible.split("Key Dates")[1] ?? "");
+    const constraint = /Implementation services start (\d{1,2} \w{3} \d{4})/.exec(visible);
+    expect(keyDate?.[1]).toBe("2 Nov 2026");
+    expect(constraint?.[1]).toBe("2 Nov 2026");
+  });
+
+  it("lists no milestone to date after the build date; a future one is a key date", () => {
+    // The entitlement becomes effective after the document is built.
+    const document = twoSite(raw => {
+      raw.schedule = { ...raw.schedule, projectStart: "2026-11-02" };
+      raw.entitlement = { ...raw.entitlement, termStart: "2026-10-26" };
+      raw.milestonesToDate = [...(raw.milestonesToDate ?? []).filter((row: any) => row.event !== "Entitlement effective"), { date: "2026-10-26", event: "Entitlement effective", detail: "Services entitlement opened." }];
+    });
+    const html = renderCondensedFcpHtml("Riverbend Health", document, { effort: scopedEffortForDocument(document), today: "2026-10-20" });
+    const visible = text(html);
+    const milestones = visible.includes("Engagement Milestones to Date") ? visible.split("Engagement Milestones to Date")[1].split(/Key Dates|Private Cloud Adoption Timeline/)[0] : "";
+    for (const match of Array.from(milestones.matchAll(/(\d{1,2} \w{3} \d{4})/g))) expect(new Date(`${match[1]} UTC`).toISOString().slice(0, 10) <= "2026-10-20", match[1]).toBe(true);
+    expect(milestones).not.toContain("Entitlement effective");
+    expect(visible.split("Key Dates")[1]).toContain("26 Oct 2026 Entitlement effective");
+  });
+});
