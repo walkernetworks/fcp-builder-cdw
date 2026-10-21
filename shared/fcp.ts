@@ -1592,6 +1592,50 @@ function limitToEntitlement(fields: MinimalFields, schedule: Timeline): Timeline
   };
 }
 
+/** Work packages that always stay inside the entitlement: handover, the runbook and training, licensing and the management domains. */
+const PROTECTED_PACKAGES = /^bar-(platform-(handover|runbook-transfer|enablement|licensing)|management-domain(-\d+)?|converge-management-domain)$/;
+const COMPRESSED_INTO_ENTITLEMENT = "Compressed into the last entitlement month so it is delivered within the entitlement.";
+const HANDOVER_WITH_RUNBOOK = "Runs in the last entitlement month, alongside the runbook knowledge transfer, so the service is accepted within the entitlement.";
+
+/**
+ * Protected work packages, and CDW's first delivery wave, never fall after the entitlement: one that would start after
+ * entitlement end moves into the last entitlement month, overlapping the work before it (handover runs alongside the
+ * runbook knowledge transfer). Work that already starts in the window keeps its place; the waves may still run past it.
+ */
+function keepProtectedInEntitlement(fields: MinimalFields, schedule: Timeline): Timeline {
+  if (!entitlementLimitDate(fields)) return schedule;
+  const count = primaryColumns(fields).length;
+  if (schedule.columns.length <= count) return schedule;
+  const all = schedule.lanes.flatMap(lane => lane.bars);
+  const firstWave = all.filter(activity => /^bar-playbook-execution-/.test(activity.id)).sort((left, right) => left.startCol - right.startCol)[0];
+  const isProtected = (activity: TimelineBar) => PROTECTED_PACKAGES.test(activity.id) || activity.id === firstWave?.id;
+  if (!all.some(activity => isProtected(activity) && activity.startCol > count)) return schedule;
+  const placed = new Map(all.map(activity => [activity.id, activity]));
+  const moved = new Map<string, TimelineBar>();
+  for (const activity of all) {
+    if (!isProtected(activity) || activity.startCol <= count) continue;
+    const startCol = count;
+    // The wave keeps its length and continues in the Two-Year Notional; the rest are compressed into the month.
+    const endCol = activity.id === firstWave?.id ? count + (activity.endCol - activity.startCol) : count + 1;
+    moved.set(activity.id, { ...activity, startCol, endCol });
+  }
+  const finalCol = (id: string) => (moved.get(id) ?? placed.get(id))?.endCol ?? 0;
+  return {
+    ...schedule,
+    lanes: schedule.lanes.map(lane => ({
+      ...lane,
+      bars: lane.bars.map(activity => {
+        const next = moved.get(activity.id);
+        if (!next) return activity;
+        // It overlaps the work it followed, so it keeps only the prerequisites that still finish before it starts.
+        const prerequisites = (activity.prerequisites ?? []).filter(id => finalCol(id) <= next.startCol);
+        const note = activity.id === "bar-platform-handover" ? HANDOVER_WITH_RUNBOOK : COMPRESSED_INTO_ENTITLEMENT;
+        return { ...next, prerequisites, dependsOn: [activity.dependsOn, note].filter(Boolean).join(" ") };
+      }),
+    })),
+  };
+}
+
 function primaryColumns(fields: MinimalFields): string[] {
   const start = timelineStartDate(fields);
   const entitlementEnd = entitlementNotionalEndDate(fields);
@@ -3104,7 +3148,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const hclPath = providedHclPath ?? getHclSchedulePath(inventory);
   const playbookPlan = playbookPlanForFields(fields);
   // Schedule everything first, then cap the entitlement view; the Two-Year Notional carries what falls after it.
-  const schedule = buildPrimaryTimeline(fields, inventory, hclPath, 0, context);
+  const schedule = keepProtectedInEntitlement(fields, buildPrimaryTimeline(fields, inventory, hclPath, 0, context));
   const adoptionTimeline = limitToEntitlement(fields, schedule);
   const twoYearPlan = buildTwoYearPlan(fields, inventory, schedule);
   const carriedToYearTwo = schedule.lanes.flatMap(lane => lane.bars).filter(activity => activity.startCol > adoptionTimeline.columns.length).length;

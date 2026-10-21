@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { applyCustomerBrief } from "../shared/briefImport";
-import { buildBurndown, buildCustomerEffort, buildScopedEffort, fitToEnvelope, scopedEffortLines, splitRoles, ROLE_LOADING, type EffortLine } from "../shared/effort";
+import { buildBurndown, buildCustomerEffort, buildScopedEffort, fitToEnvelope, protectedWorkPackages, scopedEffortLines, splitRoles, ROLE_LOADING, type EffortLine } from "../shared/effort";
 import { createDefaultDocument, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { fundedHoursFromValue, scopedEffortForDocument } from "./rateCard";
 
@@ -284,10 +284,14 @@ describe("planner-adjusted hours", () => {
 });
 
 describe("entitlement budget limit", () => {
-  const planned = (value: number, hours: number | null = null) => migrateDocument(engagement(document => {
-    Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated", entitlementAmount: value });
+  const planned = (value: number, hours: number | null = null) => {
+    const document = migrateDocument(engagement(document => {
+      Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated", entitlementAmount: value });
+    }));
+    // Set after loading: the brief's entitled hours would otherwise cap every plan here.
     document.report.entitlement.hours = hours;
-  }));
+    return document;
+  };
 
   it("squeezes the plan into the entitled hours, filling what is left with work that still fits", () => {
     const loose = scopedEffortForDocument(planned(10_000_000));
@@ -295,7 +299,9 @@ describe("entitlement budget limit", () => {
     const document = planned(10_000_000, hours);
     const effort = scopedEffortForDocument(document);
     const moved = effort.workPackages.filter(row => row.deferred === "over budget");
-    expect(moved.length).toBeGreaterThan(0);
+    // The waves package stays (CDW's first wave is protected); its later waves can move to the follow-on.
+    const trimmed = effort.workPackages.filter(row => /^bar-playbook-execution-/.test(row.id) && row.total > 0 && (row.followOn?.total ?? 0) > 0);
+    expect(moved.length + trimmed.length).toBeGreaterThan(0);
     expect(effort.totals.total).toBeLessThanOrEqual(hours);
     expect(moved.every(row => !/^bar-(platform-plan|playbook-design-|playbook-component-design-)/.test(row.id))).toBe(true);
     // Nothing moved could come back: each would overrun the hours, or its prerequisite moved too.
@@ -304,22 +310,28 @@ describe("entitlement budget limit", () => {
     for (const row of moved) expect((prerequisites.get(row.id) ?? []).some(id => movedIds.has(id)) || effort.totals.total + row.followOn!.total > hours, row.id).toBe(true);
   });
 
-  it("moves the latest non-design work to the notional until the entitlement window fits the value", () => {
+  it("moves unprotected non-design work to the notional until the entitlement window fits the value", () => {
     const loose = scopedEffortForDocument(planned(10_000_000));
     const value = Math.round(loose.internal.cost!.planCost * 0.85);
-    const effort = scopedEffortForDocument(planned(value));
+    const document = planned(value);
+    const effort = scopedEffortForDocument(document);
     const moved = effort.workPackages.filter(row => row.deferred === "over budget");
-    expect(moved.length).toBeGreaterThan(0);
+    const trimmed = effort.workPackages.filter(row => /^bar-playbook-execution-/.test(row.id) && row.total > 0 && (row.followOn?.total ?? 0) > 0);
+    expect(moved.length + trimmed.length).toBeGreaterThan(0);
+    const kept = protectedWorkPackages(document.adoptionTimeline);
+    expect(moved.some(row => kept.has(row.id))).toBe(false);
     expect(effort.internal.cost!.planCost).toBeLessThanOrEqual(value);
     expect(effort.internal.cost!.status).not.toBe("over");
     expect(moved.every(row => !/^bar-(platform-plan|playbook-design-|playbook-component-design-)/.test(row.id) && row.followOn!.total > 0)).toBe(true);
     expect(effort.internal.cost!.followOnCost).toBeGreaterThan(0);
   });
 
-  it("keeps pinned work in and stays over when only design and pinned work remain", () => {
-    const tiny = scopedEffortForDocument(planned(1_000));
+  it("keeps pinned and protected work in and stays over when only design, protected and pinned work remain", () => {
+    const tinyDocument = planned(1_000);
+    const tiny = scopedEffortForDocument(tinyDocument);
     expect(tiny.internal.cost!.status).toBe("over");
-    expect(tiny.workPackages.filter(row => row.total > 0).every(row => /design|discovery|requirements|mobilize|plan|review|access mapping/i.test(row.label) || row.placement === "entitlement")).toBe(true);
+    const kept = protectedWorkPackages(tinyDocument.adoptionTimeline);
+    expect(tiny.workPackages.filter(row => row.total > 0).every(row => /design|discovery|requirements|mobilize|plan|review|access mapping/i.test(row.label) || kept.has(row.id) || row.placement === "entitlement")).toBe(true);
 
     const document = planned(1_000);
     const build = scopedEffortForDocument(planned(10_000_000)).workPackages.find(row => row.id === "bar-management-domain")!;

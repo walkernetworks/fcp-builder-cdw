@@ -19,7 +19,7 @@ All of v1 is in `shared/effort.ts`, apart from the rate card and the budget sque
 | Moving stages out of the entitlement and the timelines that result | `deferWorkPackages`, `timelinesWithDeferrals`, `shared/effort.ts:604` and `620` |
 | Assembling rows, work packages, totals and the internal fit | `buildScopedEffort`, `shared/effort.ts:672` |
 | Burn-down (planner screens) | `buildBurndown`, `shared/effort.ts:808` |
-| Rate card, entitlement value to hours, cost, and the squeeze that moves the latest stages to the Two-Year Notional until the plan fits | `server/rateCard.ts` (`fundedHoursFromValue`, `withinBudget`, `scopedEffortForDocument`) |
+| Rate card, entitlement value to hours, cost, and the squeeze that moves unprotected work packages to the Two-Year Notional in priority order until the plan fits | `server/rateCard.ts` (`fundedHoursFromValue`, `withinBudget`, `scopedEffortForDocument`) |
 | tRPC route the planner screens call | `effort.scoped`, `server/routers.ts` |
 
 ## Consumers

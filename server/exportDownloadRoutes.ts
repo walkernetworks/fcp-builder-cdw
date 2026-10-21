@@ -49,8 +49,9 @@ export function registerExportDownloadRoutes(app: Express) {
         html = renderCondensedFcpHtml(row.title, document, { effort });
         // The condensed FCP goes to the customer as-is, so every content gate must pass first.
         const failures = checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount });
-        // The entitlement window never goes over the entitlement value; only design and pinned work can keep it over.
-        if (effort.internal.cost?.status === "over") failures.push("The entitlement window costs more than the entitlement value. Reduce hours or move work to the Two-Year Notional on the Entitlement Adoption Timeline step.");
+        // The entitlement window never goes over the entitlement value. Under v2 only protected, design and pinned work
+        // can keep it over once the squeeze has run; that plan is flagged under-funded in the document and still exports.
+        if (effort.internal.cost?.status === "over" && !effort.internal.fit?.underFunded) failures.push("The entitlement window costs more than the entitlement value. Reduce hours or move work to the Two-Year Notional on the Entitlement Adoption Timeline step.");
         if (failures.length) return deny(res, 409, `The Condensed FCP was not exported because it failed these checks:\n- ${failures.join("\n- ")}`);
       } else {
         html = ticket.documentType === "plan-output" ? renderHclCompatibilityPlanOutputHtml(row.title, document) : renderFcpHtml(row.title, document);
