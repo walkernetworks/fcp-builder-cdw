@@ -255,7 +255,7 @@ One workspace is expected in practice. The table exists so the visibility bounda
 | Column | Type | Null | Default | Notes |
 |---|---|---|---|---|
 | `workspaceId` | int | no | 1 | New users join workspace 1 on first sign-in through the gateway |
-| `vsaRole` | enum `sales`, `architect`, `presales`, `pm`, `leadership` | yes | | Selects the default role view. Not a permission. The existing `role` (`user`/`admin`) stays the only permission flag |
+| `vsaRole` | enum `sales`, `architect`, `presales`, `pm`, `leadership` | yes | | Selects the default queue in My Queue (leadership lands on Needs attention; no role lands on Awaiting my action). Not a permission. The existing `role` (`user`/`admin`) stays the only permission flag |
 
 ### 6.3 `engagementAssignments` (new)
 

@@ -17,8 +17,8 @@ function List({ title, items, tone }: { title: string; items: string[]; tone: "s
   if (!items.length) return null;
   const colors = { slate: "border-s100 bg-s50 text-ink", amber: "border-state-warn/30 bg-state-warn-soft text-state-warn-text", blue: "border-s200 bg-s50 text-s600" }[tone];
   return (
-    <section className={`rounded-xl border p-3 ${colors}`}>
-      <p className="text-xs font-bold uppercase tracking-wide">{title} ({items.length})</p>
+    <section className={`rounded-lg border p-3 ${colors}`}>
+      <p className="text-xs font-medium uppercase tracking-wide">{title} ({items.length})</p>
       <ul className="mt-1 max-h-40 list-disc space-y-0.5 overflow-y-auto pl-5 text-xs leading-5">{items.map(item => <li key={item}>{item}</li>)}</ul>
     </section>
   );
@@ -71,10 +71,10 @@ export function CustomerBriefImport({ document, onChange }: Props) {
   };
 
   return (
-    <section className="rounded-2xl border border-s100 bg-white p-5 shadow-sm md:p-7">
+    <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm md:p-7">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-black uppercase tracking-[.16em] text-cdw-red">Customer brief</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Customer brief</p>
           <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">Start from a Copilot brief</h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-s500">Copilot reads the call notes, emails and questionnaire answers and returns one JSON brief. It fills the engagement details, the adoption plan (pathway, outcomes and depth), and the Condensed FCP content: what we heard, open questions, personnel and milestones. Read in this browser; nothing is applied until you confirm.</p>
         </div>
@@ -86,7 +86,7 @@ export function CustomerBriefImport({ document, onChange }: Props) {
       </div>
       <input ref={inputRef} type="file" accept=".json,application/json" className="hidden" onChange={event => void readFile(event.target.files?.[0])} />
       {report.briefVersion !== null && (
-        <div className="mt-5 flex items-start gap-3 rounded-xl border border-s100 p-4">
+        <div className="mt-5 flex items-start gap-3 rounded-lg border border-s100 p-4">
           <FileJson className="mt-0.5 size-5 text-state-pass-text" />
           <p className="text-sm text-s600">
             Brief imported {report.importedAt ? new Date(report.importedAt).toLocaleString() : ""}{report.asOf ? ` · notes as of ${report.asOf}` : ""}.

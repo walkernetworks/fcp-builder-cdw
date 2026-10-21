@@ -181,31 +181,31 @@ export function AdoptionTimelineEditor({
         <div>
           <div className="flex items-center gap-2"><CalendarRange className="size-5 text-cdw-red" /><h2 className="text-lg font-semibold text-ink">{title}</h2></div>
           <p className="mt-1 text-sm text-s400">{description}</p>
-          <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Delivery workstream color legend"><span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-s400">Delivery workstream key</span>{WORKSTREAM_TYPES.map(type => <span key={type} title={`Lead role: ${DELIVERY_ROLE_BY_WORKSTREAM[type]}`} className={cn("inline-flex items-center gap-1 border px-2 py-1 text-[10px] font-semibold", colorClasses[WORKSTREAM_TYPE_COLORS[type]])}><span className="size-2 rounded-full border border-current/25 bg-current/35" />{type}</span>)}</div>
+          <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Delivery workstream color legend"><span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-s400">Delivery workstream key</span>{WORKSTREAM_TYPES.map(type => <span key={type} title={`Lead role: ${DELIVERY_ROLE_BY_WORKSTREAM[type]}`} className={cn("inline-flex items-center gap-1 border px-2 py-1 text-[11px] font-semibold", colorClasses[WORKSTREAM_TYPE_COLORS[type]])}><span className="size-2 rounded-full border border-current/25 bg-current/35" />{type}</span>)}</div>
         </div>
         <Button variant="outline" onClick={() => addLane()}><Plus className="size-4" /> Add Work Package</Button>
       </div>
 
-      {errors.length > 0 && <div className="rounded-xl border border-state-warn/30 bg-state-warn-soft p-3 text-sm text-state-warn-text">{errors[0]}</div>}
-      {sequenceWarnings.length > 0 && <div className="rounded-xl border border-state-warn/30 bg-state-warn-soft p-3 text-sm text-state-warn-text" role="status"><p className="font-semibold">Sequencing to review ({sequenceWarnings.length})</p><ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs leading-5">{sequenceWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
+      {errors.length > 0 && <div className="rounded-lg border border-state-warn/30 bg-state-warn-soft p-3 text-sm text-state-warn-text">{errors[0]}</div>}
+      {sequenceWarnings.length > 0 && <div className="rounded-lg border border-state-warn/30 bg-state-warn-soft p-3 text-sm text-state-warn-text" role="status"><p className="font-semibold">Sequencing to review ({sequenceWarnings.length})</p><ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs leading-5">{sequenceWarnings.map(warning => <li key={warning}>{warning}</li>)}</ul></div>}
 
-      <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-s100 bg-white shadow-sm" aria-label={`${title} ${unitLabel} grid`}>
+      <div className="overflow-x-auto overscroll-x-contain rounded-lg border border-s100 bg-surface shadow-sm" aria-label={`${title} ${unitLabel} grid`}>
         <div style={{ width: canvasWidth }}>
           <div className="grid border-b border-s100 bg-s50" style={{ gridTemplateColumns: `${workstreamWidth}px repeat(${timeline.columns.length}, minmax(${columnWidth}px,1fr))` }}>
-            <div className="sticky left-0 z-20 bg-s50 px-4 py-3 text-xs font-bold uppercase tracking-wider text-s400">Delivery category</div>
+            <div className="sticky left-0 z-20 bg-s50 px-4 py-3 text-xs font-medium uppercase tracking-wide text-s400">Delivery category</div>
             {timeline.columns.map((column, index) => <div key={`${column}-${index}`} className="border-l border-s100 px-2 py-3 text-center text-[11px] font-semibold leading-tight text-s500">{column}</div>)}
           </div>
 
           {categoryGroups.map(group => (
             <div key={group.category} className="grid border-b border-s100 last:border-b-0" style={{ gridTemplateColumns: `${workstreamWidth}px repeat(${timeline.columns.length}, minmax(${columnWidth}px,1fr))` }}>
               <div className="sticky left-0 z-10 flex min-h-full items-center justify-between gap-2 border-r border-s100 bg-s50 px-4 py-3 shadow-[6px_0_10px_-10px_rgba(15,23,42,.5)]">
-                <div className="min-w-0 space-y-1.5"><strong className="block text-sm font-bold leading-snug text-ink">{group.category}</strong><div className="flex flex-wrap gap-1">{group.lanes.filter(lane => lane.bars.length > 0).map(lane => <span key={lane.id} title={`Lead role: ${DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType]}`} className={cn("border px-1.5 py-0.5 text-[9px] font-bold leading-none", colorClasses[WORKSTREAM_TYPE_COLORS[lane.workstreamType]])}>{lane.workstreamType}</span>)}</div></div>
+                <div className="min-w-0 space-y-1.5"><strong className="block text-sm font-semibold leading-snug text-ink">{group.category}</strong><div className="flex flex-wrap gap-1">{group.lanes.filter(lane => lane.bars.length > 0).map(lane => <span key={lane.id} title={`Lead role: ${DELIVERY_ROLE_BY_WORKSTREAM[lane.workstreamType]}`} className={cn("border px-1.5 py-0.5 text-[11px] font-semibold leading-none", colorClasses[WORKSTREAM_TYPE_COLORS[lane.workstreamType]])}>{lane.workstreamType}</span>)}</div></div>
                 <Tooltip><TooltipTrigger asChild><Button size="icon" variant="ghost" className="size-7 shrink-0 text-s400" onClick={() => addLane(group.category)} aria-label={`Add work package to ${group.category}`}><Plus className="size-3.5" /></Button></TooltipTrigger><TooltipContent>Add work package</TooltipContent></Tooltip>
               </div>
 
               <div
                 ref={node => { rowRefs.current[group.category] = node; }}
-                className="relative grid bg-white"
+                className="relative grid bg-surface"
                 style={{
                   gridColumn: `2 / ${timeline.columns.length + 2}`,
                   gridTemplateColumns: `repeat(${timeline.columns.length}, minmax(${columnWidth}px,1fr))`,
@@ -218,7 +218,7 @@ export function AdoptionTimelineEditor({
                 {group.activities.map(({ lane, activity, track }) => (
                   <div
                     key={activity.id}
-                    className={cn("group relative z-[1] m-1.5 flex min-h-12 cursor-grab touch-none select-none items-center overflow-hidden rounded-lg border px-4 py-2 text-[11px] font-semibold leading-tight shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing", colorClasses[activity.color], isGateActivity(activity) && "justify-self-end rounded-full px-3", activityOwner(activity) === "customer" && "border-2 border-dashed !bg-white", selected?.barId === activity.id && "ring-2 ring-ink ring-offset-2")}
+                    className={cn("group relative z-[1] m-1.5 flex min-h-12 cursor-grab touch-none select-none items-center overflow-hidden rounded-lg border px-4 py-2 text-[11px] font-semibold leading-tight shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing", colorClasses[activity.color], isGateActivity(activity) && "justify-self-end rounded-full px-3", activityOwner(activity) === "customer" && "border-2 border-dashed !bg-surface", selected?.barId === activity.id && "ring-2 ring-ink ring-offset-2")}
                     // A gate is a checkpoint, not a duration: drawn as a marker at the end of its last window.
                     style={{ gridColumn: isGateActivity(activity) ? `${activity.endCol - 1} / ${activity.endCol}` : `${activity.startCol} / ${activity.endCol}`, gridRow: track + 1 }}
                     onClick={() => setSelected({ laneId: lane.id, barId: activity.id })}
@@ -239,18 +239,18 @@ export function AdoptionTimelineEditor({
       </div>
 
       {selectedBar && selectedLane && (
-        <div className="grid gap-3 rounded-2xl border border-s100 bg-s50 p-4 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto_auto] lg:items-end">
+        <div className="grid gap-3 rounded-lg border border-s100 bg-s50 p-4 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto_auto] lg:items-end">
           <label className="space-y-1 text-xs font-semibold text-s500">Work Package Name<Input value={selectedBar.label} onChange={event => changeBar(selectedLane.id, selectedBar.id, { label: event.target.value })} onBlur={event => changeBar(selectedLane.id, selectedBar.id, { label: normalizeActivityLabel(event.target.value) })} /></label>
-          <div className="space-y-1 text-xs font-semibold text-s500"><span>Category</span><div className="flex h-10 items-center rounded-md border border-s100 bg-white px-3 text-xs font-semibold text-s600" aria-label="Fixed category">{selectedLane.category}</div></div>
-          <label className="space-y-1 text-xs font-semibold text-s500">Delivery Workstream<Select value={selectedLane.workstreamType} onValueChange={workstreamType => moveBarToWorkstream(selectedLane.id, selectedBar.id, workstreamType as TimelineLane["workstreamType"])}><SelectTrigger className={cn("text-xs font-semibold", colorClasses[WORKSTREAM_TYPE_COLORS[selectedLane.workstreamType]])}><SelectValue /></SelectTrigger><SelectContent>{WORKSTREAM_TYPES.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><span className="block text-[10px] font-normal leading-tight text-s400">Lead role: {DELIVERY_ROLE_BY_WORKSTREAM[selectedLane.workstreamType]}</span></label>
+          <div className="space-y-1 text-xs font-semibold text-s500"><span>Category</span><div className="flex h-10 items-center rounded-md border border-s100 bg-surface px-3 text-xs font-semibold text-s600" aria-label="Fixed category">{selectedLane.category}</div></div>
+          <label className="space-y-1 text-xs font-semibold text-s500">Delivery Workstream<Select value={selectedLane.workstreamType} onValueChange={workstreamType => moveBarToWorkstream(selectedLane.id, selectedBar.id, workstreamType as TimelineLane["workstreamType"])}><SelectTrigger className={cn("text-xs font-semibold", colorClasses[WORKSTREAM_TYPE_COLORS[selectedLane.workstreamType]])}><SelectValue /></SelectTrigger><SelectContent>{WORKSTREAM_TYPES.map(type => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><span className="block text-[11px] font-normal leading-tight text-s400">Lead role: {DELIVERY_ROLE_BY_WORKSTREAM[selectedLane.workstreamType]}</span></label>
           <label className="space-y-1 text-xs font-semibold text-s500">Start {unitLabelTitle}<Select value={String(selectedBar.startCol)} onValueChange={value => changeBar(selectedLane.id, selectedBar.id, { startCol: Number(value) }, true)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timeline.columns.map((window, index) => <SelectItem key={`${window}-start-${index}`} value={String(index + 1)}>{window}</SelectItem>)}</SelectContent></Select></label>
           <label className="space-y-1 text-xs font-semibold text-s500">End {unitLabelTitle}<Select value={String(selectedBar.endCol)} onValueChange={value => changeBar(selectedLane.id, selectedBar.id, { endCol: Number(value) }, true)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{timeline.columns.map((window, index) => <SelectItem key={`${window}-end-${index}`} value={String(index + 2)}>{window}</SelectItem>)}</SelectContent></Select></label>
           <Tooltip><TooltipTrigger asChild><label className="flex h-10 items-center gap-2 text-xs font-semibold text-s500"><Switch checked={selectedBar.milestone} onCheckedChange={milestone => changeBar(selectedLane.id, selectedBar.id, { milestone })} /><Flag className="size-4" /></label></TooltipTrigger><TooltipContent>Milestone Marker</TooltipContent></Tooltip>
           <Button variant="ghost" className="text-state-blocked-text" onClick={() => { changeLane(selectedLane.id, lane => ({ ...lane, bars: lane.bars.filter(bar => bar.id !== selectedBar.id) })); setSelected(null); }}><Trash2 className="size-4" /> Remove</Button>
-          {selectedBar.outcome && <div className="lg:col-span-full rounded-xl border border-state-pass/30 bg-state-pass-soft px-3 py-2 text-xs leading-5 text-state-pass-text"><span className="font-semibold">Intended outcome:</span> {selectedBar.outcome}</div>}
-          {selectedBar.dependsOn && <div className="lg:col-span-full rounded-xl border border-s200 bg-s50 px-3 py-2 text-xs leading-5 text-s600"><span className="font-semibold">Delivery context and sequence:</span> {selectedBar.dependsOn}</div>}
+          {selectedBar.outcome && <div className="lg:col-span-full rounded-lg border border-state-pass/30 bg-state-pass-soft px-3 py-2 text-xs leading-5 text-state-pass-text"><span className="font-semibold">Intended outcome:</span> {selectedBar.outcome}</div>}
+          {selectedBar.dependsOn && <div className="lg:col-span-full rounded-lg border border-s200 bg-s50 px-3 py-2 text-xs leading-5 text-s600"><span className="font-semibold">Delivery context and sequence:</span> {selectedBar.dependsOn}</div>}
           {selectionDetail && <div className="lg:col-span-full">{selectionDetail(selectedBar.id)}</div>}
-          {selectedPrerequisites.length > 0 && <div className="lg:col-span-full rounded-xl border border-s100 bg-s50 px-3 py-2 text-xs leading-5 text-ink"><span className="font-semibold">Starts after:</span> {selectedPrerequisites.join(" · ")}</div>}
+          {selectedPrerequisites.length > 0 && <div className="lg:col-span-full rounded-lg border border-s100 bg-s50 px-3 py-2 text-xs leading-5 text-ink"><span className="font-semibold">Starts after:</span> {selectedPrerequisites.join(" · ")}</div>}
         </div>
       )}
     </section>

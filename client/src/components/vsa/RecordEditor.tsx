@@ -78,9 +78,9 @@ export function RecordEditor({ data }: { data: TrackerRecord }) {
   return (
     <form className="divide-y divide-s100" onSubmit={event => { event.preventDefault(); submit(); }}>
       {FIELD_GROUPS.map(group => (
-        <fieldset key={group.title} className="space-y-3 bg-white px-5 py-4">
+        <fieldset key={group.title} className="space-y-3 bg-surface px-5 py-4">
           <legend className="sr-only">{group.title}</legend>
-          <p className="text-[11px] font-extrabold uppercase tracking-[.14em] text-s500" aria-hidden>{group.title}</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-s500" aria-hidden>{group.title}</p>
           <div className="grid gap-3 sm:grid-cols-2">
             {group.fields.map(field => (
               <FieldInput key={field.key} field={field} value={form[field.key]} error={errors[field.key]} dirty={form[field.key] !== original[field.key]} onChange={value => setForm(current => ({ ...current, [field.key]: value }))} />
@@ -88,7 +88,7 @@ export function RecordEditor({ data }: { data: TrackerRecord }) {
           </div>
         </fieldset>
       ))}
-      <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-s100 bg-white px-5 py-3">
+      <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-s100 bg-surface px-5 py-3">
         <p className="text-xs text-ink-muted">{changed.length ? `${changed.length} unsaved ${changed.length === 1 ? "change" : "changes"}` : "No changes"}</p>
         <div className="flex gap-2">
           <Button type="button" variant="outline" size="sm" disabled={!changed.length || save.isPending} onClick={() => { setForm(original); setErrors({}); }}>Discard</Button>
@@ -108,22 +108,22 @@ function FieldInput({ field, value, error, dirty, onChange }: { field: FieldDef;
         return <label className="flex h-9 items-center gap-2 text-sm text-ink"><input id={id} type="checkbox" className="size-4 accent-[var(--cdw-red)]" checked={Boolean(value)} onChange={event => onChange(event.target.checked)} /> Yes</label>;
       case "enum":
         return (
-          <select id={id} className="h-9 w-full rounded-full border border-s200 bg-white px-3 text-sm text-ink" value={String(value)} onChange={event => onChange(event.target.value)}>
+          <select id={id} className="h-9 w-full rounded-md border border-s200 bg-surface px-3 text-sm text-ink" value={String(value)} onChange={event => onChange(event.target.value)}>
             <option value="">Not set</option>
             {Object.entries(field.options ?? {}).map(([option, label]) => <option key={option} value={option}>{label}</option>)}
           </select>
         );
       case "textarea":
-        return <Textarea id={id} rows={3} className="rounded-xl" value={String(value)} onChange={event => onChange(event.target.value)} />;
+        return <Textarea id={id} rows={3} className="rounded-lg" value={String(value)} onChange={event => onChange(event.target.value)} />;
       case "date":
-        return <Input id={id} type="date" className="h-9 rounded-full" value={String(value)} onChange={event => onChange(event.target.value)} />;
+        return <Input id={id} type="date" className="h-9 rounded-md" value={String(value)} onChange={event => onChange(event.target.value)} />;
       default:
-        return <Input id={id} type="text" inputMode={field.kind === "money" || field.kind === "int" ? "decimal" : undefined} className="h-9 rounded-full" value={String(value)} onChange={event => onChange(event.target.value)} />;
+        return <Input id={id} type="text" inputMode={field.kind === "money" || field.kind === "int" ? "decimal" : undefined} className="h-9 rounded-md" value={String(value)} onChange={event => onChange(event.target.value)} />;
     }
   })();
   return (
     <div className={wide ? "sm:col-span-2" : undefined}>
-      <label htmlFor={id} className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-cool-8">
+      <label htmlFor={id} className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-cool-8">
         {field.label}{field.required && <span aria-hidden>*</span>}{dirty && <span className="size-1.5 rounded-full bg-cdw-red" title="Changed" aria-label="Changed" />}
       </label>
       {control}

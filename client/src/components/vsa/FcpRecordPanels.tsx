@@ -23,19 +23,19 @@ export function FcpRecordStrip({ engagementId, document, onOpenSources }: { enga
         const required = data.sources.filter(source => source.required);
         const open = openSources(data.sources);
         return (
-          <section className="grid gap-3 rounded-xl border border-s100 bg-white p-4 shadow-[var(--shadow-card)] lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] lg:items-center">
+          <section className="grid gap-3 rounded-lg border border-s100 bg-surface p-4 shadow-[var(--shadow-card)] lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] lg:items-center">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-cool-8">Stage</p>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-cool-8">Stage</p>
               <Chip>{STAGE_LABELS[data.record.stage]}</Chip>
             </div>
             <div className="flex flex-wrap items-center gap-2 lg:border-l lg:border-s100 lg:pl-4">
-              <p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-cool-8">FCP Draft readiness</p>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-cool-8">FCP Draft readiness</p>
               {open.length === 0 ? <Pill verdict="ready">{required.length} of {required.length} sources in</Pill> : <Pill verdict="warn" title={open.map(item => item.label).join(", ")}>{required.length - open.length} of {required.length} sources in</Pill>}
               {open.length > 0 && <span className="text-xs text-ink-muted">Open: {open.map(item => item.label).join(", ")}</span>}
               <Button variant="outline" size="sm" className="h-7" onClick={onOpenSources}><ListChecks className="size-3.5" /> Sources</Button>
             </div>
             <div className="flex flex-wrap items-center gap-2 lg:border-l lg:border-s100 lg:pl-4" title={hours.detail}>
-              <p className="text-[10px] font-extrabold uppercase tracking-[.14em] text-cool-8">Hours source</p>
+              <p className="text-[11px] font-medium uppercase tracking-wide text-cool-8">Hours source</p>
               {hours.kind === "signed-assignment" ? <Pill verdict="go">Signed RA · {hours.hours?.toLocaleString("en-US")} hours</Pill> : <Chip>{hours.label}</Chip>}
             </div>
           </section>
@@ -71,23 +71,23 @@ export function FcpVersionsSheet({ engagementId, open, onClose, readOnly, onRest
   return (
     <Sheet open={open} onOpenChange={value => !value && onClose()}>
       <SheetContent side="right" className="w-full gap-0 overflow-y-auto bg-s50 p-0 sm:max-w-[520px]">
-        <SheetHeader className="bg-white px-5 pb-4 pt-6">
+        <SheetHeader className="bg-surface px-5 pb-4 pt-6">
           <p className="cta-eyebrow">FCP version history</p>
-          <SheetTitle className="text-xl font-black tracking-tight text-ink">Versions</SheetTitle>
+          <SheetTitle className="text-xl font-semibold tracking-tight text-ink">Versions</SheetTitle>
           <SheetDescription className="text-xs text-ink-muted">A version is saved when you ask, when the FCP leaves FCP Draft for approval, and on every FCP export. Restoring keeps the current FCP as a version first.</SheetDescription>
         </SheetHeader>
-        <form className="flex gap-2 border-t border-s100 bg-white px-5 py-3" onSubmit={event => { event.preventDefault(); if (label.trim()) save.mutate({ id: engagementId, label: label.trim() }); }}>
-          <Input value={label} onChange={event => setLabel(event.target.value)} maxLength={160} placeholder="Name this version, e.g. Sent to customer for review" className="h-9 rounded-full" aria-label="Version name" />
+        <form className="flex gap-2 border-t border-s100 bg-surface px-5 py-3" onSubmit={event => { event.preventDefault(); if (label.trim()) save.mutate({ id: engagementId, label: label.trim() }); }}>
+          <Input value={label} onChange={event => setLabel(event.target.value)} maxLength={160} placeholder="Name this version, e.g. Sent to customer for review" className="h-9 rounded-md" aria-label="Version name" />
           <Button type="submit" size="sm" className="h-9 shrink-0" disabled={!label.trim() || save.isPending}><Save className="size-4" /> Save version</Button>
         </form>
         <DataMount id="fcpVersions" query={query} isEmpty={data => data.length === 0} empty={{ icon: History, title: "No versions yet", sub: "Save one above. Versions are also saved when the FCP goes for approval and when it is exported." }} className="border-t border-s100">
           {data => (
             <ol className="divide-y divide-s100">
               {data.map(version => (
-                <li key={version.id} className="space-y-2 bg-white px-5 py-3">
+                <li key={version.id} className="space-y-2 bg-surface px-5 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-bold text-ink">v{version.versionNumber} · {version.label}</p>
+                      <p className="text-sm font-semibold text-ink">v{version.versionNumber} · {version.label}</p>
                       <p className="text-xs text-ink-muted">{new Date(version.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}{version.createdByName ? ` · ${version.createdByName}` : ""}</p>
                     </div>
                     <Chip>{{ manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore" }[version.reason]}</Chip>
@@ -124,7 +124,7 @@ function VersionPreview({ engagementId, versionId, onClose }: { engagementId: nu
           <DialogTitle>{version.data ? `Version ${version.data.versionNumber}: ${version.data.label}` : "Version preview"}</DialogTitle>
           <DialogDescription>How the FCP read at this version. Read only.</DialogDescription>
         </DialogHeader>
-        {html?.id === versionId ? <iframe title="Version preview" sandbox="" srcDoc={html.html} className="h-full w-full rounded-lg border border-s100 bg-white" /> : <div className="grid h-full place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div>}
+        {html?.id === versionId ? <iframe title="Version preview" sandbox="" srcDoc={html.html} className="h-full w-full rounded-lg border border-s100 bg-surface" /> : <div className="grid h-full place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div>}
       </DialogContent>
     </Dialog>
   );

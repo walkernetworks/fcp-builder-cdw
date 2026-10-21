@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { Chip } from "./elements";
 
-const selectClass = "h-8 rounded-full border border-s200 bg-white px-3 text-xs font-semibold text-ink";
+const selectClass = "h-8 rounded-md border border-s200 bg-surface px-3 text-xs font-semibold text-ink";
 const GROUPS = Array.from(new Set(REPORT_FIELDS.map(field => field.group)));
 
 function FieldSelect({ value, onChange, placeholder, fields, allowNone }: { value: string; onChange: (key: string) => void; placeholder: string; fields: ReportField[]; allowNone?: boolean }) {
@@ -22,7 +22,7 @@ function FieldSelect({ value, onChange, placeholder, fields, allowNone }: { valu
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-2 border-t border-s100 py-3 first:border-t-0 sm:grid-cols-[140px_1fr] sm:items-start">
-      <p className="pt-1.5 text-[11px] font-extrabold uppercase tracking-[.14em] text-s500">{label}</p>
+      <p className="pt-1.5 text-[11px] font-medium uppercase tracking-wide text-s500">{label}</p>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
     </div>
   );
@@ -51,7 +51,7 @@ export function ReportBuilder({ config, onChange }: { config: ReportConfig; onCh
   const updateFilter = (index: number, filter: ReportFilter) => set({ filters: config.filters.map((current, i) => (i === index ? filter : current)) });
 
   return (
-    <div className="rounded-xl border border-s100 bg-white px-4 py-1 shadow-[var(--shadow-card)]">
+    <div className="rounded-lg border border-s100 bg-surface px-4 py-1 shadow-[var(--shadow-card)]">
       <Row label="Columns">
         {config.columns.map((key, index) => (
           <span key={key} className="chip gap-1 pr-1">
@@ -68,8 +68,8 @@ export function ReportBuilder({ config, onChange }: { config: ReportConfig; onCh
         {config.filters.map((filter, index) => {
           const field = FIELD_BY_KEY.get(filter.field)!;
           return (
-            <span key={`${filter.field}-${index}`} className="flex flex-wrap items-center gap-1.5 rounded-xl border border-s200 bg-s50 py-1 pl-3 pr-1 text-xs">
-              <strong className="font-bold text-ink">{field.label}</strong>
+            <span key={`${filter.field}-${index}`} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-s200 bg-s50 py-1 pl-3 pr-1 text-xs">
+              <strong className="font-semibold text-ink">{field.label}</strong>
               <select className={selectClass} value={filter.op} aria-label={`${field.label} condition`} onChange={event => {
                 const op = event.target.value as ReportFilter["op"];
                 updateFilter(index, op === "empty" || op === "notEmpty" ? { field: field.key, op } : newFilter(field));
@@ -79,12 +79,12 @@ export function ReportBuilder({ config, onChange }: { config: ReportConfig; onCh
                 <option value="notEmpty">has a value</option>
               </select>
               {filter.op === "is" && <select className={selectClass} value={String(filter.value)} onChange={event => updateFilter(index, { ...filter, value: event.target.value === "true" })} aria-label={`${field.label} value`}><option value="true">Yes</option><option value="false">No</option></select>}
-              {filter.op === "contains" && <Input className="h-8 w-40 rounded-full text-xs" value={filter.text} onChange={event => updateFilter(index, { ...filter, text: event.target.value })} aria-label={`${field.label} text`} />}
+              {filter.op === "contains" && <Input className="h-8 w-40 rounded-md text-xs" value={filter.text} onChange={event => updateFilter(index, { ...filter, text: event.target.value })} aria-label={`${field.label} text`} />}
               {filter.op === "between" && (
                 <>
-                  <Input type={field.type === "date" ? "date" : "number"} className="h-8 w-36 rounded-full text-xs" value={filter.from ?? ""} onChange={event => updateFilter(index, { ...filter, from: event.target.value || null })} aria-label={`${field.label} from`} />
+                  <Input type={field.type === "date" ? "date" : "number"} className="h-8 w-36 rounded-md text-xs" value={filter.from ?? ""} onChange={event => updateFilter(index, { ...filter, from: event.target.value || null })} aria-label={`${field.label} from`} />
                   <span className="text-ink-muted">and</span>
-                  <Input type={field.type === "date" ? "date" : "number"} className="h-8 w-36 rounded-full text-xs" value={filter.to ?? ""} onChange={event => updateFilter(index, { ...filter, to: event.target.value || null })} aria-label={`${field.label} to`} />
+                  <Input type={field.type === "date" ? "date" : "number"} className="h-8 w-36 rounded-md text-xs" value={filter.to ?? ""} onChange={event => updateFilter(index, { ...filter, to: event.target.value || null })} aria-label={`${field.label} to`} />
                 </>
               )}
               {filter.op === "in" && field.labels && (

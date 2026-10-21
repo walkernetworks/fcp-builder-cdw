@@ -10,7 +10,7 @@ The repository supplies three complementary dependency records: `package.json` l
 | Transitive JavaScript packages | `pnpm-lock.yaml` | Generate the platform-standard CycloneDX or SPDX inventory from the immutable release image. |
 | Application source | Repository commit and checkpoint | Run SAST, secret scanning, and dependency scanning in the approved CI pipeline. |
 
-The app UI bundles the Plus Jakarta Sans typeface from `@fontsource-variable/plus-jakarta-sans` (SIL Open Font License 1.1). Vite copies the font files into the client build, so browsers load them from the app's own origin and never from a font CDN.
+The app UI bundles the Inter typeface from `@fontsource-variable/inter` (SIL Open Font License 1.1). Vite copies the font files into the client build, so browsers load them from the app's own origin and never from a font CDN.
 
 The checked-in direct production manifest can be regenerated with:
 
