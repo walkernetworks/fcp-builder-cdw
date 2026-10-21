@@ -502,11 +502,13 @@ The list write (7) is only one of nine. Replacing the list with the app removes 
 
 ### 12.3 The constraint
 
-The kickoff locks the app as standalone. It makes no calls to Salesforce, SharePoint, or mail, and no outbound network calls except the database; data moves as files. So the app cannot take over steps 2, 4, or 5 (account lookup, folders and files, opportunity, emails) without reopening that decision.
+The app is standalone now and integration-ready behind clean seams (kickoff, revised 2026-10-16). It makes no calls to Salesforce, SharePoint, or mail, and no outbound network calls except the database, until a specific connector is approved and built; data moves as files. So the app cannot take over steps 2, 4, or 5 (account lookup, folders and files, opportunity, emails) without reopening that decision.
 
 ### 12.4 Baseline: daily import of the Pipeline List
 
 The first operating mode assumes the flow and the SharePoint list stay exactly as they are, and the app pulls the list in once a day. People may keep updating SharePoint during the transition while others work in the app, so the import is built to run every day, safely.
+
+**Pipeline source seam.** Row acquisition is separate from reconciliation. `server/pipelineSource.ts` turns the input into normalized `RawPipelineRow[]` (tracker field names, derived stage, assignments, per-row flags). `planMappedRows`, the per-field merge, stage events, and the reconciliation report work only on those rows. The CSV upload is the only source (`PIPELINE_SOURCE=csv`). An approved Salesforce or SharePoint pull would be a second source producing the same rows, with no change to reconciliation.
 
 **How the file gets in.** The app cannot fetch from SharePoint (no outbound network). Once a day, someone exports the list view to CSV (SharePoint "Export to CSV") and uploads it on the app's Import page. The server parses the CSV; it holds tracker data only, no RVTools. A dry run shows the reconciliation report before anything is written, and the import is applied in one transaction.
 
@@ -631,3 +633,9 @@ Each FCP belongs to its tracker record. The workspace shows the record's stage, 
 - **Take over editing** (with confirmation) moves the lock. The previous holder's next save is refused, and their workspace turns read-only.
 - **Scope:** tracker edits in the record drawer are not covered by the lock; they keep their `rowVersion` check. Saving an FCP renews the lock.
 
+### 13.5 Record files (file source seam)
+
+- The record drawer's **Files** tab shows the client folder as an "Open client folder" link and lists the record's files as links out. Read-only: no upload, no download, no storage.
+- The list comes from `server/fileSource.ts` through `tracker.files`, which reads the record through `server/visibility.ts` like every record read.
+- **`references` (default):** the client folder (`clientFolderUrl`), then each source checklist `reference`. A link is listed as itself. A file name or folder path links to the client folder that holds it. Free-text references are left out. Only `https:` URLs are returned.
+- **`sharepoint` (reserved, not built):** a read-only Microsoft Graph listing of the client folder, behind `FILE_SOURCE`, once that connector is approved. No schema change is needed for either.

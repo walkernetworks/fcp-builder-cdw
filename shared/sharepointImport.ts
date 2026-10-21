@@ -501,13 +501,21 @@ function clampDay(day: string | null, min: string, today: string) {
   return value < min ? min : value > today ? today : value;
 }
 
+/**
+ * A normalized pipeline row: what any pipeline source (server/pipelineSource.ts) hands to reconciliation. Fields use
+ * tracker names and values, the stage is already derived, and per-row problems are in `flags`. Reconciliation does
+ * not know whether it came from a CSV or a future connector.
+ */
+export type RawPipelineRow = MappedRow;
+
+/** Parses and plans a CSV in one step (tests and tools). The app goes through the pipeline source instead. */
 export function planImport(text: string, existing: ExistingRecord[], today: string): ImportPlan {
   const file = parsePipelineCsv(text);
   const mapped = file.rows.map(row => mapPipelineRow(row, file.columns));
   return planMappedRows(mapped, file.problems, existing, today);
 }
 
-export function planMappedRows(mapped: MappedRow[], fileProblems: string[], existing: ExistingRecord[], today: string): ImportPlan {
+export function planMappedRows(mapped: RawPipelineRow[], fileProblems: string[], existing: ExistingRecord[], today: string): ImportPlan {
   const byId = new Map(existing.map(record => [record.id, record]));
   const index = (field: ImportField) => {
     const map = new Map<string, number[]>();

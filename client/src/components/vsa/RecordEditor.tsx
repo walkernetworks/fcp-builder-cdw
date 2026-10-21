@@ -43,9 +43,12 @@ function toPatchValue(field: FieldDef, value: FormValue): { value: unknown } | {
   }
 }
 
-/** Edits every tracker field directly. Saves only what changed, with the record's version so a stale save is refused. */
-export function RecordEditor({ data }: { data: TrackerRecord }) {
-  const { record } = data;
+/**
+ * The record's editable tracker fields as one form: per-field dirty tracking, validation, and a save that sends only
+ * what changed with the record's version, so a stale save is refused. The drawer holds one instance above its tabs,
+ * so edits survive switching tabs and every field has one place it is edited.
+ */
+export function useRecordForm(record: TrackerRecord["record"]) {
   const utils = trpc.useUtils();
   const original = useMemo(() => toForm(record), [record]);
   const [form, setForm] = useState<Form>(original);
@@ -75,59 +78,95 @@ export function RecordEditor({ data }: { data: TrackerRecord }) {
     save.mutate({ id: record.id, rowVersion: record.rowVersion, patch: patch as TrackerPatch });
   }
 
+  return {
+    form,
+    original,
+    errors,
+    changed,
+    pending: save.isPending,
+    setField: (key: string, value: FormValue) => setForm(current => ({ ...current, [key]: value })),
+    discard: () => { setForm(original); setErrors({}); },
+    submit,
+  };
+}
+
+export type RecordForm = ReturnType<typeof useRecordForm>;
+
+/** One editable field, wired to the shared form. */
+export function RecordField({ form, field, compact }: { form: RecordForm; field: FieldDef; compact?: boolean }) {
+  return <FieldInput field={field} value={form.form[field.key]} error={form.errors[field.key]} dirty={form.form[field.key] !== form.original[field.key]} compact={compact} onChange={value => form.setField(field.key, value)} />;
+}
+
+/** Field groups as labeled sections that read like the record, with values that happen to be editable. */
+export function RecordFieldGroups({ form, groups }: { form: RecordForm; groups: { title: string; fields: FieldDef[] }[] }) {
   return (
-    <form className="divide-y divide-s100" onSubmit={event => { event.preventDefault(); submit(); }}>
-      {FIELD_GROUPS.map(group => (
-        <fieldset key={group.title} className="space-y-3 bg-surface px-5 py-4">
+    <>
+      {groups.map(group => (
+        <fieldset key={group.title} className="space-y-3 border-t border-s100 px-6 py-4">
           <legend className="sr-only">{group.title}</legend>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-s500" aria-hidden>{group.title}</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {group.fields.map(field => (
-              <FieldInput key={field.key} field={field} value={form[field.key]} error={errors[field.key]} dirty={form[field.key] !== original[field.key]} onChange={value => setForm(current => ({ ...current, [field.key]: value }))} />
-            ))}
+          <p className="field-label" aria-hidden>{group.title}</p>
+          <div className="grid gap-x-4 gap-y-3 sm:grid-cols-3">
+            {group.fields.map(field => <RecordField key={field.key} form={form} field={field} />)}
           </div>
         </fieldset>
       ))}
-      <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-s100 bg-surface px-5 py-3">
-        <p className="text-xs text-ink-muted">{changed.length ? `${changed.length} unsaved ${changed.length === 1 ? "change" : "changes"}` : "No changes"}</p>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" size="sm" disabled={!changed.length || save.isPending} onClick={() => { setForm(original); setErrors({}); }}>Discard</Button>
-          <Button type="submit" size="sm" disabled={!changed.length || save.isPending}>{save.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save changes</Button>
-        </div>
-      </div>
-    </form>
+    </>
   );
 }
 
-function FieldInput({ field, value, error, dirty, onChange }: { field: FieldDef; value: FormValue; error?: string; dirty: boolean; onChange: (value: FormValue) => void }) {
+/** Sticky at the bottom of the drawer while anything is unsaved, on whichever tab holds the change. */
+export function RecordSaveBar({ form }: { form: RecordForm }) {
+  if (!form.changed.length) return null;
+  return (
+    <div className="sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t border-s100 bg-surface/95 px-6 py-3 backdrop-blur">
+      <p className="text-xs text-ink-muted">{form.changed.length} unsaved {form.changed.length === 1 ? "change" : "changes"}</p>
+      <div className="flex gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={form.pending} onClick={form.discard}>Discard</Button>
+        <Button type="button" size="sm" disabled={form.pending} onClick={form.submit}>{form.pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save changes</Button>
+      </div>
+    </div>
+  );
+}
+
+function FieldInput({ field, value, error, dirty, compact, onChange }: { field: FieldDef; value: FormValue; error?: string; dirty: boolean; compact?: boolean; onChange: (value: FormValue) => void }) {
   const id = `field-${field.key}`;
-  const wide = field.kind === "textarea" || field.kind === "url";
+  const wide = !compact && (field.kind === "textarea" || field.kind === "url");
+  const box = "h-8 w-full rounded-md border border-s100 bg-surface px-2.5 text-[13px] text-ink shadow-none transition-colors hover:border-s200 focus-visible:border-s300";
   const control = (() => {
     switch (field.kind) {
       case "bool":
-        return <label className="flex h-9 items-center gap-2 text-sm text-ink"><input id={id} type="checkbox" className="size-4 accent-[var(--cdw-red)]" checked={Boolean(value)} onChange={event => onChange(event.target.checked)} /> Yes</label>;
+        return <label className="flex h-8 items-center gap-2 text-[13px] text-ink"><input id={id} type="checkbox" className="size-4 accent-[var(--cdw-red)]" checked={Boolean(value)} onChange={event => onChange(event.target.checked)} /> Yes</label>;
       case "enum":
         return (
-          <select id={id} className="h-9 w-full rounded-md border border-s200 bg-surface px-3 text-sm text-ink" value={String(value)} onChange={event => onChange(event.target.value)}>
+          <select id={id} className={box} value={String(value)} onChange={event => onChange(event.target.value)}>
             <option value="">Not set</option>
             {Object.entries(field.options ?? {}).map(([option, label]) => <option key={option} value={option}>{label}</option>)}
           </select>
         );
       case "textarea":
-        return <Textarea id={id} rows={3} className="rounded-lg" value={String(value)} onChange={event => onChange(event.target.value)} />;
+        return <Textarea id={id} rows={3} className="min-h-0 rounded-md border-s100 px-2.5 text-[13px] shadow-none hover:border-s200" value={String(value)} onChange={event => onChange(event.target.value)} />;
       case "date":
-        return <Input id={id} type="date" className="h-9 rounded-md" value={String(value)} onChange={event => onChange(event.target.value)} />;
+        return <Input id={id} type="date" className={compact ? `${box} w-[150px]` : box} value={String(value)} onChange={event => onChange(event.target.value)} />;
       default:
-        return <Input id={id} type="text" inputMode={field.kind === "money" || field.kind === "int" ? "decimal" : undefined} className="h-9 rounded-md" value={String(value)} onChange={event => onChange(event.target.value)} />;
+        return <Input id={id} type="text" inputMode={field.kind === "money" || field.kind === "int" ? "decimal" : undefined} className={box} value={String(value)} onChange={event => onChange(event.target.value)} />;
     }
   })();
+  if (compact) {
+    return (
+      <span className="block">
+        <label htmlFor={id} className="sr-only">{field.label}</label>
+        {control}
+        {error && <span className="mt-1 block text-xs font-medium text-state-blocked-text">{error}</span>}
+      </span>
+    );
+  }
   return (
-    <div className={wide ? "sm:col-span-2" : undefined}>
-      <label htmlFor={id} className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-cool-8">
+    <div className={wide ? "sm:col-span-3" : undefined}>
+      <label htmlFor={id} className="mb-1 flex items-center gap-1.5 text-xs text-ink-muted">
         {field.label}{field.required && <span aria-hidden>*</span>}{dirty && <span className="size-1.5 rounded-full bg-cdw-red" title="Changed" aria-label="Changed" />}
       </label>
       {control}
-      {error ? <p className="mt-1 text-xs font-semibold text-state-blocked-text">{error}</p> : field.hint && <p className="mt-1 text-[11px] text-ink-muted">{field.hint}</p>}
+      {error ? <p className="mt-1 text-xs font-medium text-state-blocked-text">{error}</p> : field.hint && <p className="mt-1 text-[11px] text-ink-subtle">{field.hint}</p>}
     </div>
   );
 }

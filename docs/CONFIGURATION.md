@@ -13,6 +13,8 @@ The application reads deployment-specific identity, database, and PDF-rendering 
 | `FCP_SSO_NAME_HEADER` | Optional | Header containing the authenticated display name. | No |
 | `JWT_SECRET` | Always | Signs short-lived HTML/PDF export download tickets. | Yes |
 | `PUPPETEER_EXECUTABLE_PATH` | PDF export | Chromium executable path; the supplied container uses `/usr/bin/chromium`. | No |
+| `FILE_SOURCE` | Optional | Where a record's file list comes from (`server/fileSource.ts`). Default and only built value: `references`, built from the record's client folder link and its source checklist references. No network calls. `sharepoint` (read-only Microsoft Graph listing) is reserved for a future approved connector and is refused at startup. | No |
+| `PIPELINE_SOURCE` | Optional | Where import rows come from (`server/pipelineSource.ts`). Default and only built value: `csv`, the uploaded SharePoint Pipeline List export. `salesforce` and `sharepoint` are reserved for future approved connectors and are refused at startup. | No |
 
 ## Local inventory-processing contract
 

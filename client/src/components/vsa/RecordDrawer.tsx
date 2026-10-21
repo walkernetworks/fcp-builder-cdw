@@ -6,22 +6,22 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { SEGMENT_LABELS, todayIso, type TrackerRecord } from "@/lib/vsa";
-import { ENUM_LABELS, FIELD_GROUPS } from "@/lib/vsaLabels";
+import { FIELD_GROUPS } from "@/lib/vsaLabels";
 import { buildLockState } from "@shared/fcpRecord";
 import { staleness } from "@shared/vsaDashboard";
 import { canTransition, customerApprovalItems, openSources, requiresBroadcomApproval, requiresWorkPlan, STAGE_LABELS, STAGES, stageWarnings, type Stage } from "@shared/vsaStage";
 import { expiryVerdict, formatDay, formatMoney } from "@shared/vsaViews";
-import { ExternalLink, FileText, History, Lock } from "lucide-react";
+import { ExternalLink, File, FileText, Folder, FolderOpen, History, Link2, Lock } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import { HealthPill } from "./cells";
 import { Chip, DataMount, EmptyState, Pill } from "./elements";
-import { RecordEditor } from "./RecordEditor";
+import { RecordField, RecordFieldGroups, RecordSaveBar, useRecordForm, type RecordForm } from "./RecordEditor";
 import { PeopleEditor, SourcesEditor } from "./RecordPeopleSources";
 
 /** Right-side detail for one engagement. Esc and the backdrop close it; focus returns to whatever opened it. */
-export type DrawerTab = "overview" | "stage" | "sources" | "people" | "fcp" | "details";
+export type DrawerTab = "overview" | "stage" | "sources" | "people" | "files" | "fcp";
 
 export function RecordDrawer({ id, onClose, initialTab = "overview" }: { id: number | null; onClose: () => void; initialTab?: DrawerTab }) {
   const record = trpc.tracker.get.useQuery({ id: id ?? 0 }, { enabled: id !== null });
@@ -66,8 +66,7 @@ function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: D
   const expiry = expiryVerdict(record.deliveryWindowEnd, today);
   const stale = staleness(record, today);
   const approvals = customerApprovalItems(record);
-  const architect = assignments.find(assignment => assignment.role === "architect")?.displayName;
-  const pm = assignments.find(assignment => assignment.role === "pm")?.displayName;
+  const form = useRecordForm(record);
 
   return (
     <div>
@@ -93,8 +92,8 @@ function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: D
             ["stage", "Stage & gates"],
             ["sources", `Sources (${sources.length})`],
             ["people", `People (${assignments.length})`],
+            ["files", "Files"],
             ["fcp", "FCP"],
-            ["details", "Details"],
           ] as const).map(([value, label]) => (
             <TabsTrigger key={value} value={value} className="h-10 flex-none rounded-none border-0 border-b-2 border-transparent px-3 text-[13px] font-medium text-ink-muted shadow-none data-[state=active]:border-cdw-red data-[state=active]:text-ink data-[state=active]:shadow-none dark:data-[state=active]:bg-transparent">
               {label}
@@ -108,19 +107,6 @@ function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: D
               <ul className="space-y-1">{warnings.map(warning => <li key={warning} className="callout-red text-[13px]">{warning}</li>)}</ul>
             </Section>
           )}
-          <Section title="Key facts">
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
-              <Fact label="VSA amount">{formatMoney(record.entitlementValue)}</Fact>
-              <Fact label="VSA expiration">{formatDay(record.deliveryWindowEnd)}</Fact>
-              <Fact label="Program">{record.program ? ENUM_LABELS.program[record.program] : "—"}</Fact>
-              <Fact label="Architect">{architect ?? "Unassigned"}</Fact>
-              <Fact label="PM">{pm ?? "Unassigned"}</Fact>
-              <Fact label="Waiting on">{record.waitingOn ? ENUM_LABELS.waitingOn[record.waitingOn] : "—"}</Fact>
-              <Fact label="PO received">{formatDay(record.poReceivedOn)}</Fact>
-              <Fact label="Region">{record.region ? ENUM_LABELS.region[record.region] : "—"}</Fact>
-              <Fact label="Licensed cores">{record.coreCount?.toLocaleString("en-US") ?? "—"}</Fact>
-            </dl>
-          </Section>
           <Section title="Customer approval">
             <ul className="divide-y divide-s100 rounded-md border border-s100">
               <li className="flex items-center justify-between gap-2 px-3 py-2 text-[13px]">FCP approval {approvals.fcp.acceptedOn ? <Pill verdict="ready">Accepted {formatDay(approvals.fcp.acceptedOn)}</Pill> : <Pill verdict="warn">Not accepted</Pill>}</li>
@@ -130,34 +116,32 @@ function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: D
                 <li className="px-3 py-2 text-xs text-ink-muted">Commercial customers have no work plan step.</li>
               )}
             </ul>
+            <p className="text-[11px] text-ink-subtle">From the gate dates on Stage &amp; gates.</p>
           </Section>
-          {(record.nextSteps || record.statusNotes || record.clientFolderUrl) && (
-            <Section title="Notes">
-              {record.nextSteps && <div><p className="text-xs text-ink-muted">Next steps</p><p className="mt-0.5 whitespace-pre-line text-[13px] text-ink">{record.nextSteps}</p></div>}
-              {record.statusNotes && <div><p className="text-xs text-ink-muted">Status notes</p><p className="mt-0.5 whitespace-pre-line text-[13px] text-ink">{record.statusNotes}</p></div>}
-              {record.clientFolderUrl && <a href={record.clientFolderUrl} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-1 text-xs font-medium text-cdw-red-text hover:underline">Client folder <ExternalLink className="size-3" /></a>}
-            </Section>
-          )}
+          <RecordFieldGroups form={form} groups={OVERVIEW_GROUPS} />
         </TabsContent>
 
-        <TabsContent value="stage" className="mt-0"><StageAndGates data={data} /></TabsContent>
+        <TabsContent value="stage" className="mt-0"><StageAndGates data={data} form={form} /></TabsContent>
         <TabsContent value="sources" className="mt-0"><SourcesEditor data={data} /></TabsContent>
         <TabsContent value="people" className="mt-0"><PeopleEditor data={data} /></TabsContent>
+        <TabsContent value="files" className="mt-0"><FilesTab data={data} /></TabsContent>
         <TabsContent value="fcp" className="mt-0"><FcpTab data={data} /></TabsContent>
-        <TabsContent value="details" className="mt-0"><RecordEditor data={data} /></TabsContent>
       </Tabs>
+      <RecordSaveBar form={form} />
     </div>
   );
 }
 
 const GATE_FIELDS = FIELD_GROUPS.find(group => group.title === "Gate dates")!.fields;
+/** Overview edits the record-level fields. Gate dates are edited on Stage & gates, so each field has one edit surface. */
+const OVERVIEW_GROUPS = FIELD_GROUPS.filter(group => group.title !== "Gate dates");
 const BROADCOM_ONLY = new Set(["fcpBroadcomAcceptedOn", "workPlanSentOn", "workPlanAcceptedOn"]);
 
-/** Gate dates as a vertical timeline (done, next, not yet), then Move stage and the stage history. */
-function StageAndGates({ data }: { data: TrackerRecord }) {
+/** Move stage, the gate dates as an editable vertical timeline (done, next, not yet), and the stage history. */
+function StageAndGates({ data, form }: { data: TrackerRecord; form: RecordForm }) {
   const { record, events } = data;
   const gates = GATE_FIELDS.filter(field => !BROADCOM_ONLY.has(field.key) || (field.key === "fcpBroadcomAcceptedOn" ? requiresBroadcomApproval(record.segment) : requiresWorkPlan(record.segment)));
-  const values = gates.map(field => ({ field, day: (record as Record<string, unknown>)[field.key] as string | null }));
+  const values = gates.map(field => ({ field, day: (form.form[field.key] as string) || null }));
   const lastDone = values.reduce((last, item, index) => (item.day ? index : last), -1);
   const doneCount = values.filter(item => item.day).length;
   return (
@@ -168,8 +152,13 @@ function StageAndGates({ data }: { data: TrackerRecord }) {
           {values.map(({ field, day }, index) => (
             <li key={field.key} className="vtl-item">
               <span className="vtl-dot" data-done={day ? "true" : undefined} data-current={!day && index === lastDone + 1 ? "true" : undefined} aria-hidden />
-              <span className={`text-[13px] ${day ? "text-ink" : "text-ink-muted"}`}>{field.label}{field.hint && <span className="ml-1.5 text-xs text-ink-subtle">{field.hint}</span>}</span>
-              <span className={`tabular text-[13px] ${day ? "text-ink" : "text-ink-subtle"}`}>{day ? formatDay(day) : index === lastDone + 1 ? "Next" : "—"}</span>
+              <span className={`pt-1.5 text-[13px] ${day ? "text-ink" : "text-ink-muted"}`}>
+                {field.label}
+                {form.form[field.key] !== form.original[field.key] && <span className="ml-1.5 inline-block size-1.5 rounded-full bg-cdw-red align-middle" title="Changed" aria-label="Changed" />}
+                {!day && index === lastDone + 1 && <span className="ml-1.5 text-xs font-medium text-cdw-red-text">Next</span>}
+                {field.hint && <span className="block text-xs text-ink-subtle">{field.hint}</span>}
+              </span>
+              <RecordField form={form} field={field} compact />
             </li>
           ))}
         </ol>
@@ -278,6 +267,69 @@ function FcpTab({ data }: { data: TrackerRecord }) {
             </ol>
           )}
         </DataMount>
+      </Section>
+    </>
+  );
+}
+
+const FILE_ICON = { folder: Folder, file: File, link: Link2 } as const;
+
+/** The client folder and the files the record refers to, as links out. Read-only: nothing is uploaded, fetched, or stored. */
+function FilesTab({ data }: { data: TrackerRecord }) {
+  const { record } = data;
+  const files = trpc.tracker.files.useQuery({ id: record.id });
+  const query = { ...files, data: files.data, error: files.error ? { message: files.error.message } : null };
+  const folder = files.data?.find(file => file.kind === "folder" && file.name === "Client folder");
+  const others = (files.data ?? []).filter(file => file !== folder);
+  let host = "";
+  try {
+    host = folder ? new URL(folder.url).host : "";
+  } catch {
+    host = "";
+  }
+  return (
+    <>
+      <Section title="Client folder">
+        <DataMount id="recordFiles" query={query} isEmpty={() => !folder} empty={{ icon: FolderOpen, title: "No client folder linked", sub: "Add the SharePoint folder link on the Overview (Client folder link). Files are listed as links; nothing is uploaded or stored here." }}>
+          {() => (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-s100 bg-surface-sunken px-4 py-3">
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="grid size-9 shrink-0 place-items-center rounded-md border border-s100 bg-surface text-ink-muted"><FolderOpen className="size-4" aria-hidden /></span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-medium text-ink">Client folder</span>
+                  <span className="block truncate text-xs text-ink-muted" title={folder!.url}>{host || folder!.url}</span>
+                </span>
+              </span>
+              <Button asChild>
+                <a href={folder!.url} target="_blank" rel="noreferrer noopener"><FolderOpen className="size-4" /> Open client folder <ExternalLink className="size-3.5" /></a>
+              </Button>
+            </div>
+          )}
+        </DataMount>
+      </Section>
+      <Section title={`Files${files.data ? ` · ${others.length}` : ""}`}>
+        {files.data && others.length === 0 ? (
+          <p className="text-xs text-ink-muted">No file references yet. File names, folder paths, and links recorded on the Sources tab appear here.</p>
+        ) : (
+          <ul className="divide-y divide-s100 rounded-md border border-s100">
+            {others.map(file => {
+              const Icon = FILE_ICON[file.kind ?? "link"];
+              return (
+                <li key={`${file.url}-${file.name}`}>
+                  <a href={file.url} target="_blank" rel="noreferrer noopener" className="flex items-center gap-3 px-3 py-2 hover:bg-surface-sunken">
+                    <Icon className="size-4 shrink-0 text-ink-muted" aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] text-ink">{file.name}</span>
+                      <span className="block text-xs text-ink-muted">{file.kind === "link" ? "Link" : file.kind === "folder" ? "Folder, in the client folder" : "File, in the client folder"}{file.modifiedOn ? ` · received ${formatDay(file.modifiedOn)}` : ""}</span>
+                    </span>
+                    <ExternalLink className="size-3.5 shrink-0 text-ink-subtle" aria-label="Opens in a new tab" />
+                  </a>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="text-[11px] text-ink-subtle">Links open in your browser. The tracker lists files; it never uploads, downloads, or stores them.</p>
       </Section>
     </>
   );
