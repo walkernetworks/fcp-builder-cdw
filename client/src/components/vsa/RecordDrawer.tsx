@@ -6,12 +6,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { useOperationalSettings } from "@/lib/settings";
-import type { GateKey } from "@shared/vsaFields";
 import { SEGMENT_LABELS, todayIso, type TrackerRecord } from "@/lib/vsa";
 import { FIELD_GROUPS } from "@/lib/vsaLabels";
 import { buildLockState } from "@shared/fcpRecord";
 import { staleness } from "@shared/vsaDashboard";
-import { canTransition, customerApprovalItems, openSources, requiresBroadcomApproval, requiresWorkPlan, STAGE_LABELS, STAGES, stageWarnings, type Stage } from "@shared/vsaStage";
+import { canTransition, customerApprovalItems, isMainStage, openSources, requiresBroadcomApproval, requiresWorkPlan, STAGE_LABELS, stageProgression, STAGES, stageWarnings, type GateDates, type Stage } from "@shared/vsaStage";
 import { expiryVerdict, formatDay, formatMoney } from "@shared/vsaViews";
 import { ExternalLink, File, FileText, Folder, FolderOpen, History, Link2, Lock } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -19,8 +18,9 @@ import { toast } from "sonner";
 import { Link } from "wouter";
 import { HealthPill } from "./cells";
 import { Chip, DataMount, EmptyState, Pill } from "./elements";
-import { RecordField, RecordFieldGroups, RecordSaveBar, useRecordForm, type RecordForm } from "./RecordEditor";
+import { RecordFieldGroups, RecordSaveBar, useRecordForm, type RecordForm } from "./RecordEditor";
 import { PeopleEditor, SourcesEditor } from "./RecordPeopleSources";
+import { NextActionCallout, StageStepper, type SaveGate } from "./StageProgress";
 
 /** Right-side detail for one engagement. Esc and the backdrop close it; focus returns to whatever opened it. */
 export type DrawerTab = "overview" | "stage" | "sources" | "people" | "files" | "fcp";
@@ -40,9 +40,9 @@ export function RecordDrawer({ id, onClose, initialTab = "overview" }: { id: num
   );
 }
 
-function Section({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) {
+function Section({ title, children, actions, id }: { title: string; children: ReactNode; actions?: ReactNode; id?: string }) {
   return (
-    <section className="space-y-3 border-t border-s100 px-6 py-4 first:border-t-0">
+    <section id={id} className="space-y-3 border-t border-s100 px-6 py-4 first:border-t-0">
       <div className="flex items-center justify-between gap-2">
         <h3 className="field-label">{title}</h3>
         {actions}
@@ -138,37 +138,33 @@ function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: D
 const GATE_FIELDS = FIELD_GROUPS.find(group => group.title === "Gate dates")!.fields;
 /** Overview edits the record-level fields. Gate dates are edited on Stage & gates, so each field has one edit surface. */
 const OVERVIEW_GROUPS = FIELD_GROUPS.filter(group => group.title !== "Gate dates");
-const BROADCOM_ONLY = new Set(["fcpBroadcomAcceptedOn", "workPlanSentOn", "workPlanAcceptedOn"]);
 
-/** Move stage, the gate dates as an editable vertical timeline (done, next, not yet), and the stage history. */
+/**
+ * The stages that apply to the record's segment as a stepper, each with its gates; the next action; Move stage; and the
+ * stage history. Gates save one at a time (Mark done), through tracker.update, like any field edit.
+ */
 function StageAndGates({ data, form }: { data: TrackerRecord; form: RecordForm }) {
   const { record, events } = data;
-  const { gateLabels } = useOperationalSettings();
-  // Which gates apply is decided in code (vsaStage.ts); only their display labels come from the admin settings.
-  const gates = GATE_FIELDS.filter(field => !BROADCOM_ONLY.has(field.key) || (field.key === "fcpBroadcomAcceptedOn" ? requiresBroadcomApproval(record.segment) : requiresWorkPlan(record.segment)))
-    .map(field => ({ ...field, label: gateLabels[field.key as GateKey] ?? field.label }));
-  const values = gates.map(field => ({ field, day: (form.form[field.key] as string) || null }));
-  const lastDone = values.reduce((last, item, index) => (item.day ? index : last), -1);
-  const doneCount = values.filter(item => item.day).length;
+  const [moveTo, setMoveTo] = useState<Stage | "">("");
+  // For an exit, the main stage it left from: the stage history's latest move into the current stage.
+  const exitedFrom = isMainStage(record.stage) ? null : ([...events].reverse().find(event => event.toStage === record.stage)?.fromStage ?? null);
+  const dates = Object.fromEntries(GATE_FIELDS.map(field => [field.key, (form.form[field.key] as string) || null])) as GateDates;
+  const progression = stageProgression({ stage: record.stage, segment: record.segment, exitedFrom }, dates);
+  const saveGate: SaveGate = (gate, day, message) => form.saveField(gate, day, message);
+  const suggestMove = (stage: Stage) => {
+    setMoveTo(stage);
+    document.getElementById("move-stage")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   return (
     <>
-      <MoveStage data={data} />
-      <Section title={`Gate dates · ${doneCount} of ${values.length} recorded`}>
-        <ol className="vtl">
-          {values.map(({ field, day }, index) => (
-            <li key={field.key} className="vtl-item">
-              <span className="vtl-dot" data-done={day ? "true" : undefined} data-current={!day && index === lastDone + 1 ? "true" : undefined} aria-hidden />
-              <span className={`pt-1.5 text-[13px] ${day ? "text-ink" : "text-ink-muted"}`}>
-                {field.label}
-                {form.form[field.key] !== form.original[field.key] && <span className="ml-1.5 inline-block size-1.5 rounded-full bg-cdw-red align-middle" title="Changed" aria-label="Changed" />}
-                {!day && index === lastDone + 1 && <span className="ml-1.5 text-xs font-medium text-cdw-red-text">Next</span>}
-                {field.hint && <span className="block text-xs text-ink-subtle">{field.hint}</span>}
-              </span>
-              <RecordField form={form} field={field} compact />
-            </li>
-          ))}
-        </ol>
+      <Section title="Next action">
+        <NextActionCallout progression={progression} onSave={saveGate} saving={form.savingField} onSuggestMove={suggestMove} />
       </Section>
+      <Section title={`Stages · ${record.segment ? SEGMENT_LABELS[record.segment] : "segment not set"}`} actions={!requiresWorkPlan(record.segment) ? <span className="text-xs text-ink-subtle">No Broadcom Approval or work plan for Commercial</span> : undefined}>
+        <StageStepper progression={progression} stageEnteredOn={record.stageEnteredOn} onSave={saveGate} saving={form.savingField} />
+        <p className="text-xs text-ink-subtle">The stage sequence and which gates apply to each segment are set in code. Gate labels are set in Admin.</p>
+      </Section>
+      <MoveStage data={data} to={moveTo} setTo={setMoveTo} />
       <Section title="Stage history">
         {events.length === 0 ? <EmptyState icon={History} title="No stage changes yet" sub="Moves appear here with their dates and notes." /> : (
           <ol className="vtl">
@@ -189,13 +185,12 @@ function StageAndGates({ data, form }: { data: TrackerRecord; form: RecordForm }
   );
 }
 
-function MoveStage({ data }: { data: TrackerRecord }) {
+function MoveStage({ data, to, setTo }: { data: TrackerRecord; to: Stage | ""; setTo: (stage: Stage | "") => void }) {
   const { record, sources, events } = data;
   const utils = trpc.useUtils();
-  const [to, setTo] = useState<Stage | "">("");
   const [effectiveOn, setEffectiveOn] = useState(todayIso());
   const [note, setNote] = useState("");
-  useEffect(() => { setTo(""); setNote(""); setEffectiveOn(todayIso()); }, [record.id, record.stage]);
+  useEffect(() => { setTo(""); setNote(""); setEffectiveOn(todayIso()); }, [record.id, record.stage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pausedFrom = record.stage === "paused" ? ([...events].reverse().find(event => event.toStage === "paused")?.fromStage ?? null) : null;
   const check = useMemo(() => (to ? canTransition({ ...record, sourceItems: sources, pausedFrom }, to) : null), [to, record, sources, pausedFrom]);
@@ -208,7 +203,7 @@ function MoveStage({ data }: { data: TrackerRecord }) {
   });
 
   return (
-    <Section title="Move stage">
+    <Section title="Move stage" id="move-stage">
       <div className="grid gap-2 sm:grid-cols-[1fr_150px_auto]">
         <select className="h-8 rounded-md border border-s200 bg-surface px-2.5 text-[13px] text-ink" value={to} onChange={event => setTo(event.target.value as Stage)} aria-label="New stage">
           <option value="">Choose a stage…</option>

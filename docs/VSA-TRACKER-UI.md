@@ -95,7 +95,11 @@ All in `client/src/components/vsa/`.
   - Dragging a card to another column is optional and follows the same rules as Move stage.
 - **`RecordDrawer.tsx`:** a 720px sheet with six tabs. One form (`useRecordForm` in `RecordEditor.tsx`) sits above the tabs, so unsaved edits survive switching tabs. A sticky save bar shows the unsaved count on any tab. Saves send only changed fields with the record's `rowVersion`, so a stale save is refused. Each field has exactly one place it is edited.
   - **Overview:** the editable record. Open items and Customer approval (read-only, derived from the gate dates) sit at the top. Below them, the record-level fields are grouped: identity, classification, status, commercials and term, notes and links.
-  - **Stage & gates:** Move stage, the gate dates as an editable vertical timeline (done, next, not yet), and the stage history.
+  - **Stage & gates** (`StageProgress.tsx`, model in `stageProgression` in `shared/vsaStage.ts`):
+    - **Next action:** the next gate to record, the PO when it blocks the next stage, or the move the record is ready for.
+    - **Stepper:** the stages that apply to the record's segment (Commercial has no Broadcom Approval stage and no work plan gates). Done stages are checked, the current one is highlighted, and later ones are muted. An exit (Refused, Paused, Lost) is shown at the stage it left from.
+    - **Gates:** each stage's gates (`STAGE_GATES`) are rows. A pending gate has **Mark done** (today, one click) and a calendar to pick or backdate. A recorded gate shows its date with an edit button that can also clear it. Each gate saves on its own through `tracker.update`; other unsaved edits on the record are kept. The PO is drawn as the hard gate. Estimated close is a planned date: it is set, never marked done.
+    - **Move stage** (unchanged rules; "Move to …" in the next action pre-selects it) and the stage history.
   - **Sources.**
   - **People.**
   - **Files:** "Open client folder" and the record's file links, from `tracker.files` (`server/fileSource.ts`). An empty state when no folder is linked.
