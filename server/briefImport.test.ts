@@ -88,6 +88,16 @@ describe("customer brief import", () => {
     expect(reloaded.report.whatWeHeard).toEqual(document.report.whatWeHeard);
     expect(migrateDocument(JSON.parse(JSON.stringify({ ...createDefaultDocument(), report: undefined }))).report.briefVersion).toBeNull();
   });
+
+  it("reads a saved public-sector segment as Corporate, and maps a brief's public sector the same way", () => {
+    const saved = createDefaultDocument();
+    const raw = JSON.parse(JSON.stringify(saved));
+    raw.fields.customerSegment = "public-sector";
+    expect(migrateDocument(raw).fields.customerSegment).toBe("corporate");
+    const brief = example();
+    brief.customer.segment = "public-sector";
+    expect(applyCustomerBrief(createDefaultDocument(), brief).document.fields.customerSegment).toBe("corporate");
+  });
 });
 
 describe("Copilot prompt", () => {
