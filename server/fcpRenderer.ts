@@ -1,4 +1,5 @@
 import type { EngagementDocument, HardwarePlatformAssessment, Timeline } from "../shared/fcp";
+import { bsasTerm } from "../shared/bsas";
 import { selectedScopeSummary } from "../shared/reportView";
 import { calculateEntitlementEndDate, colorForWorkstreamType, DELIVERY_ROLE_BY_WORKSTREAM, getHclSchedulePath, effectiveDeliveryPath, getVcfPlaybookWorkPackageOwnership, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, summarizeCompatibilityHandoff, summarizeDeliveryStaffing, summarizeVcfCompatibility, validateTimeline } from "../shared/fcp";
 import { HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings } from "../shared/hcl";
@@ -39,7 +40,14 @@ function timelineWindow(timeline: Timeline, column: number, boundary = false) {
 }
 
 
+/** The BSAS term for the documents, hours and dates only; null when the deal has no BSAS. */
+function documentBsas(document: EngagementDocument) {
+  return bsasTerm(document.report, document.report.entitlement.termEnd || calculateEntitlementEndDate(document.fields.entitlementStart) || document.fields.entitlementEnd || null);
+}
+
 function renderTwoYearNotional(document: EngagementDocument) {
+  const bsas = documentBsas(document);
+  const bsasLine = bsas ? ` Broadcom Software Adoption Services (BSAS) fund up to ${bsas.hours.toLocaleString("en-US")} hours of the work after the entitlement, from ${bsas.termStart} through ${bsas.termEnd}; BSAS hours not used by then are forfeited.` : "";
   const timeline = document.twoYearPlan;
   const plannedProjectStart = timeline.startDate || document.fields.plannedProjectStart || document.fields.targetStart || document.fields.entitlementStart || "TBD";
   const horizonEnd = timeline.columns[timeline.columns.length - 1] || "TBD";
@@ -55,7 +63,7 @@ function renderTwoYearNotional(document: EngagementDocument) {
     const explanation = year === 1
       ? `The first-year roadmap runs from ${windowStart} through ${windowEnd}. It provides directional context around the executable entitlement schedule without changing the approved entitlement drawdown.`
       : `The second-year roadmap continues from ${windowStart} through ${windowEnd}. It shows lifecycle, adoption, and expansion direction that may require future scope or funding.`;
-    const overview = year === 1 ? `<div class="notional-overview"><div class="section-title"><h2>Two-Year Notional</h2></div><div class="notice notional-intro"><strong>Directional 24-month roadmap:</strong> This view begins at the planned project start (${esc(plannedProjectStart)}), extends through ${esc(horizonEnd)}, ${relationship}. It is not a commitment that all work is funded by the current entitlement.</div></div>` : "";
+    const overview = year === 1 ? `<div class="notional-overview"><div class="section-title"><h2>Two-Year Notional</h2></div><div class="notice notional-intro"><strong>Directional 24-month roadmap:</strong> This view begins at the planned project start (${esc(plannedProjectStart)}), extends through ${esc(horizonEnd)}, ${relationship}. It is not a commitment that all work is funded by the current entitlement.${esc(bsasLine)}</div></div>` : "";
     return `<section class="notional-year-sheet notional-year-${year === 1 ? "one" : "two"}">${overview}<div class="document-section-header"><span>Two-Year Notional · ${months}</span><h2>${year === 1 ? "Year 1 Adoption Outlook" : "Year 2 Continuation"}</h2><p>${esc(explanation)}</p></div>${renderTimeline(sheet, `No two-year notional activities are scheduled in ${months.toLowerCase()}.`)}</section>`;
   };
   return `${renderNotionalSheet(firstYear, 1)}${secondYear ? renderNotionalSheet(secondYear, 2) : ""}`;
@@ -136,6 +144,10 @@ function renderPlanSummary(document: EngagementDocument, includeOperationalTimel
       ? `${money(f.entitlementAmount)} is available through ${entitlementEnd}. The Entitlement Adoption Timeline shows the planned drawdown sequence; the separate Two-Year Notional extends the directional adoption roadmap to 24 months.`
       : `${money(f.entitlementAmount)} is available through ${entitlementEnd}. The Two-Year Notional provides the directional 24-month adoption roadmap; the detailed delivery schedule is omitted from this export.`],
   ];
+  const bsas = documentBsas(document);
+  if (bsas) {
+    items.push(["Broadcom Software Adoption Services", `${bsas.hours.toLocaleString("en-US")} BSAS hours are available from ${bsas.termStart} through ${bsas.termEnd}${bsas.startAssumed || bsas.endAssumed ? " (dates to be confirmed)" : ""}. They fund follow-on work in the Two-Year Notional once the entitlement is used or has ended; BSAS hours not used by ${bsas.termEnd} are forfeited.`]);
+  }
   if (includeOperationalTimeline) {
     items.push(["Entitlement Adoption Timeline", `The entitlement drawdown schedule begins ${plannedStart} and uses ${cadence}. Lead delivery roles, scoped work packages, and concurrent workstreams are derived from the authoritative plan.`]);
   }

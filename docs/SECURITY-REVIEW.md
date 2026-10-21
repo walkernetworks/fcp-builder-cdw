@@ -57,6 +57,7 @@ sequenceDiagram
 |---|---|---:|---|---|
 | Customer name, location, account identifier, and contact | CDW confidential / customer confidential | Yes | Engagement JSON | Access is owner-scoped by authenticated user ID. |
 | Entitled physical cores, dollar value, and start/end dates | CDW confidential / customer confidential | Yes | Engagement JSON | Drives entitlement-term summaries and calendar-month views. |
+| BSAS (Broadcom Software Adoption Services) hours and term dates | CDW confidential / customer confidential | Yes | Engagement JSON (`report.bsas`) | Hours and dates only. The BSAS dollar amount, its rates and its rate tier are Broadcom-internal and are never stored: the engagement document is held in the browser, so the planner enters BSAS hours, and the brief import reads only `bsas.hours`, `termStart` and `termEnd` (any other key is dropped with a warning). Exports show BSAS as hours and dates; the one-dollar-figure gate and `server/condensedFcp.test.ts` cover documents with BSAS. |
 | Raw RVTools workbook bytes | Customer confidential | No | Browser memory only | Never submitted to the application API. |
 | VM, host, datastore, and network object names | Customer confidential | No | Browser memory only | Used transiently for local deduplication, then discarded. |
 | Aggregate counts, capacities, versions, and hardware-model totals | Customer confidential | Yes | Engagement JSON | Contains no per-object inventory rows. |

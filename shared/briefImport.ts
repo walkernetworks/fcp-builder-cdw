@@ -103,6 +103,7 @@ function focusOptions(detailKey: string): string[] {
 }
 
 const reportShape = reportSchema.shape;
+const isoDateOrNull = (value: unknown): string | null => (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null);
 const element = <T extends z.ZodType>(schema: T) => (schema as any).unwrap().element as z.ZodType<any>;
 
 /**
@@ -138,6 +139,7 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   // ---- Planning fields -------------------------------------------------------------------------
   const discovery = isPlainObject(brief.discovery) ? brief.discovery : {};
   const entitlement = isPlainObject(brief.entitlement) ? brief.entitlement : {};
+  const bsasBrief = isPlainObject(brief.bsas) ? brief.bsas : null;
   const customer = isPlainObject(brief.customer) ? brief.customer : {};
   const fieldsPatch: JsonObject = {};
   const detailsPatch: JsonObject = {};
@@ -320,6 +322,10 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
       hoursConsumed: typeof entitlement.hoursConsumed === "number" ? entitlement.hoursConsumed : prior.entitlement.hoursConsumed,
       consumedAsOf: typeof entitlement.consumedAsOf === "string" ? entitlement.consumedAsOf : prior.entitlement.consumedAsOf,
     }),
+    // BSAS is hours and dates only. A BSAS amount, rate or tier in the brief is never read, so it never reaches the document.
+    bsas: bsasBrief && typeof bsasBrief.hours === "number" && bsasBrief.hours > 0 && bsasBrief.hours <= 100_000
+      ? { hours: bsasBrief.hours, termStart: isoDateOrNull(bsasBrief.termStart), termEnd: isoDateOrNull(bsasBrief.termEnd) }
+      : prior.bsas,
     discovery: discoveryCheck.success ? discoveryCheck.data : prior.discovery,
     declined: keep(declined, prior.declined),
     situation: keep(textList(brief.situation, "situation", warnings), prior.situation),
@@ -354,6 +360,8 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   reportCount("personnel", report.personnel.length);
   reportCount("milestonesToDate", report.milestonesToDate.length);
   reportCount("resourceAssignments", report.resourceAssignments.length);
+  if (bsasBrief && Object.keys(bsasBrief).some(key => !["hours", "termStart", "termEnd"].includes(key))) warnings.push("bsas: only BSAS hours and term dates are kept; any amount, rate or tier is left out of the plan");
+  if ((report.bsas?.hours ?? null) !== (prior.bsas?.hours ?? null)) changes.push(`report.bsas.hours: ${prior.bsas?.hours ?? "not set"} → ${report.bsas?.hours ?? "not set"}`);
   if (report.entitlement.hours !== prior.entitlement.hours) changes.push(`report.entitlement.hours: ${prior.entitlement.hours ?? "not set"} → ${report.entitlement.hours ?? "not set"}`);
 
   if (!fields.customerName) missing.push("Customer name");

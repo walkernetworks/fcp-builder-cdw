@@ -27,6 +27,21 @@ export const reportEntitlementSchema = z.object({
   consumedAsOf: optionalDate,
 });
 
+/**
+ * Broadcom Software Adoption Services: a second, prepaid funding source that is spent only after the entitlement is
+ * consumed or has ended, and is forfeited if unused at its term end. Hours and dates only: the BSAS dollar amount and
+ * its rates never enter the engagement document, which the browser holds.
+ */
+export const reportBsasSchema = z.object({
+  /** BSAS hours available, worked out by the planner from the BSAS quote. */
+  hours: optionalNumber,
+  /** When blank, the day after the entitlement ends. */
+  termStart: optionalDate,
+  /** When blank, twelve months after the BSAS start. */
+  termEnd: optionalDate,
+});
+export type ReportBsas = z.infer<typeof reportBsasSchema>;
+
 /** The ways to keep hosts on vSphere 8 supported when the waves run past its end of general support. */
 export const VSPHERE8_STRATEGIES = ["bring-waves-forward", "import-before-eogs", "extended-support"] as const;
 export const VSPHERE8_STRATEGY_TEXT: Record<(typeof VSPHERE8_STRATEGIES)[number], string> = {
@@ -105,6 +120,8 @@ export const reportSchema = z.object({
   headline: optionalText,
   contacts: z.object({ customer: z.array(personSchema).default([]), cdw: z.array(personSchema).default([]), broadcom: z.array(personSchema).default([]) }).default({ customer: [], cdw: [], broadcom: [] }),
   entitlement: reportEntitlementSchema.default({ hours: null, termStart: null, termEnd: null, hoursConsumed: null, consumedAsOf: null }),
+  /** Null when the deal has no BSAS: the plan and the documents are then exactly the entitlement-only ones. */
+  bsas: reportBsasSchema.nullable().default(null),
   discovery: discoveryAnswersSchema.default(() => discoveryAnswersSchema.parse({})),
   /** Outcomes the customer said they are not interested in, in their words (for example "Kubernetes"). */
   declined: z.array(z.string().max(200)).default([]),
