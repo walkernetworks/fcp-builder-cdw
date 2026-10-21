@@ -2,7 +2,7 @@
  * VSA engagement stage model: one stage replaces the five SharePoint status fields.
  * Pure: no database or React imports. docs/VSA-TRACKER-DATA-MODEL.md section 2.
  */
-import type { SourceItemKind, SourceItemStatus } from "./vsaFields";
+import type { GateKey, SourceItemKind, SourceItemStatus } from "./vsaFields";
 
 export const MAIN_STAGES = [
   "intake",
@@ -241,3 +241,91 @@ export const DEFAULT_SOURCE_CHAIN: ReadonlyArray<{ kind: SourceItemKind; label: 
   { kind: "customer_brief", label: "Customer brief", required: true },
   { kind: "hours_source", label: "Hours source", required: true },
 ];
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Stage progression: the gate dates grouped under the stage they belong to, for the record's Stages & gates view.
+// Display only: the rules above (canTransition, exitGaps, the PO hard gate) are unchanged and still decide every move.
+
+/** The stage each gate date is recorded in. Matches exitGaps: a stage's gates are what it takes to leave it. */
+export const STAGE_GATES: Record<MainStage, readonly GateKey[]> = {
+  intake: ["serSubmittedOn"],
+  broadcom_request: ["serApprovedOn"],
+  discovery: [],
+  fcp_draft: ["fcpDraftCreatedOn", "fcpSubmittedOn"],
+  broadcom_approval: ["fcpBroadcomAcceptedOn"],
+  customer_approval: ["fcpCustomerAcceptedOn", "workPlanSentOn", "workPlanAcceptedOn"],
+  ra_staffing: ["ikomOn", "raReceivedOn", "workAuthReceivedOn", "poReceivedOn"],
+  kickoff: ["ckomOn"],
+  in_delivery: ["projectStartOn", "estimatedCloseOn", "completedOn"],
+  complete: [],
+};
+
+/** The one hard gate: Kickoff and In Delivery cannot be entered without it. */
+export const HARD_GATE: GateKey = "poReceivedOn";
+/** A forecast, not an event: it is set to a date rather than marked done, and never counts as pending. */
+export const PLANNED_GATES: ReadonlySet<GateKey> = new Set<GateKey>(["estimatedCloseOn"]);
+
+export function requiresPo(stage: Stage) {
+  return PO_REQUIRED.has(stage);
+}
+
+/** Broadcom FCP acceptance and the work plan apply to Corporate and Strategic only; every other gate applies to all. */
+export function gateApplies(gate: GateKey, segment: Segment | null) {
+  if (gate === "fcpBroadcomAcceptedOn") return requiresBroadcomApproval(segment);
+  if (gate === "workPlanSentOn" || gate === "workPlanAcceptedOn") return requiresWorkPlan(segment);
+  return true;
+}
+
+export type GateDates = Partial<Record<GateKey, string | null>>;
+export type GateRow = { gate: GateKey; day: string | null; done: boolean; hard: boolean; planned: boolean };
+export type StepStatus = "done" | "current" | "upcoming";
+export type StageStep = { stage: MainStage; status: StepStatus; gates: GateRow[] };
+
+export type NextAction =
+  /** The next gate to record in the current stage. */
+  | { kind: "record"; gate: GateKey; stage: MainStage }
+  /** The PO is missing and the next stage (or this one) needs it. */
+  | { kind: "unblock"; gate: GateKey; stage: MainStage }
+  /** The current stage's gates are recorded; the record can move on. */
+  | { kind: "move"; stage: MainStage }
+  | { kind: "resume"; stage: Stage | null }
+  | { kind: "closed"; stage: "refused" | "lost" }
+  | { kind: "complete" };
+
+export type StageProgression = {
+  steps: StageStep[];
+  /** Set when the record is in an exit: where it left the main line, when known. */
+  exit: { stage: "refused" | "paused" | "lost"; from: MainStage | null } | null;
+  next: NextAction;
+};
+
+/**
+ * The record's path through the stages that apply to its segment, each with its applicable gates, and the next action.
+ * `exitedFrom` is the main stage the record left for an exit (from its stage history); `dates` are the gate dates.
+ */
+export function stageProgression(record: Pick<StageRecord, "stage" | "segment"> & { exitedFrom?: Stage | null }, dates: GateDates): StageProgression {
+  const exited = isMainStage(record.stage) ? null : record.exitedFrom && isMainStage(record.exitedFrom) ? record.exitedFrom : null;
+  const anchor: MainStage | null = isMainStage(record.stage) ? record.stage : exited;
+  const steps = applicableStages(record.segment).map(stage => {
+    const status: StepStatus =
+      anchor === null ? "upcoming" : record.stage === "complete" || stageOrder(stage) < stageOrder(anchor) ? "done" : stage === anchor ? "current" : "upcoming";
+    const gates = STAGE_GATES[stage]
+      .filter(gate => gateApplies(gate, record.segment))
+      .map(gate => ({ gate, day: dates[gate] || null, done: Boolean(dates[gate]), hard: gate === HARD_GATE, planned: PLANNED_GATES.has(gate) }));
+    return { stage, status, gates };
+  });
+  const exit = isMainStage(record.stage) ? null : { stage: record.stage as "refused" | "paused" | "lost", from: exited };
+  return { steps, exit, next: nextAction(record, steps, dates, exited) };
+}
+
+function nextAction(record: Pick<StageRecord, "stage" | "segment">, steps: StageStep[], dates: GateDates, exited: MainStage | null): NextAction {
+  if (record.stage === "complete") return { kind: "complete" };
+  if (record.stage === "refused" || record.stage === "lost") return { kind: "closed", stage: record.stage };
+  if (record.stage === "paused") return { kind: "resume", stage: exited };
+  const stage = record.stage as MainStage;
+  const next = nextStage({ stage, segment: record.segment });
+  if (!dates[HARD_GATE] && (requiresPo(stage) || (next && requiresPo(next)))) return { kind: "unblock", gate: HARD_GATE, stage: requiresPo(stage) ? stage : next! };
+  const pending = steps.find(step => step.stage === stage)?.gates.find(gate => !gate.done && !gate.planned);
+  if (pending) return { kind: "record", gate: pending.gate, stage };
+  return next ? { kind: "move", stage: next } : { kind: "complete" };
+}

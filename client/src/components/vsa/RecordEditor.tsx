@@ -3,10 +3,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import type { TrackerRecord } from "@/lib/vsa";
-import { FIELD_GROUPS, type FieldDef } from "@/lib/vsaLabels";
+import { FIELD_GROUPS, type EditableField, type FieldDef } from "@/lib/vsaLabels";
 import { OPPORTUNITY_NUMBER_PATTERN, type TrackerPatch } from "@shared/vsaFields";
 import { Loader2, Save } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type FormValue = string | boolean;
@@ -53,7 +53,19 @@ export function useRecordForm(record: TrackerRecord["record"]) {
   const original = useMemo(() => toForm(record), [record]);
   const [form, setForm] = useState<Form>(original);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  useEffect(() => { setForm(original); setErrors({}); }, [record.id, record.rowVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A new version of the same record (after a save, including a one-field gate save) keeps the edits not yet saved;
+  // another record starts clean.
+  const previous = useRef({ id: record.id, original });
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = { id: record.id, original };
+    if (before.id !== record.id) {
+      setForm(original);
+      setErrors({});
+      return;
+    }
+    setForm(current => Object.fromEntries(Object.keys(original).map(key => [key, current[key] !== before.original[key] ? current[key] : original[key]])) as Form);
+  }, [record.id, record.rowVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changed = ALL_FIELDS.filter(field => form[field.key] !== original[field.key]);
   const save = trpc.tracker.update.useMutation({
@@ -78,9 +90,22 @@ export function useRecordForm(record: TrackerRecord["record"]) {
     save.mutate({ id: record.id, rowVersion: record.rowVersion, patch: patch as TrackerPatch });
   }
 
+  /** Saves one field now, on its own, with the record's version (the gate dates on Stages & gates). */
+  const saveOne = trpc.tracker.update.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.tracker.get.invalidate({ id: record.id }), utils.tracker.list.invalidate()]);
+    },
+    onError: error => toast.error(error.message),
+  });
+  function saveField(key: EditableField, value: string | null, message: string) {
+    saveOne.mutate({ id: record.id, rowVersion: record.rowVersion, patch: { [key]: value } as TrackerPatch }, { onSuccess: () => void toast.success(message) });
+  }
+
   return {
     form,
     original,
+    saveField,
+    savingField: saveOne.isPending,
     errors,
     changed,
     pending: save.isPending,
