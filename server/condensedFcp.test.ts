@@ -25,6 +25,15 @@ const check = (html: string, document: EngagementDocument) => checkCondensedFcp(
 const text = (html: string) => html.replace(/<(style|script)\b[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ");
 
 describe("Condensed FCP", () => {
+  it("uses one fixed cover title with the customer's name, not the generated headline", () => {
+    const document = engagement();
+    document.fields.customerName = "Northwind Mfg";
+    document.report.headline = "A planner-written headline";
+    const cover = /<section class="cover">.*?<\/section>/s.exec(render(document))?.[0] ?? "";
+    expect(cover).toContain("<h1>Amazing happens when Northwind Mfg runs a modern VMware Cloud Foundation private cloud with confidence.</h1>");
+    expect(cover).not.toContain("A planner-written headline");
+  });
+
   it("renders every section and passes the content gates", () => {
     const document = engagement();
     const html = render(document);
@@ -34,7 +43,7 @@ describe("Condensed FCP", () => {
       expect(visible, heading).toContain(heading);
     }
     for (const category of FIXED_GANTT_CATEGORIES) expect(visible).toContain(category);
-    expect(visible).toContain("Amazing happens when two people run a platform");
+    expect(visible).toContain("runs a modern VMware Cloud Foundation private cloud with confidence.");
     expect(visible).toContain("For customer review · 30 Sep 2026");
     expect(visible).toContain("223 hrs");
     expect(visible).toContain("7.4 hrs/wk");

@@ -691,8 +691,8 @@ export const exportPreferencesSchema = z.object({
 });
 export type ExportPreferences = z.infer<typeof exportPreferencesSchema>;
 
-/** Commercial customers also receive the Broadcom Building Blocks workbook with each FCP. */
-export const customerSegmentSchema = z.enum(["unspecified", "commercial", "public-sector"]);
+/** Commercial customers also receive the Broadcom Building Blocks workbook with each FCP. Saved plans that say "public-sector" read as Corporate. */
+export const customerSegmentSchema = z.preprocess(value => (value === "public-sector" ? "corporate" : value), z.enum(["unspecified", "commercial", "corporate"]));
 export type CustomerSegment = z.infer<typeof customerSegmentSchema>;
 
 /** Which hours model prices the plan: v1 (host brackets) or v2 (topology formulas with an entitlement fit). */
