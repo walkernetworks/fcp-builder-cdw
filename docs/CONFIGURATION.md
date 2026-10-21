@@ -13,6 +13,7 @@ The application reads deployment-specific identity, database, and PDF-rendering 
 | `FCP_SSO_NAME_HEADER` | Optional | Header containing the authenticated display name. | No |
 | `JWT_SECRET` | Always | Signs short-lived HTML/PDF export download tickets. | Yes |
 | `PUPPETEER_EXECUTABLE_PATH` | PDF export | Chromium executable path; the supplied container uses `/usr/bin/chromium`. | No |
+| `FCP_BACKUP_ALLOW_REMOTE` | Development only, optional | Set to `1` to let `scripts/db-backup.sh` dump a database that is not on `localhost`. It is unset by default, so a shared or production database is never copied to a laptop by accident. The app itself does not read it. | No |
 
 ## Local inventory-processing contract
 

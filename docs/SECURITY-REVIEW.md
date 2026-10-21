@@ -111,6 +111,18 @@ The planning view summarizes RVTools-observable inventory. It can surface observ
 
 The app records creation and update timestamps. The deployment owner should apply CDW’s approved engagement-retention period at the database layer. User-initiated deletion (by the record's owner or an admin) removes the engagement row and, by cascade, its stage history, source checklist, and assignments. Database backups and legal holds remain governed by the selected database platform and are outside the application container.
 
+## Development data handling
+
+These controls cover development machines; they do not change the deployed application.
+
+- **No real customer records in the source repository.** Fixtures and tests use fictitious companies. `data/`, `uploads/`, `exports/`, `backups/` and database dumps are git-ignored. Real data on a development machine lives only in its local MySQL database (`DATABASE_URL` in the git-ignored `.env`).
+- **Local backups.** `scripts/db-backup.sh` (`pnpm db:backup`) writes a timestamped, owner-only (`0600`) gzip dump of the local database to `backups/`. It runs before every migration (`pnpm db:migrate`). It refuses non-local database hosts unless `FCP_BACKUP_ALLOW_REMOTE=1`, so a shared or production database is never copied onto a laptop by accident.
+- **AI coding assistant guardrails.** `CLAUDE.md` forbids Claude Code from reading database rows or customer exports for development work, and from running destructive operations. Version-controlled PreToolUse hooks in `.claude/settings.json` enforce this:
+  - `.claude/hooks/guard-bash.sh` denies, before execution, shell commands that drop or truncate tables, delete rows without a narrow `WHERE`, push or drop the schema, restore dumps, remove the MySQL data directory, `data/` or `backups/`, force a `git clean`, or `git reset --hard`. It fails closed.
+  - `.claude/hooks/guard-files.sh` stops the assistant from editing the hooks or its settings.
+
+  `server/guardHooks.test.ts` tests both in CI. The hooks inspect commands the assistant runs, not the application's own queries.
+
 ## Application security controls
 
 | Control | Implementation |

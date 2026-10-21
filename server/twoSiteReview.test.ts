@@ -13,7 +13,7 @@ import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { scopedEffortForDocument } from "./rateCard";
 
 /**
- * Regression fixture shaped like the Riverbend review (two sites, two management domains, four workload domains,
+ * Regression fixture shaped like a two-site customer review (two sites, two management domains, four workload domains,
  * about 300 hosts on vSphere 8 and 11,000 VMs). Names and figures are generic: no customer data is stored here.
  */
 const exampleBrief = () => JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../docs/examples/customer-brief.example.json"), "utf8"));
@@ -88,7 +88,7 @@ const text = (html: string) => html.replace(/<(style|script)\b[\s\S]*?<\/\1>/gi,
 const bars = (document: EngagementDocument) => document.adoptionTimeline.lanes.flatMap(lane => lane.bars);
 const windowOf = (document: EngagementDocument, id: string) => { const bar = bars(document).find(item => item.id === id); return bar ? barWindow(document.adoptionTimeline, bar) : null; };
 
-describe("Riverbend review: scope and sequencing", () => {
+describe("Two-site review: scope and sequencing", () => {
   it("1. scopes only what the brief selects: considered automation goes to the follow-on, unmentioned memory tiering and vDefend stay out", () => {
     const document = twoSite();
     expect(document.fields.adoptionDetails.componentDepths).toMatchObject({ automation: "not-selected", efficiency: "not-selected" });
@@ -248,7 +248,7 @@ describe("Riverbend review: scope and sequencing", () => {
   });
 });
 
-describe("Riverbend review: estimating and checks", () => {
+describe("Two-site review: estimating and checks", () => {
   it("8. takes storage types and kept clusters from the estate instead of planning defaults", () => {
     const visible = text(render(twoSite()));
     // VMFS on Fibre Channel, NFS and vSAN from the RVTools datastores; local disks do not count.
@@ -320,7 +320,7 @@ describe("Riverbend review: estimating and checks", () => {
   });
 });
 
-describe("Riverbend review: text, dedupe and layout", () => {
+describe("Two-site review: text, dedupe and layout", () => {
   it("12. dates the implementation start constraint from the same values as Key Dates", () => {
     const document = twoSite();
     const visible = text(render(document));
@@ -387,7 +387,7 @@ describe("Riverbend review: text, dedupe and layout", () => {
   });
 });
 
-describe("Riverbend review: the rebuild", () => {
+describe("Two-site review: the rebuild", () => {
   it("keeps a signed plan within the entitlement after the reserve by moving late work, and never blocks the export", () => {
     const document = twoSite(raw => {
       raw.entitlement.value = 410_000;
