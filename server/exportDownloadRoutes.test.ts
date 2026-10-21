@@ -183,7 +183,7 @@ describe("condensed FCP downloads", () => {
   it("refuses the Condensed FCP and lists the failed checks", async () => {
     const { applyCustomerBrief } = await import("../shared/briefImport");
     const row = await getEngagement.getMockImplementation()!(7, 41);
-    const document = applyCustomerBrief(createDefaultDocument(), { schemaVersion: 1, customer: { name: "Meridian Health" }, headline: "Amazing happens after the readiness workshop." }).document;
+    const document = applyCustomerBrief(createDefaultDocument(), { schemaVersion: 1, customer: { name: "Meridian Health" }, situation: ["A readiness workshop comes first."] }).document;
     getEngagement.mockResolvedValue({ ...row!, data: document });
     const response = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 41, "pdf", "condensed-fcp")}`);
     expect(response.status).toBe(409);

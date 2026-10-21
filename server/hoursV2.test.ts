@@ -411,23 +411,33 @@ describe("v2 in the plan", () => {
 });
 
 describe("entitlement ceiling and the reserve field", () => {
-  it("never plans more than the entitlement after the reserve; the latest work moves to the follow-on", async () => {
+  it("never plans more than the entitlement after the reserve except for protected work, which never moves", async () => {
     const { scopedEffortForDocument } = await import("./rateCard");
-    // A 150-host greenfield build whose core needs more than this entitlement funds.
-    const document = doc({ hosts: 150, entitlement: 150_000 });
-    const effort = scopedEffortForDocument(document);
-    const fit = effort.internal.fit!;
-    expect(effort.totals.total).toBeLessThanOrEqual(Math.floor(fit.fillableHours));
-    expect(fit.movedToFollowOn?.hours ?? 0).toBeGreaterThan(0);
-    expect(fit.underFunded).toBeNull();
-    expect(effort.internal.cost!.status).not.toBe("over");
-    // Moved work is follow-on, and the buckets follow it.
-    const moved = effort.workPackages.filter(row => row.deferred === "over budget");
-    expect(moved.length).toBeGreaterThan(0);
-    expect(moved.every(row => (row.followOn?.total ?? 0) > 0)).toBe(true);
-    expect(Math.abs(fit.buckets.E1 + fit.buckets.E2 - effort.totals.total)).toBeLessThanOrEqual(2);
-    // Design packages stay in the entitlement.
-    expect(moved.some(row => /^bar-playbook-(component-)?design-|^bar-(hcl-review|design-access-mapping)$/.test(row.id))).toBe(false);
+    const { isDesignWorkPackage, protectedWorkPackages } = await import("../shared/effort");
+    // A 150-host greenfield build whose core needs more than these entitlements fund.
+    let fitted = 0;
+    for (const entitlement of [150_000, 180_000, 200_000, 230_000, 260_000]) {
+      const document = doc({ hosts: 150, entitlement });
+      const effort = scopedEffortForDocument(document);
+      const fit = effort.internal.fit!;
+      const kept = protectedWorkPackages(document.adoptionTimeline);
+      const moved = effort.workPackages.filter(row => row.deferred === "over budget");
+      // Moved work is follow-on, never protected, and the buckets follow it.
+      expect(moved.every(row => (row.followOn?.total ?? 0) > 0 && !kept.has(row.id))).toBe(true);
+      expect(Math.abs(fit.buckets.E1 + fit.buckets.E2 - effort.totals.total)).toBeLessThanOrEqual(2);
+      expect(fit.scopeMoves?.length ?? 0).toBeGreaterThanOrEqual(moved.length);
+      for (const id of Array.from(kept)) expect(effort.workPackages.find(row => row.id === id)?.deferred, id).toBeUndefined();
+      if (effort.totals.total <= Math.floor(fit.fillableHours)) {
+        expect(fit.underFunded).toBeNull();
+        expect(effort.internal.cost!.status).not.toBe("over");
+        if (fit.movedToFollowOn?.hours) fitted += 1;
+      } else {
+        // Still over: only protected, design and governance work is left, and the plan says so.
+        expect(fit.underFunded).not.toBeNull();
+        expect(effort.workPackages.filter(row => row.total > 0 && !row.deferred).every(row => kept.has(row.id) || isDesignWorkPackage(row.id) || row.placement === "entitlement")).toBe(true);
+      }
+    }
+    expect(fitted).toBeGreaterThan(0);
   });
 
   it("uses the reserve set on the engagement, and none when it is 0", async () => {

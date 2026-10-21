@@ -248,8 +248,8 @@ describe("VMware vSphere Foundation plans", () => {
     plan({ platformEdition: "vvf", ...details }, { customerSegment: "commercial", ...fields });
 
   it("applies VVF only to commercial customers", () => {
-    const publicSector = plan({ platformEdition: "vvf", upgradePath: "greenfield" }, { customerSegment: "public-sector" });
-    expect(activities(publicSector.adoptionTimeline).some(item => item.id === "bar-management-domain")).toBe(true);
+    const corporate = plan({ platformEdition: "vvf", upgradePath: "greenfield" }, { customerSegment: "corporate" });
+    expect(activities(corporate.adoptionTimeline).some(item => item.id === "bar-management-domain")).toBe(true);
     const commercial = vvf({ upgradePath: "greenfield" });
     expect(activities(commercial.adoptionTimeline).some(item => item.id === "bar-management-domain")).toBe(false);
   });

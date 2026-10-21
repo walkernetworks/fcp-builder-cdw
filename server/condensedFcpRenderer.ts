@@ -397,8 +397,15 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const coreShown = fit && Math.abs(fit.buckets.E1 + fit.buckets.E2 - inEntitlementTotal) < 2 ? inEntitlementTotal - depthShown : Math.round(fit?.buckets.E1 ?? 0);
   const followOnShown = fit && followOnRows.length && Math.abs(fit.buckets.F - followOnTotals.total) < 2 ? Math.round(followOnTotals.total) : Math.round(fit?.buckets.F ?? 0);
   const roundedBuckets = fit ? [coreShown, depthShown, followOnShown, Math.round(fit.buckets.C), ...(fit.reserveHours >= 1 ? [Math.round(fit.reserveHours)] : [])] : [];
+  // Every package moved out of the entitlement, in the order it moved, so the buckets can be traced to the plan.
+  const scopeMoves = fit?.scopeMoves ?? [];
+  const moveText = (item: (typeof scopeMoves)[number]) => item.reason === "merged"
+    ? `${item.label}, saving ${hours(item.hours)} hours`
+    : `${item.label.replace(UNDECIDED_DEPTH, "")} (${hours(item.hours)} hours) moved to the follow-on ${item.reason === "after the entitlement window" ? "because it is scheduled after the entitlement ends; the entitlement hours it leaves unused are held in the reserve" : "to keep the protected work within the entitlement"}`;
+  const scopeMoveNote = (scopeMoves.length ? `<div class="note"><b>Moved out of this entitlement:</b> ${scopeMoves.map(item => esc(moveText(item))).join("; ")}.</div>` : "")
+    + (fit?.underFunded ? `<div class="note"><b>Under-funded:</b> handover, the runbook and training, licensing, the management domains and the first delivery wave stay in this entitlement, and with the design work they need ${hours(fit.underFunded.gapHours)} hours more than it funds after the reserve. Closing the gap needs additional entitlement or a scope change.</div>` : "");
   const bucketSection = fit
-    ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority.</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.</p>`
+    ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority.</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.</p>${scopeMoveNote}`
     : "";
 
   // ---- Customer effort
@@ -481,18 +488,25 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     : "";
 
   // ---- Sequence, timeline, milestones, forward plan
-  const milestones = report.milestonesToDate.length
-    ? `<h3>Engagement Milestones to Date</h3>${report.milestonesToDate.map(item => `<div class="ms"><b>${esc(shortDate(item.date))}</b><span><b>${esc(item.event)}</b>${item.detail ? ` — ${esc(item.detail)}` : ""}</span></div>`).join("")}`
-    : "";
+  // Milestones to date are what has happened by the build date; anything dated later (an entitlement that becomes
+  // effective next week) is a key date ahead.
+  const happened = report.milestonesToDate.filter(item => item.date <= today);
+  const upcoming = report.milestonesToDate.filter(item => item.date > today);
+  const milestone = (item: (typeof report.milestonesToDate)[number]) => `<div class="ms"><b>${esc(shortDate(item.date))}</b><span><b>${esc(item.event)}</b>${item.detail ? ` — ${esc(item.detail)}` : ""}</span></div>`;
+  const milestones = happened.length ? `<h3>Engagement Milestones to Date</h3>${happened.map(milestone).join("")}` : "";
   // The build starts with the foundation build or the first execution stage, which can be months after services start.
   // The same dates the sequencing constraint states.
   const { implementationStart, buildStart, buildLater } = planKeyDates(document);
   // What the first build package also carries, such as the NSX design when the full NSX design is not funded.
   const buildNotes = effort.workPackages.filter(row => !row.deferred && row.total > 0).flatMap(row => row.notes ?? []);
-  const forward = (implementationStart ? `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>` : "")
-    + (buildLater ? `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.${buildNotes.length ? ` ${esc(buildNotes.join(" "))}` : ""}</span></div>` : "")
-    + (fields.targetComplete ? `<div class="ms"><b>${esc(shortDate(fields.targetComplete))}</b><span>${esc(customer)}'s target completion.</span></div>` : "")
-    + (termEnd ? `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption: all hours consumed ahead of expiry.${assumedEnd ? " The end date is 12 months from the start and is still to be confirmed." : ""}</span></div>` : "")
+  const keyDates: Array<[string, string]> = [
+    ...upcoming.map((item): [string, string] => [item.date, milestone(item)]),
+    ...(implementationStart ? [[implementationStart, `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>`] as [string, string]] : []),
+    ...(buildLater ? [[buildStart!, `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.${buildNotes.length ? ` ${esc(buildNotes.join(" "))}` : ""}</span></div>`] as [string, string]] : []),
+    ...(fields.targetComplete ? [[fields.targetComplete, `<div class="ms"><b>${esc(shortDate(fields.targetComplete))}</b><span>${esc(customer)}'s target completion.</span></div>`] as [string, string]] : []),
+    ...(termEnd ? [[termEnd, `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption: all hours consumed ahead of expiry.${assumedEnd ? " The end date is 12 months from the start and is still to be confirmed." : ""}</span></div>`] as [string, string]] : []),
+  ];
+  const forward = keyDates.sort((left, right) => left[0].localeCompare(right[0])).map(([, html]) => html).join("")
     + (deferredWork.length ? `<div class="ms"><b>After ${esc(termEnd ? shortDate(termEnd) : "the entitlement")}</b><span>${esc(deferredWork.map(row => row.label.replace(UNDECIDED_DEPTH, "")).join("; "))} — shown in the Two-Year Notional as follow-on scope.</span></div>` : "");
 
   // ---- Adoption plan & recommendation
@@ -573,7 +587,7 @@ ${openItems}
 ${report.revision ? `<div class="revision">Revision: ${esc(report.revision)}</div>` : ""}
 <p class="sources">Prepared by CDW Consulting Solution Architecture for ${esc(customer)} — Functional Consumption Plan (Condensed) · ${esc(stamp)}.</p>`;
 
-  const cover = `<section class="cover">${cdwLogoSvg("logo")}${cdwLogoSvg("orbit", "")}<div class="eyebrow">Functional Consumption Plan · ${esc(customer)}</div><h1>${esc(report.headline ?? "")}</h1><div class="sign">Make Amazing Happen.</div><div class="meta"><div><b>Prepared for</b>${esc(customer)}</div><div><b>Date</b>${esc(longDate(asOf))}</div><div><b>Prepared by</b>CDW Consulting Solution Architecture</div></div><div class="legend">${esc(LEGEND)}</div></section>`;
+  const cover = `<section class="cover">${cdwLogoSvg("logo")}${cdwLogoSvg("orbit", "")}<div class="eyebrow">Functional Consumption Plan · ${esc(customer)}</div><h1>Amazing happens when ${esc(customer)} runs a modern VMware Cloud Foundation private cloud with confidence.</h1><div class="sign">Make Amazing Happen.</div><div class="meta"><div><b>Prepared for</b>${esc(customer)}</div><div><b>Date</b>${esc(longDate(asOf))}</div><div><b>Prepared by</b>CDW Consulting Solution Architecture</div></div><div class="legend">${esc(LEGEND)}</div></section>`;
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} - FCP</title><style>${CSS}</style></head><body>${cover}<table class="page"><thead><tr><td>${strip}</td></tr></thead><tfoot><tr><td><div class="legendrow">${esc(LEGEND)}</div></td></tr></tfoot><tbody><tr><td>${body}</td></tr></tbody></table><button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button></body></html>`;
 }

@@ -127,7 +127,10 @@ export function planKeyDates(document: EngagementDocument): { implementationStar
   const all = timeline.lanes.flatMap(lane => lane.bars);
   const starts = (pattern: RegExp) => all.filter(bar => pattern.test(bar.id)).map(bar => barWindow(timeline, bar)?.start).filter((start): start is string => Boolean(start)).sort();
   const buildStart = BUILD_START.map(starts).find(found => found.length)?.[0] ?? null;
-  const implementationStart = document.fields.plannedImplementationStart;
+  // Implementation services start at the project start (the PO date), the same date the timeline starts; nothing is
+  // dated before it. A later implementation date only delays the platform build.
+  const { plannedProjectStart, plannedImplementationStart } = document.fields;
+  const implementationStart = plannedProjectStart || plannedImplementationStart;
   return { implementationStart, buildStart, buildLater: Boolean(buildStart && implementationStart && buildStart.slice(0, 7) > implementationStart.slice(0, 7)) };
 }
 
