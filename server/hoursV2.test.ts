@@ -457,8 +457,8 @@ describe("work moved to the Two-Year Notional keeps its order", () => {
     document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid", domainTopology: "standard", networking: ["overlay-transport", "edge-cluster-routing"], domains: [
       { name: "North", kind: "management", pathway: "greenfield", instance: "North", hosts: 4, notes: "" },
       { name: "South", kind: "management", pathway: "greenfield", instance: "South", hosts: 4, notes: "" },
-      { name: "Citrix VDI", kind: "workload", pathway: "greenfield", instance: "North", hosts: 80, notes: "" },
-      { name: "Epic", kind: "workload", pathway: "import", instance: "North", hosts: 40, notes: "" },
+      { name: "Desktop VDI", kind: "workload", pathway: "greenfield", instance: "North", hosts: 80, notes: "" },
+      { name: "Clinical", kind: "workload", pathway: "import", instance: "North", hosts: 40, notes: "" },
     ] } as never;
     return refreshDerivedDocument(document, { forceRebuild: true });
   };
@@ -484,6 +484,6 @@ describe("work moved to the Two-Year Notional keeps its order", () => {
     const notional = timelinesWithDeferrals(withOwnership(stretched), ["bar-workload-domain"]).notional;
     const bars = new Map(notional.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
     expect(bars.get("bar-workload-domain")!.startCol).toBeGreaterThanOrEqual(bars.get("bar-vcf-networking-nsx")!.endCol);
-    expect(validateTimelineSequence(notional).filter(item => /Citrix VDI/.test(item))).toEqual([]);
+    expect(validateTimelineSequence(notional).filter(item => /Desktop VDI/.test(item))).toEqual([]);
   });
 });

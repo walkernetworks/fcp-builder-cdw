@@ -115,3 +115,15 @@ temp/
 .project-config.json
 data/
 docs/hours-reference/hours-sweep.json
+
+# Customer data never enters the repo. Real data lives only in the local MySQL database (DATABASE_URL in .env).
+uploads/
+upload/
+exports/
+backups/
+dumps/
+*.sql.gz
+*.dump
+*.mysqldump
+.manus-logs/
+.tmp-*
