@@ -149,7 +149,7 @@ export default function Overview() {
                           <span className="flex flex-wrap justify-end gap-1">
                             {attention.stale.stale && <Pill verdict="warn">Stale {attention.stale.days}d</Pill>}
                             {sourcesPill(attention.warnings)}
-                            {attention.warnings.filter(warning => !warning.startsWith("Source not received")).map(warning => <Pill key={warning} verdict={warning.startsWith("In a delivery stage") ? "stop" : "warn"} title={warning}>{shortWarning(warning)}</Pill>)}
+                            {attention.warnings.filter(warning => !warning.startsWith("Source not received")).map(warning => <Pill key={warning} verdict={warning.startsWith("In a delivery stage") || warning.startsWith("FCP trailing: Broadcom") ? "stop" : "warn"} title={warning}>{shortWarning(warning)}</Pill>)}
                             {attention.flags.map(flag => <Pill key={flag.key} verdict="unknown">{flag.label}</Pill>)}
                           </span>
                         </button>
@@ -199,6 +199,9 @@ function sourcesPill(warnings: string[]) {
 function shortWarning(warning: string) {
   if (warning.startsWith("Commercial customers skip")) return "Skips approval";
   if (warning.startsWith("Work plan sent")) return "Work plan stale";
-  if (warning.startsWith("In a delivery stage")) return "No PO";
+  if (warning.endsWith("PO received date")) return "No PO";
+  if (warning.endsWith("work plan acceptance")) return "No work plan acceptance";
+  if (warning.startsWith("In a delivery stage without") && warning.includes("FCP")) return "No FCP approval";
+  if (warning.startsWith("FCP trailing")) return "FCP trailing";
   return "Check";
 }

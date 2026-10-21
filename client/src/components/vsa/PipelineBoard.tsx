@@ -2,7 +2,7 @@ import { attentionFor, architectOf } from "@/lib/pipeline";
 import { trpc } from "@/lib/trpc";
 import { useOperationalSettings } from "@/lib/settings";
 import { SEGMENT_LABELS, todayIso, type TrackerRow } from "@/lib/vsa";
-import { STAGE_LABELS, canTransition, type Stage } from "@shared/vsaStage";
+import { STAGE_LABELS, canTransition, fcpTrailing, type Stage } from "@shared/vsaStage";
 import { daysBetween, formatMoney } from "@shared/vsaViews";
 import { useState, type DragEvent } from "react";
 import { toast } from "sonner";
@@ -94,7 +94,8 @@ export function PipelineBoard({ rows, columns, onOpen }: { rows: TrackerRow[]; c
 function BoardCard({ row, today, dragging, onOpen, onDragStart, onDragEnd }: { row: TrackerRow; today: string; dragging: boolean; onOpen: () => void; onDragStart: () => void; onDragEnd: () => void }) {
   const settings = useOperationalSettings();
   const attention = attentionFor(row, today, settings);
-  const noPo = attention.warnings.some(warning => warning.startsWith("In a delivery stage"));
+  const noPo = attention.warnings.some(warning => warning.startsWith("In a delivery stage") && warning.endsWith("PO received date"));
+  const trailing = fcpTrailing(row);
   const days = daysBetween(row.stageEnteredOn, today);
   const architect = architectOf(row);
   return (
@@ -116,6 +117,7 @@ function BoardCard({ row, today, dragging, onOpen, onDragStart, onDragEnd }: { r
         <span className="tabular text-xs text-ink">{formatMoney(row.entitlementValue)}</span>
         <span className="flex items-center gap-1">
           {noPo && <Pill verdict="stop">No PO</Pill>}
+          {trailing && <Pill verdict={trailing.severity} title={trailing.label}>FCP trailing</Pill>}
           {!noPo && attention.count > 0 && <Pill verdict="warn" title={[...attention.flags.map(flag => flag.label), ...attention.warnings].join("\n")}>{attention.count}</Pill>}
           {row.health && <HealthPill health={row.health} />}
         </span>
