@@ -217,16 +217,19 @@ function daysBetween(fromDay: string, toDay: string) {
   return Math.round((Date.parse(`${toDay}T00:00:00Z`) - Date.parse(`${fromDay}T00:00:00Z`)) / 86_400_000);
 }
 
-/** Warnings about the record as it stands today, for the board card and record page. `today` is "YYYY-MM-DD". */
-export function stageWarnings(record: StageRecord, today: string): string[] {
+/**
+ * Warnings about the record as it stands today, for the board card and record page. `today` is "YYYY-MM-DD".
+ * `workPlanStaleDays` defaults to the constant; the app passes the admin setting (shared/appSettings.ts).
+ */
+export function stageWarnings(record: StageRecord, today: string, workPlanStaleDays: number = WORK_PLAN_STALE_DAYS): string[] {
   const warnings: string[] = [];
   if (!record.segment) warnings.push("Segment not set");
   if (record.stage === "broadcom_approval" && !requiresBroadcomApproval(record.segment)) warnings.push("Commercial customers skip Broadcom Approval");
   if (PO_REQUIRED.has(record.stage) && !record.poReceivedOn) warnings.push("In a delivery stage without a PO received date");
   // FCP Draft readiness: the FCP is built from these inputs. Soft only; the PO is the one hard gate.
   if (record.stage === "fcp_draft") for (const item of openSources(record.sourceItems ?? [])) warnings.push(`Source not received: ${item.label}`);
-  if (requiresWorkPlan(record.segment) && record.workPlanSentOn && !record.workPlanAcceptedOn && daysBetween(record.workPlanSentOn, today) > WORK_PLAN_STALE_DAYS) {
-    warnings.push(`Work plan sent ${record.workPlanSentOn}, not accepted after ${WORK_PLAN_STALE_DAYS} days`);
+  if (requiresWorkPlan(record.segment) && record.workPlanSentOn && !record.workPlanAcceptedOn && daysBetween(record.workPlanSentOn, today) > workPlanStaleDays) {
+    warnings.push(`Work plan sent ${record.workPlanSentOn}, not accepted after ${workPlanStaleDays} days`);
   }
   return warnings;
 }

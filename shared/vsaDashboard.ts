@@ -62,9 +62,10 @@ export const STALE_AFTER_DAYS: Partial<Record<Stage, number>> = {
   paused: 60,
 };
 
-export function staleness(record: Pick<DashboardRecord, "stage" | "stageEnteredOn">, today: string) {
+/** `staleAfterDays` defaults to the constants above; the app passes the values from the admin settings (shared/appSettings.ts). */
+export function staleness(record: Pick<DashboardRecord, "stage" | "stageEnteredOn">, today: string, staleAfterDays: Partial<Record<Stage, number>> = STALE_AFTER_DAYS) {
   const days = daysBetween(record.stageEnteredOn, today);
-  const threshold = STALE_AFTER_DAYS[record.stage] ?? null;
+  const threshold = staleAfterDays[record.stage] ?? null;
   return { days, threshold, stale: threshold !== null && days > threshold };
 }
 
@@ -85,31 +86,49 @@ export function dataQualityFlags(record: DashboardRecord): QualityFlag[] {
   return flags;
 }
 
-export const EXPIRY_BANDS = [
-  { key: "expired", label: "Expired", risk: "stop" },
-  { key: "d30", label: "0 to 30 days", risk: "stop" },
-  { key: "d60", label: "31 to 60 days", risk: "warn" },
-  { key: "d90", label: "61 to 90 days", risk: "warn" },
-  { key: "d180", label: "91 to 180 days", risk: "none" },
-  { key: "later", label: "Over 180 days", risk: "none" },
-  { key: "none", label: "No expiry date", risk: "unknown" },
-] as const;
-export type ExpiryBand = (typeof EXPIRY_BANDS)[number]["key"];
+/** The upper bound, in days left, of each dated expiry band. Each must be larger than the one before. */
+export const EXPIRY_BAND_DAYS = { d30: 30, d60: 60, d90: 90, d180: 180 };
+export type ExpiryBandDays = typeof EXPIRY_BAND_DAYS;
 
-export function expiryBand(daysLeft: number | null): ExpiryBand {
+export const EXPIRY_BAND_KEYS = ["expired", "d30", "d60", "d90", "d180", "later", "none"] as const;
+export type ExpiryBand = (typeof EXPIRY_BAND_KEYS)[number];
+export type ExpiryRisk = "stop" | "warn" | "none" | "unknown";
+
+/** The bands, labeled for the given limits. The keys stay the same whatever the limits are. */
+export function expiryBands(limits: ExpiryBandDays = EXPIRY_BAND_DAYS): { key: ExpiryBand; label: string; risk: ExpiryRisk }[] {
+  return [
+    { key: "expired", label: "Expired", risk: "stop" },
+    { key: "d30", label: `0 to ${limits.d30} days`, risk: "stop" },
+    { key: "d60", label: `${limits.d30 + 1} to ${limits.d60} days`, risk: "warn" },
+    { key: "d90", label: `${limits.d60 + 1} to ${limits.d90} days`, risk: "warn" },
+    { key: "d180", label: `${limits.d90 + 1} to ${limits.d180} days`, risk: "none" },
+    { key: "later", label: `Over ${limits.d180} days`, risk: "none" },
+    { key: "none", label: "No expiry date", risk: "unknown" },
+  ];
+}
+
+export const EXPIRY_BANDS = expiryBands();
+
+/** The band for `daysLeft` under the given limits (the admin settings in the app). */
+export function expiryBandFor(daysLeft: number | null, limits: ExpiryBandDays): ExpiryBand {
   if (daysLeft === null) return "none";
   if (daysLeft < 0) return "expired";
-  if (daysLeft <= 30) return "d30";
-  if (daysLeft <= 60) return "d60";
-  if (daysLeft <= 90) return "d90";
-  if (daysLeft <= 180) return "d180";
+  if (daysLeft <= limits.d30) return "d30";
+  if (daysLeft <= limits.d60) return "d60";
+  if (daysLeft <= limits.d90) return "d90";
+  if (daysLeft <= limits.d180) return "d180";
   return "later";
 }
 
+/** The band for `daysLeft` under the default limits. */
+export function expiryBand(daysLeft: number | null): ExpiryBand {
+  return expiryBandFor(daysLeft, EXPIRY_BAND_DAYS);
+}
+
 /** Entitlements per expiry band, with the VSA amount in each (each entitlement once). */
-export function expiryBandTotals(rows: ExpiryRow[]) {
-  return EXPIRY_BANDS.map(band => {
-    const members = rows.filter(row => expiryBand(row.verdict.daysLeft) === band.key);
+export function expiryBandTotals(rows: ExpiryRow[], limits: ExpiryBandDays = EXPIRY_BAND_DAYS) {
+  return expiryBands(limits).map(band => {
+    const members = rows.filter(row => expiryBandFor(row.verdict.daysLeft, limits) === band.key);
     return { ...band, count: members.length, amount: members.reduce((sum, row) => sum + Number(row.entitlementValue ?? 0), 0) };
   });
 }

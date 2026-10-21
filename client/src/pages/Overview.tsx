@@ -5,6 +5,7 @@ import { DataMount, EmptyState, KpiCard, PageHeader, Panel, Pill } from "@/compo
 import { useShell } from "@/components/vsa/ShellContext";
 import { attentionFor, openRows } from "@/lib/pipeline";
 import { trpc } from "@/lib/trpc";
+import { useOperationalSettings } from "@/lib/settings";
 import { todayIso } from "@/lib/vsa";
 import { awaitingAction, stageCounts } from "@shared/vsaDashboard";
 import { STAGE_LABELS } from "@shared/vsaStage";
@@ -19,6 +20,7 @@ const ATTENTION_ROWS = 8;
 /** The landing page: the portfolio at a glance, what is at risk, and what needs attention. */
 export default function Overview() {
   const today = todayIso();
+  const settings = useOperationalSettings();
   const { user } = useAuth();
   const { openRecord, newEngagement } = useShell();
   const [, navigate] = useLocation();
@@ -32,7 +34,7 @@ export default function Overview() {
     const expired = entitlements.filter(row => row.verdict.daysLeft !== null && row.verdict.daysLeft < 0);
     const within90 = entitlements.filter(row => row.verdict.daysLeft !== null && row.verdict.daysLeft >= 0 && row.verdict.daysLeft <= 90);
     const recent = rows.filter(row => daysBetween(new Date(row.createdAt).toISOString().slice(0, 10), today) <= 30);
-    const attention = open.map(row => ({ row, attention: attentionFor(row, today) })).filter(item => item.attention.count > 0).sort((a, b) => b.attention.count - a.attention.count || a.row.customerName.localeCompare(b.row.customerName));
+    const attention = open.map(row => ({ row, attention: attentionFor(row, today, settings) })).filter(item => item.attention.count > 0).sort((a, b) => b.attention.count - a.attention.count || a.row.customerName.localeCompare(b.row.customerName));
     return {
       open,
       money: entitlementTotal(entitlements),
@@ -48,7 +50,7 @@ export default function Overview() {
       flagged: attention.filter(item => item.attention.flags.length).length,
       stages: stageCounts(open),
     };
-  }, [list.data, today, user]);
+  }, [list.data, today, user, settings]);
 
   const maxStage = Math.max(1, ...data.stages.map(item => item.count));
 

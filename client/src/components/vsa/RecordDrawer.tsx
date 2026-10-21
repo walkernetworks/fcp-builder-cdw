@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
+import { useOperationalSettings } from "@/lib/settings";
 import { SEGMENT_LABELS, todayIso, type TrackerRecord } from "@/lib/vsa";
 import { FIELD_GROUPS } from "@/lib/vsaLabels";
 import { buildLockState } from "@shared/fcpRecord";
@@ -61,10 +62,11 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 
 function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: DrawerTab }) {
   const today = todayIso();
+  const settings = useOperationalSettings();
   const { record, sources, assignments } = data;
-  const warnings = stageWarnings({ ...record, sourceItems: sources }, today);
+  const warnings = stageWarnings({ ...record, sourceItems: sources }, today, settings.workPlanStaleDays);
   const expiry = expiryVerdict(record.deliveryWindowEnd, today);
-  const stale = staleness(record, today);
+  const stale = staleness(record, today, settings.staleAfterDays);
   const approvals = customerApprovalItems(record);
   const form = useRecordForm(record);
 

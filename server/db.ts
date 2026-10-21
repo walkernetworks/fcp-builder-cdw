@@ -8,7 +8,10 @@ import { IMPORT_FIELDS, IMPORT_ROLES, planMappedRows, type ExistingRecord, type 
 import type { PipelineBatch } from "./pipelineSource";
 import type { AssignmentRole, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
 import { canTransition, DEFAULT_SOURCE_CHAIN, effectiveDateProblem, STAGE_LABELS, stageOrder, type Stage, type StageRecord } from "../shared/vsaStage";
+import { alias } from "drizzle-orm/mysql-core";
+import { applySettingChanges, resolveOperationalSettings, type ResolvedSettings } from "../shared/appSettings";
 import {
+  appSettings,
   engagementAssignments,
   engagements,
   fcpVersions,
@@ -19,6 +22,7 @@ import {
   stageEvents,
   User,
   users,
+  workspaces,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { deletableEngagements, editableReports, visibleEngagements, visibleReports, type Viewer } from "./visibility";
@@ -74,6 +78,8 @@ export async function upsertUser(user: InsertUser): Promise<void> {
       email: values.email,
       loginMethod: values.loginMethod,
       lastSignedIn: values.lastSignedIn,
+      // updatedAt and updatedByUserId record admin changes; a sign-in is recorded in lastSignedIn.
+      updatedAt: sql`${users.updatedAt}`,
     },
   });
   // affectedRows is 1 only for a new row: link assignments that were made for this person before they first signed in.
@@ -655,3 +661,100 @@ export async function restoreFcpVersion(viewer: Viewer, engagementId: number, ve
   return updateEngagement(viewer, engagementId, current.title, restored, { customerName: current.customerName, title: current.title });
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Admin: users and operational settings. No engagement data. Callers are adminProcedures (server/routers.ts), which
+// are the only enforcement point; these functions trust that the caller has already been checked.
+
+const editor = alias(users, "editor");
+
+/** Every user, with who last changed them. No identity digest (openId) leaves the server. */
+export async function listUsersForAdmin() {
+  const db = await requireDb();
+  return db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      vsaRole: users.vsaRole,
+      workspaceId: users.workspaceId,
+      lastSignedIn: users.lastSignedIn,
+      updatedAt: users.updatedAt,
+      updatedByName: editor.name,
+    })
+    .from(users)
+    .leftJoin(editor, eq(editor.id, users.updatedByUserId))
+    .orderBy(asc(users.name), asc(users.id));
+}
+
+export async function listWorkspaces() {
+  const db = await requireDb();
+  return db.select({ id: workspaces.id, name: workspaces.name }).from(workspaces).orderBy(asc(workspaces.id));
+}
+
+export type AdminUserPatch = { role?: User["role"]; vsaRole?: User["vsaRole"]; workspaceId?: number };
+export type AdminUserResult = { status: "ok" } | { status: "not_found" } | { status: "last_admin" } | { status: "no_workspace" };
+
+/**
+ * An admin's change to a user's role, role view, or workspace, attributed to the admin. Refuses to demote the last
+ * admin, so the app can never be left without one. The admin rows are locked, so two admins demoting each other at
+ * the same moment cannot both succeed.
+ */
+export async function updateUserByAdmin(actor: Viewer, userId: number, patch: AdminUserPatch): Promise<AdminUserResult> {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const [target] = await tx.select({ id: users.id, role: users.role }).from(users).where(eq(users.id, userId)).for("update");
+    if (!target) return { status: "not_found" };
+    if (target.role === "admin" && patch.role === "user") {
+      const admins = await tx.select({ id: users.id }).from(users).where(eq(users.role, "admin")).for("update");
+      if (admins.length <= 1) return { status: "last_admin" };
+    }
+    if (patch.workspaceId !== undefined) {
+      const [workspace] = await tx.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.id, patch.workspaceId));
+      if (!workspace) return { status: "no_workspace" };
+    }
+    await tx.update(users).set({ ...patch, updatedByUserId: actor.id, updatedAt: sql`CURRENT_TIMESTAMP` }).where(eq(users.id, userId));
+    return { status: "ok" };
+  });
+}
+
+/** Stored settings with who last changed each, for the admin screen. */
+export async function listAppSettings() {
+  const db = await requireDb();
+  return db
+    .select({ key: appSettings.key, value: appSettings.value, updatedAt: appSettings.updatedAt, updatedByName: users.name })
+    .from(appSettings)
+    .leftJoin(users, eq(users.id, appSettings.updatedByUserId));
+}
+
+/**
+ * The operational settings the app runs on. Falls back to the code defaults for any missing or invalid value, and
+ * entirely when the database or the table is unavailable (for example before `pnpm db:migrate`), so a missing
+ * setting never breaks a screen.
+ */
+export async function readOperationalSettings(): Promise<ResolvedSettings> {
+  const db = await getDb();
+  if (!db) return resolveOperationalSettings([]);
+  try {
+    return resolveOperationalSettings(await db.select({ key: appSettings.key, value: appSettings.value }).from(appSettings));
+  } catch (error) {
+    console.warn("[Settings] Using code defaults:", (error as Error).message);
+    return resolveOperationalSettings([]);
+  }
+}
+
+export type SaveSettingsResult = { status: "ok"; changed: string[] } | { status: "invalid"; errors: Record<string, string> };
+
+/** Validates the changes against the stored settings and writes the changed keys, attributed to the admin. */
+export async function saveAppSettings(actor: Viewer, changes: Record<string, number>): Promise<SaveSettingsResult> {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const rows = await tx.select({ key: appSettings.key, value: appSettings.value }).from(appSettings).for("update");
+    const result = applySettingChanges(resolveOperationalSettings(rows).settings, changes);
+    if (!result.ok) return { status: "invalid", errors: result.errors };
+    for (const [key, value] of Object.entries(result.changed)) {
+      await tx.insert(appSettings).values({ key, value, updatedByUserId: actor.id }).onDuplicateKeyUpdate({ set: { value, updatedByUserId: actor.id } });
+    }
+    return { status: "ok", changed: Object.keys(result.changed) };
+  });
+}

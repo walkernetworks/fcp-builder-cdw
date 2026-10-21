@@ -82,7 +82,8 @@ const referencesSource: FileSource = {
 // ---------------------------------------------------------------------------------------------------------------------
 
 export const FILE_SOURCES = ["references"] as const;
-const RESERVED = new Set(["sharepoint"]);
+export const RESERVED_FILE_SOURCES = ["sharepoint"] as const;
+const RESERVED = new Set<string>(RESERVED_FILE_SOURCES);
 
 /** Reads FILE_SOURCE (default "references"). Anything else fails loudly at startup rather than on first use. */
 export function fileSourceName(value: string | undefined = process.env.FILE_SOURCE): FileSourceName {

@@ -12,7 +12,8 @@ import { mapPipelineRow, parsePipelineCsv, type RawPipelineRow } from "../shared
 /** Built sources. "salesforce" and "sharepoint" are reserved names for future, approved connectors. */
 export const PIPELINE_SOURCES = ["csv"] as const;
 export type PipelineSourceName = (typeof PIPELINE_SOURCES)[number];
-const RESERVED = new Set(["salesforce", "sharepoint"]);
+export const RESERVED_PIPELINE_SOURCES = ["salesforce", "sharepoint"] as const;
+const RESERVED = new Set<string>(RESERVED_PIPELINE_SOURCES);
 
 export type PipelineBatch = {
   source: PipelineSourceName;

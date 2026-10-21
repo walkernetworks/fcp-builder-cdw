@@ -6,6 +6,7 @@ import { Redirect, Route, Switch } from "wouter";
 import { AppShell } from "./components/vsa/AppShell";
 import DashboardLayout from "./components/DashboardLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
+import Admin from "./pages/Admin";
 import Home from "./pages/Home";
 import PipelineImport from "./pages/PipelineImport";
 import Expiry from "./pages/Expiry";
@@ -26,6 +27,7 @@ function Router() {
         <Route path="/reports" component={Reports} />
         <Route path="/fcp" component={Home} />
         <Route path="/import" component={PipelineImport} />
+        <Route path="/admin" component={Admin} />
         <Route component={NotFound} />
       </Switch>
     </AppShell>

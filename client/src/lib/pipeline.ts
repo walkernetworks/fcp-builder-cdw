@@ -1,14 +1,15 @@
+import type { OperationalSettings } from "@shared/appSettings";
 import { dataQualityFlags, staleness } from "@shared/vsaDashboard";
 import { isTerminal, STAGE_LABELS, STAGES, stageWarnings, type Segment, type Stage } from "@shared/vsaStage";
 import { daysBetween } from "@shared/vsaViews";
 import type { TrackerRow } from "./vsa";
 
-/** Everything that makes a record need attention: data-quality flags, a stale stage, and stage warnings. */
-export function attentionFor(row: TrackerRow, today: string) {
+/** Everything that makes a record need attention: data-quality flags, a stale stage, and stage warnings. `settings` from useOperationalSettings. */
+export function attentionFor(row: TrackerRow, today: string, settings: OperationalSettings) {
   const flags = dataQualityFlags(row);
-  const stale = staleness(row, today);
+  const stale = staleness(row, today, settings.staleAfterDays);
   // "Segment not set" is already a data-quality flag.
-  const warnings = stageWarnings(row, today).filter(warning => warning !== "Segment not set");
+  const warnings = stageWarnings(row, today, settings.workPlanStaleDays).filter(warning => warning !== "Segment not set");
   return { flags, stale, warnings, count: flags.length + (stale.stale ? 1 : 0) + warnings.length };
 }
 
@@ -32,7 +33,7 @@ export function activeFilterCount(filters: PipelineFilters) {
   return filters.stages.length + filters.segments.length + filters.health.length + filters.architects.length + (filters.flaggedOnly ? 1 : 0) + (filters.search.trim() ? 1 : 0);
 }
 
-export function applyFilters(rows: TrackerRow[], filters: PipelineFilters, today: string) {
+export function applyFilters(rows: TrackerRow[], filters: PipelineFilters, today: string, settings: OperationalSettings) {
   const term = filters.search.trim().toLowerCase();
   return rows.filter(row =>
     (!term || [row.customerName, row.opportunityNumber, row.serNumber, row.salesforceCustomerId, architectOf(row)].some(value => value?.toLowerCase().includes(term))) &&
@@ -40,14 +41,14 @@ export function applyFilters(rows: TrackerRow[], filters: PipelineFilters, today
     (!filters.segments.length || filters.segments.includes(row.segment ?? "none")) &&
     (!filters.health.length || filters.health.includes(row.health ?? "none")) &&
     (!filters.architects.length || filters.architects.includes(architectOf(row) ?? "Unassigned")) &&
-    (!filters.flaggedOnly || attentionFor(row, today).count > 0),
+    (!filters.flaggedOnly || attentionFor(row, today, settings).count > 0),
   );
 }
 
 const HEALTH_RANK: Record<string, number> = { red: 0, yellow: 1, green: 2 };
 const stageRank = (stage: Stage) => STAGES.indexOf(stage);
 
-export function sortRows(rows: TrackerRow[], sort: Sort, today: string) {
+export function sortRows(rows: TrackerRow[], sort: Sort, today: string, settings: OperationalSettings) {
   const value = (row: TrackerRow): string | number | null => {
     switch (sort.key) {
       case "customer": return row.customerName.toLowerCase();
@@ -58,7 +59,7 @@ export function sortRows(rows: TrackerRow[], sort: Sort, today: string) {
       case "expiry": return row.deliveryWindowEnd;
       case "amount": return row.entitlementValue === null ? null : Number(row.entitlementValue);
       case "health": return row.health ? HEALTH_RANK[row.health] : null;
-      case "flags": return attentionFor(row, today).count;
+      case "flags": return attentionFor(row, today, settings).count;
     }
   };
   const sign = sort.dir === "asc" ? 1 : -1;

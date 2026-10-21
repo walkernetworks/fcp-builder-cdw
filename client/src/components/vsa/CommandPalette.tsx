@@ -1,16 +1,18 @@
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from "@/components/ui/command";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { STAGE_LABELS } from "@shared/vsaStage";
 import { Building2, Moon, Plus, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { NAV_GROUPS } from "./navigation";
+import { navGroupsFor } from "./navigation";
 import { useShell } from "./ShellContext";
 
 /** Cmd-K / Ctrl-K: jump to a screen, open any record by customer, opportunity, or SER number, or run an action. */
 export function CommandPalette() {
   const { commandOpen: open, setCommandOpen: setOpen, openRecord, newEngagement } = useShell();
+  const { user } = useAuth();
   const [, navigate] = useLocation();
   const { resolvedTheme, setTheme } = useTheme();
   const list = trpc.tracker.list.useQuery({}, { enabled: open, staleTime: 30_000 });
@@ -48,7 +50,7 @@ export function CommandPalette() {
         </CommandGroup>
         <CommandSeparator />
         <CommandGroup heading="Go to">
-          {NAV_GROUPS.flatMap(group => group.items).map(item => (
+          {navGroupsFor(user?.role).flatMap(group => group.items).map(item => (
             <CommandItem key={item.href} value={`Go to ${item.label}`} onSelect={() => run(() => navigate(item.href))}>
               <item.icon className="text-ink-muted" /> {item.label}
             </CommandItem>

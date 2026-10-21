@@ -1,6 +1,7 @@
 import { strToU8, zipSync } from "fflate";
 import { FIELD_BY_KEY, formatMeasure, measureLabel, type ReportConfig, type ReportResult } from "../shared/vsaReports";
 import type { ReportField, ReportSource } from "../shared/vsaReports";
+import { DEFAULT_OPERATIONAL_SETTINGS, type OperationalSettings } from "../shared/appSettings";
 
 export const REPORT_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
@@ -34,8 +35,8 @@ function dateCell(ref: string, iso: string) {
 }
 
 /** One typed cell: numbers stay numbers, money keeps its format, dates are Excel dates, enums use their labels. */
-function typedCell(ref: string, field: ReportField, row: ReportSource, display: string, today: string) {
-  const value = field.get(row, today);
+function typedCell(ref: string, field: ReportField, row: ReportSource, display: string, today: string, settings: OperationalSettings) {
+  const value = field.get(row, today, settings);
   if (value === null || value === "") return `<c r="${ref}" s="${TEXT}"/>`;
   if (field.type === "money") return numberCell(ref, Number(value), MONEY);
   if (field.type === "number") return numberCell(ref, Number(value), NUMBER);
@@ -49,11 +50,11 @@ function sheetXml(rowsXml: string, widths: number[], lastRef: string, filterRef:
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${lastRef}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${cols}</cols><sheetData>${rowsXml}</sheetData>${filterRef ? `<autoFilter ref="${filterRef}"/>` : ""}</worksheet>`;
 }
 
-function detailSheet(result: ReportResult, legend: string, today: string) {
+function detailSheet(result: ReportResult, legend: string, today: string, settings: OperationalSettings) {
   const header = `<row r="1">${result.columns.map((field, index) => textCell(`${columnName(index)}1`, field.label, HEADER)).join("")}</row>`;
   const body = result.rows.map((row, rowIndex) => {
     const r = rowIndex + 2;
-    return `<row r="${r}">${result.columns.map((field, index) => typedCell(`${columnName(index)}${r}`, field, row, result.table[rowIndex][index], today)).join("")}</row>`;
+    return `<row r="${r}">${result.columns.map((field, index) => typedCell(`${columnName(index)}${r}`, field, row, result.table[rowIndex][index], today, settings)).join("")}</row>`;
   }).join("");
   const legendRow = result.rows.length + 3;
   const last = columnName(result.columns.length - 1);
@@ -103,8 +104,8 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="164" formatCode="mmm d, yyyy"/><numFmt numFmtId="165" formatCode="&quot;$&quot;#,##0.00"/></numFmts><fonts count="3"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font><font><i/><sz val="9"/><color rgb="FF898B8E"/><name val="Calibri"/><family val="2"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF54565B"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top"/></xf><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top"/></xf><xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top"/></xf><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 
 /** The report as an XLSX workbook: a Report sheet of rows, and a Summary sheet when the report groups. */
-export function renderReportWorkbook(result: ReportResult, config: ReportConfig, legend: string, today: string): Uint8Array {
-  const sheets = [{ name: "Report", xml: detailSheet(result, legend, today) }];
+export function renderReportWorkbook(result: ReportResult, config: ReportConfig, legend: string, today: string, settings: OperationalSettings = DEFAULT_OPERATIONAL_SETTINGS): Uint8Array {
+  const sheets = [{ name: "Report", xml: detailSheet(result, legend, today, settings) }];
   if (result.groups) sheets.push({ name: "Summary", xml: summarySheet(result, config, legend) });
   const files: Record<string, Uint8Array> = {
     "[Content_Types].xml": strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

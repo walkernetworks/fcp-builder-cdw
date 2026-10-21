@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { activeFilterCount, architectOf, attentionFor, EMPTY_FILTERS, loadSavedViews, storeSavedViews, type PipelineFilters, type SavedView, type Sort, type SortKey } from "@/lib/pipeline";
+import { useOperationalSettings } from "@/lib/settings";
 import { SEGMENT_LABELS, type TrackerRow } from "@/lib/vsa";
 import { ENUM_LABELS } from "@/lib/vsaLabels";
 import { STAGE_LABELS, type Segment, type Stage } from "@shared/vsaStage";
@@ -31,6 +32,7 @@ const COLUMNS: Column[] = [
 /** A dense, sortable engagement table. Rows are keyboard-navigable: arrow keys move, Enter opens the record. */
 export function EngagementTable({ rows, today, sort, onSortChange, onOpen, empty }: { rows: TrackerRow[]; today: string; sort: Sort; onSortChange: (sort: Sort) => void; onOpen: (id: number) => void; empty: ReactNode }) {
   const body = useRef<HTMLTableSectionElement>(null);
+  const settings = useOperationalSettings();
   const toggleSort = (key: SortKey) => onSortChange(sort.key === key ? { key, dir: sort.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "amount" || key === "days" || key === "flags" ? "desc" : "asc" });
 
   function onRowKey(event: KeyboardEvent<HTMLTableRowElement>, id: number) {
@@ -65,9 +67,9 @@ export function EngagementTable({ rows, today, sort, onSortChange, onOpen, empty
         </TableHeader>
         <TableBody ref={body}>
           {rows.map(row => {
-            const attention = attentionFor(row, today);
+            const attention = attentionFor(row, today, settings);
             const days = daysBetween(row.stageEnteredOn, today);
-            const stale = staleness(row, today).stale;
+            const stale = staleness(row, today, settings.staleAfterDays).stale;
             return (
               <TableRow key={row.id} data-selectable tabIndex={0} onClick={() => onOpen(row.id)} onKeyDown={event => onRowKey(event, row.id)} aria-label={`${row.customerName}, ${STAGE_LABELS[row.stage]}. Press Enter to open.`}>
                 <TableCell className="max-w-[260px]">

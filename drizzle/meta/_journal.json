@@ -36,6 +36,20 @@
       "when": 1792169462394,
       "tag": "0004_fcp_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1792586151340,
+      "tag": "0005_admin_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1792586158807,
+      "tag": "0006_seed_app_settings",
+      "breakpoints": true
     }
   ]
 }

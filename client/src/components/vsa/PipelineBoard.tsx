@@ -1,5 +1,6 @@
 import { attentionFor, architectOf } from "@/lib/pipeline";
 import { trpc } from "@/lib/trpc";
+import { useOperationalSettings } from "@/lib/settings";
 import { SEGMENT_LABELS, todayIso, type TrackerRow } from "@/lib/vsa";
 import { STAGE_LABELS, canTransition, type Stage } from "@shared/vsaStage";
 import { daysBetween, formatMoney } from "@shared/vsaViews";
@@ -91,7 +92,8 @@ export function PipelineBoard({ rows, columns, onOpen }: { rows: TrackerRow[]; c
 }
 
 function BoardCard({ row, today, dragging, onOpen, onDragStart, onDragEnd }: { row: TrackerRow; today: string; dragging: boolean; onOpen: () => void; onDragStart: () => void; onDragEnd: () => void }) {
-  const attention = attentionFor(row, today);
+  const settings = useOperationalSettings();
+  const attention = attentionFor(row, today, settings);
   const noPo = attention.warnings.some(warning => warning.startsWith("In a delivery stage"));
   const days = daysBetween(row.stageEnteredOn, today);
   const architect = architectOf(row);

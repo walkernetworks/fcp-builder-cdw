@@ -2,9 +2,10 @@ import { DaysLeft, SegmentText } from "@/components/vsa/cells";
 import { Chip, DataMount, EmptyState, KpiCard, PageHeader, Panel } from "@/components/vsa/elements";
 import { useShell } from "@/components/vsa/ShellContext";
 import { openRows } from "@/lib/pipeline";
+import { useOperationalSettings } from "@/lib/settings";
 import { trpc } from "@/lib/trpc";
 import { todayIso } from "@/lib/vsa";
-import { expiryBand, expiryBandTotals, expiryByMonth, EXPIRY_BANDS, type ExpiryBand } from "@shared/vsaDashboard";
+import { expiryBandFor, expiryBands, expiryBandTotals, expiryByMonth, type ExpiryBand, type ExpiryBandDays } from "@shared/vsaDashboard";
 import { STAGE_LABELS } from "@shared/vsaStage";
 import { entitlementTotal, expiryRows, formatDay, formatMoney, type ExpiryRow } from "@shared/vsaViews";
 import { CalendarClock, Hourglass } from "lucide-react";
@@ -12,11 +13,12 @@ import { useMemo, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 type Window = "all" | "expired" | "d30" | "d90" | "none";
-const WINDOWS: { id: Window; label: string; match: (band: ExpiryBand) => boolean }[] = [
+/** The table's filters, labeled with the band limits in the admin settings. */
+const windows = (limits: ExpiryBandDays): { id: Window; label: string; match: (band: ExpiryBand) => boolean }[] => [
   { id: "all", label: "All open", match: () => true },
   { id: "expired", label: "Expired", match: band => band === "expired" },
-  { id: "d30", label: "Within 30 days", match: band => band === "d30" },
-  { id: "d90", label: "Within 90 days", match: band => band === "d30" || band === "d60" || band === "d90" },
+  { id: "d30", label: `Within ${limits.d30} days`, match: band => band === "d30" },
+  { id: "d90", label: `Within ${limits.d90} days`, match: band => band === "d30" || band === "d60" || band === "d90" },
   { id: "none", label: "No expiry date", match: band => band === "none" },
 ];
 
@@ -37,10 +39,12 @@ export default function Expiry() {
   const { openRecord } = useShell();
   const list = trpc.tracker.list.useQuery({});
   const [windowId, setWindowId] = useState<Window>("all");
+  const { expiryBandDays: limits } = useOperationalSettings();
+  const WINDOWS = windows(limits);
 
   const data = useMemo(() => {
     const rows = expiryRows(openRows(list.data ?? []), today);
-    const bands = expiryBandTotals(rows);
+    const bands = expiryBandTotals(rows, limits);
     const band = (key: ExpiryBand) => bands.find(item => item.key === key)!;
     return {
       rows,
@@ -51,9 +55,9 @@ export default function Expiry() {
       d30: band("d30"),
       d90: { count: band("d60").count + band("d90").count, amount: band("d60").amount + band("d90").amount },
     };
-  }, [list.data, today]);
+  }, [list.data, today, limits]);
 
-  const visible = data.rows.filter(row => WINDOWS.find(item => item.id === windowId)!.match(expiryBand(row.verdict.daysLeft)));
+  const visible = data.rows.filter(row => WINDOWS.find(item => item.id === windowId)!.match(expiryBandFor(row.verdict.daysLeft, limits)));
 
   return (
     <main className="mx-auto max-w-[1600px] space-y-6 px-6 py-6">
@@ -64,8 +68,8 @@ export default function Expiry() {
             <section className="kpi-grid" aria-label="Expiry figures">
               <KpiCard label="Open entitlements" value={data.rows.length} sub={`${formatMoney(data.money.total)} in VSA amounts${data.money.missing ? ` · ${data.money.missing} without an amount` : ""}`} />
               <KpiCard label="Expired" value={data.expired.count} keyMetric={data.expired.count > 0} sub={`${formatMoney(data.expired.amount)} past the delivery window`} onClick={() => setWindowId("expired")} />
-              <KpiCard label="Within 30 days" value={data.d30.count} sub={`${formatMoney(data.d30.amount)} expiring`} onClick={() => setWindowId("d30")} />
-              <KpiCard label="31 to 90 days" value={data.d90.count} sub={`${formatMoney(data.d90.amount)} expiring`} onClick={() => setWindowId("d90")} />
+              <KpiCard label={`Within ${limits.d30} days`} value={data.d30.count} sub={`${formatMoney(data.d30.amount)} expiring`} onClick={() => setWindowId("d30")} />
+              <KpiCard label={`${limits.d30 + 1} to ${limits.d90} days`} value={data.d90.count} sub={`${formatMoney(data.d90.amount)} expiring`} onClick={() => setWindowId("d90")} />
               <KpiCard label="Hours remaining" value={<span className="text-ink-subtle">—</span>} sub="No hours recorded yet" />
             </section>
 
@@ -146,7 +150,8 @@ export default function Expiry() {
 }
 
 function RiskRow({ row, onOpen }: { row: ExpiryRow; onOpen: () => void }) {
-  const risk = EXPIRY_BANDS.find(band => band.key === expiryBand(row.verdict.daysLeft))!.risk;
+  const { expiryBandDays: limits } = useOperationalSettings();
+  const risk = expiryBands(limits).find(band => band.key === expiryBandFor(row.verdict.daysLeft, limits))!.risk;
   const first = row.records[0];
   return (
     <tr className={risk === "stop" ? "risk-stop" : risk === "warn" ? "risk-warn" : undefined} data-selectable tabIndex={0} onClick={onOpen} onKeyDown={event => event.key === "Enter" && onOpen()} title={row.notes.join("\n") || undefined}>
