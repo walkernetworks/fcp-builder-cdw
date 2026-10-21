@@ -11,7 +11,7 @@ Rules
 - If something is not stated, use null for a single value or [] for a list. Do not write "TBD" or "unknown".
 - Dates are YYYY-MM-DD. Months alone (customerOwnedWork) are YYYY-MM.
 - Quote the customer's own words where you record their position or goals.
-- Do NOT include rates, PO values, work authorization or project numbers, or any Broadcom segment (Corporate, Strategic, Commercial pricing tier).
+- Do NOT include rates, PO values, work authorization or project numbers, or the Broadcom pricing tier. The customer segment (commercial or corporate) is fine to fill in.
 - Do NOT use the words "readiness", "workshop" or "TRW". Call discovery work "design discovery" and describe it in design terms.
 - Write to the customer, not about them ("Keep the existing array", not "the customer refuses to change storage").
 
@@ -65,7 +65,7 @@ JSON shape (fill every key; keep the structure exactly)
 {
   "schemaVersion": 1,
   "asOf": "YYYY-MM-DD",
-  "customer": { "name": null, "location": null, "segment": "commercial | public-sector | null", "accountId": null, "primaryContact": null },
+  "customer": { "name": null, "location": null, "segment": "commercial | corporate | null", "accountId": null, "primaryContact": null },
   "contacts": { "customer": [{ "name": "", "role": "" }], "cdw": [], "broadcom": [] },
   "entitlement": { "value": null, "hours": null, "termStart": null, "termEnd": null, "hoursConsumed": null, "consumedAsOf": null },
   "schedule": { "projectStart": null, "implementationStart": null, "targetComplete": null, "hardwareLeadWeeks": null, "calendarConstraints": null },
