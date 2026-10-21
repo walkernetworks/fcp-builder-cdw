@@ -8,6 +8,7 @@ import { ReportBuilder } from "@/components/vsa/ReportBuilder";
 import { ReportChart } from "@/components/vsa/ReportChart";
 import { downloadBase64, downloadText } from "@/lib/downloads";
 import { trpc } from "@/lib/trpc";
+import { useOperationalSettings } from "@/lib/settings";
 import { todayIso } from "@/lib/vsa";
 import { FIELD_BY_KEY, formatMeasure, measureLabel, PROPRIETARY_LEGEND, REPORT_PRESETS, reportCsv, runReport, type ReportConfig } from "@shared/vsaReports";
 import { BarChart3, ChevronDown, ChevronUp, Download, FileSpreadsheet, Loader2, Save, SearchX, SlidersHorizontal, Trash2 } from "lucide-react";
@@ -27,6 +28,7 @@ function initialSelection(): Current {
 /** Build, save, and export reports over the tracker. Every figure is computed by the shared report engine. */
 export default function Reports() {
   const today = todayIso();
+  const settings = useOperationalSettings();
   const { user } = useAuth();
   const utils = trpc.useUtils();
   const list = trpc.tracker.list.useQuery({});
@@ -60,7 +62,7 @@ export default function Reports() {
   }, [current.kind, current.id, saved.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const source = useMemo(() => list.data ?? [], [list.data]);
-  const result = useMemo(() => runReport(source, config, today), [source, config, today]);
+  const result = useMemo(() => runReport(source, config, today, settings), [source, config, today, settings]);
   const canEditSaved = current.kind === "saved" && user && (current.ownerId === user.id || user.role === "admin");
   const description = current.kind === "preset" ? REPORT_PRESETS.find(item => item.id === current.id)?.description : `Saved report${saved.data?.find(item => item.id === current.id)?.ownerName ? ` by ${saved.data.find(item => item.id === current.id)!.ownerName}` : ""}.`;
 
@@ -174,7 +176,7 @@ export default function Reports() {
                         {result.columns.map((field, index) => {
                           const text = result.table[rowIndex][index];
                           // Expiry is a verdict, so it renders as a pill (word plus icon) rather than bare text.
-                          if (field.key === "expiry") return <td key={field.key}><Pill verdict={field.get(row, today) as Verdict}>{text}</Pill></td>;
+                          if (field.key === "expiry") return <td key={field.key}><Pill verdict={field.get(row, today, settings) as Verdict}>{text}</Pill></td>;
                           return <td key={field.key} className={field.type === "money" || field.type === "number" ? "num" : undefined}>{text || <span className="text-s300">—</span>}</td>;
                         })}
                       </tr>

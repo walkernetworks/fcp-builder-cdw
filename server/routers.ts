@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { createDefaultDocument, engagementDocumentSchema } from "../shared/fcp";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
 import { renderFcpHtml } from "./fcpRenderer";
@@ -17,6 +17,9 @@ import { pipelineSource } from "./pipelineSource";
 import { PROPRIETARY_LEGEND, reportConfigSchema, runReport } from "../shared/vsaReports";
 import { inRoleView } from "../shared/vsaViews";
 import { REPORT_XLSX_MIME, renderReportWorkbook, reportFilename } from "./reportWorkbook";
+import { adminUserPatchSchema } from "../shared/adminUsers";
+import { SETTING_DEFINITIONS, SETTING_GROUPS, settingValues } from "../shared/appSettings";
+import { systemStatus } from "./systemStatus";
 
 function requireRow<T>(row: T | undefined): T {
   if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Engagement not found" });
@@ -175,10 +178,54 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const today = new Date().toISOString().slice(0, 10);
         const rows = (await db.listTracker(viewerFor(ctx.user))).filter(row => inRoleView(row, ctx.user.id, ctx.user.vsaRole ?? null));
-        const result = runReport(rows, input.config, today);
-        const workbook = renderReportWorkbook(result, input.config, PROPRIETARY_LEGEND, today);
+        const { settings } = await db.readOperationalSettings();
+        const result = runReport(rows, input.config, today, settings);
+        const workbook = renderReportWorkbook(result, input.config, PROPRIETARY_LEGEND, today, settings);
         return { filename: reportFilename(input.name, today, "xlsx"), mime: REPORT_XLSX_MIME, base64: Buffer.from(workbook).toString("base64") };
       }),
+  }),
+  settings: router({
+    /** The operational thresholds every screen uses (stale stages, work plan follow-up, expiry bands), with code defaults for anything not stored. */
+    operational: protectedProcedure.query(async () => (await db.readOperationalSettings()).settings),
+  }),
+  /** The admin area. Every procedure is an adminProcedure: the server refuses anyone whose users.role is not admin. */
+  admin: router({
+    users: router({
+      list: adminProcedure.query(async () => ({ users: await db.listUsersForAdmin(), workspaces: await db.listWorkspaces() })),
+      update: adminProcedure.input(z.object({ id: recordId, patch: adminUserPatchSchema })).mutation(async ({ ctx, input }) => {
+        const result = await db.updateUserByAdmin(viewerFor(ctx.user), input.id, input.patch);
+        switch (result.status) {
+          case "ok":
+            return { success: true };
+          case "not_found":
+            throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+          case "last_admin":
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "This is the only admin. Make someone else an admin first, so the app is never left without one." });
+          case "no_workspace":
+            throw new TRPCError({ code: "BAD_REQUEST", message: "That workspace does not exist." });
+        }
+      }),
+    }),
+    settings: router({
+      list: adminProcedure.query(async () => {
+        const [resolved, rows] = await Promise.all([db.readOperationalSettings(), db.listAppSettings()]);
+        const values = settingValues(resolved.settings);
+        return {
+          groups: SETTING_GROUPS,
+          settings: SETTING_DEFINITIONS.map(({ key, group, label, min, max, defaultValue }) => {
+            const row = resolved.stored.includes(key) ? rows.find(item => item.key === key) : undefined;
+            return { key, group, label, min, max, defaultValue, value: values[key], stored: Boolean(row), updatedAt: row?.updatedAt ?? null, updatedByName: row?.updatedByName ?? null };
+          }),
+        };
+      }),
+      update: adminProcedure.input(z.object({ values: z.record(z.string().max(64), z.number()) })).mutation(async ({ ctx, input }) => {
+        const result = await db.saveAppSettings(viewerFor(ctx.user), input.values);
+        if (result.status === "invalid") throw new TRPCError({ code: "BAD_REQUEST", message: Object.entries(result.errors).map(([key, error]) => `${key}: ${error}`).join("; ") });
+        return { changed: result.changed };
+      }),
+    }),
+    /** Read-only. There is deliberately no procedure that changes a source or flag: that is an environment change plus an approval record. */
+    status: adminProcedure.query(() => systemStatus()),
   }),
   effort: router({
     /** Scoped effort and the internal fit check; rates stay on the server. A mutation so the document travels in the body. */

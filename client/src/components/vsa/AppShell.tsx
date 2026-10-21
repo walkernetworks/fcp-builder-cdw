@@ -13,7 +13,7 @@ import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
 import { CommandPalette } from "./CommandPalette";
 import { CdwLogo } from "./elements";
-import { activeNavItem, NAV_GROUPS, workspaceName } from "./navigation";
+import { activeNavItem, NAV_GROUPS, navGroupsFor, workspaceName } from "./navigation";
 import { ShellProvider, useShell } from "./ShellContext";
 
 export const PROPRIETARY_LEGEND = "CDW — Proprietary and confidential. Copying restricted.";
@@ -67,6 +67,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 function AppSidebar() {
+  const { user } = useAuth();
   const [location] = useLocation();
   const active = activeNavItem(location);
   return (
@@ -78,7 +79,7 @@ function AppSidebar() {
         </Link>
       </SidebarHeader>
       <SidebarContent className="gap-0 py-2">
-        {NAV_GROUPS.map(group => (
+        {navGroupsFor(user?.role).map(group => (
           <SidebarGroup key={group.label} className="py-1">
             <SidebarGroupLabel className="h-7 text-[11px] font-medium text-ink-subtle">{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>

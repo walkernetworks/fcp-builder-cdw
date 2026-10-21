@@ -14,6 +14,7 @@ How the tracker screens look and behave, so new work stays consistent. The UI sh
 | `/fcp` | FCP workspace | Building the FCP for one record. |
 | `/import` | Import | Daily SharePoint import. |
 | `/reports` | Reports | Custom reports with CSV and Excel export. |
+| `/admin` | Admin | Admins only. Users (role, role view, workspace), operational settings, and read-only system status. The sidebar entry is hidden from everyone else, and the server refuses them. |
 
 The Overview tiles and stage rows link into these screens with filters already applied: `?segment=none`, `?flagged=1`, `?stage=<stage>`, and `?q=<queue>`.
 
@@ -108,7 +109,7 @@ All in `client/src/components/vsa/`.
 
   Tables show the total as one pill, with the full list in its tooltip.
 - **Awaiting my action** (`awaitingAction`): the record is open, nobody outside CDW is holding it (`waitingOn` is not the customer or Broadcom), and the user holds a role that owns the stage's next step (`STAGE_OWNERS`). If `waitingOn` is sales, the sales roles own it instead.
-- **Expiry risk:** bands are Expired, 0 to 30, 31 to 60, 61 to 90, 91 to 180, over 180 days, and no date.
+- **Expiry risk:** bands are Expired, 0 to 30, 31 to 60, 61 to 90, 91 to 180, over 180 days, and no date. The day limits, the stale-stage thresholds, and the work plan warning are admin settings: read them with `useOperationalSettings()` (`client/src/lib/settings.ts`) and pass them to the pure functions, never the constants directly.
   - Expired and 0 to 30 days are `stop`.
   - 31 to 90 days are `warn`.
   - Tables mark risk with a 2px left rule (`.risk-stop`, `.risk-warn`) plus the pill, never a row fill.

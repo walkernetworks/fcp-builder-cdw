@@ -1,7 +1,8 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { attentionFor } from "@/lib/pipeline";
 import { SEGMENT_LABELS, type TrackerRow } from "@/lib/vsa";
-import { expiryBand, EXPIRY_BANDS } from "@shared/vsaDashboard";
+import { useOperationalSettings } from "@/lib/settings";
+import { expiryBandFor, expiryBands } from "@shared/vsaDashboard";
 import { STAGE_LABELS, type Stage } from "@shared/vsaStage";
 import { formatDay } from "@shared/vsaViews";
 import { Pill, type Verdict } from "./elements";
@@ -27,10 +28,11 @@ export function StageText({ stage }: { stage: Stage }) {
   return <span className="whitespace-nowrap">{STAGE_LABELS[stage]}</span>;
 }
 
-/** Days left as a verdict pill inside 90 days (and when expired); a plain number beyond. */
+/** Days left as a verdict pill inside the warn bands (90 days by default) and when expired; a plain number beyond. */
 export function DaysLeft({ daysLeft }: { daysLeft: number | null }) {
+  const { expiryBandDays } = useOperationalSettings();
   if (daysLeft === null) return <span className="text-ink-subtle">—</span>;
-  const band = EXPIRY_BANDS.find(item => item.key === expiryBand(daysLeft))!;
+  const band = expiryBands(expiryBandDays).find(item => item.key === expiryBandFor(daysLeft, expiryBandDays))!;
   if (band.risk === "stop") return <Pill verdict="stop">{daysLeft < 0 ? `Expired ${-daysLeft}d ago` : `${daysLeft}d`}</Pill>;
   if (band.risk === "warn") return <Pill verdict="warn">{daysLeft}d</Pill>;
   return <span className="tabular text-ink-muted">{daysLeft}d</span>;

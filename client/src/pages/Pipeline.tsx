@@ -6,6 +6,7 @@ import { PipelineBoard } from "@/components/vsa/PipelineBoard";
 import { useShell } from "@/components/vsa/ShellContext";
 import { applyFilters, EMPTY_FILTERS, openRows, sortRows, type PipelineFilters, type Sort } from "@/lib/pipeline";
 import { trpc } from "@/lib/trpc";
+import { useOperationalSettings } from "@/lib/settings";
 import { todayIso } from "@/lib/vsa";
 import { MAIN_STAGES, STAGES, type Stage } from "@shared/vsaStage";
 import { Columns3, Plus, Rows3, Upload } from "lucide-react";
@@ -32,6 +33,7 @@ function filtersFromUrl(search: string): PipelineFilters {
  */
 export function RecordList({ scope }: { scope: "open" | "all" }) {
   const today = todayIso();
+  const settings = useOperationalSettings();
   const search = useSearch();
   const params = new URLSearchParams(search);
   const { openRecord, newEngagement } = useShell();
@@ -41,7 +43,7 @@ export function RecordList({ scope }: { scope: "open" | "all" }) {
   const [view, setView] = useState<"table" | "board">(scope === "open" && params.get("view") === "board" ? "board" : "table");
 
   const base = useMemo(() => (scope === "open" ? openRows(list.data ?? []) : list.data ?? []), [list.data, scope]);
-  const rows = useMemo(() => sortRows(applyFilters(base, filters, today), sort, today), [base, filters, sort, today]);
+  const rows = useMemo(() => sortRows(applyFilters(base, filters, today, settings), sort, today, settings), [base, filters, sort, today, settings]);
   const stages = scope === "open" ? OPEN_STAGES : [...STAGES];
   const title = scope === "open" ? "Pipeline" : "Records";
   const sub = list.data ? (scope === "open" ? `${base.length} open engagements` : `${base.length} records, closed included`) + (rows.length !== base.length ? ` · ${rows.length} shown` : "") : "Loading…";

@@ -256,6 +256,7 @@ One workspace is expected in practice. The table exists so the visibility bounda
 |---|---|---|---|---|
 | `workspaceId` | int | no | 1 | New users join workspace 1 on first sign-in through the gateway |
 | `vsaRole` | enum `sales`, `architect`, `presales`, `pm`, `leadership` | yes | | Selects the default queue in My Queue (leadership lands on Needs attention; no role lands on Awaiting my action). Not a permission. The existing `role` (`user`/`admin`) stays the only permission flag |
+| `updatedByUserId` | int, FK `users.id` (set null) | yes | | The admin who last changed this user's `role`, `vsaRole`, or `workspaceId` on the admin screen. `updatedAt` records when; a sign-in changes only `lastSignedIn` |
 
 ### 6.3 `engagementAssignments` (new)
 
@@ -278,6 +279,10 @@ Unique `(engagementId, role)`: one person per role per record. Index `(userId, r
 SharePoint mapping: "Sales Rep / Owner" → `sales_rep`, "CDW Account Manager" → `account_manager`, "Nat. Presales" → `presales`, "DC FSA" and "Architect" → `architect` (import flags rows where they differ), "PM" → `pm`, "Sr. Consultant" → `sr_consultant`.
 
 This is a table rather than six `*UserId` columns on `engagements` because most imported assignees will not be app users yet. A row can hold a name and email now and link to a user later, and each role carries its own Broadcom email without twelve more columns.
+
+### 6.4 `app_settings` (new)
+
+Operational thresholds an admin can change: the per-stage stale thresholds, the work plan warning, and the expiry band limits. One row per key (`key`, `value` json, `updatedByUserId`, `updatedAt`), seeded from the code constants, which remain the fallback. The keys and rules are in `docs/CONFIGURATION.md` (Operational settings) and `shared/appSettings.ts`.
 
 ## 7. Internal vs customer-facing tag
 

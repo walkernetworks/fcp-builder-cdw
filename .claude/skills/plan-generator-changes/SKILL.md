@@ -25,8 +25,8 @@ Saved engagements store their generated timelines. Users must never need **Rebui
 ## Verify before committing
 
 - `pnpm check` and `pnpm test`. `server/planGenerator.test.ts` ("loading saved plans") covers regeneration and hand-edit preservation. Extend it when you add a legacy label or id mapping.
-- Dry-run the migration against the local engagements without saving, and print counts and date ranges only. Client data must not leave the machine, so never print labels or text. For each row in `engagements`, load `data`, run `migrateDocument`, and compare against the stored plan:
+- Dry-run the migration against synthetic plans only: never read rows from the database (see "Data handling" in CLAUDE.md). Build saved plans from the fake fixtures (`docs/examples/customer-brief.example.json`, `server/twoSiteReview.test.ts`), store a `manual` copy with hand edits and a `generated` copy, run `migrateDocument`, and compare against the stored plan:
   - For `manual` plans, activities moved must be 0, labels changed must be only intended legacy renames, and activity counts must be unchanged.
   - For `generated` plans, report the new window (first and last column) and `validateTimeline` errors (expect 0).
-  Read rows with `mysql -u root fcp_builder -N --raw -e 'SELECT data FROM engagements WHERE id=N'` into the scratchpad, run the check as a throwaway Vitest file in `server/`, then delete both.
+  If a check against the user's real engagements is wanted, give the user the throwaway script to run in their own terminal and ask for the counts only.
 - Tell the user to refresh the browser tab; the dev server (`tsx watch` + Vite) picks up code changes itself.

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, date, decimal, index, int, json, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { boolean, date, decimal, index, int, json, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar, type AnyMySqlColumn } from "drizzle-orm/mysql-core";
 import type { EngagementDocument } from "../shared/fcp";
 import {
   ASSIGNMENT_ROLES,
@@ -19,6 +19,7 @@ import {
 import type { IntakeAnswers } from "../shared/vsaFields";
 import { SEGMENTS, STAGES } from "../shared/vsaStage";
 import type { ReportConfig } from "../shared/vsaReports";
+import type { AppSettingValue } from "../shared/appSettings";
 
 /** Visibility boundary for engagements. One workspace (id 1) is expected; see docs/VSA-TRACKER-DATA-MODEL.md section 6.1. */
 export const workspaces = mysqlTable("workspaces", {
@@ -42,6 +43,8 @@ export const users = mysqlTable("users", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
+  /** The admin who last changed this user's role, role view, or workspace; null for changes made at sign-in. */
+  updatedByUserId: int("updatedByUserId").references((): AnyMySqlColumn => users.id, { onDelete: "set null" }),
 });
 
 export type User = typeof users.$inferSelect;
@@ -253,3 +256,15 @@ export const fcpVersions = mysqlTable(
 
 export type FcpVersion = typeof fcpVersions.$inferSelect;
 
+/**
+ * Operational settings an admin edits in the app: one row per key in shared/appSettings.ts SETTING_DEFINITIONS. A
+ * missing row means the code default applies. No customer data.
+ */
+export const appSettings = mysqlTable("app_settings", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  value: json("value").$type<AppSettingValue>().notNull(),
+  updatedByUserId: int("updatedByUserId").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AppSetting = typeof appSettings.$inferSelect;

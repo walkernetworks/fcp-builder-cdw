@@ -4,6 +4,7 @@ import { EngagementTable, FilterBar, NoMatches } from "@/components/vsa/Engageme
 import { useShell } from "@/components/vsa/ShellContext";
 import { applyFilters, attentionFor, EMPTY_FILTERS, sortRows, type PipelineFilters, type Sort } from "@/lib/pipeline";
 import { trpc } from "@/lib/trpc";
+import { useOperationalSettings } from "@/lib/settings";
 import { todayIso, type TrackerRow } from "@/lib/vsa";
 import { inQueue, QUEUES, type QueueId } from "@shared/vsaDashboard";
 import { MAIN_STAGES, type Stage } from "@shared/vsaStage";
@@ -23,6 +24,7 @@ function defaultQueue(role: VsaRole | null | undefined): QueueId {
 /** Role queues: built-in saved filters on assignments, with the usual filters and sorting on top. */
 export default function Queue() {
   const today = todayIso();
+  const settings = useOperationalSettings();
   const { user } = useAuth();
   const { openRecord } = useShell();
   const requested = new URLSearchParams(useSearch()).get("q") as QueueId | null;
@@ -31,10 +33,10 @@ export default function Queue() {
   const [sort, setSort] = useState<Sort>({ key: "expiry", dir: "asc" });
   const list = trpc.tracker.list.useQuery({});
 
-  const needsAttention = (row: TrackerRow) => attentionFor(row, today).count > 0;
-  const counts = useMemo(() => Object.fromEntries(QUEUES.map(item => [item.id, (list.data ?? []).filter(row => user && inQueue(row, item.id, user.id, record => needsAttention(record as TrackerRow))).length])), [list.data, user, today]); // eslint-disable-line react-hooks/exhaustive-deps
-  const base = useMemo(() => (list.data ?? []).filter(row => user && inQueue(row, queue, user.id, record => needsAttention(record as TrackerRow))), [list.data, user, queue, today]); // eslint-disable-line react-hooks/exhaustive-deps
-  const rows = useMemo(() => sortRows(applyFilters(base, filters, today), sort, today), [base, filters, sort, today]);
+  const needsAttention = (row: TrackerRow) => attentionFor(row, today, settings).count > 0;
+  const counts = useMemo(() => Object.fromEntries(QUEUES.map(item => [item.id, (list.data ?? []).filter(row => user && inQueue(row, item.id, user.id, record => needsAttention(record as TrackerRow))).length])), [list.data, user, today, settings]); // eslint-disable-line react-hooks/exhaustive-deps
+  const base = useMemo(() => (list.data ?? []).filter(row => user && inQueue(row, queue, user.id, record => needsAttention(record as TrackerRow))), [list.data, user, queue, today, settings]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rows = useMemo(() => sortRows(applyFilters(base, filters, today, settings), sort, today, settings), [base, filters, sort, today, settings]);
   const current = QUEUES.find(item => item.id === queue)!;
 
   return (

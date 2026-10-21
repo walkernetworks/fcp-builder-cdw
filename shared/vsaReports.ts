@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import type { Engagement } from "../drizzle/schema";
+import { DEFAULT_OPERATIONAL_SETTINGS, type OperationalSettings } from "./appSettings";
 import type { AssignmentRole } from "./vsaFields";
 import { isTerminal, STAGE_LABELS, STAGES, stageWarnings, type SourceItemSummary } from "./vsaStage";
 import { daysBetween, expiryVerdict } from "./vsaViews";
@@ -27,7 +28,8 @@ export type ReportField = {
   dimension?: boolean;
   /** Display labels for enum values. */
   labels?: Record<string, string>;
-  get: (row: ReportSource, today: string) => ReportValue;
+  /** `settings` are the operational thresholds (shared/appSettings.ts); only stage warnings read them. */
+  get: (row: ReportSource, today: string, settings: OperationalSettings) => ReportValue;
 };
 
 const label = (labels: Record<string, string>) => labels;
@@ -66,7 +68,7 @@ export const REPORT_FIELDS: ReportField[] = [
   { key: "riskAssessment", label: "CDW risk assessment", group: "Stage and status", type: "enum", dimension: true, labels: RISK, get: column("riskAssessment") },
   { key: "raStatus", label: "Resource assignment", group: "Stage and status", type: "enum", dimension: true, labels: RA, get: column("raStatus") },
   { key: "vcfAssessment", label: "VCF assessment done", group: "Stage and status", type: "bool", dimension: true, get: column("vcfAssessment") },
-  { key: "warnings", label: "Open warnings", group: "Stage and status", type: "text", get: (row, today) => stageWarnings(row, today).join("; ") || null },
+  { key: "warnings", label: "Open warnings", group: "Stage and status", type: "text", get: (row, today, settings) => stageWarnings(row, today, settings.workPlanStaleDays).join("; ") || null },
   {
     key: "missingData",
     label: "Missing key data",
@@ -219,7 +221,7 @@ function matches(filter: ReportFilter, value: ReportValue): boolean {
 }
 
 /** Measures one bucket. Sums of VSA amount count each entitlement group once (alternative plans share it). */
-export function measure(rows: ReportSource[], m: ReportMeasure, today: string): number | null {
+export function measure(rows: ReportSource[], m: ReportMeasure, today: string, settings: OperationalSettings = DEFAULT_OPERATIONAL_SETTINGS): number | null {
   if (m.kind === "count") return rows.length;
   const field = m.field ? FIELD_BY_KEY.get(m.field) : undefined;
   if (!field) return null;
@@ -228,7 +230,7 @@ export function measure(rows: ReportSource[], m: ReportMeasure, today: string): 
     const seen = new Set<number>();
     members = rows.filter(row => row.entitlementGroupId === null || (!seen.has(row.entitlementGroupId) && Boolean(seen.add(row.entitlementGroupId))));
   }
-  const values = members.map(row => field.get(row, today)).filter(value => !isEmpty(value)).map(Number).filter(value => Number.isFinite(value));
+  const values = members.map(row => field.get(row, today, settings)).filter(value => !isEmpty(value)).map(Number).filter(value => Number.isFinite(value));
   if (!values.length) return null;
   switch (m.kind) {
     case "sum":
@@ -269,10 +271,10 @@ export type ReportResult = {
 
 const EMPTY_KEY = "";
 
-function bucketBy(rows: ReportSource[], field: ReportField, today: string) {
+function bucketBy(rows: ReportSource[], field: ReportField, today: string, settings: OperationalSettings) {
   const map = new Map<string, ReportSource[]>();
   for (const row of rows) {
-    const value = field.get(row, today);
+    const value = field.get(row, today, settings);
     const key = isEmpty(value) ? EMPTY_KEY : String(value);
     map.set(key, [...(map.get(key) ?? []), row]);
   }
@@ -283,20 +285,20 @@ function bucketBy(rows: ReportSource[], field: ReportField, today: string) {
     .sort((a, b) => (a.key === EMPTY_KEY ? 1 : b.key === EMPTY_KEY ? -1 : order ? order.indexOf(a.key) - order.indexOf(b.key) : a.label.localeCompare(b.label)));
 }
 
-export function runReport(source: ReportSource[], config: ReportConfig, today: string): ReportResult {
+export function runReport(source: ReportSource[], config: ReportConfig, today: string, settings: OperationalSettings = DEFAULT_OPERATIONAL_SETTINGS): ReportResult {
   const columns = config.columns.map(key => FIELD_BY_KEY.get(key)).filter((field): field is ReportField => Boolean(field));
   let rows = config.includeClosed ? source : source.filter(row => !isTerminal(row.stage));
   for (const filter of config.filters) {
     const field = FIELD_BY_KEY.get(filter.field);
-    if (field) rows = rows.filter(row => matches(filter, field.get(row, today)));
+    if (field) rows = rows.filter(row => matches(filter, field.get(row, today, settings)));
   }
   if (config.sort) {
     const field = FIELD_BY_KEY.get(config.sort.field);
     if (field) {
       const dir = config.sort.dir === "asc" ? 1 : -1;
       rows = [...rows].sort((a, b) => {
-        const left = field.get(a, today);
-        const right = field.get(b, today);
+        const left = field.get(a, today, settings);
+        const right = field.get(b, today, settings);
         if (isEmpty(left) && isEmpty(right)) return 0;
         if (isEmpty(left)) return 1; // empty values sort last either way
         if (isEmpty(right)) return -1;
@@ -305,28 +307,28 @@ export function runReport(source: ReportSource[], config: ReportConfig, today: s
       });
     }
   }
-  const table = rows.map(row => columns.map(field => displayValue(field, field.get(row, today))));
-  const totals = config.measures.map(m => measure(rows, m, today));
+  const table = rows.map(row => columns.map(field => displayValue(field, field.get(row, today, settings))));
+  const totals = config.measures.map(m => measure(rows, m, today, settings));
 
   const groupField = config.groupBy ? FIELD_BY_KEY.get(config.groupBy) : undefined;
-  const groups = groupField ? bucketBy(rows, groupField, today).map(bucket => ({ ...bucket, values: config.measures.map(m => measure(bucket.rows, m, today)) })) : null;
+  const groups = groupField ? bucketBy(rows, groupField, today, settings).map(bucket => ({ ...bucket, values: config.measures.map(m => measure(bucket.rows, m, today, settings)) })) : null;
 
   const compareField = config.compareBy && config.compareBy !== config.groupBy ? FIELD_BY_KEY.get(config.compareBy) : undefined;
   let pivot: ReportResult["pivot"] = null;
   if (groups && compareField) {
-    const pivotColumns = bucketBy(rows, compareField, today).map(({ key, label: name }) => ({ key, label: name }));
+    const pivotColumns = bucketBy(rows, compareField, today, settings).map(({ key, label: name }) => ({ key, label: name }));
     const first = config.measures[0];
     const cells = groups.map(group => pivotColumns.map(col => {
       const members = group.rows.filter(row => {
-        const value = compareField.get(row, today);
+        const value = compareField.get(row, today, settings);
         return (isEmpty(value) ? EMPTY_KEY : String(value)) === col.key;
       });
-      return members.length ? measure(members, first, today) : null;
+      return members.length ? measure(members, first, today, settings) : null;
     }));
     const columnTotals = pivotColumns.map(col => measure(rows.filter(row => {
-      const value = compareField.get(row, today);
+      const value = compareField.get(row, today, settings);
       return (isEmpty(value) ? EMPTY_KEY : String(value)) === col.key;
-    }), first, today));
+    }), first, today, settings));
     pivot = { compare: compareField, columns: pivotColumns, cells, columnTotals };
   }
   return { columns, rows, table, totals, groups, pivot };

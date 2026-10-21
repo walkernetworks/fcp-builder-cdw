@@ -64,7 +64,8 @@ sequenceDiagram
 | Planning considerations and both adoption-plan views | Customer confidential | Yes | Engagement JSON | Editable structured data derived from confirmed fields and aggregate inventory. |
 | Customer brief content (contacts and personnel names, what we heard, open questions and items, milestones, resource-assignment hours) | Customer confidential / internal personal data | Yes | Engagement JSON (`report`) | Imported from the Copilot customer brief JSON in the browser; the file itself is not uploaded. Workspace-scoped like the rest of the engagement. |
 | Internal rate card and staffing mix | CDW confidential | No (code) | Server code only (`server/rateCard.ts`) | Per-role rates never leave the server. The `effort.scoped` procedure returns derived totals (plan cost, cost per work package, the entitlement value, and the threshold status) to the signed-in planner's screens, so hours can be kept inside the entitlement. Under the v2 hours model it also returns the blended rate used to turn the entitlement value into hours, and dollars per bucket, for the planner only; a planner may store an override rate on the engagement (`estimateInputs.blendedRate`). No rate or cost figure is rendered in any exported document; the Condensed FCP content gates allow only the entitlement value as a dollar figure and block "blended rate" and "rate card". |
-| User name and email | Internal personal data | Yes | Users table | Supplied by the approved identity provider. |
+| User name and email | Internal personal data | Yes | Users table | Supplied by the approved identity provider. Admins see every user's name, email, role, role view, workspace, and last sign-in on the admin screen; the issuer-scoped identity digest (`openId`) is never sent to the browser. |
+| Operational settings (stale-stage thresholds, work plan follow-up, expiry bands) | Internal | Yes | `app_settings` | No customer data. Changed only by admins; each change records the admin and time. |
 | VSA tracker commercials (entitlement value, estimated deal value, Broadcom PO number, opportunity and Customer IDs, SER number) | CDW confidential | Yes | Engagements table columns | Workspace-scoped. Tagged internal or customer-facing per column in `shared/vsaFields.ts`; only customer-facing columns may reach a customer document, through `customerFacingColumns()`. |
 | VSA tracker status (stage, stage history, gate dates, health, notes, source checklist) | CDW confidential | Yes | `engagements`, `stageEvents`, `sourceChainItems` | Workspace-scoped. Stage history is append-only. Source checklist items record file names or folder paths as text; no file content is uploaded or stored. |
 | Assignment names, CDW emails, and Broadcom emails | Internal personal data | Yes | `engagementAssignments` | Workspace-scoped. Linked to a user account by CDW email when that person signs in. |
@@ -111,11 +112,24 @@ The planning view summarizes RVTools-observable inventory. It can surface observ
 
 The app records creation and update timestamps. The deployment owner should apply CDW’s approved engagement-retention period at the database layer. User-initiated deletion (by the record's owner or an admin) removes the engagement row and, by cascade, its stage history, source checklist, and assignments. Database backups and legal holds remain governed by the selected database platform and are outside the application container.
 
+## Development data handling
+
+These controls cover development machines; they do not change the deployed application.
+
+- **No real customer records in the source repository.** Fixtures and tests use fictitious companies. `data/`, `uploads/`, `exports/`, `backups/` and database dumps are git-ignored. Real data on a development machine lives only in its local MySQL database (`DATABASE_URL` in the git-ignored `.env`).
+- **Local backups.** `scripts/db-backup.sh` (`pnpm db:backup`) writes a timestamped, owner-only (`0600`) gzip dump of the local database to `backups/`. It runs before every migration (`pnpm db:migrate`). It refuses non-local database hosts unless `FCP_BACKUP_ALLOW_REMOTE=1`, so a shared or production database is never copied onto a laptop by accident.
+- **AI coding assistant guardrails.** `CLAUDE.md` forbids Claude Code from reading database rows or customer exports for development work, and from running destructive operations. Version-controlled PreToolUse hooks in `.claude/settings.json` enforce this:
+  - `.claude/hooks/guard-bash.sh` denies, before execution, shell commands that drop or truncate tables, delete rows without a narrow `WHERE`, push or drop the schema, restore dumps, remove the MySQL data directory, `data/` or `backups/`, force a `git clean`, or `git reset --hard`. It fails closed.
+  - `.claude/hooks/guard-files.sh` stops the assistant from editing the hooks or its settings.
+
+  `server/guardHooks.test.ts` tests both in CI. The hooks inspect commands the assistant runs, not the application's own queries.
+
 ## Application security controls
 
 | Control | Implementation |
 |---|---|
 | Access control | Protected business-data procedures and workspace-scoped database predicates from one helper (`server/visibility.ts`); owner-or-admin delete. |
+| Admin area | Every procedure under `admin.*` is an `adminProcedure` (`server/_core/trpc.ts`), which refuses any user whose `users.role` is not `admin`; hiding the navigation entry is not relied on. `server/admin.test.ts` calls every admin procedure as a non-admin and as a signed-out caller and expects a refusal. Role changes are attributed (`users.updatedByUserId`), and demoting the last admin is refused inside a locking transaction. The integration status panel is read-only: the admin router has no procedure that changes a source or flag (also tested), so going live stays an environment change plus an IT approval record. |
 | Password elimination | Corporate OIDC gateway; no local password collection. |
 | Raw inventory minimization | Browser-only XLSX/CSV parsing; no file-upload procedure and no workbook storage. |
 | Input validation | Zod schemas for the versioned engagement document, minimal fields, aggregate inventory, and both adoption views. |

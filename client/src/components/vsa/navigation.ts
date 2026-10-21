@@ -1,6 +1,7 @@
-import { BarChart3, CalendarClock, FileText, Inbox, LayoutDashboard, Rows3, TableProperties, Upload, type LucideIcon } from "lucide-react";
+import { BarChart3, CalendarClock, FileText, Inbox, LayoutDashboard, Rows3, ShieldCheck, TableProperties, Upload, type LucideIcon } from "lucide-react";
 
-export type NavItem = { href: string; label: string; icon: LucideIcon };
+/** `adminOnly` items are shown only to users whose role is admin. Hiding is a courtesy: the server refuses everyone else. */
+export type NavItem = { href: string; label: string; icon: LucideIcon; adminOnly?: boolean };
 
 /** The sidebar, the command palette, and the breadcrumbs all read this one list. */
 export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
@@ -22,7 +23,16 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { href: "/reports", label: "Reports", icon: BarChart3 },
     ],
   },
+  {
+    label: "Admin",
+    items: [{ href: "/admin", label: "Admin", icon: ShieldCheck, adminOnly: true }],
+  },
 ];
+
+/** The groups and items this user may see: admin-only items for admins, and no empty groups. */
+export function navGroupsFor(role: "user" | "admin" | undefined) {
+  return NAV_GROUPS.map(group => ({ ...group, items: group.items.filter(item => !item.adminOnly || role === "admin") })).filter(group => group.items.length > 0);
+}
 
 export function activeNavItem(location: string): NavItem | undefined {
   const items = NAV_GROUPS.flatMap(group => group.items);
