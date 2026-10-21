@@ -15,6 +15,7 @@ The application reads deployment-specific identity, database, and PDF-rendering 
 | `PUPPETEER_EXECUTABLE_PATH` | PDF export | Chromium executable path; the supplied container uses `/usr/bin/chromium`. | No |
 | `FILE_SOURCE` | Optional | Where a record's file list comes from (`server/fileSource.ts`). Default and only built value: `references`, built from the record's client folder link and its source checklist references. No network calls. `sharepoint` (read-only Microsoft Graph listing) is reserved for a future approved connector and is refused at startup. | No |
 | `PIPELINE_SOURCE` | Optional | Where import rows come from (`server/pipelineSource.ts`). Default and only built value: `csv`, the uploaded SharePoint Pipeline List export. `salesforce` and `sharepoint` are reserved for future approved connectors and are refused at startup. | No |
+| `FCP_BACKUP_ALLOW_REMOTE` | Development only, optional | Set to `1` to let `scripts/db-backup.sh` dump a database that is not on `localhost`. It is unset by default, so a shared or production database is never copied to a laptop by accident. The app itself does not read it. | No |
 
 ## Local inventory-processing contract
 
