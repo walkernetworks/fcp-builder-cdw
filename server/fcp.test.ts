@@ -408,7 +408,7 @@ describe("calendar-month adoption plans", () => {
     expect(normalizeActivityLabel("DR design")).toBe("DR Design");
     expect(normalizeWorkstreamLabel("platform readiness")).toBe("Platform Plan");
     // Names are kept: capitals, numbers and build stages are not turned into a "Plan".
-    expect(normalizeActivityLabel("Citrix VDI Workload Domain – North")).toBe("Citrix VDI Workload Domain – North");
+    expect(normalizeActivityLabel("Desktop VDI Workload Domain – North")).toBe("Desktop VDI Workload Domain – North");
     expect(normalizeActivityLabel("server workload domain (CORE 0470)")).toBe("Server Workload Domain (CORE 0470)");
   });
 

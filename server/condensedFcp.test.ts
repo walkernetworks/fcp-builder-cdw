@@ -315,8 +315,8 @@ describe("Condensed FCP review fixes", () => {
     document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid", domainTopology: "standard", domains: [
       { name: "North", kind: "management", pathway: "greenfield", instance: "North", hosts: 4, notes: "Move the CORE 600 workloads first" },
       { name: "South", kind: "management", pathway: "greenfield", instance: "South", hosts: 4, notes: "" },
-      { name: "Citrix VDI", kind: "workload", pathway: "greenfield", instance: "South", hosts: 169, notes: "" },
-      { name: "Epic", kind: "workload", pathway: "import", instance: "North", hosts: 40, notes: "" },
+      { name: "Desktop VDI", kind: "workload", pathway: "greenfield", instance: "South", hosts: 169, notes: "" },
+      { name: "Clinical", kind: "workload", pathway: "import", instance: "North", hosts: 40, notes: "" },
     ] } as never;
     document.report.designProfile.availability = "";
     // Enough entitlement that the domains stay in it rather than move to the follow-on.
@@ -326,14 +326,14 @@ describe("Condensed FCP review fixes", () => {
     const bars = new Map(refreshed.adoptionTimeline.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
     expect(bars.get("bar-management-domain")?.label).toBe("North Management Domain");
     expect(bars.get("bar-management-domain-2")?.prerequisites).toEqual(["bar-management-domain"]);
-    expect(bars.get("bar-workload-domain")).toMatchObject({ label: "Citrix VDI Workload Domain", prerequisites: ["bar-management-domain-2"] });
-    expect(bars.get("bar-import-domain-1")).toMatchObject({ label: "Import Epic as a Workload Domain", prerequisites: ["bar-management-domain"] });
+    expect(bars.get("bar-workload-domain")).toMatchObject({ label: "Desktop VDI Workload Domain", prerequisites: ["bar-management-domain-2"] });
+    expect(bars.get("bar-import-domain-1")).toMatchObject({ label: "Import Clinical as a Workload Domain", prerequisites: ["bar-management-domain"] });
     const effort = scopedEffortForDocument(refreshed);
     // In the entitlement or moved to the follow-on when the entitlement runs out, but always priced.
     for (const id of ["bar-management-domain", "bar-management-domain-2", "bar-workload-domain", "bar-import-domain-1"]) { const row = effort.workPackages.find(item => item.id === id); expect((row?.total ?? 0) + (row?.followOn?.total ?? 0)).toBeGreaterThan(0); }
     expect(effort.internal.pass1?.inputs).toMatchObject({ workloadDomains: 2, instances: 2 });
     const visible = text(render(refreshed));
-    expect(visible).toContain("Import Epic as a Workload Domain");
+    expect(visible).toContain("Import Clinical as a Workload Domain");
     expect(visible).toContain("Move the CORE 600 workloads first, then deploy the North management domain (4 hosts)");
     expect(visible).toContain("Management domains: North (North), built new; South (South), built new.");
   });
@@ -364,7 +364,7 @@ describe("Condensed FCP review fixes", () => {
     // 1,100 VMs at about 250 a month is five months of customer-run waves.
     expect(visible).toMatch(/Customer-run migration waves \w{3}( \d{4})? – \w{3} \d{4} 16 10 4 30 0\.75/);
     // A wave row the planner wrote replaces the generated one.
-    document.report.customerOwnedWork = [{ label: "Remaining waves (Riverbend team)", start: "2027-09", end: "2028-03" }];
+    document.report.customerOwnedWork = [{ label: "Remaining waves (Acme Health team)", start: "2027-09", end: "2028-03" }];
     expect(text(render(refreshDerivedDocument(document, { forceRebuild: true })))).not.toContain("with the proven runbook");
   });
 
@@ -401,13 +401,13 @@ describe("Condensed FCP review fixes", () => {
     document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid", domainTopology: "standard", domains: [
       { name: "North", kind: "management", pathway: "greenfield", instance: "North", hosts: 4, notes: "" },
       { name: "South", kind: "management", pathway: "greenfield", instance: "South", hosts: 4, notes: "" },
-      { name: "Epic", kind: "workload", pathway: "import", instance: "North", hosts: 40, notes: "" },
+      { name: "Clinical", kind: "workload", pathway: "import", instance: "North", hosts: 40, notes: "" },
       { name: "Server", kind: "workload", pathway: "import", instance: "North", hosts: 60, notes: "" },
-      { name: "Citrix VDI", kind: "workload", pathway: "greenfield", instance: "South", hosts: 169, notes: "" },
+      { name: "Desktop VDI", kind: "workload", pathway: "greenfield", instance: "South", hosts: 169, notes: "" },
     ] } as never;
     const timeline = refreshDerivedDocument(document, { forceRebuild: true }).adoptionTimeline;
     const bar = (id: string) => timeline.lanes.flatMap(lane => lane.bars).find(item => item.id === id)!;
-    // North's imports run in turn; South's Citrix domain runs alongside the first of them.
+    // North's imports run in turn; South's VDI domain runs alongside the first of them.
     expect(bar("bar-import-domain-2").startCol).toBeGreaterThanOrEqual(bar("bar-import-domain-1").endCol);
     expect(bar("bar-workload-domain").startCol).toBe(bar("bar-import-domain-1").startCol);
     expect(bar("bar-workload-domain").prerequisites).toContain("bar-management-domain-2");
@@ -417,21 +417,21 @@ describe("Condensed FCP review fixes", () => {
     const converge = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     converge.fields.adoptionDetails = { ...converge.fields.adoptionDetails, upgradePath: "converge", domains: [
       { name: "North", kind: "management", pathway: "converge", instance: "North", hosts: 6, notes: "" },
-      { name: "Epic", kind: "workload", pathway: "import", instance: "North", hosts: 40, notes: "" },
+      { name: "Clinical", kind: "workload", pathway: "import", instance: "North", hosts: 40, notes: "" },
     ] } as never;
     const convergeBars = refreshDerivedDocument(converge, { forceRebuild: true }).adoptionTimeline.lanes.flatMap(lane => lane.bars);
     expect(convergeBars.find(item => item.id === "bar-converge-management-domain")?.label).toBe("Converge North into a Management Domain");
-    expect(convergeBars.find(item => item.id === "bar-import-domain-1")).toMatchObject({ label: "Import Epic as a Workload Domain", prerequisites: ["bar-converge-management-domain"] });
+    expect(convergeBars.find(item => item.id === "bar-import-domain-1")).toMatchObject({ label: "Import Clinical as a Workload Domain", prerequisites: ["bar-converge-management-domain"] });
 
     const imported = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     imported.fields.adoptionDetails = { ...imported.fields.adoptionDetails, upgradePath: "import-workload-domain", domains: [
-      { name: "Epic", kind: "workload", pathway: "import", instance: "", hosts: 40, notes: "" },
-      { name: "Citrix", kind: "workload", pathway: "import", instance: "", hosts: 169, notes: "" },
+      { name: "Clinical", kind: "workload", pathway: "import", instance: "", hosts: 40, notes: "" },
+      { name: "Desktop VDI", kind: "workload", pathway: "import", instance: "", hosts: 169, notes: "" },
     ] } as never;
     const refreshed = refreshDerivedDocument(imported, { forceRebuild: true });
     const importBars = refreshed.adoptionTimeline.lanes.flatMap(lane => lane.bars);
-    expect(importBars.find(item => item.id === "bar-import-workload-domain")?.label).toBe("Import Epic as a Workload Domain");
-    expect(importBars.find(item => item.id === "bar-import-workload-domain-2")).toMatchObject({ label: "Import Citrix as a Workload Domain", prerequisites: ["bar-import-workload-domain"] });
+    expect(importBars.find(item => item.id === "bar-import-workload-domain")?.label).toBe("Import Clinical as a Workload Domain");
+    expect(importBars.find(item => item.id === "bar-import-workload-domain-2")).toMatchObject({ label: "Import Desktop VDI as a Workload Domain", prerequisites: ["bar-import-workload-domain"] });
     const effort = scopedEffortForDocument(refreshed);
     for (const id of ["bar-import-workload-domain", "bar-import-workload-domain-2"]) { const row = effort.workPackages.find(item => item.id === id); expect((row?.total ?? 0) + (row?.followOn?.total ?? 0)).toBeGreaterThan(0); }
   });

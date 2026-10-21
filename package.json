@@ -13,7 +13,9 @@
     "catalog:validate": "tsx scripts/validate-hcl-catalog.mjs",
     "corpus:import": "tsx scripts/import-vcf-corpus.mts",
     "brief:check": "tsx scripts/check-brief.mts",
-    "db:push": "drizzle-kit generate && drizzle-kit migrate"
+    "db:backup": "bash scripts/db-backup.sh",
+    "db:migrate": "bash scripts/db-backup.sh && drizzle-kit migrate",
+    "db:push": "bash scripts/db-backup.sh && drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
