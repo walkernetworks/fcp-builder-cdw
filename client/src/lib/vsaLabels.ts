@@ -1,4 +1,4 @@
-import type { TrackerPatch } from "@shared/vsaFields";
+import { GATE_DATES, type TrackerPatch } from "@shared/vsaFields";
 
 export const ENUM_LABELS = {
   segment: { corporate: "Corporate", strategic: "Strategic", commercial: "Commercial" },
@@ -49,24 +49,8 @@ export const FIELD_GROUPS: { title: string; fields: FieldDef[] }[] = [
   },
   {
     title: "Gate dates",
-    fields: [
-      { key: "serSubmittedOn", label: "SER submitted", kind: "date" },
-      { key: "serApprovedOn", label: "Broadcom partner approval", kind: "date" },
-      { key: "fcpDraftCreatedOn", label: "FCP draft created", kind: "date" },
-      { key: "fcpSubmittedOn", label: "FCP submitted", kind: "date" },
-      { key: "fcpBroadcomAcceptedOn", label: "FCP Broadcom acceptance", kind: "date", hint: "Corporate and Strategic" },
-      { key: "fcpCustomerAcceptedOn", label: "FCP customer acceptance", kind: "date" },
-      { key: "workPlanSentOn", label: "Work plan sent", kind: "date", hint: "Corporate and Strategic" },
-      { key: "workPlanAcceptedOn", label: "Work plan accepted", kind: "date", hint: "Corporate and Strategic" },
-      { key: "ikomOn", label: "Internal kickoff (IKOM)", kind: "date" },
-      { key: "raReceivedOn", label: "RA received", kind: "date" },
-      { key: "workAuthReceivedOn", label: "Work authorization received", kind: "date" },
-      { key: "poReceivedOn", label: "PO received", kind: "date", hint: "Required for Kickoff and In Delivery" },
-      { key: "ckomOn", label: "Customer kickoff (CKOM)", kind: "date" },
-      { key: "projectStartOn", label: "Project start", kind: "date" },
-      { key: "estimatedCloseOn", label: "Estimated close", kind: "date" },
-      { key: "completedOn", label: "Completed", kind: "date" },
-    ],
+    // Labels here are the defaults; screens show the admin's labels from useOperationalSettings().gateLabels.
+    fields: GATE_DATES.map(gate => ({ key: gate.key, label: gate.label, kind: "date" as const, ...("hint" in gate ? { hint: gate.hint } : {}) })),
   },
   {
     title: "Commercials and term",

@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { useOperationalSettings } from "@/lib/settings";
+import type { GateKey } from "@shared/vsaFields";
 import { SEGMENT_LABELS, todayIso, type TrackerRecord } from "@/lib/vsa";
 import { FIELD_GROUPS } from "@/lib/vsaLabels";
 import { buildLockState } from "@shared/fcpRecord";
@@ -142,7 +143,10 @@ const BROADCOM_ONLY = new Set(["fcpBroadcomAcceptedOn", "workPlanSentOn", "workP
 /** Move stage, the gate dates as an editable vertical timeline (done, next, not yet), and the stage history. */
 function StageAndGates({ data, form }: { data: TrackerRecord; form: RecordForm }) {
   const { record, events } = data;
-  const gates = GATE_FIELDS.filter(field => !BROADCOM_ONLY.has(field.key) || (field.key === "fcpBroadcomAcceptedOn" ? requiresBroadcomApproval(record.segment) : requiresWorkPlan(record.segment)));
+  const { gateLabels } = useOperationalSettings();
+  // Which gates apply is decided in code (vsaStage.ts); only their display labels come from the admin settings.
+  const gates = GATE_FIELDS.filter(field => !BROADCOM_ONLY.has(field.key) || (field.key === "fcpBroadcomAcceptedOn" ? requiresBroadcomApproval(record.segment) : requiresWorkPlan(record.segment)))
+    .map(field => ({ ...field, label: gateLabels[field.key as GateKey] ?? field.label }));
   const values = gates.map(field => ({ field, day: (form.form[field.key] as string) || null }));
   const lastDone = values.reduce((last, item, index) => (item.day ? index : last), -1);
   const doneCount = values.filter(item => item.day).length;

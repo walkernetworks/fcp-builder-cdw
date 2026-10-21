@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { applySettingChanges, DEFAULT_OPERATIONAL_SETTINGS, resolveOperationalSettings, SETTING_DEFINITIONS, SETTING_KEYS, settingValues } from "../shared/appSettings";
+import { GATE_DATES } from "../shared/vsaFields";
+import { applySettingChanges, DEFAULT_GATE_LABELS, DEFAULT_OPERATIONAL_SETTINGS, resolveOperationalSettings, SETTING_DEFINITIONS, SETTING_KEYS, settingValues } from "../shared/appSettings";
 import { EXPIRY_BAND_DAYS, EXPIRY_BANDS, expiryBandFor, expiryBands, expiryBandTotals, STALE_AFTER_DAYS, staleness } from "../shared/vsaDashboard";
 import { stageWarnings, WORK_PLAN_STALE_DAYS } from "../shared/vsaStage";
 import { expiryRows } from "../shared/vsaViews";
@@ -10,10 +11,10 @@ const TODAY = "2026-10-16";
 
 describe("operational settings", () => {
   it("defaults to the code constants", () => {
-    expect(DEFAULT_OPERATIONAL_SETTINGS).toEqual({ staleAfterDays: STALE_AFTER_DAYS, workPlanStaleDays: WORK_PLAN_STALE_DAYS, expiryBandDays: EXPIRY_BAND_DAYS });
+    expect(DEFAULT_OPERATIONAL_SETTINGS).toEqual({ staleAfterDays: STALE_AFTER_DAYS, workPlanStaleDays: WORK_PLAN_STALE_DAYS, expiryBandDays: EXPIRY_BAND_DAYS, gateLabels: DEFAULT_GATE_LABELS });
     expect(resolveOperationalSettings([])).toEqual({ settings: DEFAULT_OPERATIONAL_SETTINGS, stored: [] });
-    // One setting per stage threshold, the work plan, and each dated band; no threshold for In Delivery.
-    expect(SETTING_KEYS).toHaveLength(Object.keys(STALE_AFTER_DAYS).length + 1 + 4);
+    // One setting per stage threshold, the work plan, each dated band, and each gate label; no threshold for In Delivery.
+    expect(SETTING_KEYS).toHaveLength(Object.keys(STALE_AFTER_DAYS).length + 1 + 4 + GATE_DATES.length);
     expect(SETTING_KEYS).not.toContain("stale_after_days.in_delivery");
   });
 
@@ -64,11 +65,30 @@ describe("operational settings", () => {
     expect(resolveOperationalSettings(Object.entries(values).map(([key, value]) => ({ key, value }))).settings).toEqual(DEFAULT_OPERATIONAL_SETTINGS);
   });
 
+  it("validates labels: plain text, trimmed, not empty, at most 60 characters", () => {
+    const apply = (value: unknown) => applySettingChanges(DEFAULT_OPERATIONAL_SETTINGS, { "gate_label.poReceivedOn": value });
+    expect(apply("  Broadcom PO in hand ")).toEqual({ ok: true, settings: expect.objectContaining({ gateLabels: expect.objectContaining({ poReceivedOn: "Broadcom PO in hand" }) }), changed: { "gate_label.poReceivedOn": "Broadcom PO in hand" } });
+    expect(apply("   ")).toEqual({ ok: false, errors: { "gate_label.poReceivedOn": "Enter a label" } });
+    expect(apply("x".repeat(61))).toEqual({ ok: false, errors: { "gate_label.poReceivedOn": "At most 60 characters" } });
+    expect(apply("PO\nreceived")).toMatchObject({ ok: false });
+    expect(apply("<b>PO</b>")).toMatchObject({ ok: false });
+    expect(apply(5)).toMatchObject({ ok: false });
+    expect(applySettingChanges(DEFAULT_OPERATIONAL_SETTINGS, { "stale_after_days.intake": "7" })).toMatchObject({ ok: false });
+  });
+
+  it("uses stored labels and falls back to the default for an invalid one", () => {
+    const resolved = resolveOperationalSettings([{ key: "gate_label.ckomOn", value: "Kickoff call" }, { key: "gate_label.ikomOn", value: "" }]);
+    expect(resolved.settings.gateLabels.ckomOn).toBe("Kickoff call");
+    expect(resolved.settings.gateLabels.ikomOn).toBe(DEFAULT_GATE_LABELS.ikomOn);
+    expect(resolved.stored).toEqual(["gate_label.ckomOn"]);
+  });
+
   it("is seeded by migration with exactly the code defaults", () => {
-    const seed = readFileSync(path.join(import.meta.dirname, "../drizzle/0006_seed_app_settings.sql"), "utf8");
-    const rows = Array.from(seed.matchAll(/\('([^']+)', CAST\('(\d+)' AS JSON\)\)/g)).map(([, key, value]) => [key, Number(value)]);
-    expect(Object.fromEntries(rows)).toEqual(Object.fromEntries(SETTING_DEFINITIONS.map(definition => [definition.key, definition.defaultValue])));
-    expect(seed).toMatch(/INSERT IGNORE/);
+    const read = (file: string) => readFileSync(path.join(import.meta.dirname, "../drizzle", file), "utf8");
+    const days = Array.from(read("0006_seed_app_settings.sql").matchAll(/\('([^']+)', CAST\('(\d+)' AS JSON\)\)/g)).map(([, key, value]) => [key, Number(value)]);
+    const labels = Array.from(read("0007_seed_gate_labels.sql").matchAll(/\('([^']+)', JSON_QUOTE\('([^']+)'\)\)/g)).map(([, key, value]) => [key, value]);
+    expect(Object.fromEntries([...days, ...labels])).toEqual(Object.fromEntries(SETTING_DEFINITIONS.map(definition => [definition.key, definition.defaultValue])));
+    expect(read("0006_seed_app_settings.sql") + read("0007_seed_gate_labels.sql")).not.toMatch(/INSERT INTO/);
   });
 });
 
