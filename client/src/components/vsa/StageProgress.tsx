@@ -42,11 +42,19 @@ export function NextActionCallout({ progression, onSave, saving, onSuggestMove }
       body = <><strong className="font-semibold">Next: record {label(next.gate)}.</strong> It is the open gate in {STAGE_LABELS[next.stage]}.</>;
       action = <MarkDone gate={row(next.gate)!} onSave={onSave} saving={saving} />;
       break;
-    case "unblock":
-      tone = "callout-red";
-      body = <><strong className="font-semibold">Next: record {label(next.gate)}.</strong> {STAGE_LABELS[next.stage]} can't start without it; it is the one hard gate.</>;
+    case "unblock": {
+      const trailing = next.requirement === "fcp_approval" ? progression.trailing : null;
+      tone = trailing?.severity === "warn" ? "callout-amber" : "callout-red";
+      const why =
+        next.requirement === "po" ? `${STAGE_LABELS[next.stage]} can't start without the PO.`
+        : next.requirement === "work_plan" ? `${STAGE_LABELS[next.stage]} can't start until the customer accepts the work plan.`
+        : `${STAGE_LABELS[next.stage]} can't start until the FCP is approved, or the PM or Broadcom waives it.`;
+      body = trailing
+        ? <><strong className="font-semibold">FCP trailing.</strong> Staffing is ahead of the FCP. Next for the FCP: record {label(next.gate)}. {why}</>
+        : <><strong className="font-semibold">Next: record {label(next.gate)}.</strong> {why}</>;
       action = <MarkDone gate={row(next.gate)!} onSave={onSave} saving={saving} />;
       break;
+    }
     case "move":
       body = <><strong className="font-semibold">Gates recorded.</strong> Next: move to {STAGE_LABELS[next.stage]}.</>;
       action = <Button size="sm" variant="outline" onClick={() => onSuggestMove(next.stage)}>Move to {STAGE_LABELS[next.stage]} <ArrowRight className="size-3.5" aria-hidden /></Button>;
@@ -79,7 +87,7 @@ export function StageStepper({ progression, stageEnteredOn, onSave, saving }: { 
   return (
     <ol className="relative" aria-label="Stages">
       {steps.map((step, index) => (
-        <StepItem key={step.stage} step={step} last={index === steps.length - 1} exitHere={exit && exit.from === step.stage ? exit.stage : null} stageEnteredOn={stageEnteredOn} onSave={onSave} saving={saving} />
+        <StepItem key={step.stage} step={step} last={index === steps.length - 1} exitHere={exit && exit.from === step.stage ? exit.stage : null} stageEnteredOn={stageEnteredOn} trailingTone={progression.trailing?.severity ?? null} onSave={onSave} saving={saving} />
       ))}
       {exit && !exit.from && (
         <li className="mt-2 flex items-center gap-2 text-[13px] text-ink-muted"><ExitIcon stage={exit.stage} /> {STAGE_LABELS[exit.stage]}; the stage it left from isn't in the history.</li>
@@ -92,7 +100,7 @@ function ExitIcon({ stage }: { stage: "refused" | "paused" | "lost" }) {
   return stage === "paused" ? <PauseCircle className="size-4 text-state-warn" aria-hidden /> : <XCircle className="size-4 text-ink-muted" aria-hidden />;
 }
 
-function StepItem({ step, last, exitHere, stageEnteredOn, onSave, saving }: { step: StageStep; last: boolean; exitHere: "refused" | "paused" | "lost" | null; stageEnteredOn: string; onSave: SaveGate; saving: boolean }) {
+function StepItem({ step, last, exitHere, stageEnteredOn, trailingTone, onSave, saving }: { step: StageStep; last: boolean; exitHere: "refused" | "paused" | "lost" | null; stageEnteredOn: string; trailingTone: "stop" | "warn" | null; onSave: SaveGate; saving: boolean }) {
   const current = step.status === "current";
   const done = step.status === "done";
   const recorded = step.gates.filter(gate => gate.done && !gate.planned).length;
@@ -118,7 +126,7 @@ function StepItem({ step, last, exitHere, stageEnteredOn, onSave, saving }: { st
         </div>
         {step.gates.length > 0 ? (
           <ul className={cn("mt-1 divide-y divide-s100 rounded-md border", current ? "border-s200 bg-surface" : "border-s100 bg-surface")}>
-            {step.gates.map(gate => <GateItem key={gate.gate} gate={gate} stepStatus={step.status} onSave={onSave} saving={saving} />)}
+            {step.gates.map(gate => <GateItem key={gate.gate} gate={gate} stepStatus={step.status} trailingTone={trailingTone} onSave={onSave} saving={saving} />)}
           </ul>
         ) : (
           step.stage !== "complete" && <p className="text-xs text-ink-subtle">No gate date. Move on when the work is done.</p>
@@ -128,16 +136,18 @@ function StepItem({ step, last, exitHere, stageEnteredOn, onSave, saving }: { st
   );
 }
 
-function GateItem({ gate, stepStatus, onSave, saving }: { gate: GateRow; stepStatus: StageStep["status"]; onSave: SaveGate; saving: boolean }) {
+function GateItem({ gate, stepStatus, trailingTone, onSave, saving }: { gate: GateRow; stepStatus: StageStep["status"]; trailingTone: "stop" | "warn" | null; onSave: SaveGate; saving: boolean }) {
   const label = useGateLabel();
   const name = label(gate.gate);
   return (
-    <li className={cn("flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5", gate.hard && "border-l-2 border-l-state-blocked bg-state-blocked-soft/40")}>
-      <span className="flex min-w-0 flex-1 items-center gap-2 text-[13px]">
-        {gate.hard && <Lock className="size-3.5 shrink-0 text-state-blocked-text" aria-hidden />}
+    <li className={cn("flex min-h-10 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5", gate.hard && (gate.done || gate.waived ? "border-l-2 border-l-s300" : "border-l-2 border-l-state-blocked bg-state-blocked-soft/40"))}>
+      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-[13px]">
+        {gate.hard && <Lock className={cn("size-3.5 shrink-0", gate.done || gate.waived ? "text-ink-subtle" : "text-state-blocked-text")} aria-hidden />}
         <span className={cn("truncate", gate.done ? "text-ink" : "text-ink-muted")}>{name}</span>
-        {gate.hard && <span className="whitespace-nowrap text-xs text-state-blocked-text">Hard gate · blocks Kickoff and In Delivery</span>}
+        {gate.hard && !gate.done && !gate.waived && <span className="whitespace-nowrap text-xs text-state-blocked-text">Required for Kickoff and In Delivery</span>}
         {gate.planned && <Chip>Planned date</Chip>}
+        {gate.ahead && <Chip title="Recorded before the record reached this stage">Recorded ahead</Chip>}
+        {gate.waived && !gate.done && <Pill verdict="ready">FCP waived</Pill>}
       </span>
       {gate.done ? (
         <span className="flex items-center gap-1.5">
@@ -151,7 +161,10 @@ function GateItem({ gate, stepStatus, onSave, saving }: { gate: GateRow; stepSta
         </span>
       ) : (
         <span className="flex items-center gap-2">
-          {gate.hard ? <Pill verdict="stop">Not received</Pill> : <span className={cn("text-xs", stepStatus === "done" ? "text-state-warn-text" : "text-ink-subtle")}>{stepStatus === "done" ? "Not recorded" : "Pending"}</span>}
+          {gate.trailing ? <span className={cn("text-xs font-medium", trailingTone === "stop" ? "text-state-blocked-text" : "text-state-warn-text")}>Trailing</span>
+            : gate.waived ? null
+            : gate.hard ? <Pill verdict="stop">{gate.gate === "poReceivedOn" ? "Not received" : "Not recorded"}</Pill>
+            : <span className={cn("text-xs", stepStatus === "done" ? "text-state-warn-text" : "text-ink-subtle")}>{stepStatus === "done" ? "Not recorded" : "Pending"}</span>}
           <MarkDone gate={gate} onSave={onSave} saving={saving} />
         </span>
       )}

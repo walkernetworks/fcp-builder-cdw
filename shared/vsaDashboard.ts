@@ -4,7 +4,7 @@
  */
 import { OPPORTUNITY_NUMBER_PATTERN, type AssignmentRole } from "./vsaFields";
 import { daysBetween, ROLE_VIEW_ASSIGNMENTS, type ExpiryRow, type VsaRole } from "./vsaViews";
-import { isTerminal, MAIN_STAGES, stageOrder, type Segment, type Stage } from "./vsaStage";
+import { authorizationCheck, isTerminal, MAIN_STAGES, stageOrder, type Segment, type Stage, type StageRecord } from "./vsaStage";
 
 /** The roles that own the next step in each stage. Paused and closed records wait on nobody. */
 export const STAGE_OWNERS: Record<Stage, AssignmentRole[]> = {
@@ -37,7 +37,7 @@ export type DashboardRecord = {
   entitlementValue: string | null;
   deliveryWindowEnd: string | null;
   assignments: Assignment[];
-};
+} & Partial<Pick<StageRecord, "poReceivedOn" | "workAuthReceivedOn" | "workPlanAcceptedOn" | "workPlanHours" | "poHours">>;
 
 /**
  * True when the record is waiting on this user: it is open, not waiting on the customer or Broadcom, and the user holds
@@ -69,7 +69,7 @@ export function staleness(record: Pick<DashboardRecord, "stage" | "stageEnteredO
   return { days, threshold, stale: threshold !== null && days > threshold };
 }
 
-export type QualityFlag = { key: "segment" | "opportunity" | "placeholder_opportunity" | "amount" | "expiry" | "architect"; label: string };
+export type QualityFlag = { key: "segment" | "opportunity" | "placeholder_opportunity" | "amount" | "expiry" | "architect" | "po_before_work_plan" | "hours_mismatch"; label: string };
 
 /** Missing or malformed data that makes a record hard to report on. Closed records are not flagged. */
 export function dataQualityFlags(record: DashboardRecord): QualityFlag[] {
@@ -83,6 +83,9 @@ export function dataQualityFlags(record: DashboardRecord): QualityFlag[] {
   if (stageOrder(record.stage) > stageOrder("broadcom_request") && record.stage !== "paused" && !record.assignments.some(assignment => assignment.role === "architect")) {
     flags.push({ key: "architect", label: "No architect" });
   }
+  // The PO or work authorization ahead of the work plan: soft, never a block (shared/vsaStage.ts authorizationCheck).
+  const authorization = authorizationCheck(record);
+  if (authorization) flags.push(authorization);
   return flags;
 }
 

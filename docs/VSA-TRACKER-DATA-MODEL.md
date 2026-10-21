@@ -29,8 +29,8 @@ One `stage` column replaces the five SharePoint status fields (VSA Approval Stag
 | 3 | `discovery` | Discovery | Customer discovery and scoping are done |
 | 4 | `fcp_draft` | FCP Draft | The FCP is submitted for review (`fcpSubmittedOn`). Readiness: the required source items (section 5) are received, verified, or waived |
 | 5 | `broadcom_approval` | Broadcom Approval | Broadcom accepts the FCP (`fcpBroadcomAcceptedOn`). Corporate and Strategic only |
-| 6 | `customer_approval` | Customer Approval | Customer accepts the FCP (`fcpCustomerAcceptedOn`). Corporate and Strategic also need the Broadcom work plan accepted (`workPlanAcceptedOn`); see 2.3 |
-| 7 | `ra_staffing` | RA / Staffing | RA completed, onboarding done, WA received, PO received (`poReceivedOn`) |
+| 6 | `customer_approval` | Customer Approval | Customer accepts the FCP (`fcpCustomerAcceptedOn`) and the Broadcom work plan (`workPlanAcceptedOn`); see 2.3 |
+| 7 | `ra_staffing` | RA / Staffing | RA completed, onboarding done, WA received, PO received (`poReceivedOn`). Staffing can start before the FCP is approved; see 2.5 |
 | 8 | `kickoff` | Kickoff | Customer kickoff held (`ckomOn`) |
 | 9 | `in_delivery` | In Delivery | Delivery closed out (`completedOn`) |
 | 10 | `complete` | Complete | Terminal |
@@ -45,21 +45,20 @@ One `stage` column replaces the five SharePoint status fields (VSA Approval Stag
 | Stage | Corporate | Strategic | Commercial | Segment not set |
 |---|---|---|---|---|
 | `broadcom_approval` | Required | Required | **Skipped** | Required (conservative), flagged as a data-quality issue |
-| Work plan inside `customer_approval` | Required | Required | **Not applicable** | Required (conservative), flagged |
+| Work plan inside `customer_approval` | Required | Required | Required | Required |
+| FCP approval needed for delivery (2.5) | Broadcom's (`fcpBroadcomAcceptedOn`) | Broadcom's | The customer's (`fcpCustomerAcceptedOn`) | Broadcom's (conservative) |
 | All other main-line stages | Required | Required | Required | Required |
 
-"Skipped" means `nextStage()` goes from `fcp_draft` straight to `customer_approval` and the board does not show the column for that record. A Commercial record placed in `broadcom_approval` (for example by import) is allowed but flagged. For Commercial, the work-plan dates are hidden and ignored.
+"Skipped" means `nextStage()` goes from `fcp_draft` straight to `customer_approval` and the board does not show the column for that record. A Commercial record placed in `broadcom_approval` (for example by import) is allowed but flagged.
 
-### 2.3 Work plan call-out (Corporate and Strategic)
+### 2.3 Work plan call-out
 
-For Corporate and Strategic customers, Customer Approval holds **two separate approvals**, and the record shows them as two items rather than one stage date:
+In every segment, Customer Approval holds **two separate approvals**, and the record shows them as two items rather than one stage date. (Until 2026-10-21 the work plan applied to Corporate and Strategic only; see decision 14.)
 
 1. **FCP approval:** the customer accepts the FCP (`fcpCustomerAcceptedOn`).
-2. **Work plan approval:** Broadcom sends the customer its work plan (`workPlanSentOn`) and the customer accepts it (`workPlanAcceptedOn`). Broadcom cannot book the entitlement order until this is done.
+2. **Work plan approval:** Broadcom sends the customer its work plan (`workPlanSentOn`; Broadcom stage 5.2, "WP Sent to AD/Customer – Pending Acknowledgment") and the customer accepts it (`workPlanAcceptedOn`). Broadcom cannot book the entitlement order until this is done.
 
-They can happen in either order. The record leaves `customer_approval` cleanly only when both are dated. While one is missing, the board card shows which one ("Work plan sent 9/12, not accepted"), and a work plan sent more than 14 days ago without acceptance gets a warning. Both are soft gates, like the other dates in 2.1.
-
-Commercial customers have no work plan step: Customer Approval is FCP approval only.
+They can happen in either order. The record leaves `customer_approval` cleanly only when both are dated. While one is missing, the board card shows which one ("Work plan sent 9/12, not accepted"), and a work plan sent more than 14 days ago without acceptance gets a warning. Leaving Customer Approval without them is a soft gate; entering delivery without them is not (2.5).
 
 `shared/vsaStage.ts` exposes this as `customerApprovalItems(record) -> { fcp, workPlan? }` so the board, the record page, and the warnings all read one definition.
 
@@ -70,9 +69,22 @@ Commercial customers have no work plan step: Customer Approval is FCP approval o
 - **Exits:** any non-terminal stage can move to `refused`, `paused`, or `lost`.
 - **Resume:** `paused` returns to the `fromStage` of the event that paused it. If that is unknown (imported as paused), the user picks.
 - **Dates:** a transition's `effectiveOn` cannot be before the record's current `stageEnteredOn` or in the future, so history stays in order.
-- **Hard gate:** `kickoff` and `in_delivery` cannot be entered without `poReceivedOn`. The handbook is explicit that no delivery work begins before the Broadcom PO. Every other exit criterion in 2.1 is a **soft gate**: the transition is allowed, and the record shows a warning until the date is filled.
+- **Hard gate:** `kickoff` and `in_delivery` cannot be entered until the delivery requirements in 2.5 are met: FCP approval (or a waiver), the customer's work plan acceptance, and the PO. The handbook is explicit that no delivery work begins before the Broadcom PO. Every other exit criterion in 2.1 is a **soft gate**: the transition is allowed, and the record shows a warning until the date is filled.
 - `nextStage` goes from `discovery` straight to `fcp_draft`; there is no Source Chain stage (decision 13).
-- The module exports `STAGES`, `stageOrder`, `applicableStages(segment)`, `nextStage(record)`, `canTransition(record, to) -> { ok, hardBlock?, noteRequired, warnings[] }`, `exitGaps`, `customerApprovalItems`, `effectiveDateProblem`, and `stageWarnings(record, today)`. It has no database or React imports.
+- The module exports `STAGES`, `stageOrder`, `applicableStages(segment)`, `nextStage(record)`, `canTransition(record, to) -> { ok, hardBlock?, noteRequired, warnings[] }`, `exitGaps`, `customerApprovalItems`, `effectiveDateProblem`, `stageWarnings(record, today)`, `deliveryRequirements`, `fcpTrailing`, and `authorizationCheck`. It has no database or React imports.
+
+### 2.5 Staffing ahead of the FCP, and the delivery requirements
+
+Records being caught up can be staffed while the FCP is still being written, and the PO or work authorization can arrive before the FCP is approved. The stage stays a single value: such a record sits in **RA / Staffing**, and the FCP is shown as trailing.
+
+- **Staffing has no gate.** A record can move into `ra_staffing` from any earlier stage in every segment; skipping ahead needs a note, as any skip does.
+- **Delivery requirements** (`deliveryRequirements`, hard): `kickoff` and `in_delivery` cannot be entered until all three are met:
+  1. **FCP approval:** Broadcom's (`fcpBroadcomAcceptedOn`) for Corporate and Strategic, the customer's (`fcpCustomerAcceptedOn`) for Commercial, **or an FCP waiver**.
+  2. **Work plan accepted** (`workPlanAcceptedOn`), in every segment.
+  3. **PO received** (`poReceivedOn`).
+- **FCP waiver:** the PM or Broadcom said FCP approval isn't required. It stores who said it (`fcpWaiverBy`), which side (`fcpWaiverParty`: `pm` or `broadcom`), the date (`fcpWaivedOn`), where it was said (`fcpWaiverSource`), and who entered it (`fcpWaiverRecordedByUserId`). All four are required. It is saved through its own procedure (`tracker.setFcpWaiver`), not the field patch, and can be removed. It satisfies FCP approval only, never the work plan or the PO.
+- **FCP trailing** (`fcpTrailing`): a record in `ra_staffing` or later whose FCP approval is not recorded or waived. Corporate and Strategic: red, since it blocks delivery until Broadcom approves. Commercial: amber, a reminder while staffing (delivery still needs the customer's approval or a waiver). It is a stage warning, a pill on the record, a built-in "FCP trailing" view, and a row in the Overview's data-quality panel. The next action names the FCP gate to record (submit first if the FCP was never submitted).
+- **PO / work authorization before the work plan** (`authorizationCheck`, soft): a data-quality flag when `poReceivedOn` or `workAuthReceivedOn` is recorded and `workPlanAcceptedOn` is not. Once the work plan is accepted, the work plan hours (`workPlanHours`) are compared with the PO / work authorization hours (`poHours`): equal hours clear it, different hours raise an **hours mismatch** flag instead. Until both hours are entered the flag stays, asking for them. No email and no block.
 - Records created from the FCP workspace (the existing "New engagement" flow, and duplicates) start in `fcp_draft`. Records created from the tracker start in `intake`.
 
 ## 3. `engagements` (extended)
@@ -133,16 +145,28 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 | `fcpSubmittedOn` | I | "FCP Submitted" (boolean in SharePoint; import leaves the date NULL and flags it when true) | |
 | `fcpBroadcomAcceptedOn` | I | "FCP Broadcom Acceptance Date" | Corporate/Strategic only |
 | `fcpCustomerAcceptedOn` | C | "FCP Customer Acceptance Date" | |
-| `workPlanSentOn` | I | (none; new) | Broadcom sends the customer its work plan. Corporate/Strategic only (2.3) |
-| `workPlanAcceptedOn` | I | (none; new) | Customer accepts the Broadcom work plan. Corporate/Strategic only (2.3) |
+| `workPlanSentOn` | I | (none; new) | Broadcom sends the customer its work plan (2.3) |
+| `workPlanAcceptedOn` | I | (none; new) | Customer accepts the Broadcom work plan (2.3). **Required** for `kickoff` and `in_delivery` (2.5) |
 | `ikomOn` | I | "IKOM Date" | Internal kickoff |
 | `raReceivedOn` | I | (none; new) | RA issued by Broadcom |
 | `workAuthReceivedOn` | I | "Work Auth Rec'd Date" | WA |
-| `poReceivedOn` | I | "PO Received" | **Hard gate** for `kickoff` and `in_delivery` |
+| `poReceivedOn` | I | "PO Received" | **Required** for `kickoff` and `in_delivery` (2.5) |
 | `ckomOn` | C | "CKOM Date" | Customer kickoff |
 | `projectStartOn` | C | "Project Start Date" | |
 | `estimatedCloseOn` | I | "Estimated Close Date" | |
 | `completedOn` | I | (none; new) | Delivery closed out |
+
+Delivery requirements and the hours check (section 2.5, migration 0008):
+
+| Column | Tag | Notes |
+|---|---|---|
+| `workPlanHours` | I | int. Hours on the accepted work plan |
+| `poHours` | I | int. Hours on the PO / work authorization |
+| `fcpWaiverParty` | I | enum `pm`, `broadcom`. Who said FCP approval isn't required |
+| `fcpWaiverBy` | I | varchar(120). The person who said it |
+| `fcpWaivedOn` | I | date. When it was said |
+| `fcpWaiverSource` | I | varchar(500). Where it was said |
+| `fcpWaiverRecordedByUserId` | I | FK `users.id` (set null). Who entered the waiver |
 
 "FCP Done" (boolean) is not carried forward. It is derivable from `fcpCustomerAcceptedOn`; import flags rows where they disagree.
 
@@ -449,8 +473,8 @@ Decided in review on 2026-10-15:
 
 1. **Account key is `salesforceCustomerId`**, matching the "Customer ID" name in CDW's Salesforce tenant. Nullable, imported from "New CDW Account #". Made non-unique by decision 12.
 2. **Funding extensions are legacy only.** They are no longer offered. `isFundingExtension` stays as an import-only flag for historical records. `parentEngagementId` is **dropped** from the kickoff list: its only use was linking extensions. It is a nullable column, so adding it later is cheap if a parent-child need appears.
-3. **The work plan gets its own call-out** (section 2.3). For Corporate and Strategic customers, Customer Approval is two approvals, FCP and work plan, tracked separately with `workPlanSentOn` and `workPlanAcceptedOn`. Commercial has no work plan step.
-4. **Only one hard gate:** no `kickoff` or `in_delivery` without `poReceivedOn`. Everything else warns.
+3. **The work plan gets its own call-out** (section 2.3). Customer Approval is two approvals, FCP and work plan, tracked separately with `workPlanSentOn` and `workPlanAcceptedOn`. (Commercial had no work plan step until decision 14.)
+4. **Only one hard gate:** no `kickoff` or `in_delivery` without `poReceivedOn`. Everything else warns. (Extended by decision 14.)
 5. **Source Chain** meant collecting the inputs the FCP is built from (section 5). It is no longer a stage; see decision 13.
 6. **The FCP edition is not seeded from `segment`.** The two fields stay independent.
 7. **Delete stays owner-or-admin**, matching today. `status = archived` remains available for anyone who prefers to archive.
@@ -472,6 +496,14 @@ Decided in review on 2026-10-15:
     - The explicit, recorded decision to go ahead without a source is the existing waive-with-note rule. There is no separate mechanism.
     - Import is unaffected. Nothing mapped to `source_chain`: "1 Customer Discovery & Scoping" maps to Discovery and "2 FCP" to FCP Draft. The backfill of existing FCPs to FCP Draft is unchanged.
     - Migration 0002 was amended in place, since `vsa-tracker` had not been released. The local dev database had one record in Source Chain. It was moved to FCP Draft, its one stage event was re-pointed with a note saying so, and the enum columns were narrowed in place rather than the database being rebuilt, to keep the data. The result was checked against a fresh build from the migrations.
+
+14. **Staffing can run ahead of the FCP; delivery has three requirements** (2026-10-21). Catch-up records get staffed, and receive the PO or work authorization, while the FCP is still being written. Section 2.5 has the rules:
+    - The stage stays one value. A catch-up record sits in RA / Staffing, with the FCP flagged as trailing: red for Corporate and Strategic, amber for Commercial.
+    - Staffing has no gate in any segment.
+    - Entering Kickoff or In Delivery needs FCP approval (Broadcom's for Corporate and Strategic, the customer's for Commercial), the customer's work plan acceptance in every segment, and the PO.
+    - An FCP waiver from the PM or Broadcom, with who, when, and where, satisfies FCP approval only.
+    - A PO or work authorization before work plan acceptance is a soft data-quality flag. It clears when the accepted hours match, and becomes an hours mismatch when they don't.
+    - The work plan now applies to Commercial. Migration 0008 adds the hours and waiver columns; it is additive.
 
 ## 12. Intake and the Power Automate flow
 

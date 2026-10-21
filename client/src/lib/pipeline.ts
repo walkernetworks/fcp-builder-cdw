@@ -1,6 +1,6 @@
 import type { OperationalSettings } from "@shared/appSettings";
-import { dataQualityFlags, staleness } from "@shared/vsaDashboard";
-import { isTerminal, STAGE_LABELS, STAGES, stageWarnings, type Segment, type Stage } from "@shared/vsaStage";
+import { dataQualityFlags, staleness, type QualityFlag } from "@shared/vsaDashboard";
+import { fcpTrailing, isTerminal, STAGE_LABELS, STAGES, stageWarnings, type Segment, type Stage } from "@shared/vsaStage";
 import { daysBetween } from "@shared/vsaViews";
 import type { TrackerRow } from "./vsa";
 
@@ -21,8 +21,12 @@ export type PipelineFilters = {
   health: (Health | "none")[];
   architects: string[];
   flaggedOnly: boolean;
+  /** Records in staffing or later whose FCP is not approved or waived (fcpTrailing). */
+  fcpTrailing: boolean;
+  /** One data-quality flag, from the Overview's data-quality rows. */
+  flag: QualityFlag["key"] | null;
 };
-export const EMPTY_FILTERS: PipelineFilters = { search: "", stages: [], segments: [], health: [], architects: [], flaggedOnly: false };
+export const EMPTY_FILTERS: PipelineFilters = { search: "", stages: [], segments: [], health: [], architects: [], flaggedOnly: false, fcpTrailing: false, flag: null };
 
 export type SortKey = "customer" | "stage" | "segment" | "architect" | "days" | "expiry" | "amount" | "health" | "flags";
 export type Sort = { key: SortKey; dir: "asc" | "desc" };
@@ -30,7 +34,7 @@ export type Sort = { key: SortKey; dir: "asc" | "desc" };
 export const architectOf = (row: TrackerRow) => row.assignments.find(assignment => assignment.role === "architect")?.displayName ?? null;
 
 export function activeFilterCount(filters: PipelineFilters) {
-  return filters.stages.length + filters.segments.length + filters.health.length + filters.architects.length + (filters.flaggedOnly ? 1 : 0) + (filters.search.trim() ? 1 : 0);
+  return filters.stages.length + filters.segments.length + filters.health.length + filters.architects.length + (filters.flaggedOnly ? 1 : 0) + (filters.fcpTrailing ? 1 : 0) + (filters.flag ? 1 : 0) + (filters.search.trim() ? 1 : 0);
 }
 
 export function applyFilters(rows: TrackerRow[], filters: PipelineFilters, today: string, settings: OperationalSettings) {
@@ -41,7 +45,9 @@ export function applyFilters(rows: TrackerRow[], filters: PipelineFilters, today
     (!filters.segments.length || filters.segments.includes(row.segment ?? "none")) &&
     (!filters.health.length || filters.health.includes(row.health ?? "none")) &&
     (!filters.architects.length || filters.architects.includes(architectOf(row) ?? "Unassigned")) &&
-    (!filters.flaggedOnly || attentionFor(row, today, settings).count > 0),
+    (!filters.flaggedOnly || attentionFor(row, today, settings).count > 0) &&
+    (!filters.fcpTrailing || fcpTrailing(row) !== null) &&
+    (!filters.flag || dataQualityFlags(row).some(flag => flag.key === filters.flag)),
   );
 }
 
@@ -80,6 +86,11 @@ export const stageLabel = (stage: Stage) => STAGE_LABELS[stage];
 
 /** Saved views are a per-browser convenience (localStorage); the role queues are the shared, built-in saved filters. */
 export type SavedView = { name: string; filters: PipelineFilters; sort: Sort };
+
+/** Views every user has, listed above the ones saved in this browser. */
+export const BUILT_IN_VIEWS: SavedView[] = [
+  { name: "FCP trailing", filters: { ...EMPTY_FILTERS, fcpTrailing: true }, sort: { key: "days", dir: "desc" } },
+];
 const viewsKey = (scope: string) => `vsa.savedViews.${scope}`;
 
 export function loadSavedViews(scope: string): SavedView[] {

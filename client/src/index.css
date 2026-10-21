@@ -258,8 +258,9 @@
   .section-bar { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--s100); padding-bottom: 8px; }
   .sec-label { font-size: 12px; font-weight: 500; color: var(--ink-muted); }
   .sec-title { font-size: 15px; font-weight: 600; letter-spacing: -.01em; color: var(--ink); }
-  .callout-red, .callout-green, .callout-dark { border-left: 2px solid; border-radius: 0 6px 6px 0; padding: 8px 12px; font-size: 13px; line-height: 1.5; }
+  .callout-red, .callout-amber, .callout-green, .callout-dark { border-left: 2px solid; border-radius: 0 6px 6px 0; padding: 8px 12px; font-size: 13px; line-height: 1.5; }
   .callout-red { border-color: var(--state-blocked); background: var(--state-blocked-soft); }
+  .callout-amber { border-color: var(--state-warn); background: var(--state-warn-soft); }
   .callout-green { border-color: var(--state-pass); background: var(--state-pass-soft); }
   .callout-dark { border-color: var(--s300); background: var(--surface-sunken); }
 

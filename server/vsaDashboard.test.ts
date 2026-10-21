@@ -52,6 +52,13 @@ describe("data-quality flags", () => {
     expect(flags.map(flag => flag.key)).toEqual(["segment", "placeholder_opportunity", "amount", "expiry", "architect"]);
   });
 
+  it("flags a PO / work authorization ahead of the work plan, and an hours mismatch, as data quality", () => {
+    expect(dataQualityFlags(record({ poReceivedOn: "2026-10-01" })).map(flag => flag.key)).toEqual(["po_before_work_plan"]);
+    expect(dataQualityFlags(record({ poReceivedOn: "2026-10-01", workPlanAcceptedOn: "2026-10-05", workPlanHours: 200, poHours: 240 })).map(flag => flag.key)).toEqual(["hours_mismatch"]);
+    expect(dataQualityFlags(record({ poReceivedOn: "2026-10-01", workPlanAcceptedOn: "2026-10-05", workPlanHours: 200, poHours: 200 }))).toEqual([]);
+    expect(dataQualityFlags(record({ stage: "complete", poReceivedOn: "2026-10-01" }))).toEqual([]);
+  });
+
   it("does not ask for an architect before discovery, or flag closed records", () => {
     expect(dataQualityFlags(record({ stage: "intake", assignments: [] }))).toEqual([]);
     expect(dataQualityFlags(record({ stage: "lost", segment: null }))).toEqual([]);

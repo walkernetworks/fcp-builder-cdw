@@ -53,6 +53,14 @@ export const FIELD_GROUPS: { title: string; fields: FieldDef[] }[] = [
     fields: GATE_DATES.map(gate => ({ key: gate.key, label: gate.label, kind: "date" as const, ...("hint" in gate ? { hint: gate.hint } : {}) })),
   },
   {
+    title: "Hours check",
+    // Edited on Stage & gates, next to the delivery requirements.
+    fields: [
+      { key: "workPlanHours", label: "Work plan hours", kind: "int", hint: "Hours on the accepted work plan" },
+      { key: "poHours", label: "PO / work authorization hours", kind: "int" },
+    ],
+  },
+  {
     title: "Commercials and term",
     fields: [
       { key: "entitlementValue", label: "VSA amount", kind: "money" },

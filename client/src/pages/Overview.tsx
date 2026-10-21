@@ -8,7 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { useOperationalSettings } from "@/lib/settings";
 import { todayIso } from "@/lib/vsa";
 import { awaitingAction, stageCounts } from "@shared/vsaDashboard";
-import { STAGE_LABELS } from "@shared/vsaStage";
+import { fcpTrailing, STAGE_LABELS } from "@shared/vsaStage";
 import { daysBetween, entitlementTotal, expiryRows, formatDay, formatMoney } from "@shared/vsaViews";
 import { CheckCircle2, LayoutDashboard, Plus } from "lucide-react";
 import { useMemo } from "react";
@@ -48,6 +48,9 @@ export default function Overview() {
       attention,
       stale: attention.filter(item => item.attention.stale.stale).length,
       flagged: attention.filter(item => item.attention.flags.length).length,
+      trailing: open.filter(row => fcpTrailing(row)).length,
+      poBeforeWorkPlan: attention.filter(item => item.attention.flags.some(flag => flag.key === "po_before_work_plan")).length,
+      hoursMismatch: attention.filter(item => item.attention.flags.some(flag => flag.key === "hours_mismatch")).length,
       stages: stageCounts(open),
     };
   }, [list.data, today, user, settings]);
@@ -162,6 +165,9 @@ export default function Overview() {
                   <QualityRow label="With any data-quality flag" count={data.flagged} href="/pipeline?flagged=1" />
                   <QualityRow label="Past their stage's threshold" count={data.stale} href="/queue?q=attention" />
                   <QualityRow label="Without a VSA amount" count={data.money.missing} href="/expiry" />
+                  <QualityRow label="FCP trailing (staffing ahead of FCP approval)" count={data.trailing} href="/pipeline?trailing=1" />
+                  <QualityRow label="PO / work authorization before work plan" count={data.poBeforeWorkPlan} href="/pipeline?flag=po_before_work_plan" />
+                  <QualityRow label="Hours mismatch, work plan vs PO" count={data.hoursMismatch} href="/pipeline?flag=hours_mismatch" />
                 </ul>
               </Panel>
             </div>

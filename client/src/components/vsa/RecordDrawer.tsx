@@ -10,7 +10,7 @@ import { SEGMENT_LABELS, todayIso, type TrackerRecord } from "@/lib/vsa";
 import { FIELD_GROUPS } from "@/lib/vsaLabels";
 import { buildLockState } from "@shared/fcpRecord";
 import { staleness } from "@shared/vsaDashboard";
-import { canTransition, customerApprovalItems, isMainStage, openSources, requiresBroadcomApproval, requiresWorkPlan, STAGE_LABELS, stageProgression, STAGES, stageWarnings, type GateDates, type Stage } from "@shared/vsaStage";
+import { authorizationCheck, canTransition, customerApprovalItems, fcpTrailing, isMainStage, openSources, requiresBroadcomApproval, STAGE_LABELS, stageProgression, STAGES, stageWarnings, type GateDates, type Stage } from "@shared/vsaStage";
 import { expiryVerdict, formatDay, formatMoney } from "@shared/vsaViews";
 import { ExternalLink, File, FileText, Folder, FolderOpen, History, Link2, Lock } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -20,6 +20,7 @@ import { HealthPill } from "./cells";
 import { Chip, DataMount, EmptyState, Pill } from "./elements";
 import { RecordFieldGroups, RecordSaveBar, useRecordForm, type RecordForm } from "./RecordEditor";
 import { PeopleEditor, SourcesEditor } from "./RecordPeopleSources";
+import { DeliveryReadiness } from "./DeliveryReadiness";
 import { NextActionCallout, StageStepper, type SaveGate } from "./StageProgress";
 
 /** Right-side detail for one engagement. Esc and the backdrop close it; focus returns to whatever opened it. */
@@ -69,6 +70,8 @@ function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: D
   const expiry = expiryVerdict(record.deliveryWindowEnd, today);
   const stale = staleness(record, today, settings.staleAfterDays);
   const approvals = customerApprovalItems(record);
+  const trailing = fcpTrailing(record);
+  const authorization = authorizationCheck(record);
   const form = useRecordForm(record);
 
   return (
@@ -85,6 +88,8 @@ function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: D
           <Pill verdict={expiry.pill}>{expiry.label}{expiry.daysLeft !== null && expiry.daysLeft >= 0 ? ` · ${expiry.daysLeft} days` : ""}</Pill>
           {record.health && <HealthPill health={record.health} />}
           {stale.stale && <Pill verdict="warn">Stale · over {stale.threshold} days</Pill>}
+          {trailing && <Pill verdict={trailing.severity} title={trailing.label}>FCP trailing</Pill>}
+          {authorization && <Pill verdict={authorization.key === "hours_mismatch" ? "stop" : "warn"} title={authorization.label}>{authorization.key === "hours_mismatch" ? "Hours mismatch" : "PO before work plan"}</Pill>}
         </div>
       </SheetHeader>
 
@@ -136,8 +141,8 @@ function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: D
 }
 
 const GATE_FIELDS = FIELD_GROUPS.find(group => group.title === "Gate dates")!.fields;
-/** Overview edits the record-level fields. Gate dates are edited on Stage & gates, so each field has one edit surface. */
-const OVERVIEW_GROUPS = FIELD_GROUPS.filter(group => group.title !== "Gate dates");
+/** Overview edits the record-level fields. Gate dates and the hours check are edited on Stage & gates, so each field has one edit surface. */
+const OVERVIEW_GROUPS = FIELD_GROUPS.filter(group => group.title !== "Gate dates" && group.title !== "Hours check");
 
 /**
  * The stages that apply to the record's segment as a stepper, each with its gates; the next action; Move stage; and the
@@ -149,7 +154,7 @@ function StageAndGates({ data, form }: { data: TrackerRecord; form: RecordForm }
   // For an exit, the main stage it left from: the stage history's latest move into the current stage.
   const exitedFrom = isMainStage(record.stage) ? null : ([...events].reverse().find(event => event.toStage === record.stage)?.fromStage ?? null);
   const dates = Object.fromEntries(GATE_FIELDS.map(field => [field.key, (form.form[field.key] as string) || null])) as GateDates;
-  const progression = stageProgression({ stage: record.stage, segment: record.segment, exitedFrom }, dates);
+  const progression = stageProgression({ stage: record.stage, segment: record.segment, fcpWaivedOn: record.fcpWaivedOn, exitedFrom }, dates);
   const saveGate: SaveGate = (gate, day, message) => form.saveField(gate, day, message);
   const suggestMove = (stage: Stage) => {
     setMoveTo(stage);
@@ -160,7 +165,10 @@ function StageAndGates({ data, form }: { data: TrackerRecord; form: RecordForm }
       <Section title="Next action">
         <NextActionCallout progression={progression} onSave={saveGate} saving={form.savingField} onSuggestMove={suggestMove} />
       </Section>
-      <Section title={`Stages · ${record.segment ? SEGMENT_LABELS[record.segment] : "segment not set"}`} actions={!requiresWorkPlan(record.segment) ? <span className="text-xs text-ink-subtle">No Broadcom Approval or work plan for Commercial</span> : undefined}>
+      <Section title="Before delivery">
+        <DeliveryReadiness data={data} progression={progression} />
+      </Section>
+      <Section title={`Stages · ${record.segment ? SEGMENT_LABELS[record.segment] : "segment not set"}`} actions={!requiresBroadcomApproval(record.segment) ? <span className="text-xs text-ink-subtle">No Broadcom Approval for Commercial</span> : undefined}>
         <StageStepper progression={progression} stageEnteredOn={record.stageEnteredOn} onSave={saveGate} saving={form.savingField} />
         <p className="text-xs text-ink-subtle">The stage sequence and which gates apply to each segment are set in code. Gate labels are set in Admin.</p>
       </Section>

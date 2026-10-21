@@ -3,7 +3,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { activeFilterCount, architectOf, attentionFor, EMPTY_FILTERS, loadSavedViews, storeSavedViews, type PipelineFilters, type SavedView, type Sort, type SortKey } from "@/lib/pipeline";
+import { activeFilterCount, architectOf, attentionFor, BUILT_IN_VIEWS, EMPTY_FILTERS, loadSavedViews, storeSavedViews, type PipelineFilters, type SavedView, type Sort, type SortKey } from "@/lib/pipeline";
 import { useOperationalSettings } from "@/lib/settings";
 import { SEGMENT_LABELS, type TrackerRow } from "@/lib/vsa";
 import { ENUM_LABELS } from "@/lib/vsaLabels";
@@ -114,6 +114,11 @@ function MultiFilter<T extends string>({ label, options, selected, onChange }: {
   );
 }
 
+const FLAG_FILTER_LABELS: Partial<Record<NonNullable<PipelineFilters["flag"]>, string>> = {
+  po_before_work_plan: "PO before work plan",
+  hours_mismatch: "Hours mismatch",
+};
+
 /** Search, column filters, a flagged-only toggle, and saved views, in one row above the table or board. */
 export function FilterBar({ rows, stages, filters, onChange, sort, onApplyView, scope, trailing }: {
   rows: TrackerRow[];
@@ -160,6 +165,8 @@ export function FilterBar({ rows, stages, filters, onChange, sort, onApplyView, 
       <MultiFilter label="Health" options={[...(Object.entries(ENUM_LABELS.health) as [NonNullable<TrackerRow["health"]>, string][]).map(([value, label]) => ({ value, label })), { value: "none" as const, label: "Not set" }]} selected={filters.health} onChange={value => set("health", value)} />
       <MultiFilter label="Architect" options={architects.map(name => ({ value: name, label: name }))} selected={filters.architects} onChange={value => set("architects", value)} />
       <Chip pressed={filters.flaggedOnly} onClick={() => set("flaggedOnly", !filters.flaggedOnly)}>Needs attention only</Chip>
+      <Chip pressed={filters.fcpTrailing} onClick={() => set("fcpTrailing", !filters.fcpTrailing)} title="In staffing or later, FCP not approved or waived">FCP trailing</Chip>
+      {filters.flag && <Chip pressed onClick={() => set("flag", null)} title="Remove this filter">{FLAG_FILTER_LABELS[filters.flag] ?? filters.flag} <X className="size-3" aria-hidden /></Chip>}
       {count > 0 && <Button variant="ghost" size="sm" onClick={() => onChange(EMPTY_FILTERS)}><X className="size-3.5" /> Clear</Button>}
       <div className="ml-auto flex items-center gap-2">
         <DropdownMenu>
@@ -167,6 +174,9 @@ export function FilterBar({ rows, stages, filters, onChange, sort, onApplyView, 
             <Button variant="outline" size="sm"><Bookmark className="size-3.5" /> Views{views.length > 0 && <span className="text-ink-muted">{views.length}</span>}</Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
+            <DropdownMenuLabel className="text-xs font-normal text-ink-muted">Built in</DropdownMenuLabel>
+            {BUILT_IN_VIEWS.map(view => <DropdownMenuItem key={view.name} onSelect={() => onApplyView(view)}>{view.name}</DropdownMenuItem>)}
+            <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-xs font-normal text-ink-muted">Saved in this browser</DropdownMenuLabel>
             {views.length === 0 && <p className="px-2 pb-2 text-xs text-ink-subtle">No saved views yet.</p>}
             {views.map(view => (

@@ -15,7 +15,9 @@ import { Link, useSearch } from "wouter";
 
 const OPEN_STAGES: Stage[] = [...MAIN_STAGES.filter(stage => stage !== "complete"), "paused"];
 
-/** Filters can arrive in the URL from the Overview tiles: ?segment=none, ?flagged=1, ?stage=fcp_draft. */
+const URL_FLAGS = ["po_before_work_plan", "hours_mismatch"] as const;
+
+/** Filters can arrive in the URL from the Overview tiles: ?segment=none, ?flagged=1, ?stage=fcp_draft, ?trailing=1, ?flag=hours_mismatch. */
 function filtersFromUrl(search: string): PipelineFilters {
   const params = new URLSearchParams(search);
   const stage = params.get("stage") as Stage | null;
@@ -23,6 +25,8 @@ function filtersFromUrl(search: string): PipelineFilters {
     ...EMPTY_FILTERS,
     segments: params.get("segment") === "none" ? ["none"] : [],
     flaggedOnly: params.get("flagged") === "1",
+    fcpTrailing: params.get("trailing") === "1",
+    flag: (URL_FLAGS as readonly string[]).includes(params.get("flag") ?? "") ? (params.get("flag") as (typeof URL_FLAGS)[number]) : null,
     stages: stage && (STAGES as readonly string[]).includes(stage) ? [stage] : [],
   };
 }
