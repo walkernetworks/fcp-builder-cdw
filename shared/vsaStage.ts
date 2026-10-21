@@ -437,7 +437,7 @@ export function stageProgression(record: Pick<StageRecord, "stage" | "segment" |
           planned: PLANNED_GATES.has(gate),
           waived: gateWaived,
           ahead: done && status === "upcoming" && anchor !== null,
-          trailing: !done && !gateWaived && trailing !== null && FCP_GATES.has(gate) && status === "done",
+          trailing: !done && !gateWaived && trailing !== null && (gate === approvalGate || FCP_STEPS.has(gate)) && status === "done",
         };
       });
     return { stage, status, gates };
@@ -446,8 +446,8 @@ export function stageProgression(record: Pick<StageRecord, "stage" | "segment" |
   return { steps, exit, next: nextAction(record, steps, delivery, trailing, exited), delivery, trailing };
 }
 
-/** The gates that make up the FCP itself: drafted, submitted, approved. */
-const FCP_GATES: ReadonlySet<GateKey> = new Set<GateKey>(["fcpDraftCreatedOn", "fcpSubmittedOn", "fcpBroadcomAcceptedOn", "fcpCustomerAcceptedOn"]);
+/** The FCP gates before approval. With the segment's approval gate, they are what a trailing FCP still owes. */
+const FCP_STEPS: ReadonlySet<GateKey> = new Set<GateKey>(["fcpDraftCreatedOn", "fcpSubmittedOn"]);
 
 function nextAction(record: Pick<StageRecord, "stage" | "segment">, steps: StageStep[], delivery: DeliveryRequirement[], trailing: FcpTrailing | null, exited: MainStage | null): NextAction {
   if (record.stage === "complete") return { kind: "complete" };

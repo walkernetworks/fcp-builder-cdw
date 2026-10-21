@@ -79,7 +79,8 @@ describe("stage progression", () => {
     expect(gate("ckomOn")).toMatchObject({ done: true, ahead: true });
     expect(gate("fcpSubmittedOn")).toMatchObject({ done: false, trailing: true });
     expect(gate("fcpBroadcomAcceptedOn")).toMatchObject({ trailing: true, hard: true });
-    // Non-FCP gates left open in earlier stages are not "trailing".
+    // Customer acceptance doesn't gate delivery for Corporate, so it isn't trailing; nor are non-FCP gates.
+    expect(gate("fcpCustomerAcceptedOn").trailing).toBe(false);
     expect(gate("serSubmittedOn").trailing).toBe(false);
     expect(gate("fcpDraftCreatedOn").trailing).toBe(false);
   });
