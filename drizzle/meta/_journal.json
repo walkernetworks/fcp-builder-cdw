@@ -50,6 +50,13 @@
       "when": 1792586158807,
       "tag": "0006_seed_app_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1792588875230,
+      "tag": "0007_seed_gate_labels",
+      "breakpoints": true
     }
   ]
 }

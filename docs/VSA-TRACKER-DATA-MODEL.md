@@ -282,7 +282,7 @@ This is a table rather than six `*UserId` columns on `engagements` because most 
 
 ### 6.4 `app_settings` (new)
 
-Operational thresholds an admin can change: the per-stage stale thresholds, the work plan warning, and the expiry band limits. One row per key (`key`, `value` json, `updatedByUserId`, `updatedAt`), seeded from the code constants, which remain the fallback. The keys and rules are in `docs/CONFIGURATION.md` (Operational settings) and `shared/appSettings.ts`.
+Workflow parameters an admin can change: the per-stage stale thresholds, the work plan warning, the expiry band limits, and the gate display labels. The stage sequence and gate applicability stay in code. One row per key (`key`, `value` json, `updatedByUserId`, `updatedAt`), seeded from the code constants, which remain the fallback. The keys and rules are in `docs/CONFIGURATION.md` (Operational settings) and `shared/appSettings.ts`.
 
 ## 7. Internal vs customer-facing tag
 

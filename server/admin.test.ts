@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./db", () => ({
   listUsersForAdmin: vi.fn(async () => []),
   listWorkspaces: vi.fn(async () => [{ id: 1, name: "CDW VSA" }]),
+  getUserForAdmin: vi.fn(async () => ({ user: { id: 3, name: "Priya Shah", role: "user" }, assignments: [], activity: [] })),
   updateUserByAdmin: vi.fn(async () => ({ status: "ok" })),
   listAppSettings: vi.fn(async () => []),
   readOperationalSettings: vi.fn(async () => (await import("../shared/appSettings")).resolveOperationalSettings([])),
@@ -26,6 +27,7 @@ function caller(role: Role | null) {
 /** Every admin procedure with a valid input, so a refusal can only come from the access check. */
 const ADMIN_CALLS: Record<string, (api: ReturnType<typeof caller>) => Promise<unknown>> = {
   "admin.users.list": api => api.admin.users.list(),
+  "admin.users.get": api => api.admin.users.get({ id: 3 }),
   "admin.users.update": api => api.admin.users.update({ id: 3, patch: { role: "admin" } }),
   "admin.settings.list": api => api.admin.settings.list(),
   "admin.settings.update": api => api.admin.settings.update({ values: { work_plan_stale_days: 10 } }),
@@ -94,13 +96,29 @@ describe("admin user changes", () => {
   });
 });
 
+describe("admin user profile", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("reads the profile as the admin, so record data stays within what the admin can see", async () => {
+    const profile = await caller("admin").admin.users.get({ id: 3 });
+    expect(db.getUserForAdmin).toHaveBeenCalledWith({ id: 7, workspaceId: 1, role: "admin" }, 3);
+    expect(profile).toMatchObject({ user: { id: 3 }, assignments: [], activity: [], workspaces: [{ id: 1 }] });
+  });
+
+  it("maps a missing user to NOT_FOUND", async () => {
+    vi.mocked(db.getUserForAdmin).mockResolvedValueOnce(undefined);
+    await expect(caller("admin").admin.users.get({ id: 99 })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
 describe("admin settings", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("lists every setting with its value, default, bounds, and whether it is stored", async () => {
     const result = await caller("admin").admin.settings.list();
     expect(result.settings.find(setting => setting.key === "stale_after_days.discovery")).toMatchObject({ value: 21, defaultValue: 21, min: 1, max: 365, stored: false });
-    expect(result.groups.map(group => group.id)).toEqual(["stale", "work_plan", "expiry"]);
+    expect(result.groups.map(group => group.id)).toEqual(["stale", "work_plan", "expiry", "gate_labels"]);
+    expect(result.settings.find(setting => setting.key === "gate_label.poReceivedOn")).toMatchObject({ kind: "label", value: "PO received", defaultValue: "PO received", max: 60 });
   });
 
   it("turns invalid values into BAD_REQUEST", async () => {

@@ -7,6 +7,7 @@ import { AppShell } from "./components/vsa/AppShell";
 import DashboardLayout from "./components/DashboardLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Admin from "./pages/Admin";
+import AdminUserProfile from "./pages/AdminUserProfile";
 import Home from "./pages/Home";
 import PipelineImport from "./pages/PipelineImport";
 import Expiry from "./pages/Expiry";
@@ -28,6 +29,7 @@ function Router() {
         <Route path="/fcp" component={Home} />
         <Route path="/import" component={PipelineImport} />
         <Route path="/admin" component={Admin} />
+        <Route path="/admin/users/:id" component={AdminUserProfile} />
         <Route component={NotFound} />
       </Switch>
     </AppShell>

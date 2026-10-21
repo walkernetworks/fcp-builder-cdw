@@ -19,12 +19,12 @@ The application reads deployment-specific identity, database, and PDF-rendering 
 
 ## Operational settings (database)
 
-Some operational thresholds are set in the app, not in the environment. An admin changes them on **Admin › Settings** (`/admin?tab=settings`). They are stored in the `app_settings` table, one row per key, and hold no customer data.
+Some workflow parameters are set in the app, not in the environment. An admin changes them under **Admin › Workflow parameters** (`/admin?section=workflow`). They are thresholds and display labels only: the stage sequence and which gates apply to each segment stay in code (`shared/vsaStage.ts`) and change through a code and review update. They are stored in the `app_settings` table, one row per key, and hold no customer data.
 
 | Column | Type | Purpose |
 |---|---|---|
 | `key` | `varchar(64)`, primary key | Setting name, from `SETTING_DEFINITIONS` in `shared/appSettings.ts`. |
-| `value` | `json` | The value. Every setting today is a whole number of days. |
+| `value` | `json` | The value: a whole number of days, or a display label (text). |
 | `updatedByUserId` | `int`, nullable, FK `users.id` (set null) | The admin who last saved it; null for the seeded defaults. |
 | `updatedAt` | `timestamp` | When it was last saved. |
 
@@ -33,14 +33,15 @@ Some operational thresholds are set in the app, not in the environment. An admin
 | `stale_after_days.<stage>` | intake 7, broadcom_request 14, discovery 21, fcp_draft 21, broadcom_approval 14, customer_approval 21, ra_staffing 14, kickoff 14, paused 60 | 1 to 365 | Days a record may sit in the stage before it counts as stale. In Delivery has no threshold. |
 | `work_plan_stale_days` | 14 | 1 to 180 | Days after a work plan is sent, without acceptance, before the record shows a warning. |
 | `expiry_band_days.d30`, `.d60`, `.d90`, `.d180` | 30, 60, 90, 180 | 1 to 730, each larger than the one before | Upper bound, in days left, of each dated expiry band. |
+| `gate_label.<gate>` | The labels in `GATE_DATES` (`shared/vsaFields.ts`), for example `gate_label.poReceivedOn` = PO received | Plain text, 1 to 60 characters, no line breaks or angle brackets | What the gate date is called on a record's Stage & gates timeline. Report column headers keep their own names, so saved reports don't change. |
 
-- **Defaults:** the code constants (`STALE_AFTER_DAYS` and `EXPIRY_BAND_DAYS` in `shared/vsaDashboard.ts`, `WORK_PLAN_STALE_DAYS` in `shared/vsaStage.ts`). Migration `0006_seed_app_settings` seeds the table with them; `server/appSettings.test.ts` checks that the two match.
+- **Defaults:** the code constants (`STALE_AFTER_DAYS` and `EXPIRY_BAND_DAYS` in `shared/vsaDashboard.ts`, `WORK_PLAN_STALE_DAYS` in `shared/vsaStage.ts`, `GATE_DATES` in `shared/vsaFields.ts`). Migrations `0006_seed_app_settings` and `0007_seed_gate_labels` seed the table with them; `server/appSettings.test.ts` checks that they match.
 - **Fallback:** a missing or invalid value uses its default. If the stored expiry bands are out of order, all four use their defaults. If the table can't be read (for example before `pnpm db:migrate`), every setting uses its default, so nothing breaks.
 - **Validation:** the server checks every save (whole numbers, the bounds above, bands in order) with the same rules the screen shows.
 
 ## Admin access
 
-The admin area (`/admin`) is open only to users whose `users.role` is `admin`. Every procedure behind it is an `adminProcedure` (`server/_core/trpc.ts`), so the server refuses everyone else; the hidden navigation entry is a courtesy. Admin changes to a user's role, role view, or workspace are recorded in `users.updatedByUserId` and `users.updatedAt` (a sign-in updates only `lastSignedIn`). The app refuses to demote the last admin.
+The admin area (`/admin`, and each user's profile at `/admin/users/:id`) is open only to users whose `users.role` is `admin`. Every procedure behind it is an `adminProcedure` (`server/_core/trpc.ts`), so the server refuses everyone else; the hidden navigation entry is a courtesy. Admin changes to a user's role, role view, or workspace are recorded in `users.updatedByUserId` and `users.updatedAt` (a sign-in updates only `lastSignedIn`). The app refuses to demote the last admin.
 
 There is no environment variable for admins. A user is created as `user` at first sign-in, so the first admin is set by a person in the database, for example `UPDATE users SET role = 'admin' WHERE email = '<their CDW email>';`. After that, admins manage roles in the app.
 

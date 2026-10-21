@@ -124,6 +124,30 @@ const optionalText = (max: number) => z.string().trim().max(max).transform(value
 const optionalMoney = z.string().trim().regex(/^\d{1,12}(\.\d{1,2})?$/, "Use a dollar amount like 125000.00").nullable().optional();
 
 /** Tracker fields a user may edit directly. Stage moves go through the transition procedure; import, intake, and lock fields are not editable. */
+/**
+ * The gate dates, in the order the record's Stage & gates timeline shows them, with their default display labels.
+ * Admins can rename the labels (shared/appSettings.ts); which gates apply to which segment stays in code (vsaStage.ts).
+ */
+export const GATE_DATES = [
+  { key: "serSubmittedOn", label: "SER submitted" },
+  { key: "serApprovedOn", label: "Broadcom partner approval" },
+  { key: "fcpDraftCreatedOn", label: "FCP draft created" },
+  { key: "fcpSubmittedOn", label: "FCP submitted" },
+  { key: "fcpBroadcomAcceptedOn", label: "FCP Broadcom acceptance", hint: "Corporate and Strategic" },
+  { key: "fcpCustomerAcceptedOn", label: "FCP customer acceptance" },
+  { key: "workPlanSentOn", label: "Work plan sent", hint: "Corporate and Strategic" },
+  { key: "workPlanAcceptedOn", label: "Work plan accepted", hint: "Corporate and Strategic" },
+  { key: "ikomOn", label: "Internal kickoff (IKOM)" },
+  { key: "raReceivedOn", label: "RA received" },
+  { key: "workAuthReceivedOn", label: "Work authorization received" },
+  { key: "poReceivedOn", label: "PO received", hint: "Required for Kickoff and In Delivery" },
+  { key: "ckomOn", label: "Customer kickoff (CKOM)" },
+  { key: "projectStartOn", label: "Project start" },
+  { key: "estimatedCloseOn", label: "Estimated close" },
+  { key: "completedOn", label: "Completed" },
+] as const satisfies readonly { key: string; label: string; hint?: string }[];
+export type GateKey = (typeof GATE_DATES)[number]["key"];
+
 export const trackerPatchSchema = z
   .object({
     customerName: z.string().trim().min(1).max(240),

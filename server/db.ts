@@ -9,7 +9,7 @@ import type { PipelineBatch } from "./pipelineSource";
 import type { AssignmentRole, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
 import { canTransition, DEFAULT_SOURCE_CHAIN, effectiveDateProblem, STAGE_LABELS, stageOrder, type Stage, type StageRecord } from "../shared/vsaStage";
 import { alias } from "drizzle-orm/mysql-core";
-import { applySettingChanges, resolveOperationalSettings, type ResolvedSettings } from "../shared/appSettings";
+import { applySettingChanges, resolveOperationalSettings, type AppSettingValue, type ResolvedSettings } from "../shared/appSettings";
 import {
   appSettings,
   engagementAssignments,
@@ -687,6 +687,75 @@ export async function listUsersForAdmin() {
     .orderBy(asc(users.name), asc(users.id));
 }
 
+export type AdminActivity = { at: Date; kind: "stage" | "fcp_version" | "user_change" | "setting"; text: string; recordId: number | null; customerName: string | null };
+
+/** How many of each kind of event the profile reads before merging; it shows the newest `ACTIVITY_LIMIT` overall. */
+const ACTIVITY_LIMIT = 20;
+
+/**
+ * One user's profile for the admin screen: the user, the record assignments they hold, and their recent activity
+ * (stage moves, FCP versions saved, and admin changes they made). Record data is read only through records visible to
+ * the admin (`visibleEngagements`), like every engagement read.
+ */
+export async function getUserForAdmin(viewer: Viewer, userId: number) {
+  const db = await requireDb();
+  const [user] = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      vsaRole: users.vsaRole,
+      workspaceId: users.workspaceId,
+      createdAt: users.createdAt,
+      lastSignedIn: users.lastSignedIn,
+      updatedAt: users.updatedAt,
+      updatedByName: editor.name,
+    })
+    .from(users)
+    .leftJoin(editor, eq(editor.id, users.updatedByUserId))
+    .where(eq(users.id, userId));
+  if (!user) return undefined;
+
+  const visible = visibleEngagements(viewer);
+  const assignments = await db
+    .select({ recordId: engagements.id, customerName: engagements.customerName, opportunityNumber: engagements.opportunityNumber, stage: engagements.stage, role: engagementAssignments.role })
+    .from(engagementAssignments)
+    .innerJoin(engagements, eq(engagements.id, engagementAssignments.engagementId))
+    .where(and(eq(engagementAssignments.userId, userId), visible))
+    .orderBy(asc(engagements.customerName), asc(engagementAssignments.role));
+
+  const [moves, versions, userChanges, settingChanges] = await Promise.all([
+    db
+      .select({ at: stageEvents.recordedAt, fromStage: stageEvents.fromStage, toStage: stageEvents.toStage, recordId: engagements.id, customerName: engagements.customerName })
+      .from(stageEvents)
+      .innerJoin(engagements, eq(engagements.id, stageEvents.engagementId))
+      .where(and(eq(stageEvents.actorUserId, userId), visible))
+      .orderBy(desc(stageEvents.recordedAt))
+      .limit(ACTIVITY_LIMIT),
+    db
+      .select({ at: fcpVersions.createdAt, label: fcpVersions.label, versionNumber: fcpVersions.versionNumber, recordId: engagements.id, customerName: engagements.customerName })
+      .from(fcpVersions)
+      .innerJoin(engagements, eq(engagements.id, fcpVersions.engagementId))
+      .where(and(eq(fcpVersions.createdByUserId, userId), visible))
+      .orderBy(desc(fcpVersions.createdAt))
+      .limit(ACTIVITY_LIMIT),
+    db.select({ at: users.updatedAt, name: users.name, email: users.email }).from(users).where(eq(users.updatedByUserId, userId)).orderBy(desc(users.updatedAt)).limit(ACTIVITY_LIMIT),
+    db.select({ at: appSettings.updatedAt, key: appSettings.key }).from(appSettings).where(eq(appSettings.updatedByUserId, userId)).orderBy(desc(appSettings.updatedAt)).limit(ACTIVITY_LIMIT),
+  ]);
+
+  const activity: AdminActivity[] = [
+    ...moves.map(move => ({ at: move.at, kind: "stage" as const, text: move.fromStage ? `Moved from ${STAGE_LABELS[move.fromStage]} to ${STAGE_LABELS[move.toStage]}` : `Created in ${STAGE_LABELS[move.toStage]}`, recordId: move.recordId, customerName: move.customerName })),
+    ...versions.map(version => ({ at: version.at, kind: "fcp_version" as const, text: `Saved FCP version ${version.versionNumber}: ${version.label}`, recordId: version.recordId, customerName: version.customerName })),
+    ...userChanges.map(change => ({ at: change.at, kind: "user_change" as const, text: `Changed access for ${change.name ?? change.email ?? "a user"}`, recordId: null, customerName: null })),
+    ...settingChanges.map(change => ({ at: change.at, kind: "setting" as const, text: `Changed setting ${change.key}`, recordId: null, customerName: null })),
+  ]
+    .sort((a, b) => b.at.getTime() - a.at.getTime())
+    .slice(0, ACTIVITY_LIMIT);
+
+  return { user, assignments, activity };
+}
+
 export async function listWorkspaces() {
   const db = await requireDb();
   return db.select({ id: workspaces.id, name: workspaces.name }).from(workspaces).orderBy(asc(workspaces.id));
@@ -746,7 +815,7 @@ export async function readOperationalSettings(): Promise<ResolvedSettings> {
 export type SaveSettingsResult = { status: "ok"; changed: string[] } | { status: "invalid"; errors: Record<string, string> };
 
 /** Validates the changes against the stored settings and writes the changed keys, attributed to the admin. */
-export async function saveAppSettings(actor: Viewer, changes: Record<string, number>): Promise<SaveSettingsResult> {
+export async function saveAppSettings(actor: Viewer, changes: Record<string, AppSettingValue>): Promise<SaveSettingsResult> {
   const db = await requireDb();
   return db.transaction(async tx => {
     const rows = await tx.select({ key: appSettings.key, value: appSettings.value }).from(appSettings).for("update");

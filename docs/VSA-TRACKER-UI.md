@@ -14,7 +14,8 @@ How the tracker screens look and behave, so new work stays consistent. The UI sh
 | `/fcp` | FCP workspace | Building the FCP for one record. |
 | `/import` | Import | Daily SharePoint import. |
 | `/reports` | Reports | Custom reports with CSV and Excel export. |
-| `/admin` | Admin | Admins only. Users (role, role view, workspace), operational settings, and read-only system status. The sidebar entry is hidden from everyone else, and the server refuses them. |
+| `/admin` | Admin | Admins only. Collapsible sections, one concern each: Users, Workflow parameters, System status (read-only), and placeholders for Capabilities (Phase 3) and Notification rules (Phase 4). `?section=<id>[,<id>]` opens sections. The sidebar entry is hidden from everyone else, and the server refuses them. |
+| `/admin/users/:id` | User profile | Admins only. A user's access (role, role view, workspace; edited here, the only place), the record assignments they hold, last sign-in, and recent activity. |
 
 The Overview tiles and stage rows link into these screens with filters already applied: `?segment=none`, `?flagged=1`, `?stage=<stage>`, and `?q=<queue>`.
 

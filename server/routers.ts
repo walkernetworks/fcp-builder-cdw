@@ -192,6 +192,12 @@ export const appRouter = router({
   admin: router({
     users: router({
       list: adminProcedure.query(async () => ({ users: await db.listUsersForAdmin(), workspaces: await db.listWorkspaces() })),
+      /** One user's profile: details, the assignments they hold on records the admin can see, and recent activity. */
+      get: adminProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => {
+        const profile = await db.getUserForAdmin(viewerFor(ctx.user), input.id);
+        if (!profile) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+        return { ...profile, workspaces: await db.listWorkspaces() };
+      }),
       update: adminProcedure.input(z.object({ id: recordId, patch: adminUserPatchSchema })).mutation(async ({ ctx, input }) => {
         const result = await db.updateUserByAdmin(viewerFor(ctx.user), input.id, input.patch);
         switch (result.status) {
@@ -212,13 +218,13 @@ export const appRouter = router({
         const values = settingValues(resolved.settings);
         return {
           groups: SETTING_GROUPS,
-          settings: SETTING_DEFINITIONS.map(({ key, group, label, min, max, defaultValue }) => {
+          settings: SETTING_DEFINITIONS.map(({ key, group, kind, label, min, max, defaultValue }) => {
             const row = resolved.stored.includes(key) ? rows.find(item => item.key === key) : undefined;
-            return { key, group, label, min, max, defaultValue, value: values[key], stored: Boolean(row), updatedAt: row?.updatedAt ?? null, updatedByName: row?.updatedByName ?? null };
+            return { key, group, kind, label, min, max, defaultValue, value: values[key], stored: Boolean(row), updatedAt: row?.updatedAt ?? null, updatedByName: row?.updatedByName ?? null };
           }),
         };
       }),
-      update: adminProcedure.input(z.object({ values: z.record(z.string().max(64), z.number()) })).mutation(async ({ ctx, input }) => {
+      update: adminProcedure.input(z.object({ values: z.record(z.string().max(64), z.union([z.number(), z.string().max(200)])) })).mutation(async ({ ctx, input }) => {
         const result = await db.saveAppSettings(viewerFor(ctx.user), input.values);
         if (result.status === "invalid") throw new TRPCError({ code: "BAD_REQUEST", message: Object.entries(result.errors).map(([key, error]) => `${key}: ${error}`).join("; ") });
         return { changed: result.changed };
