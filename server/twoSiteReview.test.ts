@@ -405,7 +405,7 @@ describe("Riverbend review: the rebuild", () => {
 });
 
 
-describe("Riverbend review: a later start", () => {
+describe("Two-site review: a later start", () => {
   /** The fixture with the project start moved later (for a PO lead time), the entitlement unchanged. */
   const startingOn = (projectStart: string, implementationStart: string | null = null) => twoSite(raw => { raw.schedule = { ...raw.schedule, projectStart, implementationStart }; });
   const shifted = (months: number) => { const date = new Date(Date.UTC(2026, 9 + months, months ? 2 : 16)); return date.toISOString().slice(0, 10); };
