@@ -9,7 +9,7 @@ import { RecordDrawer, type DrawerTab } from "./RecordDrawer";
 type Shell = {
   /** Opens the record drawer on any screen. */
   openRecord: (id: number, tab?: DrawerTab) => void;
-  /** Opens the New engagement dialog; the new record opens on its Details tab. */
+  /** Opens the New engagement dialog; the new record opens on its Overview, where its fields are edited. */
   newEngagement: () => void;
   commandOpen: boolean;
   setCommandOpen: (open: boolean) => void;
@@ -35,7 +35,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     <ShellContext.Provider value={value}>
       {children}
       <RecordDrawer id={record?.id ?? null} initialTab={record?.tab} onClose={() => setRecord(null)} />
-      <NewEngagementDialog open={creating} onClose={() => setCreating(false)} onCreated={id => openRecord(id, "details")} />
+      <NewEngagementDialog open={creating} onClose={() => setCreating(false)} onCreated={id => openRecord(id)} />
     </ShellContext.Provider>
   );
 }
@@ -59,7 +59,7 @@ function NewEngagementDialog({ open, onClose, onCreated }: { open: boolean; onCl
         <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (customer.trim()) create.mutate({ customerName: customer.trim() }); }}>
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">New engagement</DialogTitle>
-            <DialogDescription>It starts in Intake. Fill in the rest on the Details tab.</DialogDescription>
+            <DialogDescription>It starts in Intake. Fill in the rest on its Overview.</DialogDescription>
           </DialogHeader>
           <label className="block space-y-1.5">
             <span className="field-label">Customer name</span>

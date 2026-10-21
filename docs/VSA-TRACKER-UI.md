@@ -91,13 +91,13 @@ All in `client/src/components/vsa/`.
   - Columns have no fill; headers are quiet text with a count.
   - Cards are compact and show status as small pills.
   - Dragging a card to another column is optional and follows the same rules as Move stage.
-- **`RecordDrawer.tsx`:** a 720px sheet with six tabs:
-  - **Overview:** open items, key facts, customer approval, notes.
-  - **Stage & gates:** Move stage, gate dates as a vertical timeline (done, next, not yet), and stage history as a timeline.
+- **`RecordDrawer.tsx`:** a 720px sheet with six tabs. One form (`useRecordForm` in `RecordEditor.tsx`) sits above the tabs, so unsaved edits survive switching tabs. A sticky save bar shows the unsaved count on any tab. Saves send only changed fields with the record's `rowVersion`, so a stale save is refused. Each field has exactly one place it is edited.
+  - **Overview:** the editable record. Open items and Customer approval (read-only, derived from the gate dates) sit at the top. Below them, the record-level fields are grouped: identity, classification, status, commercials and term, notes and links.
+  - **Stage & gates:** Move stage, the gate dates as an editable vertical timeline (done, next, not yet), and the stage history.
   - **Sources.**
   - **People.**
+  - **Files:** "Open client folder" and the record's file links, from `tracker.files` (`server/fileSource.ts`). An empty state when no folder is linked.
   - **FCP:** readiness, who is editing, FCP dates, recent versions.
-  - **Details:** the editor.
 
 ## Patterns
 

@@ -12,6 +12,8 @@ import { canDeleteEngagement, viewerFor } from "./visibility";
 import { ASSIGNMENT_ROLES, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, trackerPatchSchema, VSA_ROLES } from "../shared/vsaFields";
 import { STAGES } from "../shared/vsaStage";
 import { MAX_IMPORT_CSV_BYTES } from "../shared/sharepointImport";
+import { getRecordFiles } from "./fileSource";
+import { pipelineSource } from "./pipelineSource";
 import { PROPRIETARY_LEGEND, reportConfigSchema, runReport } from "../shared/vsaReports";
 import { inRoleView } from "../shared/vsaViews";
 import { REPORT_XLSX_MIME, renderReportWorkbook, reportFilename } from "./reportWorkbook";
@@ -97,6 +99,11 @@ export const appRouter = router({
       .input(z.object({ stages: z.array(z.enum(STAGES)).optional(), mine: z.boolean().optional(), role: z.enum(ASSIGNMENT_ROLES).optional() }).default({}))
       .query(({ ctx, input }) => db.listTracker(viewerFor(ctx.user), { stages: input.stages, assignedUserId: input.mine ? ctx.user.id : undefined, assignedRole: input.mine ? input.role : undefined })),
     get: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.getTrackerRecord(viewerFor(ctx.user), input.id)) ?? null),
+    /** Links for the record's files: the client folder and source references. Read through visibility like every record read; no file bytes. */
+    files: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => {
+      const found = requireRow(await db.getTrackerRecord(viewerFor(ctx.user), input.id));
+      return getRecordFiles({ clientFolderUrl: found.record.clientFolderUrl, sources: found.sources });
+    }),
     create: protectedProcedure
       .input(z.object({ customerName: z.string().trim().min(1).max(240) }))
       .mutation(async ({ ctx, input }) => {
@@ -133,9 +140,9 @@ export const appRouter = router({
   }),
   pipelineImport: router({
     /** Plans the SharePoint Pipeline List import and writes nothing. A mutation so the file travels in the body. */
-    preview: protectedProcedure.input(z.object({ csv: z.string().min(1).max(MAX_IMPORT_CSV_BYTES) })).mutation(({ ctx, input }) => db.runSharePointImport(viewerFor(ctx.user), input.csv, "preview")),
+    preview: protectedProcedure.input(z.object({ csv: z.string().min(1).max(MAX_IMPORT_CSV_BYTES) })).mutation(async ({ ctx, input }) => db.runPipelineImport(viewerFor(ctx.user), await pipelineSource().acquire({ csv: input.csv }), "preview")),
     /** Re-plans on locked rows and applies the import in one transaction. The returned report is what was written. */
-    commit: protectedProcedure.input(z.object({ csv: z.string().min(1).max(MAX_IMPORT_CSV_BYTES) })).mutation(({ ctx, input }) => db.runSharePointImport(viewerFor(ctx.user), input.csv, "apply")),
+    commit: protectedProcedure.input(z.object({ csv: z.string().min(1).max(MAX_IMPORT_CSV_BYTES) })).mutation(async ({ ctx, input }) => db.runPipelineImport(viewerFor(ctx.user), await pipelineSource().acquire({ csv: input.csv }), "apply")),
   }),
   fcpRecord: router({
     /** Takes or renews the FCP build lock; `takeOver` takes it from someone else. */

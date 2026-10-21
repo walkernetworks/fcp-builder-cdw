@@ -6,10 +6,12 @@ import {
   mergeField,
   parsePipelineCsv,
   planImport,
+  planMappedRows,
   SHAREPOINT_HOST,
   type ExistingRecord,
   type ImportPlan,
 } from "../shared/sharepointImport";
+import { csvPipelineSource, pipelineSource, pipelineSourceName } from "./pipelineSource";
 
 // Synthetic rows only. Column order follows the real export; "ID" is the built-in column the view should add.
 const HEADERS = [
@@ -279,5 +281,31 @@ describe("import plan", () => {
   it("leaves existing FCPs that were never imported out of the missing list", () => {
     const fcpOnly = { id: 1, customerName: "FCP only", stage: "fcp_draft", stageEnteredOn: "2026-01-01", intakeSource: "manual", importSnapshot: null, assignments: {} } as ExistingRecord;
     expect(planImport(csv([base()]), [fcpOnly], TODAY).missing).toEqual([]);
+  });
+});
+
+describe("pipeline source seam", () => {
+  it("the CSV source yields rows that reconcile exactly as the CSV did before the seam", async () => {
+    const file = csv([base(), base({ ID: "102", "Deal ID or Name": "C-OPP-1000002", "VSA Approval Stage": "2 FCP", "FCP Draft Created Date": "1/5/2026" }), base({ ID: "" })]);
+    const state = applyPlan([], planImport(csv([base()]), [], TODAY));
+    const batch = await csvPipelineSource.acquire({ csv: file });
+    expect(planMappedRows(batch.rows, batch.problems, state, TODAY)).toEqual(planImport(file, state, TODAY));
+    expect(batch.intakeSource).toBe("sharepoint_import");
+    expect(batch.rowNote(3)).toBe("SharePoint import, row 3");
+  });
+
+  it("carries whole-file problems through with no rows", async () => {
+    const batch = await csvPipelineSource.acquire({ csv: "Name,Value\nx,1" });
+    expect(batch.rows).toEqual([]);
+    expect(batch.problems[0]).toMatch(/Missing columns/);
+  });
+
+  it("defaults to csv and refuses connectors that are not built", () => {
+    expect(pipelineSourceName(undefined)).toBe("csv");
+    expect(pipelineSourceName(" CSV ")).toBe("csv");
+    expect(pipelineSource("csv")).toBe(csvPipelineSource);
+    expect(() => pipelineSourceName("salesforce")).toThrow(/reserved for a future connector/);
+    expect(() => pipelineSourceName("sharepoint")).toThrow(/reserved for a future connector/);
+    expect(() => pipelineSourceName("ftp")).toThrow(/not a pipeline source/);
   });
 });

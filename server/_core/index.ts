@@ -7,6 +7,8 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { registerExportDownloadRoutes } from "../exportDownloadRoutes";
 import { serveStatic, setupVite } from "./vite";
+import { fileSourceName } from "../fileSource";
+import { pipelineSourceName } from "../pipelineSource";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -28,6 +30,9 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  // Fail at startup, not on first use, if a source names a connector that is not built.
+  fileSourceName();
+  pipelineSourceName();
   const app = express();
   const server = createServer(app);
   // Configure body parser with larger size limit for file uploads

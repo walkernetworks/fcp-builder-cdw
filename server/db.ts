@@ -4,7 +4,8 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { createDefaultDocument, EngagementDocument } from "../shared/fcp";
 import { renameInTitle, resolveFcpSaveNames } from "../shared/customerName";
 import { buildLockState, sourceUpdatesFromDocument } from "../shared/fcpRecord";
-import { IMPORT_FIELDS, IMPORT_ROLES, planImport, type ExistingRecord, type ImportPlan, type ImportRole } from "../shared/sharepointImport";
+import { IMPORT_FIELDS, IMPORT_ROLES, planMappedRows, type ExistingRecord, type ImportPlan, type ImportRole } from "../shared/sharepointImport";
+import type { PipelineBatch } from "./pipelineSource";
 import type { AssignmentRole, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
 import { canTransition, DEFAULT_SOURCE_CHAIN, effectiveDateProblem, STAGE_LABELS, stageOrder, type Stage, type StageRecord } from "../shared/vsaStage";
 import {
@@ -469,7 +470,7 @@ export async function removeAssignment(viewer: Viewer, engagementId: number, rol
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// SharePoint Pipeline List import (docs/VSA-TRACKER-DATA-MODEL.md section 12.4)
+// Pipeline import: rows from a pipeline source (server/pipelineSource.ts), reconciled here (docs/VSA-TRACKER-DATA-MODEL.md section 12.4)
 
 async function loadImportState(tx: Db | Tx, viewer: Viewer, lock = false): Promise<ExistingRecord[]> {
   const query = tx.select({ ...trackerColumns, importSnapshot: engagements.importSnapshot }).from(engagements).where(visibleEngagements(viewer));
@@ -499,15 +500,19 @@ async function loadImportState(tx: Db | Tx, viewer: Viewer, lock = false): Promi
  * Plans the import against the records the viewer can see. "preview" writes nothing; "apply" re-plans on locked rows and
  * writes every create, update, stage event, and assignment change in one transaction. Records are never deleted.
  */
-export async function runSharePointImport(viewer: Viewer, csv: string, mode: "preview" | "apply"): Promise<ImportPlan> {
+/**
+ * Reconciles a batch of normalized pipeline rows against the workspace and, in "apply" mode, writes the result in one
+ * transaction. The batch comes from a pipeline source (server/pipelineSource.ts); nothing here depends on which.
+ */
+export async function runPipelineImport(viewer: Viewer, batch: PipelineBatch, mode: "preview" | "apply"): Promise<ImportPlan> {
   const db = await requireDb();
   const day = today();
-  if (mode === "preview") return planImport(csv, await loadImportState(db, viewer), day);
+  if (mode === "preview") return planMappedRows(batch.rows, batch.problems, await loadImportState(db, viewer), day);
 
   return db.transaction(async tx => {
-    const plan = planImport(csv, await loadImportState(tx, viewer, true), day);
+    const plan = planMappedRows(batch.rows, batch.problems, await loadImportState(tx, viewer, true), day);
     const now = new Date();
-    const note = (rowNumber: number) => `SharePoint import, row ${rowNumber}`;
+    const note = batch.rowNote;
 
     for (const create of plan.creates) {
       const data = createDefaultDocument();
@@ -521,7 +526,7 @@ export async function runSharePointImport(viewer: Viewer, csv: string, mode: "pr
         data,
         stage: create.stage,
         stageEnteredOn: create.stageEffectiveOn,
-        intakeSource: "sharepoint_import",
+        intakeSource: batch.intakeSource,
         importSnapshot: create.snapshot,
         lastImportedAt: now,
         updatedByUserId: viewer.id,
@@ -536,7 +541,7 @@ export async function runSharePointImport(viewer: Viewer, csv: string, mode: "pr
     }
 
     for (const update of plan.updates) {
-      // A rename from SharePoint renames the title too, like a rename in the tracker.
+      // A rename from the source renames the title too, like a rename in the tracker.
       let titlePatch: { title?: string } = {};
       if (typeof update.fields.customerName === "string") {
         const [current] = await tx.select({ title: engagements.title, customerName: engagements.customerName }).from(engagements).where(and(visibleEngagements(viewer), eq(engagements.id, update.id))).limit(1);
