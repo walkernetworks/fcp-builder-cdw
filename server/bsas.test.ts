@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { allocateBsas, bsasTerm } from "../shared/bsas";
+import { allocateBsas, bsasTerm, fundedDocument } from "../shared/bsas";
 import { applyCustomerBrief } from "../shared/briefImport";
 import { copilotBriefPrompt } from "../shared/briefPrompt";
-import { createDefaultDocument, engagementDocumentSchema, migrateDocument, type EngagementDocument } from "../shared/fcp";
+import { createDefaultDocument, engagementDocumentSchema, fundedFields, migrateDocument, type EngagementDocument } from "../shared/fcp";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { renderFcpHtml } from "./fcpRenderer";
@@ -40,35 +40,45 @@ describe("entitlement-only output (no BSAS)", () => {
 // Generic BSAS deal: the example brief plus a BSAS block. The amount, rate and tier are obviously fake and must never
 // reach the document or the output; the brief import keeps hours and dates only.
 const FAKE_BSAS_AMOUNT = 424242;
+const named = (raw: any) => { raw.customer.name = "Example Health System"; };
 const bsasEngagement = (bsas: Record<string, unknown> = { hours: 600 }) => engagement(raw => {
-  raw.customer.name = "Example Health System";
+  named(raw);
   raw.bsas = { ...bsas, amount: FAKE_BSAS_AMOUNT, rate: 271, tier: "Tier Zeta" };
 });
+// BSAS only: no entitlement value or entitled hours, and no customer-entered text that names the entitlement.
+const bsasOnlyEngagement = () => engagement(raw => {
+  named(raw);
+  raw.entitlement = { hoursConsumed: 40, consumedAsOf: "2026-09-03" };
+  raw.milestonesToDate = [];
+  raw.bsas = { hours: 400, termStart: "2026-10-01", termEnd: "2027-09-30", amount: FAKE_BSAS_AMOUNT, rate: 271, tier: "Tier Zeta" };
+});
 
-describe("BSAS schema and migration", () => {
-  it("loads a saved engagement from before BSAS with no BSAS block", () => {
+describe("funding source and migration", () => {
+  it("loads a saved engagement from before BSAS as entitlement only", () => {
     const saved = JSON.parse(JSON.stringify(engagement()));
-    delete saved.report.bsas;
+    for (const key of ["fundingSource", "bsasHours", "bsasStart", "bsasEnd"]) delete saved.fields[key];
     expect(saved.version).toBe(11);
-    const loaded = engagementDocumentSchema.parse(saved);
-    expect(loaded.report.bsas).toBeNull();
-    expect(migrateDocument(saved).report.bsas).toBeNull();
+    for (const loaded of [engagementDocumentSchema.parse(saved), migrateDocument(saved)]) {
+      expect(loaded.fields).toMatchObject({ fundingSource: "entitlement", bsasHours: 0, bsasStart: "", bsasEnd: "" });
+    }
   });
 
-  it("keeps a BSAS block through a save and load", () => {
-    const loaded = engagementDocumentSchema.parse(JSON.parse(JSON.stringify(bsasEngagement({ hours: 600, termStart: "2027-11-01", termEnd: "2028-10-31" }))));
-    expect(loaded.report.bsas).toEqual({ hours: 600, termStart: "2027-11-01", termEnd: "2028-10-31" });
+  it("keeps the funding source and BSAS fields through a save and load", () => {
+    const loaded = engagementDocumentSchema.parse(JSON.parse(JSON.stringify(bsasEngagement({ hours: 600, termStart: "2027-05-01", termEnd: "2028-04-30" }))));
+    expect(loaded.fields).toMatchObject({ fundingSource: "entitlement-bsas", bsasHours: 600, bsasStart: "2027-05-01", bsasEnd: "2028-04-30" });
   });
 
   it("takes hours and dates from the brief and never the amount, rate or tier", () => {
-    const base = createDefaultDocument();
-    const raw = brief();
-    raw.bsas = { hours: 600, termStart: "2027-11-01", termEnd: null, amount: FAKE_BSAS_AMOUNT, rate: 271, tier: "Tier Zeta" };
-    const result = applyCustomerBrief(base, raw);
-    expect(result.document.report.bsas).toEqual({ hours: 600, termStart: "2027-11-01", termEnd: null });
+    const result = applyCustomerBrief(createDefaultDocument(), { ...brief(), bsas: { hours: 600, termStart: "2027-05-01", amount: FAKE_BSAS_AMOUNT, rate: 271, tier: "Tier Zeta" } });
+    expect(result.document.fields).toMatchObject({ fundingSource: "entitlement-bsas", bsasHours: 600, bsasStart: "2027-05-01", bsasEnd: "" });
     expect(result.warnings.join(" ")).toContain("only BSAS hours and term dates are kept");
     const stored = JSON.stringify(result.document);
     for (const internal of [String(FAKE_BSAS_AMOUNT), "Tier Zeta", "\"rate\":271"]) expect(stored).not.toContain(internal);
+  });
+
+  it("sets BSAS only when the brief has BSAS hours and no entitlement value", () => {
+    const document = bsasOnlyEngagement();
+    expect(document.fields).toMatchObject({ fundingSource: "bsas", entitlementAmount: 0, bsasHours: 400 });
   });
 
   it("asks Copilot for BSAS hours and dates only", () => {
@@ -78,17 +88,19 @@ describe("BSAS schema and migration", () => {
   });
 });
 
-describe("BSAS planning", () => {
-  const term = (hours: number, termStart = "2027-11-01", termEnd = "2028-10-31") => bsasTerm({ bsas: { hours, termStart, termEnd } }, null)!;
+describe("BSAS after the entitlement: planning", () => {
+  const funding = (bsasHours: number, bsasStart = "", bsasEnd = "") => ({ fundingSource: "entitlement-bsas" as const, bsasHours, bsasStart, bsasEnd });
+  const term = (hours: number, start = "2027-11-01", end = "2028-10-31") => bsasTerm(funding(hours, start, end), null)!;
 
-  it("is absent without BSAS hours", () => {
-    expect(bsasTerm({ bsas: null }, "2027-10-01")).toBeNull();
-    expect(bsasTerm({ bsas: { hours: 0, termStart: "2027-11-01", termEnd: null } }, null)).toBeNull();
-    expect(bsasTerm({ bsas: { hours: 100, termStart: null, termEnd: null } }, null)).toBeNull();
+  it("is absent for other funding sources or without BSAS hours", () => {
+    expect(bsasTerm({ ...funding(100, "2027-11-01"), fundingSource: "entitlement" }, null)).toBeNull();
+    expect(bsasTerm({ ...funding(100, "2027-11-01"), fundingSource: "bsas" }, null)).toBeNull();
+    expect(bsasTerm(funding(0, "2027-11-01"), null)).toBeNull();
+    expect(bsasTerm(funding(100), null)).toBeNull();
   });
 
   it("starts the day after the entitlement ends and runs twelve months when the dates are not stated", () => {
-    expect(bsasTerm({ bsas: { hours: 100, termStart: null, termEnd: null } }, "2027-10-01")).toEqual({ hours: 100, termStart: "2027-10-02", termEnd: "2028-10-01", startAssumed: true, endAssumed: true });
+    expect(bsasTerm(funding(100), "2027-10-01")).toEqual({ hours: 100, termStart: "2027-10-02", termEnd: "2028-10-01", startAssumed: true, endAssumed: true });
   });
 
   it("draws follow-on work on BSAS in start order until the hours run out", () => {
@@ -121,14 +133,14 @@ describe("BSAS planning", () => {
   });
 
   it("leaves the entitlement plan unchanged: the entitlement is always spent first", () => {
-    const without = scopedEffortForDocument(engagement(raw => { raw.customer.name = "Example Health System"; }), TODAY);
+    const without = scopedEffortForDocument(engagement(named), TODAY);
     const withBsas = scopedEffortForDocument(bsasEngagement(), TODAY);
     expect(withBsas.totals).toEqual(without.totals);
     expect(withBsas.workPackages).toEqual(without.workPackages);
   });
 });
 
-describe("BSAS in the documents", () => {
+describe("BSAS after the entitlement: documents", () => {
   const document = bsasEngagement();
   const html = condensed(document);
   const visible = text(html);
@@ -147,8 +159,49 @@ describe("BSAS in the documents", () => {
     expect(fullText).toContain("Broadcom Software Adoption Services (BSAS) fund up to 600 hours");
   });
 
-  it("goes back to the entitlement-only output when the BSAS block is cleared", () => {
-    const cleared = { ...document, report: { ...document.report, bsas: null } };
-    expect(condensed(cleared)).toBe(condensed(engagement(raw => { raw.customer.name = "Example Health System"; })));
+  it("goes back to the entitlement-only output when the funding source is set back to entitlement only", () => {
+    const back = { ...document, fields: { ...document.fields, fundingSource: "entitlement" as const } };
+    expect(condensed(back)).toBe(condensed(engagement(named)));
+  });
+});
+
+describe("BSAS only", () => {
+  const document = bsasOnlyEngagement();
+  const effort = scopedEffortForDocument(document, TODAY);
+  const html = condensed(document);
+  const visible = text(html);
+  const fullText = text(full(document));
+
+  it("plans on the BSAS term and BSAS hours in the entitlement's place", () => {
+    expect(fundedFields(document.fields)).toMatchObject({ entitlementAmount: 0, entitlementStart: "2026-10-01", entitlementEnd: "2027-09-30" });
+    expect(effort.internal).toMatchObject({ envelopeHours: 400, envelopeSource: "entitled hours" });
+    expect(effort.totals.total).toBeGreaterThan(0);
+    expect(effort.totals.total).toBeLessThanOrEqual(400);
+    // The entitlement window ends with the BSAS term.
+    expect(document.adoptionTimeline.columns.at(-1)).toMatch(/Sep.*27|2027-09/);
+  });
+
+  it("runs the BSAS term to the end the planner entered, not a fixed twelve months", () => {
+    const short = { ...document, fields: { ...document.fields, bsasEnd: "2027-03-31" } };
+    expect(fundedFields(short.fields).entitlementEnd).toBe("2027-03-31");
+    expect(fundedDocument(short).report.entitlement).toMatchObject({ hours: 400, termStart: "2026-10-01", termEnd: "2027-03-31", hoursConsumed: 40 });
+  });
+
+  it("carries no dollar figure and passes the BSAS-only content gate", () => {
+    expect(visible).not.toMatch(/\$\s?\d/);
+    expect(fullText).not.toMatch(/\$\s?\d/);
+    expect(checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount, bsasOnly: true })).toEqual([]);
+    expect(checkCondensedFcp(html.replace("Executive Summary", "Executive Summary $79,403"), { customerName: document.fields.customerName, entitlementValue: 0, bsasOnly: true }).join(" ")).toContain("A BSAS-only plan carries no dollar figure");
+    for (const internal of ["424,242", "424242", "Zeta"]) { expect(visible).not.toContain(internal); expect(fullText).not.toContain(internal); }
+  });
+
+  it("names BSAS, not an entitlement, throughout both documents", () => {
+    expect(visible).toContain("BSAS Burndown");
+    expect(visible).toContain("Broadcom Software Adoption Services");
+    expect(fullText).toContain("BSAS Adoption Timeline");
+    expect(fullText).toContain("400 BSAS hours");
+    const mentions = (value: string) => Array.from(value.matchAll(/.{0,60}entitlement.{0,60}/gi), match => match[0]);
+    expect(mentions(visible)).toEqual([]);
+    expect(mentions(fullText)).toEqual([]);
   });
 });

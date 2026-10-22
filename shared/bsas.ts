@@ -1,4 +1,4 @@
-import type { ReportContent } from "./report";
+import { calculateEntitlementEndDate, fundedFields, type EngagementDocument, type MinimalFields } from "./fcp";
 
 /**
  * Broadcom Software Adoption Services (BSAS) planning. Pure, and hours only: BSAS funds work the entitlement cannot
@@ -46,17 +46,37 @@ function addMonths(time: number, months: number): number {
   return Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), Math.min(date.getUTCDate(), lastDay));
 }
 
-/** The BSAS term with its defaults filled in, or null when the deal has no BSAS hours or no start can be placed. */
-export function bsasTerm(report: Pick<ReportContent, "bsas">, entitlementEnd: string | null): BsasTerm | null {
-  const bsas = report.bsas;
-  if (!bsas || !bsas.hours || bsas.hours <= 0) return null;
-  const statedStart = parse(bsas.termStart);
+/**
+ * The BSAS term that funds follow-on work after the entitlement ("entitlement-bsas" deals only), with its defaults
+ * filled in; null for any other deal, without BSAS hours, or when no start can be placed.
+ */
+export function bsasTerm(fields: Pick<MinimalFields, "fundingSource" | "bsasHours" | "bsasStart" | "bsasEnd">, entitlementEnd: string | null): BsasTerm | null {
+  if (fields.fundingSource !== "entitlement-bsas" || !(fields.bsasHours > 0)) return null;
+  const statedStart = parse(fields.bsasStart);
   const entitlementEndTime = parse(entitlementEnd);
   const start = statedStart ?? (entitlementEndTime === null ? null : entitlementEndTime + DAY);
   if (start === null) return null;
-  const statedEnd = parse(bsas.termEnd);
+  const statedEnd = parse(fields.bsasEnd);
   const end = statedEnd !== null && statedEnd >= start ? statedEnd : addMonths(start, 12) - DAY;
-  return { hours: bsas.hours, termStart: iso(start), termEnd: iso(end), startAssumed: statedStart === null, endAssumed: statedEnd === null || statedEnd < start };
+  return { hours: fields.bsasHours, termStart: iso(start), termEnd: iso(end), startAssumed: statedStart === null, endAssumed: statedEnd === null || statedEnd < start };
+}
+
+/** True when the deal plans on BSAS alone, in the entitlement's place. */
+export const isBsasOnly = (fields: Pick<MinimalFields, "fundingSource">) => fields.fundingSource === "bsas";
+
+/**
+ * The document as the planner and the renderers see it. A BSAS-only deal carries BSAS in the entitlement's place:
+ * the BSAS hours are the entitled hours, the BSAS term is the term, and there is no dollar value. The consumption
+ * record (hours consumed, as of) is the BSAS consumption. Any other deal is returned unchanged.
+ */
+export function fundedDocument(document: EngagementDocument): EngagementDocument {
+  if (!isBsasOnly(document.fields)) return document;
+  const { fields, report } = document;
+  return {
+    ...document,
+    fields: fundedFields(fields),
+    report: { ...report, entitlement: { ...report.entitlement, hours: fields.bsasHours > 0 ? fields.bsasHours : null, termStart: parse(fields.bsasStart) === null ? null : fields.bsasStart, termEnd: parse(fields.bsasEnd) === null ? (calculateEntitlementEndDate(fields.bsasStart) || null) : fields.bsasEnd } },
+  };
 }
 
 /**

@@ -167,11 +167,8 @@ export function ReportContentEditor({ document, onChange }: Props) {
   const generated = useMemo(() => generateReport(document), [document]);
   const set = <K extends keyof ReportContent>(key: K, value: ReportContent[K]) => onChange({ ...document, report: { ...report, [key]: value } });
   const setEntitlement = (patch: Partial<ReportContent["entitlement"]>) => set("entitlement", { ...report.entitlement, ...patch });
-  // Cleared BSAS fields leave no BSAS block, so the documents go back to exactly the entitlement-only ones.
-  const setBsas = (patch: Partial<NonNullable<ReportContent["bsas"]>>) => {
-    const next = { hours: null, termStart: null, termEnd: null, ...report.bsas, ...patch };
-    set("bsas", next.hours === null && next.termStart === null && next.termEnd === null ? null : next);
-  };
+  // A BSAS-only deal takes its hours from the Engagement step; the consumption record here is the BSAS consumption.
+  const bsasOnly = document.fields.fundingSource === "bsas";
   const setDiscovery = (patch: Partial<ReportContent["discovery"]>) => set("discovery", { ...report.discovery, ...patch });
   const textInput = (value: string | null, onValue: (value: string | null) => void, placeholder = "") => <Input className="bg-white" value={value ?? ""} placeholder={placeholder} onChange={event => onValue(event.target.value === "" ? null : event.target.value)} />;
   const numberInput = (value: number | null, onValue: (value: number | null) => void, placeholder = "") => <Input className="bg-white" type="number" min={0} value={value ?? ""} placeholder={placeholder} onChange={event => onValue(numberOrNull(event.target.value))} />;
@@ -191,8 +188,8 @@ export function ReportContentEditor({ document, onChange }: Props) {
   }
 
   const missing = [
-    !report.entitlement.hours && "Entitled hours",
-    report.entitlement.hours && report.entitlement.hoursConsumed === null && "Hours consumed to date",
+    !bsasOnly && !report.entitlement.hours && "Entitled hours",
+    (bsasOnly || report.entitlement.hours) && report.entitlement.hoursConsumed === null && "Hours consumed to date",
     !report.whatWeHeard.some(item => item.component.trim()) && "Customer positions (what we heard)",
     !report.problems.some(item => item.problem.trim()) && "Customer problems",
     !report.openQuestions.some(item => item.question.trim()) && "Open questions",
@@ -212,19 +209,11 @@ export function ReportContentEditor({ document, onChange }: Props) {
 
       <Group title="From the customer" description="What only a conversation with the customer can provide.">
         <Accordion type="multiple" defaultValue={["entitlement", "heard"]} className="border-t border-slate-200">
-          <Section value="entitlement" title="Entitlement hours" filled={Boolean(report.entitlement.hours && report.entitlement.hoursConsumed !== null)} hint="From the signed resource assignments and the latest consumption record. These drive the KPI tiles, burndown and weekly pace. The entitlement value and start date are on the Engagement step.">
+          <Section value="entitlement" title={bsasOnly ? "BSAS consumption" : "Entitlement hours"} filled={Boolean((bsasOnly || report.entitlement.hours) && report.entitlement.hoursConsumed !== null)} hint={bsasOnly ? "From the latest BSAS consumption record. This drives the KPI tiles, burndown and weekly pace. The BSAS hours and term are on the Engagement step." : "From the signed resource assignments and the latest consumption record. These drive the KPI tiles, burndown and weekly pace. The entitlement value and start date are on the Engagement step."}>
             <div className="grid gap-3 md:grid-cols-3">
-              <Field label="Entitled hours">{numberInput(report.entitlement.hours, value => setEntitlement({ hours: value }))}</Field>
+              {!bsasOnly && <Field label="Entitled hours">{numberInput(report.entitlement.hours, value => setEntitlement({ hours: value }))}</Field>}
               <Field label="Hours consumed">{numberInput(report.entitlement.hoursConsumed, value => setEntitlement({ hoursConsumed: value }))}</Field>
               <Field label="Consumed as of">{dateInput(report.entitlement.consumedAsOf, value => setEntitlement({ consumedAsOf: value }))}</Field>
-            </div>
-          </Section>
-
-          <Section value="bsas" title="BSAS hours" filled={Boolean(report.bsas?.hours)} hint="Broadcom Software Adoption Services, when the deal has them: a second pool on its own PO, used after the entitlement and forfeited if unused at its term end. Enter hours and dates only, never the BSAS amount or rates. A blank start is the day after the entitlement ends; a blank end is twelve months after the start.">
-            <div className="grid gap-3 md:grid-cols-3">
-              <Field label="BSAS hours">{numberInput(report.bsas?.hours ?? null, value => setBsas({ hours: value }))}</Field>
-              <Field label="BSAS term start">{dateInput(report.bsas?.termStart ?? null, value => setBsas({ termStart: value }))}</Field>
-              <Field label="BSAS term end">{dateInput(report.bsas?.termEnd ?? null, value => setBsas({ termEnd: value }))}</Field>
             </div>
           </Section>
 

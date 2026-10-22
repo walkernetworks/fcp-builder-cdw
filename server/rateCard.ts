@@ -1,6 +1,7 @@
 import { barsForLine, buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, protectedWorkPackages, ROLE_LOADING, type DeferralReason, type FitMoney, type RoleHours, type ScopedEffort, type WorkPackageEffort, type WorkPlanRoles } from "../shared/effort";
 import type { ScopeMove } from "../shared/hoursFit";
 import type { EngagementDocument } from "../shared/fcp";
+import { fundedDocument } from "../shared/bsas";
 
 /**
  * INTERNAL ONLY. Broadcom Work Plan rate card and staffing mix from the fcp-builder skill (fcp_hours.py).
@@ -230,7 +231,9 @@ function fitUnderCap(document: EngagementDocument, effort: ScopedEffort, fit: No
 const planHours = (effort: ScopedEffort) => effort.workPackages.reduce((sum, row) => sum + row.total, 0);
 
 /** Scoped effort with the envelope filled from the entitlement value when entitled hours are missing, kept within the value, and its cost. */
-export function scopedEffortForDocument(document: EngagementDocument, today?: string): ScopedEffort {
+export function scopedEffortForDocument(source: EngagementDocument, today?: string): ScopedEffort {
+  // A BSAS-only deal is planned on the BSAS hours, as entitled hours, over the BSAS term.
+  const document = fundedDocument(source);
   if (document.fields.hoursModel === "v2") return scopedEffortV2(document, today);
   const estimated = document.report.entitlement.hours === null ? fundedHoursFromValue(document.fields.entitlementAmount) : null;
   const entitlementValue = document.fields.entitlementAmount > 0 ? document.fields.entitlementAmount : 0;

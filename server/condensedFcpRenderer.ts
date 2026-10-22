@@ -1,4 +1,4 @@
-import { allocateBsas, bsasTerm, type BsasTerm } from "../shared/bsas";
+import { allocateBsas, bsasTerm, fundedDocument, isBsasOnly, type BsasTerm } from "../shared/bsas";
 import { barWindow } from "../shared/buildingBlocks";
 import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
 import { activityOwner, calculateEntitlementEndDate, domainHosts, domainPackages, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
@@ -19,6 +19,10 @@ import { projectOperationalTimelineToMonths, renderTimeline, sliceTimeline } fro
 
 const esc = (value: unknown) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const LEGEND = "CDW — Proprietary and confidential. Copying restricted.";
+
+/** Picks the entitlement wording, or the BSAS wording for a BSAS-only deal. */
+type Wording = (entitlement: string, bsas: string) => string;
+const ENTITLEMENT_WORDING: Wording = entitlement => entitlement;
 
 function parseIso(value: string): Date | null {
   const match = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(value);
@@ -138,7 +142,7 @@ const UNDECIDED_DEPTH = / — depth to be confirmed$/;
 const customerFacing = (timeline: Timeline): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, label: bar.label.replace(UNDECIDED_DEPTH, "") })) })) });
 
 /** The entitlement window and the two-year notional, drawn with the same category Gantt as the full FCP. */
-function timelineSheets(document: EngagementDocument, windowStart: string, windowEnd: string, termEnd: string | null, includeEntitlement = true, bsas: BsasTerm | null = null): { entitlement: string; notional: string } {
+function timelineSheets(document: EngagementDocument, windowStart: string, windowEnd: string, termEnd: string | null, includeEntitlement = true, bsas: BsasTerm | null = null, w: Wording = ENTITLEMENT_WORDING): { entitlement: string; notional: string } {
   const bsasLine = bsas ? ` Broadcom Software Adoption Services (BSAS) fund up to ${hours(bsas.hours)} hours of this work from ${esc(longDate(bsas.termStart))} to ${esc(longDate(bsas.termEnd))}; BSAS hours not used by then are forfeited.` : "";
   const sheet = (eyebrow: string, heading: string, intro: string, timeline: Timeline, empty: string) =>
     `<section class="tl-sheet"><div class="tl-head"><span>${esc(eyebrow)}</span><h2>${esc(heading)}</h2><p>${intro}</p></div>${renderTimeline(timeline, empty)}</section>`;
@@ -150,7 +154,7 @@ function timelineSheets(document: EngagementDocument, windowStart: string, windo
   const termColumns = opStart && opEnd ? (Number(opEnd[1]) - Number(opStart[1])) * 12 + Number(opEnd[2]) - Number(opStart[2]) + 1 : 13;
   const entitlementWindow = sliceTimeline(operational, 1, Math.max(1, Math.min(13, termColumns, operational.columns.length)));
   const entitlement = includeEntitlement && document.adoptionTimeline.lanes.length
-    ? sheet("Adoption Timeline · entitlement window", "Private Cloud Adoption Timeline", `${esc(windowStart)} through ${esc(windowEnd)}. The entitlement-funded delivery sequence by month, under the five standard categories; work after the entitlement ends is carried in the Two-Year Notional. ◆ marks key delivered functionality.`, entitlementWindow, "No activities are scheduled in the entitlement window.")
+    ? sheet(w("Adoption Timeline · entitlement window", "Adoption Timeline · BSAS term"), "Private Cloud Adoption Timeline", `${esc(windowStart)} through ${esc(windowEnd)}. ${w("The entitlement-funded delivery sequence by month, under the five standard categories; work after the entitlement ends is carried in the Two-Year Notional.", "The BSAS-funded delivery sequence by month, under the five standard categories; work after the BSAS term ends is carried in the Two-Year Notional.")} ◆ marks key delivered functionality.`, entitlementWindow, w("No activities are scheduled in the entitlement window.", "No activities are scheduled in the BSAS term."))
     : "";
   const plan = customerFacing(document.twoYearPlan);
   // The notional picks up the month after the entitlement ends, so the entitlement year is not drawn twice.
@@ -167,12 +171,12 @@ function timelineSheets(document: EngagementDocument, windowStart: string, windo
       const last = part.columns[part.columns.length - 1] || "";
       return sheet(
         `Two-Year Notional · ${first} to ${last}`,
-        !includeEntitlement ? (index ? "Two-Year Notional, Continued" : "Two-Year Notional") : index ? "After the Entitlement, Continued" : "After the Entitlement",
+        !includeEntitlement ? (index ? "Two-Year Notional, Continued" : "Two-Year Notional") : index ? w("After the Entitlement, Continued", "After the BSAS Term, Continued") : w("After the Entitlement", "After the BSAS Term"),
         index
           ? `${esc(first)} through ${esc(last)}. Lifecycle, adoption and expansion direction that may need future scope or funding.`
           : !includeEntitlement
-            ? `A directional roadmap from ${esc(first)} through ${esc(last)}. Work after the entitlement ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""} is not funded by the current entitlement.${bsasLine}`
-            : `${esc(first)} through ${esc(last)}, after the entitlement ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""}. Directional work that is not funded by the current entitlement and may need future scope or funding.${bsasLine}`,
+            ? `A directional roadmap from ${esc(first)} through ${esc(last)}. Work after the ${w("entitlement", "BSAS term")} ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""} is not funded by the current ${w("entitlement", "BSAS hours")}.${bsasLine}`
+            : `${esc(first)} through ${esc(last)}, after the ${w("entitlement", "BSAS term")} ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""}. Directional work that is not funded by the current ${w("entitlement", "BSAS hours")} and may need future scope or funding.${bsasLine}`,
         part,
         `No notional activities are scheduled from ${esc(first)} to ${esc(last)}.`,
       );
@@ -263,7 +267,11 @@ tr{break-inside:avoid}
 
 export type CondensedFcpOptions = { today?: string; effort: ScopedEffort };
 
-export function renderCondensedFcpHtml(title: string, source: EngagementDocument, options: CondensedFcpOptions): string {
+export function renderCondensedFcpHtml(title: string, input: EngagementDocument, options: CondensedFcpOptions): string {
+  // A BSAS-only deal is drawn with BSAS in the entitlement's place: BSAS hours, the BSAS term, and no dollar figure.
+  const source = fundedDocument(input);
+  const bsasOnly = isBsasOnly(source.fields);
+  const w: Wording = (entitlement, bsasText) => (bsasOnly ? bsasText : entitlement);
   // The report as it prints: generated rows the planner kept plus the planner's completed rows.
   // Work the entitlement cannot carry is drawn after it, in the Two-Year Notional.
   const deferredWork = options.effort.workPackages.filter(row => row.deferred);
@@ -281,19 +289,21 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const termEnd = burndown?.termEnd || report.entitlement.termEnd || calculateEntitlementEndDate(fields.entitlementStart) || null;
   const assumedEnd = termEndAssumed(document);
   const termStart = burndown?.termStart || report.entitlement.termStart || fields.entitlementStart || null;
-  const bsas = bsasTerm(report, termEnd);
+  const bsas = bsasTerm(fields, termEnd);
   const effort = options.effort;
   // The report as it prints, so customer-run waves the plan generated count toward the customer's effort.
   const customerEffort = buildCustomerEffort(document);
   const items = [...planItems(document, customer), ...deadlines(document, termEnd)].sort((left, right) => left.start.localeCompare(right.start));
   const platform = platformName(document);
-  const timelines = timelineSheets(document, longDate(fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate) || "Plan start", termEnd ? longDate(termEnd) : document.adoptionTimeline.columns.at(-1) || "plan end", termEnd, fields.exportPreferences.includeOperationalTimeline, bsas);
+  const timelines = timelineSheets(document, longDate(fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate) || "Plan start", termEnd ? longDate(termEnd) : document.adoptionTimeline.columns.at(-1) || "plan end", termEnd, fields.exportPreferences.includeOperationalTimeline, bsas, w);
   const deliveryModel = report.deliveryModel || "CDW";
   const outcomes = resolvePlanOutcomes(fields).outcomes;
   const strip = `<div class="strip"><span>${cdwLogoSvg("logo")}Consulting Solution Architecture</span><span>Functional Consumption Plan — Condensed | Prepared for ${esc(customer)} | ${esc(stamp)}</span></div>`;
 
   // ---- KPI tiles (exactly one dollar figure: the entitlement value)
-  const valueTile = fields.entitlementAmount
+  const valueTile = bsasOnly
+    ? `<div class="kpi"><div class="v">${hours(fields.bsasHours)} hrs</div><div class="l">Broadcom Software Adoption Services</div><div class="sub">BSAS hours${termStart && termEnd ? ` · ${esc(shortDate(termStart))} – ${esc(shortDate(termEnd))}` : ""}</div></div>`
+    : fields.entitlementAmount
     ? `<div class="kpi"><div class="v">${esc(money(fields.entitlementAmount))}</div><div class="l">${esc(platform.split(" ")[0])} Services Entitlement</div><div class="sub">${burndown ? `${hours(burndown.entitledHours)} hours · ` : ""}${termStart && termEnd ? `${esc(shortDate(termStart))} – ${esc(shortDate(termEnd))}` : ""}</div></div>`
     : `<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">No entitlement booked yet</div></div>`;
   const kpis = burndown
@@ -319,15 +329,15 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
       if (!items.includes(label(bar.label))) items.push(label(bar.label));
     }
     const later = deferredWork.filter(row => row.category === category).map(row => row.label.replace(UNDECIDED_DEPTH, ""));
-    const text = `${items.length ? esc(items.join("; ")) : later.length ? "nothing in the entitlement window" : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; after the entitlement: ${esc(later.join("; "))}` : ""}`;
+    const text = `${items.length ? esc(items.join("; ")) : later.length ? w("nothing in the entitlement window", "nothing in the BSAS term") : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; ${w("after the entitlement", "after the BSAS term")}: ${esc(later.join("; "))}` : ""}`;
     return `<li><b>${esc(category)}</b> — ${text}</li>`;
   }).join("");
-  const lead = `A design-led plan to move ${esc(customer)} onto ${esc(platform)} — ${esc(plan.label.toLowerCase())}${termEnd ? ` — consuming the services entitlement before it ends on ${esc(longDate(termEnd))}${assumedEnd ? " (12 months from the start; to be confirmed)" : ""}` : ""}.`;
+  const lead = `A design-led plan to move ${esc(customer)} onto ${esc(platform)} — ${esc(plan.label.toLowerCase())}${termEnd ? ` — ${w("consuming the services entitlement before it ends", "consuming the BSAS hours before the term ends")} on ${esc(longDate(termEnd))}${assumedEnd ? " (12 months from the start; to be confirmed)" : ""}` : ""}.`;
 
   // ---- Burndown
   const burndownSection = burndown
-    ? `<div class="keep"><h2>Entitlement Burndown</h2><p>${(burndown.pctConsumed * 100).toFixed(1)}% of the entitlement is consumed; ${(burndown.pctElapsed * 100).toFixed(1)}% of the term has elapsed. The red fill is hours delivered; the dark tick marks elapsed term.</p><p class="lead">${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} hours delivered · ${hours(burndown.remainingHours)} hours remaining · ${esc(shortDate(burndown.termEnd))} expiry.</p><div class="bd"><div class="bd-bar"><div class="bd-fill" style="width:${(burndown.pctConsumed * 100).toFixed(1)}%"></div><div class="bd-tick" style="left:${(burndown.pctElapsed * 100).toFixed(1)}%"></div></div></div><div class="note"><b>Time-sensitive:</b> ${hours(burndown.remainingHours)} hours remain with ${burndown.daysToExpiry} days to the ${esc(longDate(burndown.termEnd))} expiry, which requires an average of <b>${burndown.expiryPace} hours per week (about ${burndown.expiryPaceFte} FTE)</b> from today. Unconsumed hours are not refunded.</div></div>`
-    : `<div class="note">No consumption data exists yet for this engagement; the burndown appears once entitled and consumed hours are recorded.</div>`;
+    ? `<div class="keep"><h2>${w("Entitlement Burndown", "BSAS Burndown")}</h2><p>${(burndown.pctConsumed * 100).toFixed(1)}% of the ${w("entitlement is", "BSAS hours are")} consumed; ${(burndown.pctElapsed * 100).toFixed(1)}% of the term has elapsed. The red fill is hours delivered; the dark tick marks elapsed term.</p><p class="lead">${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} hours delivered · ${hours(burndown.remainingHours)} hours remaining · ${esc(shortDate(burndown.termEnd))} expiry.</p><div class="bd"><div class="bd-bar"><div class="bd-fill" style="width:${(burndown.pctConsumed * 100).toFixed(1)}%"></div><div class="bd-tick" style="left:${(burndown.pctElapsed * 100).toFixed(1)}%"></div></div></div><div class="note"><b>Time-sensitive:</b> ${hours(burndown.remainingHours)} hours remain with ${burndown.daysToExpiry} days to the ${esc(longDate(burndown.termEnd))} expiry, which requires an average of <b>${burndown.expiryPace} hours per week (about ${burndown.expiryPaceFte} FTE)</b> from today. Unconsumed hours are not refunded.</div></div>`
+    : `<div class="note">No consumption data exists yet for this engagement; the burndown appears once ${w("entitled and consumed hours are", "consumed BSAS hours are")} recorded.</div>`;
 
   // ---- Scoped effort (hours only)
   const effortTotal = ["Total CDW-delivered hours", hours(effort.totals.architect), hours(effort.totals.srConsultant), hours(effort.totals.projectManager), hours(effort.totals.total)];
@@ -340,7 +350,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     const headers = ["Workstream", "Architect", ...(senior ? ["Sr. Architect"] : []), "Sr. Consultant", "Sr. Project Manager", ...(offshore ? ["Offshore PM"] : []), "Total Hours"];
     const cells = (values: { architect: number; srConsultant: number; projectManager: number; seniorArchitect?: number; offshoreProjectManager?: number; total: number }) => [hours(values.architect), ...(senior ? [hours(values.seniorArchitect ?? 0)] : []), hours(values.srConsultant), hours(values.projectManager), ...(offshore ? [hours(values.offshoreProjectManager ?? 0)] : []), hours(values.total)];
     const effortRows = effort.rows.map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), ...cells(row)]);
-    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by workstream and role${effort.source === "assignments" ? ", from the signed resource assignments for this entitlement" : ", estimated from this plan; the signed resource assignments replace these figures"}.</p>${table(headers, effortRows, { numeric: headers.slice(1).map((_, index) => index + 1), foot: true, total: ["Total CDW-delivered hours", ...cells(effort.totals)] })}`;
+    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by workstream and role${effort.source === "assignments" ? `, from the signed resource assignments for ${w("this entitlement", "these BSAS hours")}` : ", estimated from this plan; the signed resource assignments replace these figures"}.</p>${table(headers, effortRows, { numeric: headers.slice(1).map((_, index) => index + 1), foot: true, total: ["Total CDW-delivered hours", ...cells(effort.totals)] })}`;
   } else {
     // One table per work package: window, lead role and hours, with what it delivers, how it is accepted, and what it starts after.
     const numeric = (value: number) => `<td class="num">${hours(value)}</td>`;
@@ -384,14 +394,14 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const bsasById = new Map(bsasPlan?.rows.map(row => [row.id, row.bsasHours]) ?? []);
   const followOnLead = bsasPlan
     ? `Work planned after the entitlement, estimated in hours. Broadcom Software Adoption Services (BSAS) fund ${hours(bsasPlan.plannedHours)} of these hours between ${esc(shortDate(bsasPlan.term.termStart))} and ${esc(shortDate(bsasPlan.term.termEnd))}, after the entitlement is used${bsasPlan.unfundedHours ? `; the other ${hours(bsasPlan.unfundedHours)} hours need a follow-on services scope` : ""}. None of it is drawn from the current entitlement.`
-    : "Work planned after the entitlement, estimated in hours for a follow-on services scope. It is not drawn from the current entitlement.";
+    : w("Work planned after the entitlement, estimated in hours for a follow-on services scope. It is not drawn from the current entitlement.", "Work planned after the BSAS term, estimated in hours for a follow-on services scope. It is not drawn from the current BSAS hours.");
   const bsasNote = bsasPlan
     ? `<div class="note"><b>BSAS hours:</b> ${hours(bsasPlan.term.hours)} available from ${esc(shortDate(bsasPlan.term.termStart))} to ${esc(shortDate(bsasPlan.term.termEnd))}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}; ${hours(bsasPlan.plannedHours)} are planned inside that window.${bsasPlan.forfeitedHours ? ` ${hours(bsasPlan.forfeitedHours)} hours have no planned work before ${esc(shortDate(bsasPlan.term.termEnd))} and are forfeited if they are not scheduled.` : ""} BSAS hours not used by the end of the term are not refunded.</div>`
     : "";
   const followOnSection = followOnRows.length
     ? `<h3>Follow-on Scope — Two-Year Notional</h3><p class="lead">${followOnLead}</p>${table(["Work Package", "Planned Window", "Lead Delivery Role", "Architect", "Sr. Consultant", "Sr. Project Manager", "Total Hours", ...(bsasPlan ? ["BSAS Hours"] : [])], followOnRows.map(row => {
       const window = followOnWindow(row);
-      const afterTerm = window ? formatWindow(window.start, window.end) : termEnd ? `After ${shortDate(termEnd)}` : "After the entitlement";
+      const afterTerm = window ? formatWindow(window.start, window.end) : termEnd ? `After ${shortDate(termEnd)}` : w("After the entitlement", "After the BSAS term");
       const split = row.total > 0 && !row.deferred;
       return [`${esc(row.label.replace(UNDECIDED_DEPTH, ""))}${split ? " <i>(remaining hours)</i>" : ""}`, esc(afterTerm), esc(row.leadRole), hours(row.followOn!.architect), hours(row.followOn!.srConsultant), hours(row.followOn!.projectManager), hours(row.followOn!.total), ...(bsasPlan ? [hours(bsasById.get(row.id) ?? 0)] : [])];
     }), { numeric: bsasPlan ? [3, 4, 5, 6, 7] : [3, 4, 5, 6], foot: true, total: ["Total follow-on hours", "", "", hours(followOnTotals.architect), hours(followOnTotals.srConsultant), hours(followOnTotals.projectManager), hours(followOnTotals.total), ...(bsasPlan ? [hours(bsasPlan.plannedHours)] : [])] })}${bsasNote}`
@@ -400,11 +410,11 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   // ---- Scope by bucket (v2 hours model): hours only, never rates or dollars
   const fit = effort.internal.fit;
   const bucketRows: Array<[string, string, number]> = fit ? [
-    ["This entitlement: core", "Discovery, design, the pathway build, dated migration waves and VCF Operations at Tier 1", fit.buckets.E1],
-    ["This entitlement: depth", "Selected outcomes, remaining waves and depth tiers, in priority order", fit.buckets.E2],
-    ["Follow-on entitlement", bsas ? `Year two, with design already complete; BSAS funds up to ${hours(bsas.hours)} hours from ${shortDate(bsas.termStart)} to ${shortDate(bsas.termEnd)}, and the rest depends on a future purchase` : "Year two, with design already complete; depends on a future purchase", fit.buckets.F],
-    ["Customer-funded", "Work wanted this year beyond the entitlement, through CDW", fit.buckets.C],
-    ...(fit.reserveHours >= 1 ? [["This entitlement: reserve", "Held back for change requests and estimate variance; reviewed at month 6 and released to follow-on work if unused", fit.reserveHours] as [string, string, number]] : []),
+    [w("This entitlement: core", "BSAS: core"), "Discovery, design, the pathway build, dated migration waves and VCF Operations at Tier 1", fit.buckets.E1],
+    [w("This entitlement: depth", "BSAS: depth"), "Selected outcomes, remaining waves and depth tiers, in priority order", fit.buckets.E2],
+    [w("Follow-on entitlement", "Follow-on scope"), bsas ? `Year two, with design already complete; BSAS funds up to ${hours(bsas.hours)} hours from ${shortDate(bsas.termStart)} to ${shortDate(bsas.termEnd)}, and the rest depends on a future purchase` : "Year two, with design already complete; depends on a future purchase", fit.buckets.F],
+    ["Customer-funded", w("Work wanted this year beyond the entitlement, through CDW", "Work wanted this year beyond the BSAS hours, through CDW"), fit.buckets.C],
+    ...(fit.reserveHours >= 1 ? [[w("This entitlement: reserve", "BSAS: reserve"), "Held back for change requests and estimate variance; reviewed at month 6 and released to follow-on work if unused", fit.reserveHours] as [string, string, number]] : []),
   ] : [];
   // Rounded to agree with the work package tables: the two entitlement buckets foot to the entitlement total, and
   // follow-on to the follow-on table, whenever they differ from them only by rounding.
@@ -417,11 +427,11 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const scopeMoves = fit?.scopeMoves ?? [];
   const moveText = (item: (typeof scopeMoves)[number]) => item.reason === "merged"
     ? `${item.label}, saving ${hours(item.hours)} hours`
-    : `${item.label.replace(UNDECIDED_DEPTH, "")} (${hours(item.hours)} hours) moved to the follow-on ${item.reason === "after the entitlement window" ? "because it is scheduled after the entitlement ends; the entitlement hours it leaves unused are held in the reserve" : "to keep the protected work within the entitlement"}`;
-  const scopeMoveNote = (scopeMoves.length ? `<div class="note"><b>Moved out of this entitlement:</b> ${scopeMoves.map(item => esc(moveText(item))).join("; ")}.</div>` : "")
-    + (fit?.underFunded ? `<div class="note"><b>Under-funded:</b> handover, the runbook and training, licensing, the management domains and the first delivery wave stay in this entitlement, and with the design work they need ${hours(fit.underFunded.gapHours)} hours more than it funds after the reserve. Closing the gap needs additional entitlement or a scope change.</div>` : "");
+    : `${item.label.replace(UNDECIDED_DEPTH, "")} (${hours(item.hours)} hours) moved to the follow-on ${item.reason === "after the entitlement window" ? w("because it is scheduled after the entitlement ends; the entitlement hours it leaves unused are held in the reserve", "because it is scheduled after the BSAS term ends; the BSAS hours it leaves unused are held in the reserve") : w("to keep the protected work within the entitlement", "to keep the protected work within the BSAS hours")}`;
+  const scopeMoveNote = (scopeMoves.length ? `<div class="note"><b>${w("Moved out of this entitlement", "Moved out of these BSAS hours")}:</b> ${scopeMoves.map(item => esc(moveText(item))).join("; ")}.</div>` : "")
+    + (fit?.underFunded ? `<div class="note"><b>Under-funded:</b> handover, the runbook and training, licensing, the management domains and the first delivery wave stay in ${w("this entitlement", "the BSAS hours")}, and with the design work they need ${hours(fit.underFunded.gapHours)} hours more than ${w("it funds", "they fund")} after the reserve. Closing the gap needs ${w("additional entitlement", "additional BSAS hours")} or a scope change.</div>` : "");
   const bucketSection = fit
-    ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority.</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.</p>${scopeMoveNote}`
+    ? `<h3>Scope by Bucket</h3><p class="lead">The full scope of this plan in hours, placed in order of priority.</p>${table(["Bucket", "What it covers", "Hours"], bucketRows.map(([name, detail], index) => [esc(name), esc(detail), hours(roundedBuckets[index])]), { numeric: [2], foot: true, total: ["Total scope", "", hours(roundedBuckets.reduce((sum, value) => sum + value, 0))] })}<p class="lead">${w("Follow-on entitlement work depends on a future VCF purchase or a renewal with entitlement attached.", "Follow-on work depends on additional BSAS hours or a future services purchase.")}</p>${scopeMoveNote}`
     : "";
 
   // ---- Customer effort
@@ -478,10 +488,10 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
   const pass1 = effort.internal.pass1;
   // Each domain's build hours: its share of the build line, from its pathway and host count.
   const domainList = domainPackages(fields);
-  const w = DOMAIN_BUILD_WEIGHTS;
+  const weights = DOMAIN_BUILD_WEIGHTS;
   const domainRows = domainList.length ? [
     ...domainList.map(({ domain }) => { const known = domainHosts(domain, document.inventory); return [esc(`Hosts in ${domain.name}`), known.hosts === null ? "Set in design" : esc(known.hosts), esc(known.source)]; }),
-    ["Domain build hours", "Share of the build", esc(`Each domain takes a share of the build hours: a base by pathway (management domain ${w.managementBase.value}, new workload domain ${w.greenfieldBase.value}, converge ${w.convergeBase.value}, import ${w.importBase.value}) plus ${w.perHostGreenfield.value} per host built new (${w.perHostConverge.value} converged, ${w.perHostImport.value} imported), so more hosts never mean fewer hours`)],
+    ["Domain build hours", "Share of the build", esc(`Each domain takes a share of the build hours: a base by pathway (management domain ${weights.managementBase.value}, new workload domain ${weights.greenfieldBase.value}, converge ${weights.convergeBase.value}, import ${weights.importBase.value}) plus ${weights.perHostGreenfield.value} per host built new (${weights.perHostConverge.value} converged, ${weights.perHostImport.value} imported), so more hosts never mean fewer hours`)],
   ] : [];
   const basis = (source: string) => /\bspec\b|worked example|section \d/i.test(source) ? "Assumed: planning default; confirm in design" : `Assumed: ${source}`;
   const estimatingBasis = pass1
@@ -520,14 +530,14 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ...(implementationStart ? [[implementationStart, `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>`] as [string, string]] : []),
     ...(buildLater ? [[buildStart!, `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.${buildNotes.length ? ` ${esc(buildNotes.join(" "))}` : ""}</span></div>`] as [string, string]] : []),
     ...(fields.targetComplete ? [[fields.targetComplete, `<div class="ms"><b>${esc(shortDate(fields.targetComplete))}</b><span>${esc(customer)}'s target completion.</span></div>`] as [string, string]] : []),
-    ...(termEnd ? [[termEnd, `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>Full entitlement consumption: all hours consumed ahead of expiry.${assumedEnd ? " The end date is 12 months from the start and is still to be confirmed." : ""}</span></div>`] as [string, string]] : []),
+    ...(termEnd ? [[termEnd, `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>${w("Full entitlement consumption: all hours consumed ahead of expiry.", "Full BSAS consumption: all BSAS hours consumed before the term ends; unused hours are forfeited.")}${assumedEnd ? " The end date is 12 months from the start and is still to be confirmed." : ""}</span></div>`] as [string, string]] : []),
     ...(bsas ? [
       [bsas.termStart, `<div class="ms"><b>${esc(shortDate(bsas.termStart))}</b><span>BSAS term starts: ${hours(bsas.hours)} BSAS hours fund follow-on work after the entitlement.${bsas.startAssumed ? " The start is the day after the entitlement ends and is still to be confirmed." : ""}</span></div>`],
       [bsas.termEnd, `<div class="ms"><b>By ${esc(shortDate(bsas.termEnd))}</b><span>BSAS term ends: BSAS hours not used by this date are forfeited.${bsas.endAssumed ? " The end date is 12 months from the BSAS start and is still to be confirmed." : ""}</span></div>`],
     ] as Array<[string, string]> : []),
   ];
   const forward = keyDates.sort((left, right) => left[0].localeCompare(right[0])).map(([, html]) => html).join("")
-    + (deferredWork.length ? `<div class="ms"><b>After ${esc(termEnd ? shortDate(termEnd) : "the entitlement")}</b><span>${esc(deferredWork.map(row => row.label.replace(UNDECIDED_DEPTH, "")).join("; "))} — shown in the Two-Year Notional as follow-on scope.</span></div>` : "");
+    + (deferredWork.length ? `<div class="ms"><b>After ${esc(termEnd ? shortDate(termEnd) : w("the entitlement", "the BSAS term"))}</b><span>${esc(deferredWork.map(row => row.label.replace(UNDECIDED_DEPTH, "")).join("; "))} — shown in the Two-Year Notional as follow-on scope.</span></div>` : "");
 
   // ---- Adoption plan & recommendation
   const builds = plan.implementationPackages.length > 0;
@@ -535,8 +545,8 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
     ? `CDW designs and builds the ${esc(platform)} foundation, proves the runbook and hands over, and ${esc(customer)}'s team repeats it`
     : `CDW delivers the ${esc(platform)} architecture and an implementation-ready design that ${esc(customer)}'s team builds from`;
   const shortVersion = burndown
-    ? `${hours(burndown.remainingHours)} hours remain and the entitlement expires on <b>${esc(longDate(burndown.termEnd))}</b>. Unconsumed hours are not refunded. The entitlement funds the one-time work: ${funds}. That requires about ${burndown.expiryPace} hours of delivery per week from today.`
-    : `${funds.charAt(0).toUpperCase()}${funds.slice(1)}. Unconsumed entitlement hours are not refunded once an entitlement is booked.`;
+    ? `${hours(burndown.remainingHours)} hours remain and the ${w("entitlement expires", "BSAS term ends")} on <b>${esc(longDate(burndown.termEnd))}</b>. Unconsumed hours are not refunded. ${w("The entitlement funds", "BSAS funds")} the one-time work: ${funds}. That requires about ${burndown.expiryPace} hours of delivery per week from today.`
+    : `${funds.charAt(0).toUpperCase()}${funds.slice(1)}. ${w("Unconsumed entitlement hours are not refunded once an entitlement is booked.", "Unconsumed BSAS hours are forfeited at the end of the BSAS term.")}`;
   const heard = report.whatWeHeard.length ? `<h3>What we heard, and what we have built to</h3>${table(["Component", `${customer} Position`, "Where It Lands in This Plan"], report.whatWeHeard.map(item => [esc(item.component), esc(item.customerPosition), esc(item.whereItLands)]))}` : "";
   const problems = report.problems.length ? `<h3>Customer Problems</h3><ul>${report.problems.map(item => `<li><b>${esc(item.problem)}</b>${item.addressedBy ? ` — ${esc(item.addressedBy)}` : ""}</li>`).join("")}</ul>` : "";
   const questions = report.openQuestions.length ? `<h3>Open Questions</h3>${table(["Question", "Why we are asking now"], report.openQuestions.map(item => [esc(item.question), esc(item.whyNow)]))}` : "";
@@ -556,7 +566,7 @@ export function renderCondensedFcpHtml(title: string, source: EngagementDocument
 <div class="kpis">${kpis}</div>
 
 <h2>Executive Summary</h2>
-<p class="lead">Where ${esc(customer)} stands today, what the entitlement funds, and the plan to turn it into a platform the team can run.</p>
+<p class="lead">Where ${esc(customer)} stands today, ${w("what the entitlement funds", "what BSAS funds")}, and the plan to turn it into a platform the team can run.</p>
 ${situation.length ? `<h3>Situation</h3><ul>${situation.map(item => `<li>${item}</li>`).join("")}</ul>` : ""}
 <h3>Plan on a Page</h3>
 <p>${esc(selectedScopeSummary(document))}</p>
@@ -590,7 +600,7 @@ ${forward ? `<h3>Key Dates</h3>${forward}` : ""}
 ${timelines.notional}
 
 <h2>Adoption Plan &amp; Recommendation</h2>
-<p class="lead">What we recommend ${esc(customer)} does with the remaining entitlement, and why the sequence is what it is.</p>
+<p class="lead">What we recommend ${esc(customer)} does with the remaining ${w("entitlement", "BSAS hours")}, and why the sequence is what it is.</p>
 <h3>Summary</h3>
 <p>${shortVersion}</p>
 ${heard}
