@@ -1,4 +1,4 @@
-import { barsForLine, buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, protectedWorkPackages, ROLE_LOADING, type DeferralReason, type FitMoney, type RoleHours, type ScopedEffort, type WorkPackageEffort, type WorkPlanRoles } from "../shared/effort";
+import { barsForLine, buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, protectedWorkPackages, ROLE_LOADING, withHoursFill, type DeferralReason, type FitMoney, type RoleHours, type ScopedEffort, type WorkPackageEffort, type WorkPlanRoles } from "../shared/effort";
 import type { ScopeMove } from "../shared/hoursFit";
 import type { EngagementDocument } from "../shared/fcp";
 
@@ -182,7 +182,7 @@ function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEff
   const envelope = document.report.entitlement.hours === null && value ? value / blendedRate : null;
   const built = buildScopedEffort(document, { envelopeHours: envelope, envelopeSource: "entitlement value", today });
   // Under a signed work plan too: the plan's work packages never exceed the hours left after the reserve.
-  const effort = built.internal.fit?.underFunded ? fitUnderCap(document, built, built.internal.fit) : built;
+  const effort = withHoursFill(built.internal.fit?.underFunded ? fitUnderCap(document, built, built.internal.fit) : built);
   const fit = effort.internal.fit;
   const dollars = (hours: number) => Math.round(hours * blendedRate);
   const money: FitMoney | undefined = fit ? {

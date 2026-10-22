@@ -695,6 +695,17 @@ export type ExportPreferences = z.infer<typeof exportPreferencesSchema>;
 export const customerSegmentSchema = z.preprocess(value => (value === "public-sector" ? "corporate" : value), z.enum(["unspecified", "commercial", "corporate"]));
 export type CustomerSegment = z.infer<typeof customerSegmentSchema>;
 
+export const HOURS_FILL_DEFAULT_LABEL = "Optimization and Advisory Services";
+/**
+ * A work package that takes up the entitlement hours the selected scope leaves unused (after the reserve), so the
+ * plan is fully staffed. Its hours follow whatever is left unless the planner sets them on the package.
+ */
+export const hoursFillSchema = z.object({
+  enabled: z.boolean().default(false),
+  label: z.string().trim().min(1).max(120).default(HOURS_FILL_DEFAULT_LABEL),
+}).default({ enabled: false, label: HOURS_FILL_DEFAULT_LABEL });
+export type HoursFill = z.infer<typeof hoursFillSchema>;
+
 /** Which hours model prices the plan: v1 (host brackets) or v2 (topology formulas with an entitlement fit). */
 export const hoursModelSchema = z.enum(["v1", "v2"]);
 export type HoursModel = z.infer<typeof hoursModelSchema>;
@@ -801,6 +812,7 @@ export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   customerSegment: customerSegmentSchema.default("unspecified"),
   hoursModel: hoursModelSchema.default("v2"),
   estimateInputs: estimateInputsSchema.default({}),
+  hoursFill: hoursFillSchema,
 });
 export type MinimalFields = z.infer<typeof minimalFieldsSchema>;
 
@@ -1421,6 +1433,7 @@ export function createDefaultFields(): MinimalFields {
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
     hoursModel: "v2",
     estimateInputs: {},
+    hoursFill: { enabled: false, label: HOURS_FILL_DEFAULT_LABEL },
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
   };
@@ -3149,7 +3162,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const playbookPlan = playbookPlanForFields(fields);
   // Schedule everything first, then cap the entitlement view; the Two-Year Notional carries what falls after it.
   const schedule = keepProtectedInEntitlement(fields, buildPrimaryTimeline(fields, inventory, hclPath, 0, context));
-  const adoptionTimeline = limitToEntitlement(fields, schedule);
+  const adoptionTimeline = withHoursFillLane(limitToEntitlement(fields, schedule), fields);
   const twoYearPlan = buildTwoYearPlan(fields, inventory, schedule);
   const carriedToYearTwo = schedule.lanes.flatMap(lane => lane.bars).filter(activity => activity.startCol > adoptionTimeline.columns.length).length;
   const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
@@ -3202,6 +3215,40 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
     : `Design, delivery baseline, and implementation services are currently planned to begin at the planned project start (${plannedProjectStart}); change the implementation-services start when the customer is still in design or planning.`;
   const rationale = `${customer} is planning a ${editionName} adoption around ${estate}, ${cadence}, and ${details}. Delivery posture: ${deliveryTiming} The selected ${editionName} pathway is ${playbookPlan.label}. The generated design package is ${designPackageSummary}. ${playbookPlan.description} ${editionContext ? `${editionContext} ` : ""}${prerequisiteContext ? `${prerequisiteContext} ` : ""}${yearTwoContext ? `${yearTwoContext} ` : ""}${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The Entitlement Adoption Timeline begins at the planned project start (${entitlementNotionalStart}) and sequences the planned drawdown through entitlement end (${entitlementEnd || "TBD"}) against ${amount}. The separate Two-Year Notional extends the directional adoption roadmap through month 24 and is not a commitment that all work is funded by the current entitlement; ${followOnSummary}. Multiple independently typed workstreams can coexist within the same fixed category, and every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
+}
+
+export const HOURS_FILL_BAR_ID = "bar-hours-fill";
+const HOURS_FILL_LANE_ID = "lane-hours-fill";
+
+/** The column a date falls in, clamped to the timeline. */
+function columnForDate(timeline: Timeline, value: string): number {
+  const start = parseIsoDate(timeline.startDate) ?? parseMonth(timeline.startDate);
+  const date = parseIsoDate(value);
+  if (!start || !date) return 1;
+  const offset = timeline.cadence === "week" ? Math.floor((date.getTime() - start.getTime()) / 604_800_000) : monthDifference(start, date);
+  return Math.max(1, Math.min(timeline.columns.length, offset + 1));
+}
+
+/**
+ * Adds the hours-fill work package when the planner turned it on, and removes it when they turned it off. It runs
+ * from the implementation start to the end of the entitlement. A package already on the plan keeps its window and
+ * label, so hand edits survive.
+ */
+export function withHoursFillLane(timeline: Timeline, fields: MinimalFields): Timeline {
+  const present = timeline.lanes.some(lane => lane.bars.some(item => item.id === HOURS_FILL_BAR_ID));
+  if (!fields.hoursFill.enabled) {
+    if (!present) return timeline;
+    const lanes = timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(item => item.id !== HOURS_FILL_BAR_ID) })).filter(lane => lane.id !== HOURS_FILL_LANE_ID || lane.bars.length);
+    return { ...timeline, lanes: lanes.length ? lanes : timeline.lanes };
+  }
+  if (present) return timeline;
+  const startCol = columnForDate(timeline, fields.plannedImplementationStart || timelineStartDate(fields));
+  const activity = bar(
+    HOURS_FILL_BAR_ID, startCol, timeline.columns.length + 1, colorForWorkstreamType("Consume / Handover"), fields.hoursFill.label, false, false,
+    "Platform in service and the customer's priorities for each request.",
+    "Time-boxed architect and consultant hours drawn down on request through the end of the entitlement: health checks, tuning, configuration reviews, and advisory sessions on the delivered platform.",
+  );
+  return { ...timeline, lanes: [...timeline.lanes, { id: HOURS_FILL_LANE_ID, name: fields.hoursFill.label, category: "Operations", workstreamType: "Consume / Handover", bars: [activity] }] };
 }
 
 export function buildTimeline(fields: MinimalFields, inventory: InventorySummary): { timeline: Timeline; rationale: string } {
@@ -3547,6 +3594,7 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
     hoursModel: "v2",
     estimateInputs: {},
+    hoursFill: { enabled: false, label: HOURS_FILL_DEFAULT_LABEL },
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
   };
@@ -3910,10 +3958,10 @@ export function migrateDocument(value: unknown): EngagementDocument {
       };
     }
 
-    const adoptionTimeline = withRefreshedActivityDetails(withoutUnselectedGeneratedNetworking(
+    const adoptionTimeline = withHoursFillLane(withRefreshedActivityDetails(withoutUnselectedGeneratedNetworking(
       normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory)),
       fields,
-    ), [generated.adoptionTimeline, generated.twoYearPlan], true);
+    ), [generated.adoptionTimeline, generated.twoYearPlan], true), fields);
     const candidateTwoYearPlan = withRefreshedActivityDetails(withoutUnselectedGeneratedNetworking(
       normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan)),
       fields,
@@ -4138,7 +4186,7 @@ export function refreshDerivedDocument(document: EngagementDocument, options: { 
   const readiness = assessReadiness(document.fields, document.inventory, warnings);
   const plans = buildAdoptionPlans(document.fields, document.inventory, readiness.hclSchedulePath, { edgeSites: document.report.discovery.edgeSites });
   if (document.planAuthority === "manual" && !options.forceRebuild) {
-    return { ...document, readiness, rationale: plans.rationale };
+    return { ...document, readiness, rationale: plans.rationale, adoptionTimeline: withHoursFillLane(document.adoptionTimeline, document.fields) };
   }
   return { ...document, planAuthority: "generated", readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
