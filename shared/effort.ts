@@ -146,6 +146,11 @@ export type ScopedEffort = {
     money?: FitMoney;
     /** v2 only: the entitlement fit (Pass 2), with the month-by-month burn-down. Planner screens only. */
     fit?: FitV2 & { burndown: Array<{ month: string; target: number; actual: number | null }> };
+    /**
+     * v2, filled in by the server: the hours the entitlement value funds at the blended rate, after the reserve. The
+     * plan is never filled past it, even when the signed entitled hours are worth more than the value.
+     */
+    valueCapHours?: number;
   };
 };
 
@@ -928,12 +933,16 @@ function withLateWorkReleased(effort: ScopedEffort): ScopedEffort {
   };
 }
 
-/** v2: entitlement hours the plan's work packages leave unused after the reserve; planner adjustments count. Null without a fit. */
+/**
+ * v2: entitlement hours the plan's work packages leave unused after the reserve; planner adjustments count. The lower
+ * of the entitlement hours and what the entitlement value funds is the limit. Null without a fit.
+ */
 export function unusedEntitlementHours(effort: ScopedEffort): number | null {
   const fit = effort.internal.fit;
   if (!fit) return null;
   const planned = effort.workPackages.reduce((sum, row) => sum + row.total, 0);
-  return Math.max(0, Math.floor(fit.entitlementHours - fit.reserveHours - planned));
+  const limit = Math.min(fit.entitlementHours - fit.reserveHours, effort.internal.valueCapHours ?? Infinity);
+  return Math.max(0, Math.floor(limit - planned));
 }
 
 /**
@@ -956,6 +965,10 @@ export function withHoursFill(effort: ScopedEffort): ScopedEffort {
   const { note: _note, ...rest } = row;
   const workPackages = effort.workPackages.map((item): WorkPackageEffort => (item.id === HOURS_FILL_BAR_ID ? { ...rest, ...roles, total: unused, baseline: roles } : item));
   const totals = { ...effort.totals, architect: effort.totals.architect + architect, srConsultant: effort.totals.srConsultant + srConsultant, projectManager: effort.totals.projectManager + projectManager, total: effort.totals.total + unused };
+  // The buckets come from the catalog fit and do not see planner adjustments, so they take the fill only up to the
+  // plan's new total: the Scope by Bucket table never shows more in the entitlement than the work packages carry.
+  const planned = workPackages.reduce((sum, item) => sum + item.total, 0);
+  const toDepth = Math.min(unused, Math.max(0, planned - fit.buckets.E1 - fit.buckets.E2));
   return {
     ...effort,
     workPackages,
@@ -964,7 +977,7 @@ export function withHoursFill(effort: ScopedEffort): ScopedEffort {
       ...effort.internal,
       planHours: effort.internal.planHours + unused,
       headroomHours: 0,
-      fit: { ...fit, buckets: { ...fit.buckets, E2: fit.buckets.E2 + unused }, entitlementRemaining: 0 },
+      fit: { ...fit, buckets: { ...fit.buckets, E2: fit.buckets.E2 + toDepth }, entitlementRemaining: 0 },
     },
   };
 }

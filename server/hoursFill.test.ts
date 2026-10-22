@@ -49,6 +49,26 @@ describe("fully staffing the entitlement", () => {
     expect(planHours(effort)).toBeLessThanOrEqual(effort.internal.fit!.entitlementHours - effort.internal.fit!.reserveHours);
   });
 
+  it("never fills past the entitlement value when the signed hours are worth more", () => {
+    const document = withFill(doc(150_000));
+    document.report.entitlement = { ...document.report.entitlement, hours: 1500 };
+    const effort = scopedEffortForDocument(document);
+    expect(effort.workPackages.find(item => item.id === HOURS_FILL_BAR_ID)!.total).toBeGreaterThan(0);
+    expect(effort.internal.cost!.ratio!).toBeLessThanOrEqual(1);
+    expect(unusedEntitlementHours(effort)).toBe(0);
+    expect(hoursFillOptions(document).unusedHours).toBeLessThan(1500 * 0.92 - planHours(scopedEffortForDocument({ ...document, fields: { ...document.fields, hoursFill: { ...document.fields.hoursFill, enabled: false } } })));
+  });
+
+  it("never shows more in the entitlement buckets than the work packages carry, after planner cuts", () => {
+    const base = withFill(doc());
+    const cut = scopedEffortForDocument(base).workPackages.find(row => row.total > 40 && row.id !== HOURS_FILL_BAR_ID)!;
+    const document = { ...base, report: { ...base.report, workPackageHours: [{ id: cut.id, architect: 0, srConsultant: 0, projectManager: 0, placement: "auto" as const, owner: "auto" as const }] } };
+    const effort = scopedEffortForDocument(document);
+    const fit = effort.internal.fit!;
+    expect(fit.buckets.E1 + fit.buckets.E2).toBeLessThanOrEqual(planHours(effort) + 1e-6);
+    expect(planHours(effort)).toBe(Math.floor(fit.entitlementHours - fit.reserveHours));
+  });
+
   it("keeps the hours the planner set on the package", () => {
     const document = withFill(doc());
     document.report.workPackageHours = [{ id: HOURS_FILL_BAR_ID, architect: 10, srConsultant: 20, projectManager: 5, placement: "auto", owner: "auto" }];
