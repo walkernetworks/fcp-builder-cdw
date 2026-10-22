@@ -1,4 +1,5 @@
-import { barsForLine, buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, protectedWorkPackages, ROLE_LOADING, type DeferralReason, type FitMoney, type RoleHours, type ScopedEffort, type WorkPackageEffort, type WorkPlanRoles } from "../shared/effort";
+import { barsForLine, buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, protectedWorkPackages, ROLE_LOADING, withHoursFill, type DeferralReason, type FitMoney, type RoleHours, type ScopedEffort, type WorkPackageEffort, type WorkPlanRoles } from "../shared/effort";
+import { HOURS_V2 } from "../shared/hoursConfig";
 import type { ScopeMove } from "../shared/hoursFit";
 import type { EngagementDocument } from "../shared/fcp";
 
@@ -182,7 +183,11 @@ function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEff
   const envelope = document.report.entitlement.hours === null && value ? value / blendedRate : null;
   const built = buildScopedEffort(document, { envelopeHours: envelope, envelopeSource: "entitlement value", today });
   // Under a signed work plan too: the plan's work packages never exceed the hours left after the reserve.
-  const effort = built.internal.fit?.underFunded ? fitUnderCap(document, built, built.internal.fit) : built;
+  const fitted = built.internal.fit?.underFunded ? fitUnderCap(document, built, built.internal.fit) : built;
+  // Signed entitled hours can be worth more than the entitlement value; the fill stops at whichever is lower.
+  const reserveShare = document.fields.estimateInputs.reservePercent !== undefined ? document.fields.estimateInputs.reservePercent / 100 : HOURS_V2.fit.reserveShare.value;
+  const valueCapHours = value ? (value / blendedRate) * (1 - reserveShare) : undefined;
+  const effort = withHoursFill(valueCapHours === undefined ? fitted : { ...fitted, internal: { ...fitted.internal, valueCapHours } });
   const fit = effort.internal.fit;
   const dollars = (hours: number) => Math.round(hours * blendedRate);
   const money: FitMoney | undefined = fit ? {
