@@ -4,7 +4,7 @@ import { BUILD_STAGE_WEIGHTS, HOURS_V2 } from "./hoursConfig";
 import { lineRoles, loadedOf, scopeV2, type Pass1, type V2Code } from "./hoursV2";
 import { fitV2, type FitV2 } from "./hoursFit";
 import type { Timeline } from "./fcp";
-import { activityOwner, calculateEntitlementEndDate, domainBuildWeight, domainHosts, domainPackages, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
+import { activityOwner, calculateEntitlementEndDate, HOURS_FILL_BAR_ID, domainBuildWeight, domainHosts, domainPackages, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
 /**
  * Hours model for the Condensed FCP, after the fcp-builder skill's fcp_hours.py.
@@ -146,6 +146,11 @@ export type ScopedEffort = {
     money?: FitMoney;
     /** v2 only: the entitlement fit (Pass 2), with the month-by-month burn-down. Planner screens only. */
     fit?: FitV2 & { burndown: Array<{ month: string; target: number; actual: number | null }> };
+    /**
+     * v2, filled in by the server: the hours the entitlement value funds at the blended rate, after the reserve. The
+     * plan is never filled past it, even when the signed entitled hours are worth more than the value.
+     */
+    valueCapHours?: number;
   };
 };
 
@@ -395,6 +400,7 @@ const LEAD_ROLE_BY_BAR: Record<string, string> = {
   "bar-hcl-review": "VCF Architect with the customer platform lead",
   "bar-design-access-mapping": "VCF Architect with the customer identity owner",
   "bar-design-edge-sites": "VCF Architect with the customer site owners",
+  [HOURS_FILL_BAR_ID]: "VCF Architect with a Senior Consultant",
 };
 
 /**
@@ -925,6 +931,55 @@ function withLateWorkReleased(effort: ScopedEffort): ScopedEffort {
         reserveHours: fit.reserveHours + hours,
         scopeMoves: [...(fit.scopeMoves ?? []), ...late.map(row => ({ label: row.label, hours: row.followOn!.total, reason: "after the entitlement window" as const }))],
       },
+    },
+  };
+}
+
+/**
+ * v2: entitlement hours the plan's work packages leave unused after the reserve; planner adjustments count. The lower
+ * of the entitlement hours and what the entitlement value funds is the limit. Null without a fit.
+ */
+export function unusedEntitlementHours(effort: ScopedEffort): number | null {
+  const fit = effort.internal.fit;
+  if (!fit) return null;
+  const planned = effort.workPackages.reduce((sum, row) => sum + row.total, 0);
+  const limit = Math.min(fit.entitlementHours - fit.reserveHours, effort.internal.valueCapHours ?? Infinity);
+  return Math.max(0, Math.floor(limit - planned));
+}
+
+/**
+ * The hours-fill work package takes up the entitlement hours the plan leaves unused, split in the plan's own role mix,
+ * and the depth bucket (E2) carries them. Hours the planner set on the package stand as they are; signed resource
+ * assignments, and a package customer-owned, deferred or off the timeline, take nothing.
+ */
+export function withHoursFill(effort: ScopedEffort): ScopedEffort {
+  const fit = effort.internal.fit;
+  const row = effort.workPackages.find(item => item.id === HOURS_FILL_BAR_ID);
+  if (!fit || !row || row.adjusted || row.deferred || row.owner !== "cdw" || effort.source === "assignments") return effort;
+  const unused = unusedEntitlementHours(effort) ?? 0;
+  if (unused < 1) return effort;
+  const others = effort.workPackages.filter(item => item.id !== HOURS_FILL_BAR_ID);
+  const mix = others.reduce((sum, item) => ({ architect: sum.architect + item.architect, srConsultant: sum.srConsultant + item.srConsultant, projectManager: sum.projectManager + item.projectManager }), { architect: 0, srConsultant: 0, projectManager: 0 });
+  const mixTotal = mix.architect + mix.srConsultant + mix.projectManager;
+  const shares = mixTotal > 0 ? [mix.architect / mixTotal, mix.srConsultant / mixTotal, mix.projectManager / mixTotal] : [0.4, 0.45, 0.15];
+  const [architect, srConsultant, projectManager] = footedColumn(shares.map(share => share * unused), unused);
+  const roles = { architect, srConsultant, projectManager };
+  const { note: _note, ...rest } = row;
+  const workPackages = effort.workPackages.map((item): WorkPackageEffort => (item.id === HOURS_FILL_BAR_ID ? { ...rest, ...roles, total: unused, baseline: roles } : item));
+  const totals = { ...effort.totals, architect: effort.totals.architect + architect, srConsultant: effort.totals.srConsultant + srConsultant, projectManager: effort.totals.projectManager + projectManager, total: effort.totals.total + unused };
+  // The buckets come from the catalog fit and do not see planner adjustments, so they take the fill only up to the
+  // plan's new total: the Scope by Bucket table never shows more in the entitlement than the work packages carry.
+  const planned = workPackages.reduce((sum, item) => sum + item.total, 0);
+  const toDepth = Math.min(unused, Math.max(0, planned - fit.buckets.E1 - fit.buckets.E2));
+  return {
+    ...effort,
+    workPackages,
+    totals,
+    internal: {
+      ...effort.internal,
+      planHours: effort.internal.planHours + unused,
+      headroomHours: 0,
+      fit: { ...fit, buckets: { ...fit.buckets, E2: fit.buckets.E2 + toDepth }, entitlementRemaining: 0 },
     },
   };
 }

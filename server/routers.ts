@@ -7,6 +7,7 @@ import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
 import { renderFcpHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
+import { hoursFillOptions } from "./hoursFill";
 import { scopedEffortForDocument } from "./rateCard";
 
 function requireRow<T>(row: T | undefined): T {
@@ -35,6 +36,8 @@ export const appRouter = router({
   effort: router({
     /** Scoped effort and the internal fit check; rates stay on the server. A mutation so the document travels in the body. */
     scoped: protectedProcedure.input(z.object({ data: engagementDocumentSchema })).mutation(({ input }) => scopedEffortForDocument(input.data)),
+    /** Scope that fits the entitlement hours the plan leaves unused, with the hours each addition brings. */
+    fillOptions: protectedProcedure.input(z.object({ data: engagementDocumentSchema })).mutation(({ input }) => hoursFillOptions(input.data)),
   }),
   document: router({
     preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ html: renderFcpHtml(input.title, input.data) })),
