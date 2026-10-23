@@ -6,7 +6,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
-import { prepareIssue } from "./fcpIssue";
+import { compareIssued, prepareIssue } from "./fcpIssue";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { renderPdf } from "./pdf";
@@ -211,6 +211,10 @@ export const appRouter = router({
     recordApproval: protectedProcedure
       .input(z.object({ id: recordId, versionId: recordId, party: z.enum(["broadcom", "customer"]), on: isoDay, note: z.string().trim().max(2000).nullable().default(null) }))
       .mutation(async ({ ctx, input }) => unwrap(await db.recordApproval(viewerFor(ctx.user), input.id, input.versionId, input.party, { on: input.on, note: input.note || null }))),
+    /** Two issued versions compared: the change summary from the earlier to the later, and both as issued. */
+    compareIssued: protectedProcedure
+      .input(z.object({ id: recordId, versionIds: z.tuple([recordId, recordId]).refine(([a, b]) => a !== b, "Pick two different issued versions") }))
+      .query(async ({ ctx, input }) => requireRow(await compareIssued(viewerFor(ctx.user), input.id, input.versionIds))),
     /** A signed link to an issued version, exactly as issued. Downloading it writes nothing. */
     issuedDownloadTicket: protectedProcedure.input(z.object({ id: recordId, versionId: recordId, format: z.enum(["html", "pdf"]) })).mutation(async ({ ctx, input }) => {
       requireRow(await db.getIssuedVersion(viewerFor(ctx.user), input.id, input.versionId));
