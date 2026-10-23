@@ -3,7 +3,7 @@ import { and, asc, desc, eq, getTableColumns, inArray, isNull, max, sql } from "
 import { drizzle } from "drizzle-orm/mysql2";
 import { createDefaultDocument, EngagementDocument } from "../shared/fcp";
 import { renameInTitle, resolveFcpSaveNames } from "../shared/customerName";
-import { buildLockState, sourceUpdatesFromDocument } from "../shared/fcpRecord";
+import { buildLockState, segmentDisagrees, sourceUpdatesFromDocument, storedCommercialPlan } from "../shared/fcpRecord";
 import { IMPORT_FIELDS, IMPORT_ROLES, planMappedRows, type ExistingRecord, type ImportPlan, type ImportRole } from "../shared/sharepointImport";
 import type { PipelineBatch } from "./pipelineSource";
 import type { AssignmentRole, FcpWaiver, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
@@ -118,6 +118,30 @@ export async function linkAssignmentsToUser(user: User) {
     .update(engagementAssignments)
     .set({ userId: user.id })
     .where(and(isNull(engagementAssignments.userId), eq(engagementAssignments.email, user.email), inArray(engagementAssignments.engagementId, visibleIds)));
+}
+
+/**
+ * How many visible records have a tracker segment that disagrees with the FCP's plan type. A count for the admin
+ * status line only: it reads the two plan-input values, never the rest of the document, and changes nothing.
+ */
+export async function countSegmentMismatches(viewer: Viewer): Promise<number> {
+  const db = await requireDb();
+  const rows = await db
+    .select({
+      segment: engagements.segment,
+      commercialPlan: sql<unknown>`JSON_EXTRACT(${engagements.data}, '$.fields.commercialPlan')`,
+      customerSegment: sql<unknown>`JSON_UNQUOTE(JSON_EXTRACT(${engagements.data}, '$.fields.customerSegment'))`,
+    })
+    .from(engagements)
+    .where(visibleEngagements(viewer));
+  return rows.filter(row => segmentDisagrees(row.segment, storedCommercialPlan(jsonBoolean(row.commercialPlan), row.customerSegment))).length;
+}
+
+/** mysql2 returns a JSON_EXTRACT boolean as true/false, 1/0 or the text "true"/"false" depending on the driver path. */
+function jsonBoolean(value: unknown): unknown {
+  if (value === "true" || value === 1) return true;
+  if (value === "false" || value === 0) return false;
+  return value;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

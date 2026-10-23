@@ -1535,7 +1535,7 @@ describe("stage names on the Condensed FCP", () => {
     for (const edition of ["vcf", "vvf"] as const) for (const path of paths) {
       const document = createDefaultDocument();
       Object.assign(document.fields, {
-        customerSegment: "commercial",
+        customerSegment: "commercial", commercialPlan: true,
         entitlementAmount: 5_000_000,
         entitlementStart: "2027-01-01",
         entitlementEnd: "2027-12-31",

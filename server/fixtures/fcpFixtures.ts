@@ -53,7 +53,7 @@ export function northwindMfg(): EngagementDocument {
     customerName: "Northwind Mfg",
     accountId: "NWM",
     location: "Toledo, OH",
-    customerSegment: "commercial",
+    customerSegment: "commercial", commercialPlan: true,
     entitlementAmount: 900_000,
     entitlementStart: "2026-11-02",
     plannedProjectStart: "2026-11-02",

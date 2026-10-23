@@ -16,7 +16,7 @@ import { EntitlementTimelineWithHours, NotionalTimelineWithHours } from "@/compo
 import { trpc } from "@/lib/trpc";
 import { sectionFromSearch, type WorkspaceSection } from "@/lib/fcpWorkspaceRoutes";
 import { useFcpEngagement } from "@/lib/useFcpEngagement";
-import { isCommercialCustomer } from "@shared/buildingBlocks";
+import { isCommercialPlan } from "@shared/buildingBlocks";
 import { fundedFields, getFollowOnReadinessGuidance, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
 import { openSources, STAGE_LABELS } from "@shared/vsaStage";
 import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
@@ -206,7 +206,7 @@ function Workspace({ id }: { id: number }) {
               <section className="grid gap-px overflow-hidden border border-s100 bg-s100 lg:grid-cols-2">
                 <DeliverableCard title="Functional Consumption Plan" label="For customer review" description="The customer plan: entitlement burndown, scoped effort, customer effort, design profile, timeline, and the adoption recommendation. Content checks run before every download." icon={FileCheck2} activeExport={fcp.activeExport} documentType="condensed-fcp" onExport={fcp.startExport} />
                 <DeliverableCard title="Compatibility Delivery Handoff" label="Technical engineer evidence pack" description="Maintained-catalog host cohorts, release support, blockers, evidence gaps, owners, and the actions required before platform build." icon={ShieldCheck} activeExport={fcp.activeExport} documentType="plan-output" onExport={fcp.startExport} />
-                {isCommercialCustomer(document.fields) && <DeliverableCard title="Building Blocks Workbook" label="Commercial customer · VCF 9 Building Blocks" description="Every Building Blocks tool block with its category start date, status, projected dates, and dependencies taken from this plan. Out-of-scope blocks start hidden." icon={FileSpreadsheet} activeExport={fcp.activeExport} documentType="building-blocks" formats={["xlsx"]} onExport={fcp.startExport} />}
+                {isCommercialPlan(document.fields) && <DeliverableCard title="Building Blocks Workbook" label="Commercial plan · VCF 9 Building Blocks" description="Every Building Blocks tool block with its category start date, status, projected dates, and dependencies taken from this plan. Out-of-scope blocks start hidden." icon={FileSpreadsheet} activeExport={fcp.activeExport} documentType="building-blocks" formats={["xlsx"]} onExport={fcp.startExport} />}
               </section>
               <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["details"]} />
               <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-s100 bg-surface p-4">
