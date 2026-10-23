@@ -1,11 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { createDefaultDocument, engagementDocumentSchema } from "../shared/fcp";
+import { createDefaultDocument, engagementDocumentSchema, type EngagementDocument } from "../shared/fcp";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
-import { renderFcpHtml } from "./fcpRenderer";
+import { checkCondensedFcp } from "./condensedFcpChecks";
+import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { renderPdf } from "./pdf";
 import { hoursFillOptions } from "./hoursFill";
 import { scopedEffortForDocument } from "./rateCard";
@@ -25,6 +26,16 @@ import { systemStatus } from "./systemStatus";
 function requireRow<T>(row: T | undefined): T {
   if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Engagement not found" });
   return row;
+}
+
+/**
+ * The FCP as the workspace shows it: the condensed (customer) report with the draft mark, and the content checks it
+ * would face on export. Effort is priced here so rates never reach the client.
+ */
+function draftFcp(title: string, document: EngagementDocument) {
+  const html = renderCondensedFcpHtml(title, document, { effort: scopedEffortForDocument(document), draft: true });
+  const checks = checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount, bsasOnly: document.fields.fundingSource === "bsas" });
+  return { html, checks };
 }
 
 /** Turns a db write result into the procedure's return value or the matching tRPC error. */
@@ -248,8 +259,8 @@ export const appRouter = router({
     fillOptions: protectedProcedure.input(z.object({ data: engagementDocumentSchema })).mutation(({ input }) => hoursFillOptions(input.data)),
   }),
   document: router({
-    preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ html: renderFcpHtml(input.title, input.data) })),
-    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum(["fcp", "condensed-fcp", "plan-output", "building-blocks"]).default("fcp") })).mutation(async ({ ctx, input }) => {
+    preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => draftFcp(input.title, input.data)),
+    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum([/** @deprecated The full template; no UI sends it. Removed with server/fcpRenderer.ts. */ "fcp", "condensed-fcp", "plan-output", "building-blocks"]).default("condensed-fcp") })).mutation(async ({ ctx, input }) => {
       if ((input.format === "xlsx") !== (input.documentType === "building-blocks")) throw new TRPCError({ code: "BAD_REQUEST", message: "The Building Blocks workbook is only available as XLSX." });
       requireRow(await db.getEngagement(viewerFor(ctx.user), input.id));
       // Every customer document export keeps the FCP as it was sent.
@@ -258,9 +269,9 @@ export const appRouter = router({
       }
       return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, input.documentType)}` };
     }),
-    html: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ filename: safeFilename(input.title, "html"), mime: "text/html;charset=utf-8", content: renderFcpHtml(input.title, input.data) })),
+    html: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ filename: safeFilename(input.title, "html"), mime: "text/html;charset=utf-8", content: draftFcp(input.title, input.data).html })),
     pdf: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(async ({ input }) => {
-      const pdf = await renderPdf(renderFcpHtml(input.title, input.data));
+      const pdf = await renderPdf(draftFcp(input.title, input.data).html);
       return { filename: safeFilename(input.title, "pdf"), mime: "application/pdf", base64: Buffer.from(pdf).toString("base64") };
     }),
   }),

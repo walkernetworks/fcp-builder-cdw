@@ -6,7 +6,8 @@ import * as db from "./db";
 import { BUILDING_BLOCKS_MIME, buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
 import { verifyExportTicket } from "./exportTickets";
 import { viewerFor } from "./visibility";
-import { renderFcpHtml, renderHclCompatibilityPlanOutputHtml } from "./fcpRenderer";
+import { renderCompatibilityHandoffHtml } from "./compatibilityHandoffRenderer";
+import { renderFcpHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
@@ -57,7 +58,8 @@ export function registerExportDownloadRoutes(app: Express) {
         if (effort.internal.cost?.status === "over" && !effort.internal.fit?.underFunded) failures.push("The entitlement window costs more than the entitlement value. Reduce hours or move work to the Two-Year Notional on the Entitlement Adoption Timeline step.");
         if (failures.length) return deny(res, 409, `The Condensed FCP was not exported because it failed these checks:\n- ${failures.join("\n- ")}`);
       } else {
-        html = ticket.documentType === "plan-output" ? renderHclCompatibilityPlanOutputHtml(row.title, document) : renderFcpHtml(row.title, document);
+        // "fcp" is the retired full template (deprecated): no UI path asks for it, and it goes with server/fcpRenderer.ts.
+        html = ticket.documentType === "plan-output" ? renderCompatibilityHandoffHtml(row.title, document) : renderFcpHtml(row.title, document);
       }
       const filename = safeExportFilename(row.title, ticket.format === "html" ? "html" : "pdf", ticket.documentType === "plan-output" || ticket.documentType === "condensed-fcp" ? ticket.documentType : "fcp");
 
