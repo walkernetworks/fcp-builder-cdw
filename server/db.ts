@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, getTableColumns, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, isNotNull, isNull, max, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { createDefaultDocument, EngagementDocument } from "../shared/fcp";
 import { renameInTitle, resolveFcpSaveNames } from "../shared/customerName";
@@ -29,6 +29,8 @@ import {
 import { ENV } from "./_core/env";
 import { deletableEngagements, editableReports, visibleEngagements, visibleReports, type Viewer } from "./visibility";
 import type { ReportConfig } from "../shared/vsaReports";
+import type { ScopedEffort } from "../shared/effort";
+import type { ChangeSummary } from "../shared/fcpChangeSummary";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -757,6 +759,158 @@ export async function restoreFcpVersion(viewer: Viewer, engagementId: number, ve
   await createFcpVersion(viewer, engagementId, `Before restoring the copy saved ${version.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC`, "restore");
   const restored = { ...version.data, fields: { ...version.data.fields, customerName: current.customerName } };
   return updateEngagement(viewer, engagementId, current.title, restored, { customerName: current.customerName, title: current.title });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Issued FCP versions (docs/FCP-WORKSPACE.md section 13): numbered, immutable snapshots of what the customer received.
+
+const issuer = alias(users, "issuer");
+const broadcomApprover = alias(users, "broadcom_approver");
+const customerApprover = alias(users, "customer_approver");
+const issuedSummary = {
+  id: fcpVersions.id,
+  issueNumber: fcpVersions.issueNumber,
+  status: fcpVersions.status,
+  title: fcpVersions.title,
+  label: fcpVersions.label,
+  revisionNote: fcpVersions.revisionNote,
+  changeSummary: fcpVersions.changeSummary,
+  dataHash: fcpVersions.dataHash,
+  basedOnVersionId: fcpVersions.basedOnVersionId,
+  issuedAt: fcpVersions.issuedAt,
+  issuedByName: issuer.name,
+  broadcomApprovedOn: fcpVersions.broadcomApprovedOn,
+  broadcomApprovedByName: broadcomApprover.name,
+  broadcomApprovalNote: fcpVersions.broadcomApprovalNote,
+  customerApprovedOn: fcpVersions.customerApprovedOn,
+  customerApprovedByName: customerApprover.name,
+  customerApprovalNote: fcpVersions.customerApprovalNote,
+};
+
+/** Issued and superseded versions, newest first, without their snapshots. */
+export async function listIssuedVersions(viewer: Viewer, engagementId: number) {
+  const db = await requireDb();
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return undefined;
+  return db
+    .select(issuedSummary)
+    .from(fcpVersions)
+    .leftJoin(issuer, eq(issuer.id, fcpVersions.issuedByUserId))
+    .leftJoin(broadcomApprover, eq(broadcomApprover.id, fcpVersions.broadcomApprovedByUserId))
+    .leftJoin(customerApprover, eq(customerApprover.id, fcpVersions.customerApprovedByUserId))
+    .where(and(eq(fcpVersions.engagementId, engagementId), isNotNull(fcpVersions.issueNumber)))
+    .orderBy(desc(fcpVersions.issueNumber));
+}
+
+/** One issued version with its snapshots and HTML; undefined for a History save or another workspace's record. */
+export async function getIssuedVersion(viewer: Viewer, engagementId: number, versionId: number) {
+  const version = await getFcpVersion(viewer, engagementId, versionId);
+  return version && version.issueNumber !== null ? version : undefined;
+}
+
+/** The current issued version (status issued), if any. */
+export async function getLatestIssuedVersion(viewer: Viewer, engagementId: number) {
+  const db = await requireDb();
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return undefined;
+  const [latest] = await db.select().from(fcpVersions).where(and(eq(fcpVersions.engagementId, engagementId), eq(fcpVersions.status, "issued"))).orderBy(desc(fcpVersions.issueNumber)).limit(1);
+  return latest ?? null;
+}
+
+export type IssueInput = {
+  title: string;
+  data: EngagementDocument;
+  effort: ScopedEffort;
+  html: string;
+  label: string;
+  revisionNote: string | null;
+  changeSummary: ChangeSummary;
+  /** The issued version the snapshot was compared against; the issue is refused if another was issued meanwhile. */
+  basedOnVersionId: number | null;
+};
+
+/**
+ * Issues the next version: stores the snapshot as given, supersedes the previous issued version, and fills the
+ * tracker's "FCP submitted" date when it is empty (never overwriting one). One transaction, on the locked row.
+ * Refused while someone else holds the build lock.
+ */
+export async function issueFcpVersion(viewer: Viewer, engagementId: number, input: IssueInput): Promise<WriteResult<{ id: number; issueNumber: number }>> {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const record = await requireVisibleEngagement(tx, viewer, engagementId, true);
+    if (!record) return { status: "not_found" } as const;
+    if (buildLockState({ userId: record.buildLockUserId, at: record.buildLockAt }, viewer.id, Date.now()) === "other") throw new BuildLockedError(await lockHolderName(record.buildLockUserId));
+    const [current] = await tx.select({ id: fcpVersions.id }).from(fcpVersions).where(and(eq(fcpVersions.engagementId, engagementId), eq(fcpVersions.status, "issued"))).orderBy(desc(fcpVersions.issueNumber)).limit(1);
+    if ((current?.id ?? null) !== input.basedOnVersionId) return { status: "conflict" } as const;
+    const [{ highestSave, highestIssue }] = await tx.select({ highestSave: max(fcpVersions.versionNumber), highestIssue: max(fcpVersions.issueNumber) }).from(fcpVersions).where(eq(fcpVersions.engagementId, engagementId));
+    const issueNumber = (highestIssue ?? 0) + 1;
+    const now = new Date();
+    const result = await tx.insert(fcpVersions).values({
+      engagementId,
+      versionNumber: (highestSave ?? 0) + 1,
+      title: input.title.slice(0, 240),
+      data: input.data,
+      dataHash: createHash("sha256").update(JSON.stringify(input.data)).digest("hex"),
+      label: (input.label || `Issue ${issueNumber}`).slice(0, 160),
+      reason: "issued",
+      createdByUserId: viewer.id,
+      issueNumber,
+      status: "issued",
+      basedOnVersionId: input.basedOnVersionId,
+      effortSnapshot: input.effort,
+      renderedHtml: input.html,
+      renderHash: createHash("sha256").update(input.html).digest("hex"),
+      revisionNote: input.revisionNote,
+      changeSummary: input.changeSummary,
+      issuedAt: now,
+      issuedByUserId: viewer.id,
+    });
+    if (current) await tx.update(fcpVersions).set({ status: "superseded" }).where(and(eq(fcpVersions.id, current.id), eq(fcpVersions.engagementId, engagementId)));
+    if (!record.fcpSubmittedOn) await tx.update(engagements).set({ fcpSubmittedOn: today(), rowVersion: sql`${engagements.rowVersion} + 1`, updatedByUserId: viewer.id }).where(and(visibleEngagements(viewer), eq(engagements.id, engagementId), isNull(engagements.fcpSubmittedOn)));
+    return { status: "ok", value: { id: Number(result[0].insertId), issueNumber } } as const;
+  });
+}
+
+/**
+ * Starts the next revision from the latest issued version, so a re-issue begins from what the customer holds. The
+ * working FCP is saved to History first, so nothing is lost. The engagement keeps its current customer name and title.
+ */
+export async function reviseFromIssued(viewer: Viewer, engagementId: number): Promise<WriteResult<{ issueNumber: number }>> {
+  const latest = await getLatestIssuedVersion(viewer, engagementId);
+  if (latest === undefined) return { status: "not_found" };
+  if (latest === null || latest.issueNumber === null) return { status: "blocked", reason: "Nothing has been issued yet, so there is nothing to revise from." };
+  const current = await getEngagement(viewer, engagementId);
+  if (!current) return { status: "not_found" };
+  await createFcpVersion(viewer, engagementId, `Before revising from issue ${latest.issueNumber}`, "restore");
+  const restored = { ...latest.data, fields: { ...latest.data.fields, customerName: current.customerName } };
+  const saved = await updateEngagement(viewer, engagementId, current.title, restored, { customerName: current.customerName, title: current.title });
+  return saved ? { status: "ok", value: { issueNumber: latest.issueNumber } } : { status: "not_found" };
+}
+
+export type ApprovalParty = "broadcom" | "customer";
+
+/**
+ * Records an approval of the current issued version: the date, who recorded it and an optional note. Recorded once
+ * per party. Fills the tracker's matching acceptance date when it is empty, so the stage gates read it; a date already
+ * on the tracker is never overwritten.
+ */
+export async function recordApproval(viewer: Viewer, engagementId: number, versionId: number, party: ApprovalParty, approval: { on: string; note: string | null }): Promise<WriteResult<null>> {
+  const db = await requireDb();
+  if (approval.on > today()) return { status: "blocked", reason: "An approval cannot be dated in the future." };
+  return db.transaction(async tx => {
+    const record = await requireVisibleEngagement(tx, viewer, engagementId, true);
+    if (!record) return { status: "not_found" } as const;
+    const [version] = await tx.select({ status: fcpVersions.status, broadcomApprovedOn: fcpVersions.broadcomApprovedOn, customerApprovedOn: fcpVersions.customerApprovedOn }).from(fcpVersions).where(and(eq(fcpVersions.id, versionId), eq(fcpVersions.engagementId, engagementId))).limit(1);
+    if (!version || version.status === null) return { status: "not_found" } as const;
+    if (version.status !== "issued") return { status: "blocked", reason: "Approvals are recorded on the current issued version." } as const;
+    if ((party === "broadcom" ? version.broadcomApprovedOn : version.customerApprovedOn) !== null) return { status: "blocked", reason: "This approval is already recorded." } as const;
+    await tx.update(fcpVersions).set(party === "broadcom"
+      ? { broadcomApprovedOn: approval.on, broadcomApprovedByUserId: viewer.id, broadcomApprovalNote: approval.note }
+      : { customerApprovedOn: approval.on, customerApprovedByUserId: viewer.id, customerApprovalNote: approval.note }).where(and(eq(fcpVersions.id, versionId), eq(fcpVersions.engagementId, engagementId)));
+    const gate = party === "broadcom" ? engagements.fcpBroadcomAcceptedOn : engagements.fcpCustomerAcceptedOn;
+    if ((party === "broadcom" ? record.fcpBroadcomAcceptedOn : record.fcpCustomerAcceptedOn) === null) {
+      await tx.update(engagements).set({ [party === "broadcom" ? "fcpBroadcomAcceptedOn" : "fcpCustomerAcceptedOn"]: approval.on, rowVersion: sql`${engagements.rowVersion} + 1`, updatedByUserId: viewer.id }).where(and(visibleEngagements(viewer), eq(engagements.id, engagementId), isNull(gate)));
+    }
+    return { status: "ok", value: null } as const;
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

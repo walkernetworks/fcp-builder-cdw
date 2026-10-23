@@ -442,3 +442,11 @@ It is stored on the version. The revision note is the architect's wording; the c
 3. **H, compare:** pick two issued versions and see the change summary between them, with their reports side by side.
 
 Acceptance: issue v1, revise, issue v2; compare shows the diff; superseded v1 still downloads. `pnpm check` and `pnpm test` pass, and the golden files are unchanged (issued HTML is the existing renderer's output).
+
+### 13.7 As built (PR G)
+
+- **Issue** (Review section): **Check and show the changes** saves the FCP, runs the export checks and shows the change summary (`fcpRecord.issuePreview`, which writes nothing). **Issue N** stores it (`fcpRecord.issue`). The rendering and checks are in `server/fcpIssue.ts` (`prepareIssue`, `condensedReleaseFailures`), shared with the export route.
+- **Start over from issue N** (`fcpRecord.revise`) is offered when the working FCP differs from the current issue.
+- **Issued versions** lists every issue with HTML and PDF downloads (`fcpRecord.issuedDownloadTicket`, an `issued-fcp` ticket carrying the version id), the change summary, and the Broadcom and customer approvals (`fcpRecord.recordApproval`). Broadcom approval shows as not needed for a Commercial engagement.
+- The rail shows **Issued** above History.
+- **Draft exports:** the Condensed FCP export of the working document now carries the draft mark (C-6). It is checked unmarked, so the checks are the ones the customer copy passes.
