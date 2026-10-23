@@ -8,12 +8,22 @@ import type { EngagementDocument } from "@shared/fcp";
 import type { ReportContent } from "@shared/report";
 import { generateReport, visibleGenerated, type GeneratedReport, type GeneratedRow, type GeneratedSection } from "@shared/reportView";
 import { CircleCheck, CircleDashed, EyeOff, PenLine, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 type Props = {
   document: EngagementDocument;
   onChange: (document: EngagementDocument) => void;
+  /** Only these sections (by value), for a section of the FCP workspace; omitted, the whole form renders as before. */
+  sections?: readonly ReportSection[];
 };
+
+export type ReportSection =
+  | "entitlement" | "heard" | "problems" | "questions" | "people" | "milestones" | "open-items" | "cover"
+  | "situation" | "profile" | "elements" | "technical" | "constraints" | "asks" | "customer-work"
+  | "sizing" | "environment" | "licensing" | "assignments" | "details";
+
+/** The sections this form is limited to, or null for all of them. */
+const SectionFilter = createContext<ReadonlySet<string> | null>(null);
 
 type ColumnType = "text" | "longtext" | "number" | "date" | "month" | "list";
 type Column<Row> = { key: keyof Row & string; label: string; type?: ColumnType; width?: string; placeholder?: string };
@@ -131,7 +141,9 @@ function RowTable<Row extends Record<string, unknown>>({ rows, columns, blank, o
   );
 }
 
-function Section({ value, title, heading, filled, hint, children }: { value: string; title: string; heading?: string; filled?: boolean; hint: string; children: ReactNode }) {
+function Section({ value, title, heading, filled, hint, children }: { value: ReportSection; title: string; heading?: string; filled?: boolean; hint: string; children: ReactNode }) {
+  const filter = useContext(SectionFilter);
+  if (filter && !filter.has(value)) return null;
   return (
     <AccordionItem value={value}>
       <AccordionTrigger className="text-sm font-semibold">
@@ -148,7 +160,9 @@ function Section({ value, title, heading, filled, hint, children }: { value: str
   );
 }
 
-function Group({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+function Group({ title, description, members, children }: { title: string; description: string; members: readonly ReportSection[]; children: ReactNode }) {
+  const filter = useContext(SectionFilter);
+  if (filter && !members.some(member => filter.has(member))) return null;
   return (
     <div className="mt-6">
       <p className="text-[11px] font-medium uppercase tracking-wide text-s400">{title}</p>
@@ -162,8 +176,11 @@ function Group({ title, description, children }: { title: string; description: s
  * Every Condensed FCP input as a form. Content the app generates from the plan is shown in place and can be
  * kept, overridden, or hidden; the report prints exactly what this form shows.
  */
-export function ReportContentEditor({ document, onChange }: Props) {
+export function ReportContentEditor({ document, onChange, sections }: Props) {
   const report = document.report;
+  const filter = useMemo(() => (sections ? new Set<string>(sections) : null), [sections]);
+  /** Open sections: the listed ones in a workspace section, otherwise the form's usual defaults. */
+  const opened = (defaults: string[]) => (sections ? [...sections] : defaults);
   const generated = useMemo(() => generateReport(document), [document]);
   const set = <K extends keyof ReportContent>(key: K, value: ReportContent[K]) => onChange({ ...document, report: { ...report, [key]: value } });
   const setEntitlement = (patch: Partial<ReportContent["entitlement"]>) => set("entitlement", { ...report.entitlement, ...patch });
@@ -199,16 +216,19 @@ export function ReportContentEditor({ document, onChange }: Props) {
   ].filter((item): item is string => Boolean(item));
 
   return (
+    <SectionFilter.Provider value={filter}>
     <section className="rounded-lg border border-s100 bg-surface p-5">
+      {!filter && <>
       <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Condensed FCP content</p>
       <h3 className="mt-1 text-lg font-semibold text-ink">Report content</h3>
       <p className="mt-1 max-w-3xl text-xs leading-5 text-s400">Fill this in by hand, or import a Copilot brief above to pre-fill it. Grey rows marked “From the plan” are generated and print as shown; override or hide any of them. A section with nothing in it is left out of the report, never printed as a placeholder. Changes save automatically.</p>
       <div className={`mt-4 rounded-lg border p-3 text-xs ${missing.length ? "border-state-warn/30 bg-state-warn-soft text-state-warn-text" : "border-state-pass/30 bg-state-pass-soft text-state-pass-text"}`}>
         {missing.length ? <><b>Not captured yet, so left out of the report:</b> {missing.join(" · ")}</> : <b>Everything the report needs from the customer is filled in.</b>}
       </div>
+      </>}
 
-      <Group title="From the customer" description="What only a conversation with the customer can provide.">
-        <Accordion type="multiple" defaultValue={["entitlement", "heard"]} className="border-t border-s100">
+      <Group title="From the customer" description="What only a conversation with the customer can provide." members={["entitlement", "heard", "problems", "questions", "people", "milestones", "open-items", "cover"]}>
+        <Accordion type="multiple" defaultValue={opened(["entitlement", "heard"])} className="border-t border-s100">
           <Section value="entitlement" title={bsasOnly ? "BSAS consumption" : "Entitlement hours"} filled={Boolean((bsasOnly || report.entitlement.hours) && report.entitlement.hoursConsumed !== null)} hint={bsasOnly ? "From the latest BSAS consumption record. This drives the KPI tiles, burndown and weekly pace. The BSAS hours and term are on the Engagement step." : "From the signed resource assignments and the latest consumption record. These drive the KPI tiles, burndown and weekly pace. The entitlement value and start date are on the Engagement step."}>
             <div className="grid gap-3 md:grid-cols-3">
               {!bsasOnly && <Field label="Entitled hours">{numberInput(report.entitlement.hours, value => setEntitlement({ hours: value }))}</Field>}
@@ -247,8 +267,8 @@ export function ReportContentEditor({ document, onChange }: Props) {
         </Accordion>
       </Group>
 
-      <Group title="Generated from the plan" description="Already filled in from the plan, RVTools and the entitlement. Review it; add rows, override, or hide as needed.">
-        <Accordion type="multiple" className="border-t border-s100">
+      <Group title="Generated from the plan" description="Already filled in from the plan, RVTools and the entitlement. Review it; add rows, override, or hide as needed." members={["situation", "profile", "elements", "technical", "constraints", "asks", "customer-work"]}>
+        <Accordion type="multiple" defaultValue={opened([])} className="border-t border-s100">
           <Section value="situation" title="Situation" heading="Situation" hint="Estate facts from RVTools, plus anything RVTools cannot show (new sites, refreshes, deadlines).">
             <TextList items={report.situation} onChange={items => set("situation", items)} placeholder="DR site being built: 8 new hosts and a replicated array" generated={generatedFor("situation")} />
           </Section>
@@ -283,8 +303,8 @@ export function ReportContentEditor({ document, onChange }: Props) {
         </Accordion>
       </Group>
 
-      <Group title="Estate, discovery and details" description="Optional. Each answer is used only where this plan makes it matter: in the design elements, constraints and open items of the report, and in the Technical Handoff for the delivery team.">
-        <Accordion type="multiple" className="border-t border-s100">
+      <Group title="Estate, discovery and details" description="Optional. Each answer is used only where this plan makes it matter: in the design elements, constraints and open items of the report, and in the Technical Handoff for the delivery team." members={["sizing", "environment", "licensing", "assignments", "details"]}>
+        <Accordion type="multiple" defaultValue={opened([])} className="border-t border-s100">
           <Section value="sizing" title="Sizing inputs" hint="Used for the hours estimate. Blank values fall back to RVTools.">
             <div className="grid gap-3 md:grid-cols-3">
               <Field label="Prior VCF assessment delivered" hint="Yes leaves design discovery out of the hours."><YesNo value={report.discovery.assessmentCompleted} onChange={value => setDiscovery({ assessmentCompleted: value })} /></Field>
@@ -344,5 +364,6 @@ export function ReportContentEditor({ document, onChange }: Props) {
         </Accordion>
       </Group>
     </section>
+    </SectionFilter.Provider>
   );
 }

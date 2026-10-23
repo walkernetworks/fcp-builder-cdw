@@ -12,6 +12,8 @@ import { toast } from "sonner";
 type Props = {
   document: EngagementDocument;
   onChange: (document: EngagementDocument) => void;
+  /** The raw JSON editor for the report content; the FCP workspace keeps it in Review and Issue instead. */
+  showJsonEditor?: boolean;
 };
 
 const STATUS_TEXT = {
@@ -25,10 +27,8 @@ const STATUS_TEXT = {
  * Scoped effort with the internal fit check, and an editor for the report content. The fit figures
  * (envelope, shortfall, headroom) are internal and never appear in the Condensed FCP.
  */
-export function CondensedReportPanel({ document, onChange }: Props) {
+export function CondensedReportPanel({ document, onChange, showJsonEditor = true }: Props) {
   const effort = trpc.effort.scoped.useMutation();
-  const [editing, setEditing] = useState<string | null>(null);
-  const [errors, setErrors] = useState<string[]>([]);
   const data = effort.data;
   const { mutate } = effort;
   // Recalculate shortly after the plan stops changing.
@@ -38,19 +38,6 @@ export function CondensedReportPanel({ document, onChange }: Props) {
   }, [document, mutate]);
   const assignments = document.report.resourceAssignments;
 
-
-  const saveReport = () => {
-    if (editing === null) return;
-    let parsed: unknown;
-    try { parsed = JSON.parse(editing); } catch { setErrors(["The text is not valid JSON."]); return; }
-    const result = reportSchema.safeParse(parsed);
-    if (!result.success) { setErrors(result.error.issues.map(issue => `${issue.path.join(".") || "report"}: ${issue.message}`)); return; }
-    onChange({ ...document, report: result.data });
-    setEditing(null);
-    setErrors([]);
-    toast.success("Report content saved");
-  };
-
   return (
     <section className="rounded-lg border border-s100 bg-surface p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -59,11 +46,10 @@ export function CondensedReportPanel({ document, onChange }: Props) {
           <h3 className="mt-1 text-lg font-semibold text-ink">Scoped effort and report content</h3>
           <p className="mt-1 max-w-3xl text-xs leading-5 text-s400">Hours are priced from the services catalog for this plan and placed on the adoption timeline's work packages. Signed resource assignments replace them in the report. The fit figures below are internal and never appear in the document.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => { setEditing(JSON.stringify(document.report, null, 2)); setErrors([]); }}><FilePenLine className="size-4" /> Edit report content</Button>
-        </div>
+        {showJsonEditor && <div className="flex flex-wrap gap-2">
+          <ReportJsonButton document={document} onChange={onChange} />
+        </div>}
       </div>
-
       {!data ? <p className="mt-4 flex items-center gap-2 text-sm text-s400"><Loader2 className="size-4 animate-spin" /> Calculating hours…</p> : (
         <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_1fr]">
           <div className="overflow-x-auto">
@@ -97,7 +83,30 @@ export function CondensedReportPanel({ document, onChange }: Props) {
           </div>
         </div>
       )}
+    </section>
+  );
+}
 
+/** Everything the report takes from the customer brief, as JSON: checked against the report schema before it is stored. */
+export function ReportJsonButton({ document, onChange, label = "Edit report content" }: { document: EngagementDocument; onChange: (document: EngagementDocument) => void; label?: string }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [errors, setErrors] = useState<string[]>([]);
+
+  const saveReport = () => {
+    if (editing === null) return;
+    let parsed: unknown;
+    try { parsed = JSON.parse(editing); } catch { setErrors(["The text is not valid JSON."]); return; }
+    const result = reportSchema.safeParse(parsed);
+    if (!result.success) { setErrors(result.error.issues.map(issue => `${issue.path.join(".") || "report"}: ${issue.message}`)); return; }
+    onChange({ ...document, report: result.data });
+    setEditing(null);
+    setErrors([]);
+    toast.success("Report content saved");
+  };
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => { setEditing(JSON.stringify(document.report, null, 2)); setErrors([]); }}><FilePenLine className="size-4" /> {label}</Button>
       <Dialog open={editing !== null} onOpenChange={open => { if (!open) setEditing(null); }}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
@@ -112,6 +121,6 @@ export function CondensedReportPanel({ document, onChange }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </section>
+    </>
   );
 }
