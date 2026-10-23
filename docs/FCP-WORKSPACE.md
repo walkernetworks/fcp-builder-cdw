@@ -293,3 +293,29 @@ If you would rather accept the plan changes for mismatched records instead, say 
   4. *Funding copy.*
      - The Funding section no longer sits under the "From the customer" header. Funding facts come from the order and CDW's records.
      - **Entitled hours** (what the entitlement funds: the signed resource assignment total, or blank to derive from the entitlement value) and **Hours consumed** (the latest consumption entry and its date) are separate sections, each with its own description.
+
+## 9. Phase 2: Funding (design §5.3)
+
+**As built (PR C, `fcp-funding`).** The Funding section has its own editor (`client/src/components/fcp/FundingSection.tsx`). It is UI only: no schema change and no change to generated output.
+
+- **Prints in the FCP.** One panel holds what the customer sees:
+  - funding source;
+  - entitlement value (the one dollar figure), start and end;
+  - BSAS hours, start and end;
+  - entitled hours, and hours consumed with their as-of date.
+- **Entitlement value and start live only here.** They were already in Funding, not Engagement, after Phase 1. The Engagement section has no funding fields.
+- **The entitlement end is now editable.** It writes the stated term end (`report.entitlement.termEnd`), which the report already reads. Blank keeps "12 months from the start; to be confirmed".
+- **Internal, never prints.** A locked panel with a lock icon and an "Internal · never prints" tag holds:
+  - the blended rate and where it comes from;
+  - how the entitled hours are derived (the signed resource assignment total, or the entitlement value at the blended rate, after the reserve);
+  - the reserve held back (moved here);
+  - the PO received date and hours, read-only from the tracker;
+  - a note that the BSAS amount is never entered.
+
+  The renderer never reads any of it. The PO has no reference-number column today, so only its date and hours show.
+- **Provenance pills.** Each printed value carries Confirmed / Assumed / Unknown, with its source. These are derived from the document alone by `shared/provenance.ts` (pure), so no value is stored twice.
+  - The rules are the engine's own: the term end at 12 months, and the BSAS term from `bsasTerm`.
+  - An assumed date shows **Confirm**, which writes the assumed value so it reads as stated. Confirming the entitlement end therefore removes "to be confirmed" from the printed FCP, as a person's explicit choice.
+  - Values are no longer grouped by source; the pill says where each one comes from.
+- **Field edits** go through `client/src/lib/fieldPatch.ts`. This is PlanSetup's own rule, moved out so the two editors cannot drift: a plan input rebuilds the plan once, and a hand-edited plan keeps its edits.
+- **Consumption history** (the `fcpConsumptionEntries` table) stays in Phase 3. Until then, "Hours consumed" is the latest entry, entered by hand.
