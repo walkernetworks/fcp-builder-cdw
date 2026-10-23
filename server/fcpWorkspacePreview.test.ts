@@ -90,3 +90,24 @@ describe("full template retired from the UI", () => {
     }
   });
 });
+
+describe("old FCP links", () => {
+  it("send /fcp?engagement= to the workspace, at the section that holds the old step", async () => {
+    const { sectionFromSearch, workspaceUrlFor } = await import("../client/src/lib/fcpWorkspaceRoutes");
+    expect(workspaceUrlFor("?engagement=42")).toBe("/engagements/42/fcp");
+    expect(workspaceUrlFor("?engagement=42&stage=staffing")).toBe("/engagements/42/fcp?section=plan");
+    expect(workspaceUrlFor("?engagement=42&stage=package")).toBe("/engagements/42/fcp?section=review");
+    expect(workspaceUrlFor("")).toBeNull();
+    expect(workspaceUrlFor("?engagement=abc")).toBeNull();
+    expect(sectionFromSearch("?section=funding")).toBe("funding");
+    expect(sectionFromSearch("?stage=report")).toBe("narrative");
+    expect(sectionFromSearch("?section=nope")).toBe("sources");
+  });
+
+  it("route /fcp to the picker and leave the six-step page unrouted", () => {
+    const app = readFileSync(path.join(ROOT, "client/src/App.tsx"), "utf8");
+    expect(app).toMatch(/path="\/engagements\/:id\/fcp" component=\{FcpWorkspace\}/);
+    expect(app).toMatch(/path="\/fcp" component=\{FcpPicker\}/);
+    expect(app).not.toMatch(/from "\.\/pages\/Home"/);
+  });
+});

@@ -8,7 +8,7 @@ import DashboardLayout from "./components/DashboardLayout";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Admin from "./pages/Admin";
 import AdminUserProfile from "./pages/AdminUserProfile";
-import Home from "./pages/Home";
+import FcpPicker from "./pages/FcpPicker";
 import FcpWorkspace from "./pages/FcpWorkspace";
 import PipelineImport from "./pages/PipelineImport";
 import Expiry from "./pages/Expiry";
@@ -28,7 +28,8 @@ function Router() {
         <Route path="/records" component={Records} />
         <Route path="/reports" component={Reports} />
         <Route path="/engagements/:id/fcp" component={FcpWorkspace} />
-        <Route path="/fcp" component={Home} />
+        {/* The six-step page (pages/Home.tsx) is kept unrouted for one release as the rollback; /fcp now picks an engagement. */}
+        <Route path="/fcp" component={FcpPicker} />
         <Route path="/import" component={PipelineImport} />
         <Route path="/admin" component={Admin} />
         <Route path="/admin/users/:id" component={AdminUserProfile} />

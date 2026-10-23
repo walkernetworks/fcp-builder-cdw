@@ -14,6 +14,7 @@ import { Chip, DataMount, EmptyState } from "@/components/vsa/elements";
 import { useShell } from "@/components/vsa/ShellContext";
 import { EntitlementTimelineWithHours, NotionalTimelineWithHours } from "@/components/WorkPackageHours";
 import { trpc } from "@/lib/trpc";
+import { sectionFromSearch, type WorkspaceSection } from "@/lib/fcpWorkspaceRoutes";
 import { useFcpEngagement } from "@/lib/useFcpEngagement";
 import { isCommercialCustomer } from "@shared/buildingBlocks";
 import { fundedFields, getFollowOnReadinessGuidance, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
@@ -23,7 +24,6 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNod
 import { Link, useLocation, useParams } from "wouter";
 import { toast } from "sonner";
 
-export type WorkspaceSection = "sources" | "engagement" | "funding" | "estate" | "scope" | "plan" | "narrative" | "review";
 type SectionStatus = "empty" | "partial" | "complete";
 
 /** The eight sections, in the order a user works, each with what it is for. */
@@ -42,15 +42,6 @@ const NARRATIVE_SECTIONS: readonly ReportSection[] = ["heard", "problems", "ques
 const STATUS_LABEL: Record<SectionStatus, string> = { empty: "Not started", partial: "In progress", complete: "Complete" };
 const STATUS_DOT: Record<SectionStatus, string> = { empty: "border border-s300 bg-surface", partial: "bg-state-warn", complete: "bg-state-pass" };
 
-/** The six-step page's ?stage= values, mapped to the section that now holds that work. */
-export const STAGE_TO_SECTION: Record<string, WorkspaceSection> = { engagement: "engagement", plan: "scope", staffing: "plan", technical: "estate", report: "narrative", package: "review" };
-
-function initialSection(): WorkspaceSection {
-  const params = new URLSearchParams(window.location.search);
-  const requested = params.get("section") ?? "";
-  if (WORKSPACE_SECTIONS.some(section => section.id === requested)) return requested as WorkspaceSection;
-  return STAGE_TO_SECTION[params.get("stage") ?? ""] ?? "sources";
-}
 
 function sectionStatus(section: WorkspaceSection, document: EngagementDocument, openSourceCount: number | null, sourceCount: number | null): SectionStatus | null {
   const f = document.fields;
@@ -83,7 +74,7 @@ function Workspace({ id }: { id: number }) {
   const utils = trpc.useUtils();
   const [, navigate] = useLocation();
   const record = trpc.tracker.get.useQuery({ id }, { enabled: Boolean(fcp.query.data) });
-  const [section, setSectionState] = useState<WorkspaceSection>(initialSection);
+  const [section, setSectionState] = useState<WorkspaceSection>(() => sectionFromSearch(window.location.search));
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const editorTop = useRef<HTMLDivElement>(null);

@@ -180,6 +180,17 @@ This file is updated to say what was built. `docs/VSA-TRACKER-UI.md` gets the wo
 
 ---
 
+### 5.7 As built (Phase 1)
+
+Where the build differs from 5.1 to 5.6, this is what shipped:
+
+- **`PlanSetup` steps.** The new steps are `customer-details`, `funding`, `schedule`, `scope`, `target-release` and `notes`. The field groups are named fragments (`customerFields`, `fundingFields`, `releaseField`, `scheduleFields`, `hardwareFields`, `deliveryStartNote`, `outcomePicker`, `timelineNotesField`). The combined `customer` and `timeline` steps render them in the original order, so their DOM is unchanged. The target release is its own `target-release` step in Estate, rather than being moved into `upload`.
+- **State.** `useFcpEngagement(id)` (`client/src/lib/useFcpEngagement.ts`) carries Home's load, migrate, rename reconciliation, lock-gated autosave, preview and export logic for one engagement. Home keeps its own copy so the rollback page stays untouched. The copy is deleted with Home in Phase 6.
+- **Routes.** `client/src/lib/fcpWorkspaceRoutes.ts` (pure, tested) maps the old `?stage=` values to sections and turns `/fcp?engagement=` into the workspace URL. `/fcp` renders `FcpPicker` (Home's list and New FCP dialog). `Home` is unrouted.
+- **Golden fixtures.** These are `server/fixtures/fcpFixtures.ts`: Acme Health (entitlement, Commercial), Meridian Health (entitlement + BSAS, Corporate), Riverbend Health (BSAS only) and Northwind Mfg (hand-built, VVF, plan estimate). Before this phase none of the four existed as a standing fixture.
+- **History wording (D-3).** It also covers the drawer's FCP tab ("Recent history"), the activity text ("Saved the FCP: <label>"), and the restore label ("Before restoring the copy saved <time> UTC").
+- **Headless check on `local-preview`.** Writes were blocked (lock, save, export). All 129 engagements opened in the workspace with the condensed preview and the draft mark, with no page errors. Three show content checks that would stop their export. Those checks are unchanged by this phase (the mark's text cannot match them), so these records fail the same way on export today.
+
 ## 6. Later phases (for orientation; each gets its own plan update before it starts)
 
 - **Phase 2:** `shared/fcpReadiness.ts`: pure checks over `(document, effort, record)` per design section 6, using `checkCondensedFcp` for the scrub check, `validateTimeline`, `effort.internal.fit.underFunded`, `allocateBsas` forfeiture, and `resolveInputs().assumptions` for "assumed". Provenance chips; internal panels in Funding and Plan; an editable entitlement end with a confirmation flag (C-10); the segment mismatch warning (C-8); preview anchors.

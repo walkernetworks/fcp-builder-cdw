@@ -248,7 +248,7 @@ function FcpTab({ data }: { data: TrackerRecord }) {
   const versionsQuery = { ...versions, data: versions.data, error: versions.error ? { message: versions.error.message } : null };
   return (
     <>
-      <Section title="FCP" actions={<Button asChild size="sm"><Link href={`/fcp?engagement=${record.id}`}><FileText className="size-3.5" /> Open FCP workspace</Link></Button>}>
+      <Section title="FCP" actions={<Button asChild size="sm"><Link href={`/engagements/${record.id}/fcp`}><FileText className="size-3.5" /> Open FCP workspace</Link></Button>}>
         <p className="text-[13px] font-medium text-ink">{record.title}</p>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
           <Fact label="Draft readiness">{open.length === 0 ? `${required.length} of ${required.length} sources in` : `${required.length - open.length} of ${required.length} sources in`}</Fact>
