@@ -301,10 +301,20 @@ export async function releaseBuildLock(viewer: Viewer, id: number) {
     .where(and(visibleEngagements(viewer), eq(engagements.id, id), eq(engagements.buildLockUserId, viewer.id)));
 }
 
+/**
+ * Deletes the record and, by cascade, everything that hangs off it: History, issued versions, consumption, stage
+ * history, sources and assignments. Owner or admin only. Issued versions point at the issue they revised, so those
+ * links are cleared first in the same transaction and the cascade never meets a row another row still references.
+ */
 export async function deleteEngagement(viewer: Viewer, id: number) {
   const db = await requireDb();
-  const result = await db.delete(engagements).where(and(deletableEngagements(viewer), eq(engagements.id, id)));
-  return result[0].affectedRows > 0;
+  return db.transaction(async tx => {
+    const [row] = await tx.select({ id: engagements.id }).from(engagements).where(and(deletableEngagements(viewer), eq(engagements.id, id))).limit(1).for("update");
+    if (!row) return false;
+    await tx.update(fcpVersions).set({ basedOnVersionId: null }).where(eq(fcpVersions.engagementId, row.id));
+    const result = await tx.delete(engagements).where(and(deletableEngagements(viewer), eq(engagements.id, row.id)));
+    return result[0].affectedRows > 0;
+  });
 }
 
 /** Copies the FCP document only. Tracker fields, identifiers, and history stay with the original. */
