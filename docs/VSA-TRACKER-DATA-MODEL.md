@@ -116,6 +116,7 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 | Column | Type | Null | Default | Vis | Notes / SharePoint source |
 |---|---|---|---|---|---|
 | `segment` | enum `corporate`, `strategic`, `commercial` | yes | | I | "BC Segment". New field. The deal segment. Separate from the FCP plan inputs (`data.fields.commercialPlan`, `adoptionDetails.platformEdition`), and never copied into them on an existing record (docs/FCP-WORKSPACE.md §8.2) |
+| `segmentSource` | enum `inferred_from_fcp` | yes | | I | NULL: the segment was set by a person or the import (confirmed). `inferred_from_fcp`: filled by migration 0009 from the FCP's old segment field, which had no Strategic value, so it needs review. Cleared by any later segment edit or import. Admin → System status counts these. |
 | `program` | enum `entitlement`, `extended_expert`, `bsas`, `cash_sow`, `government_entitlement`, `government_bsas` | yes | | I | "Program" |
 | `region` | enum `west`, `east` | yes | | I | "West vs East" |
 | `customerState` | varchar(64) | yes | | I | "Customer State" (US state of the customer) |

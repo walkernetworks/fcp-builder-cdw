@@ -137,6 +137,16 @@ export async function countSegmentMismatches(viewer: Viewer): Promise<number> {
   return rows.filter(row => segmentDisagrees(row.segment, storedCommercialPlan(jsonBoolean(row.commercialPlan), row.customerSegment))).length;
 }
 
+/** How many visible records have a tracker segment migration 0009 inferred from the FCP and no person has confirmed since. */
+export async function countInferredSegments(viewer: Viewer): Promise<number> {
+  const db = await requireDb();
+  const [row] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(engagements)
+    .where(and(visibleEngagements(viewer), eq(engagements.segmentSource, "inferred_from_fcp")));
+  return Number(row?.count ?? 0);
+}
+
 /** mysql2 returns a JSON_EXTRACT boolean as true/false, 1/0 or the text "true"/"false" depending on the driver path. */
 function jsonBoolean(value: unknown): unknown {
   if (value === "true" || value === 1) return true;
@@ -381,6 +391,8 @@ export async function updateTrackerFields(viewer: Viewer, id: number, expectedRo
       .set({
         ...patch,
         ...titlePatch,
+        // A person setting the segment confirms it; an inferred one stops being inferred.
+        ...("segment" in patch ? { segmentSource: null } : {}),
         // The FCP document carries its own copy of the customer name; keep it in step with the column.
         ...(patch.customerName ? { data: sql`JSON_SET(${engagements.data}, '$.fields.customerName', ${patch.customerName})` } : {}),
         rowVersion: sql`${engagements.rowVersion} + 1`,
@@ -606,6 +618,8 @@ export async function runPipelineImport(viewer: Viewer, batch: PipelineBatch, mo
         .update(engagements)
         .set({
           ...(update.fields as Partial<InsertEngagement>),
+          // A segment from the Pipeline List is confirmed, so an inferred one stops being inferred.
+          ...("segment" in update.fields ? { segmentSource: null } : {}),
           ...(typeof update.fields.customerName === "string" ? { data: sql`JSON_SET(${engagements.data}, '$.fields.customerName', ${update.fields.customerName})`, ...titlePatch } : {}),
           ...(update.stageChange ? { stage: update.stageChange.to, stageEnteredOn: update.stageChange.effectiveOn } : {}),
           importSnapshot: update.snapshot,

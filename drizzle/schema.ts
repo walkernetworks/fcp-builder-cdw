@@ -11,6 +11,7 @@ import {
   RA_STATUSES,
   REGIONS,
   RISK_ASSESSMENTS,
+  SEGMENT_SOURCES,
   SOURCE_ITEM_KINDS,
   SOURCE_ITEM_STATUSES,
   STAGE_EVENT_SOURCES,
@@ -86,6 +87,8 @@ export const engagements = mysqlTable(
 
     // Classification
     segment: mysqlEnum("segment", SEGMENTS),
+    /** NULL when a person or the import set the segment; see SEGMENT_SOURCES. */
+    segmentSource: mysqlEnum("segmentSource", SEGMENT_SOURCES),
     program: mysqlEnum("program", PROGRAMS),
     region: mysqlEnum("region", REGIONS),
     customerState: varchar("customerState", { length: 64 }),

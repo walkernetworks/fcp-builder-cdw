@@ -9,6 +9,7 @@ vi.mock("./db", () => ({
   readOperationalSettings: vi.fn(async () => (await import("../shared/appSettings")).resolveOperationalSettings([])),
   saveAppSettings: vi.fn(async () => ({ status: "ok", changed: [] })),
   countSegmentMismatches: vi.fn(async () => 2),
+  countInferredSegments: vi.fn(async () => 5),
 }));
 
 import { navGroupsFor } from "../client/src/components/vsa/navigation";
@@ -132,7 +133,9 @@ describe("system status", () => {
   it("counts the records whose tracker segment differs from the FCP plan type, in the admin's workspace", async () => {
     const status = await caller("admin").admin.status();
     expect(status.segmentMismatches).toBe(2);
+    expect(status.inferredSegments).toBe(5);
     expect(vi.mocked(db.countSegmentMismatches)).toHaveBeenLastCalledWith({ id: 7, workspaceId: 1, role: "admin" });
+    expect(vi.mocked(db.countInferredSegments)).toHaveBeenLastCalledWith({ id: 7, workspaceId: 1, role: "admin" });
   });
 
   it("reports the default seams in file mode, with nothing live", () => {

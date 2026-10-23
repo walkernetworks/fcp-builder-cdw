@@ -155,13 +155,23 @@ describe("tracker segment and plan type", () => {
     expect(segmentDisagrees("commercial", false)).toBe(true);
   });
 
-  it("fills only empty tracker segments from the FCP, and never writes the FCP", () => {
-    const sql = readFileSync(path.resolve(import.meta.dirname, "../drizzle/0009_fill_empty_tracker_segment.sql"), "utf8").replace(/^--.*$/gm, "");
-    const statements = sql.split(";").map(part => part.trim()).filter(Boolean);
-    expect(statements).toHaveLength(1);
-    expect(statements[0]).toMatch(/^UPDATE `engagements`\s+SET `segment` = /);
-    expect(statements[0]).toMatch(/WHERE `segment` IS NULL\s+AND /);
+  it("fills only empty tracker segments from the FCP, marks them inferred, and never writes the FCP", () => {
+    const sql = readFileSync(path.resolve(import.meta.dirname, "../drizzle/0009_tracker_segment_source.sql"), "utf8").replace(/^--.*$/gm, "");
+    const statements = sql.split("--> statement-breakpoint").map(part => part.trim().replace(/;$/, "")).filter(Boolean);
+    expect(statements).toHaveLength(2);
+    expect(statements[0]).toBe("ALTER TABLE `engagements` ADD `segmentSource` enum('inferred_from_fcp')");
+    expect(statements[1]).toMatch(/^UPDATE `engagements`\s+SET `segment` = /);
+    expect(statements[1]).toMatch(/`segmentSource` = 'inferred_from_fcp'\s+WHERE `segment` IS NULL\s+AND /);
+    expect(statements[1]).not.toContain(";");
     // Only the tracker segment is written: no JSON write into the document, and nothing removed.
-    expect(statements[0]).not.toMatch(/`data`\s*=|JSON_SET|JSON_REPLACE|JSON_INSERT|JSON_REMOVE|^\s*(DELETE|INSERT)/im);
+    expect(statements[1]).not.toMatch(/`data`\s*=|JSON_SET|JSON_REPLACE|JSON_INSERT|JSON_REMOVE|^\s*(DELETE|INSERT)/im);
+  });
+});
+
+describe("inferred tracker segments", () => {
+  it("stop being inferred when a person or the Pipeline import sets the segment", () => {
+    const source = readFileSync(path.resolve(import.meta.dirname, "db.ts"), "utf8");
+    expect(source).toContain(`...("segment" in patch ? { segmentSource: null } : {}),`);
+    expect(source).toContain(`...("segment" in update.fields ? { segmentSource: null } : {}),`);
   });
 });

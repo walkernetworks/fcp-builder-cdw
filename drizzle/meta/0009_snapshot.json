@@ -1,8 +1,8 @@
 {
-  "id": "778a1cdd-0960-43ba-8263-f69aadc08e01",
-  "prevId": "bc2c7e0a-e945-41a7-a2ca-57d36a0499e1",
   "version": "5",
   "dialect": "mysql",
+  "id": "6c705838-b9df-4ad3-a4c5-48f6a0d4ae24",
+  "prevId": "bc2c7e0a-e945-41a7-a2ca-57d36a0499e1",
   "tables": {
     "app_settings": {
       "name": "app_settings",
@@ -34,8 +34,8 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "(now())",
-          "onUpdate": true
+          "onUpdate": true,
+          "default": "(now())"
         }
       },
       "indexes": {},
@@ -43,15 +43,15 @@
         "app_settings_updatedByUserId_users_id_fk": {
           "name": "app_settings_updatedByUserId_users_id_fk",
           "tableFrom": "app_settings",
+          "tableTo": "users",
           "columnsFrom": [
             "updatedByUserId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -138,8 +138,8 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "(now())",
-          "onUpdate": true
+          "onUpdate": true,
+          "default": "(now())"
         }
       },
       "indexes": {
@@ -164,41 +164,41 @@
         "engagementAssignments_engagementId_engagements_id_fk": {
           "name": "engagementAssignments_engagementId_engagements_id_fk",
           "tableFrom": "engagementAssignments",
+          "tableTo": "engagements",
           "columnsFrom": [
             "engagementId"
           ],
-          "tableTo": "engagements",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "engagementAssignments_userId_users_id_fk": {
           "name": "engagementAssignments_userId_users_id_fk",
           "tableFrom": "engagementAssignments",
+          "tableTo": "users",
           "columnsFrom": [
             "userId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "engagementAssignments_createdByUserId_users_id_fk": {
           "name": "engagementAssignments_createdByUserId_users_id_fk",
           "tableFrom": "engagementAssignments",
+          "tableTo": "users",
           "columnsFrom": [
             "createdByUserId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -281,8 +281,8 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "(now())",
-          "onUpdate": true
+          "onUpdate": true,
+          "default": "(now())"
         },
         "workspaceId": {
           "name": "workspaceId",
@@ -381,6 +381,13 @@
         "segment": {
           "name": "segment",
           "type": "enum('corporate','strategic','commercial')",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "segmentSource": {
+          "name": "segmentSource",
+          "type": "enum('inferred_from_fcp')",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
@@ -806,54 +813,54 @@
         "engagements_workspaceId_workspaces_id_fk": {
           "name": "engagements_workspaceId_workspaces_id_fk",
           "tableFrom": "engagements",
+          "tableTo": "workspaces",
           "columnsFrom": [
             "workspaceId"
           ],
-          "tableTo": "workspaces",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "engagements_fcpWaiverRecordedByUserId_users_id_fk": {
           "name": "engagements_fcpWaiverRecordedByUserId_users_id_fk",
           "tableFrom": "engagements",
+          "tableTo": "users",
           "columnsFrom": [
             "fcpWaiverRecordedByUserId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "engagements_buildLockUserId_users_id_fk": {
           "name": "engagements_buildLockUserId_users_id_fk",
           "tableFrom": "engagements",
+          "tableTo": "users",
           "columnsFrom": [
             "buildLockUserId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "engagements_updatedByUserId_users_id_fk": {
           "name": "engagements_updatedByUserId_users_id_fk",
           "tableFrom": "engagements",
+          "tableTo": "users",
           "columnsFrom": [
             "updatedByUserId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -956,28 +963,28 @@
         "fcpVersions_engagementId_engagements_id_fk": {
           "name": "fcpVersions_engagementId_engagements_id_fk",
           "tableFrom": "fcpVersions",
+          "tableTo": "engagements",
           "columnsFrom": [
             "engagementId"
           ],
-          "tableTo": "engagements",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "fcpVersions_createdByUserId_users_id_fk": {
           "name": "fcpVersions_createdByUserId_users_id_fk",
           "tableFrom": "fcpVersions",
+          "tableTo": "users",
           "columnsFrom": [
             "createdByUserId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1044,8 +1051,8 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "(now())",
-          "onUpdate": true
+          "onUpdate": true,
+          "default": "(now())"
         }
       },
       "indexes": {
@@ -1062,28 +1069,28 @@
         "savedReports_workspaceId_workspaces_id_fk": {
           "name": "savedReports_workspaceId_workspaces_id_fk",
           "tableFrom": "savedReports",
+          "tableTo": "workspaces",
           "columnsFrom": [
             "workspaceId"
           ],
-          "tableTo": "workspaces",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "savedReports_ownerId_users_id_fk": {
           "name": "savedReports_ownerId_users_id_fk",
           "tableFrom": "savedReports",
+          "tableTo": "users",
           "columnsFrom": [
             "ownerId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1200,8 +1207,8 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "(now())",
-          "onUpdate": true
+          "onUpdate": true,
+          "default": "(now())"
         }
       },
       "indexes": {
@@ -1218,41 +1225,41 @@
         "sourceChainItems_engagementId_engagements_id_fk": {
           "name": "sourceChainItems_engagementId_engagements_id_fk",
           "tableFrom": "sourceChainItems",
+          "tableTo": "engagements",
           "columnsFrom": [
             "engagementId"
           ],
-          "tableTo": "engagements",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "sourceChainItems_createdByUserId_users_id_fk": {
           "name": "sourceChainItems_createdByUserId_users_id_fk",
           "tableFrom": "sourceChainItems",
+          "tableTo": "users",
           "columnsFrom": [
             "createdByUserId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "sourceChainItems_updatedByUserId_users_id_fk": {
           "name": "sourceChainItems_updatedByUserId_users_id_fk",
           "tableFrom": "sourceChainItems",
+          "tableTo": "users",
           "columnsFrom": [
             "updatedByUserId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1349,28 +1356,28 @@
         "stageEvents_engagementId_engagements_id_fk": {
           "name": "stageEvents_engagementId_engagements_id_fk",
           "tableFrom": "stageEvents",
+          "tableTo": "engagements",
           "columnsFrom": [
             "engagementId"
           ],
-          "tableTo": "engagements",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "stageEvents_actorUserId_users_id_fk": {
           "name": "stageEvents_actorUserId_users_id_fk",
           "tableFrom": "stageEvents",
+          "tableTo": "users",
           "columnsFrom": [
             "actorUserId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1459,8 +1466,8 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "(now())",
-          "onUpdate": true
+          "onUpdate": true,
+          "default": "(now())"
         },
         "lastSignedIn": {
           "name": "lastSignedIn",
@@ -1483,28 +1490,28 @@
         "users_workspaceId_workspaces_id_fk": {
           "name": "users_workspaceId_workspaces_id_fk",
           "tableFrom": "users",
+          "tableTo": "workspaces",
           "columnsFrom": [
             "workspaceId"
           ],
-          "tableTo": "workspaces",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "users_updatedByUserId_users_id_fk": {
           "name": "users_updatedByUserId_users_id_fk",
           "tableFrom": "users",
+          "tableTo": "users",
           "columnsFrom": [
             "updatedByUserId"
           ],
-          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1567,9 +1574,9 @@
   },
   "views": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
+    "tables": {},
+    "columns": {}
   },
   "internal": {
     "tables": {},
