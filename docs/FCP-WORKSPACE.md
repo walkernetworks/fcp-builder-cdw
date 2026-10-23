@@ -2,6 +2,8 @@
 
 This is the FCP Workspace design (`FCP-WORKSPACE-DESIGN.md`, kept outside the repo) mapped onto the real code. It names the components, routes, procedures and fields involved, maps today's UI onto the eight sections, and gives the Phase 1 plan in enough detail to build from. Where the design and the code disagree, section 3 says how and proposes a correction. Nothing in this document has been decided until it is reviewed.
 
+**Review (2026-10-23):** the decisions are recorded in section 8. Where a decision changed this plan, the section concerned has been updated.
+
 **Base branch:** `fcp-workspace` was cut from `vsa-tracker` (83c5a7d). `stageEvents`, `sourceChainItems`, `engagementAssignments`, `fcpVersions` and the record drawer exist only on `vsa-tracker`. That branch is open as PR #39 into `main` and already contains `main` (#37 BSAS, #38 hours fill). Each phase PR targets `vsa-tracker` until #39 merges, then is retargeted to `main`.
 
 ---
@@ -140,16 +142,20 @@ The three-column workspace on `/engagements/:id/fcp`, with the existing editors 
 
 ### 5.3 Client
 
-1. **Route.** In `App.tsx`, add `/engagements/:id/fcp` → `client/src/pages/FcpWorkspace.tsx`, declared before `/fcp`. `/fcp?engagement=<id>` (and the `/` redirect) goes to `/engagements/<id>/fcp`, keeping `?section=`, which is mapped from the old `?stage=` (`engagement→engagement`, `plan→scope`, `staffing→plan`, `technical→estate`, `report→narrative`, `package→review`). `/fcp` with no engagement keeps `NoSelection` and New FCP, and it links to the new route. In `RecordDrawer.tsx:251`, the link becomes `/engagements/${record.id}/fcp`.
+1. **Route.** In `App.tsx`, add `/engagements/:id/fcp` → `client/src/pages/FcpWorkspace.tsx`, declared before `/fcp`. In the **last commit of Phase 1**, after acceptance (D-1):
+   - `/fcp?engagement=<id>` (and the `/` redirect) goes to `/engagements/<id>/fcp`, keeping `?section=`, which is mapped from the old `?stage=` (`engagement→engagement`, `plan→scope`, `staffing→plan`, `technical→estate`, `report→narrative`, `package→review`).
+   - `/fcp` with no engagement renders `FcpPicker` (`NoSelection` and the New FCP dialog, moved from `Home`).
+   - `Home` is unrouted but kept.
+   - In `RecordDrawer.tsx:251`, the link becomes `/engagements/${record.id}/fcp`.
 2. **State hook.** Move the engagement state out of `Home` into `client/src/lib/useFcpEngagement.ts`, unchanged: load and migrate, hydrate, the tracker-rename reconciliation, autosave gated on the lock, `saveNow`, `mutateDocument` with the read-only toast, `buildPlan`, `startExport`, and the debounced preview. Both `Home`, for as long as it stays, and `FcpWorkspace` use it, so the behaviour is identical by construction.
 3. **Layout** (`FcpWorkspace.tsx`, design-system tokens only: `bg-surface`, `s50`–`s600`, `text-ink`, `state-*`, never `bg-white`):
    - **Header.** Customer name and the tracker `opportunityNumber`, from `tracker.get`; a stage chip; the save state ("Saved", "Saving…", "Unsaved changes", "Read only"); Tracker details (`openRecord`); Versions (`FcpVersionsSheet`); Save; Rebuild plans; Export PDF (condensed); and a More menu with New, Duplicate and Delete. The read-only lock banner is the existing one.
-   - **Left rail** (`w-56`, sticky). Eight `<button>`s with a status dot: empty, partial or complete, taken from the existing `stageDefinitions` checks mapped to sections. Phase 2 replaces them with readiness. Below them, the version list from `fcpRecord.versions` (most recent five, "All versions" opens the sheet). Up and down arrow keys move between sections when the rail has focus.
+   - **Left rail** (`w-56`, sticky). Eight `<button>`s with a status dot: empty, partial or complete, taken from the existing `stageDefinitions` checks mapped to sections. Phase 2 replaces them with readiness. Below them, **History** from `fcpRecord.versions`: the most recent five, each showing save time, who saved and the reason chip, with no "v" prefix. "All history" opens the sheet, relabelled per D-3. Up and down arrow keys move between sections when the rail has focus.
    - **Centre.** The selected section: a heading, a one-line purpose (the "why" from design section 5), then the section's components from section 4 above. It is wrapped in the existing `<fieldset disabled={readOnly}>`. A "Start here: Sources" pointer shows when the document is empty (no customer name and no inventory).
    - **Right** (`xl:` and up, about 40% wide, sticky, independently scrolled). A sandboxed `<iframe srcDoc>` of the `document.preview` HTML, with a "Draft" chip and "Open full preview" (a dialog at full width). Below `xl`, it collapses to a "Preview" button that opens the same dialog. Scrolling to the part of the report a section feeds is deferred to Phase 2. It needs anchors in the renderer, which would change the goldens.
    - **URL.** `?section=<id>` via `history.replaceState`, as `?stage=` works today.
 4. **Exports.** The Review section offers the Condensed FCP (HTML and PDF), the handoff and Building Blocks. No client code sends `documentType: "fcp"`. Filenames are unchanged in Phase 1 (`exportFilename`); dropping "Condensed" is Phase 4.
-5. **Home.** It is reached only through `/fcp` with no selection. Its six-step body stays for one release behind the redirect and is removed in Phase 6.
+5. **Home.** Unrouted after the redirect commit and kept in the tree for one release as the rollback (D-1). It is deleted in Phase 6.
 
 ### 5.4 Tests
 
@@ -184,6 +190,60 @@ This file is updated to say what was built. `docs/VSA-TRACKER-UI.md` gets the wo
 
 ## 7. Decisions needed before Phase 1
 
-- **D-1.** Should `/fcp?engagement=` redirect to the new route (recommended), or keep the old six-step page live in parallel for one release?
-- **D-2.** Accept C-1 to C-12 as proposed?
-- **D-3.** Should the version list in the rail show every snapshot until Phase 3 (recommended: yes, labelled with its reason chip), or only manual saves?
+Answered on 2026-10-23; see section 8.
+
+---
+
+## 8. Review decisions (2026-10-23)
+
+### D-1: redirect, with one live page
+
+- `/fcp?engagement=<id>` (and `/?engagement=<id>`) redirects to `/engagements/<id>/fcp`. There are never two live editing pages.
+- `Home.tsx` stays in the tree, **unrouted**, for one release as the rollback (the same pattern as `fcpRenderer.ts`), and is deleted in Phase 6. `/fcp` with no engagement renders `FcpPicker`: the existing `NoSelection` list and the New FCP dialog, moved out of `Home` unchanged. Choosing an engagement goes to the new route.
+- The redirect is the **last commit of Phase 1**, added only after the acceptance in 5.5 has been checked on `local-preview`. Until then the new route and the old page both exist, but only on the branch.
+
+### D-2: C-1 to C-12 accepted, with these conditions
+
+- **C-1.** Build the full page. **No Activity tab** (that is a north-star item). Phase 3 only writes the `stageEvents` and `fcpVersions` rows a future Activity tab will read.
+- **C-2.** The hours-source choice stays and reads `report.resourceAssignments`. The design doc has been corrected where it said `engagementAssignments` holds hours.
+- **C-3.** `issueNumber` and `status` are new columns. The existing `versionNumber` is a **save counter**: it never appears as a customer-facing version, and from Phase 1 on it is not shown with a "v" prefix anywhere (see D-3).
+- **C-5 / C-6.** The draft watermark is a **render option** (`CondensedFcpOptions.draft`), never a document field, so it cannot be saved into a document or reach print by accident. When it is off, the output is byte-identical, which the golden files cover. Phase 1 uses it on the preview only; Phase 3 adds it to draft exports once "issued" exists. Known gap until Phase 3: exported PDFs carry no watermark. That is today's behaviour, so there is no regression.
+- **C-7.** `compatibilityHandoffRenderer.ts` stays.
+- **C-8.** `engagements.segment` (Corporate / Strategic / Commercial) is the single source of truth. The FCP workspace shows it read-only and never writes it. The FCP's own field is `adoptionDetails.platformEdition` (VVF / VCF), labelled "Platform edition". Strategic is already offered wherever `engagements.segment` is edited (`trackerPatchSchema` uses `SEGMENTS`; the SharePoint import maps "BC Segment").
+  - **The third field is `fields.customerSegment`** (`unspecified | commercial | corporate`, in the document). It stops being an input. It becomes a **mirror of `engagements.segment`, written only by the server** (on `engagement.get`, `engagement.update` and export): `commercial → commercial`, `corporate → corporate`, `strategic → strategic` (added to `customerSegmentSchema`, additively), `null → unspecified`. The engine keeps reading the mirror (`isCommercialCustomer` for Building Blocks, and `effectivePlatformEdition`, which allows VVF only when the customer is Commercial), so nothing on the preserve list is refactored. Brief import stops writing it; a brief's `customer.segment` becomes a note, "segment is set on the tracker record". The "Customer segment" select in `PlanSetup` is replaced by a read-only chip from `tracker.get`.
+  - **This touches a guardrail ("every existing FCP renders identically"); see 8.1.** The work is therefore its own PR at the start of Phase 2, not part of Phase 1, which keeps its editors unchanged.
+- **C-11.** The golden files for all four fixtures are the first commit of Phase 1, on their own.
+- **C-4, C-9, C-10, C-12.** Checked against the guardrails (one dollar figure, additive only, the visibility helper, golden files):
+  - C-4 changes only the on-screen preview.
+  - C-9 changes only UI labels.
+  - C-10 makes a date editable: no dollar figure, and the column already exists.
+  - C-12 keeps an editor that only writes `report`, which the export content gates still check.
+
+  None of them weakens a guardrail.
+
+### D-3: "History", not "Versions"
+
+- The left rail's list is labelled **History**. Each entry shows the save time, who saved it, and the reason chip (Saved, Submitted, Exported, Before restore), plus the label for manual saves. **There is no "v" prefix and no number.** "All history" opens the existing sheet.
+- The same wording applies to `FcpVersionsSheet` and its callers:
+  - The sheet's title becomes "History", and its entries drop `v{n}`.
+  - The "Saved version N" and "Restore version N" texts become "Saved" and "Restore this save (date)".
+  - The HTML download filename uses the save date instead of `-v{n}`.
+  - The header button is relabelled "History".
+- **Versions / Issued** is reserved for Phase 3's `issueNumber`. It becomes its own rail section, above History.
+
+### 8.1 C-8 and the "renders identically" guardrail
+
+Mirroring `fields.customerSegment` from the tracker changes a plan wherever the two disagree today. They have never been synced, so mismatches are possible:
+
+- An FCP marked Commercial whose record segment is empty or Corporate would lose the Building Blocks workbook. If it is VVF, it would also fall back to VCF (`effectivePlatformEdition`), and that regenerates its plan.
+- An FCP marked Corporate or unspecified whose record is Commercial would gain Building Blocks.
+
+The golden fixtures are not affected (their mirror equals their field). Real engagements might be, and I cannot count them without reading rows.
+
+Proposal for the Phase 2 C-8 PR:
+
+1. A forward migration fills only **empty** tracker segments from the document: `UPDATE engagements SET segment = <fields.customerSegment> WHERE segment IS NULL AND <fields.customerSegment> IN ('commercial','corporate')`. Nothing set is overwritten. It runs through `pnpm db:migrate`, which takes a backup first.
+2. A read-only admin status line (`server/systemStatus.ts`) shows the **count** of records whose document segment still disagrees with the tracker, with no names. You resolve those in the tracker before the PR merges.
+3. Only then does the server start mirroring.
+
+If you would rather accept the plan changes for mismatched records instead, say so and step 2 is dropped.
