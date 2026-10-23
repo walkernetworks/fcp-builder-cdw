@@ -23,6 +23,8 @@ export const VSA_ROLES = ["sales", "architect", "presales", "pm", "leadership"] 
  * NULL: set by a person or the import (confirmed). Any later segment edit clears it.
  */
 export const SEGMENT_SOURCES = ["inferred_from_fcp"] as const;
+/** Why an FCP copy was kept in History. "decision": a person resolved a tracker segment mismatch. */
+export const FCP_VERSION_REASONS = ["manual", "submitted", "export", "restore", "decision"] as const;
 export const FCP_WAIVER_PARTIES = ["pm", "broadcom"] as const;
 
 export type Program = (typeof PROGRAMS)[number];
@@ -74,6 +76,7 @@ export const ENGAGEMENT_COLUMN_VISIBILITY = {
   entitlementGroupId: "internal",
   segment: "internal",
   segmentSource: "internal",
+  segmentReview: "internal",
   program: "internal",
   region: "internal",
   customerState: "internal",

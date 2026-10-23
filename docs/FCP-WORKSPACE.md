@@ -284,3 +284,12 @@ If you would rather accept the plan changes for mismatched records instead, say 
 - **PR B (`fcp-segment-review`): defaults on create, and a person decides each mismatch.**
   1. *3a.* A record created by the Pipeline import gets `commercialPlan` from the tracker segment it is created with. This is a default, set once at creation, and editable.
   2. *3b.* On an existing record, a mismatch is a readiness **warning** in the FCP ("Tracker segment is Strategic; this plan is built as Commercial"), next to the read-only tracker segment. A person resolves it by choosing explicitly (change the plan type to match the tracker, or keep the plan as built). The choice is saved with who and when, in History, and that same pair is not raised again. The system never resolves it.
+  3. *As built.*
+     - The Engagement section shows the tracker segment read-only, with a "Filled from the FCP, not confirmed" chip when it was inferred, beside the plan type.
+     - A mismatch shows the warning with two buttons. **Build as … to match the tracker** changes `commercialPlan`, regenerates and saves the plan, then records the decision. **Keep the plan as …** records the decision only.
+     - `fcpRecord.decideSegment` checks the saved FCP and the build lock. It stores `engagements.segmentReview` and keeps a History copy with reason `decision`, labelled with the choice (migration 0010). It never changes the tracker segment.
+     - An open warning keeps Engagement "In progress" in the section rail and shows on Review and issue.
+     - Nothing here depends on the VVF rule. Changing the plan type through the warning leaves the stored platform edition as it is.
+  4. *Funding copy.*
+     - The Funding section no longer sits under the "From the customer" header. Funding facts come from the order and CDW's records.
+     - **Entitled hours** (what the entitlement funds: the signed resource assignment total, or blank to derive from the entitlement value) and **Hours consumed** (the latest consumption entry and its date) are separate sections, each with its own description.

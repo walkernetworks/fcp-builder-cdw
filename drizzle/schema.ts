@@ -4,6 +4,7 @@ import type { EngagementDocument } from "../shared/fcp";
 import {
   ASSIGNMENT_ROLES,
   ENTITLEMENT_INTEREST,
+  FCP_VERSION_REASONS,
   FCP_WAIVER_PARTIES,
   HEALTH,
   INTAKE_SOURCES,
@@ -19,6 +20,7 @@ import {
   WAITING_ON,
 } from "../shared/vsaFields";
 import type { IntakeAnswers } from "../shared/vsaFields";
+import type { SegmentReview } from "../shared/fcpRecord";
 import { SEGMENTS, STAGES } from "../shared/vsaStage";
 import type { ReportConfig } from "../shared/vsaReports";
 import type { AppSettingValue } from "../shared/appSettings";
@@ -89,6 +91,8 @@ export const engagements = mysqlTable(
     segment: mysqlEnum("segment", SEGMENTS),
     /** NULL when a person or the import set the segment; see SEGMENT_SOURCES. */
     segmentSource: mysqlEnum("segmentSource", SEGMENT_SOURCES),
+    /** A person's decision on a tracker segment that disagrees with the FCP plan type (shared/fcpRecord.ts segmentWarning). */
+    segmentReview: json("segmentReview").$type<SegmentReview>(),
     program: mysqlEnum("program", PROGRAMS),
     region: mysqlEnum("region", REGIONS),
     customerState: varchar("customerState", { length: 64 }),
@@ -260,7 +264,7 @@ export const fcpVersions = mysqlTable(
     /** SHA-256 of the document JSON, so an unchanged FCP is not saved twice. */
     dataHash: varchar("dataHash", { length: 64 }).notNull(),
     label: varchar("label", { length: 160 }).notNull(),
-    reason: mysqlEnum("reason", ["manual", "submitted", "export", "restore"]).notNull(),
+    reason: mysqlEnum("reason", FCP_VERSION_REASONS).notNull(),
     createdByUserId: int("createdByUserId").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
   },

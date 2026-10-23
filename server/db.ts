@@ -3,7 +3,7 @@ import { and, asc, desc, eq, getTableColumns, inArray, isNull, max, sql } from "
 import { drizzle } from "drizzle-orm/mysql2";
 import { createDefaultDocument, EngagementDocument } from "../shared/fcp";
 import { renameInTitle, resolveFcpSaveNames } from "../shared/customerName";
-import { buildLockState, segmentDisagrees, sourceUpdatesFromDocument, storedCommercialPlan } from "../shared/fcpRecord";
+import { buildLockState, segmentDecisionLabel, segmentDisagrees, sourceUpdatesFromDocument, storedCommercialPlan, type SegmentChoice, type SegmentReview } from "../shared/fcpRecord";
 import { IMPORT_FIELDS, IMPORT_ROLES, planMappedRows, type ExistingRecord, type ImportPlan, type ImportRole } from "../shared/sharepointImport";
 import type { PipelineBatch } from "./pipelineSource";
 import type { AssignmentRole, FcpWaiver, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
@@ -15,6 +15,7 @@ import {
   engagementAssignments,
   engagements,
   fcpVersions,
+  type FcpVersion,
   savedReports,
   InsertEngagement,
   InsertUser,
@@ -583,6 +584,8 @@ export async function runPipelineImport(viewer: Viewer, batch: PipelineBatch, mo
     for (const create of plan.creates) {
       const data = createDefaultDocument();
       data.fields.customerName = String(create.fields.customerName ?? "");
+      // The plan type starts from the tracker segment, once, at creation. A default: a person can change it in the FCP.
+      data.fields.commercialPlan = create.fields.segment === "commercial";
       const result = await tx.insert(engagements).values({
         ...(create.fields as Partial<InsertEngagement>),
         ownerId: viewer.id,
@@ -695,7 +698,7 @@ export async function getFcpVersion(viewer: Viewer, engagementId: number, versio
 }
 
 /** Saves the stored FCP as a new version. An export of an FCP identical to the latest version is not saved again. */
-export async function createFcpVersion(viewer: Viewer, engagementId: number, label: string, reason: "manual" | "submitted" | "export" | "restore") {
+export async function createFcpVersion(viewer: Viewer, engagementId: number, label: string, reason: FcpVersion["reason"]) {
   const db = await requireDb();
   const engagement = await getEngagement(viewer, engagementId);
   if (!engagement) return undefined;
@@ -707,6 +710,38 @@ export async function createFcpVersion(viewer: Viewer, engagementId: number, lab
   const versionNumber = (highest ?? 0) + 1;
   const result = await db.insert(fcpVersions).values({ engagementId, versionNumber, title: engagement.title, data: engagement.data, dataHash, label: label.slice(0, 160), reason, createdByUserId: viewer.id });
   return { id: Number(result[0].insertId), versionNumber, skipped: false };
+}
+
+/**
+ * Records a person's decision on a tracker segment that disagrees with the FCP plan type, and keeps a copy of the FCP
+ * in History with the decision as its label. It changes neither the segment nor the plan: "match-tracker" is recorded
+ * after the workspace has saved the plan with the matching type (refused until it has), "keep-plan" while they still
+ * disagree. Refused while someone else holds the build lock.
+ */
+export async function decideSegment(viewer: Viewer, byName: string | null, id: number, choice: SegmentChoice): Promise<WriteResult<SegmentReview>> {
+  const db = await requireDb();
+  const [row] = await db
+    .select({
+      segment: engagements.segment,
+      buildLockUserId: engagements.buildLockUserId,
+      buildLockAt: engagements.buildLockAt,
+      commercialPlan: sql<unknown>`JSON_EXTRACT(${engagements.data}, '$.fields.commercialPlan')`,
+      customerSegment: sql<unknown>`JSON_UNQUOTE(JSON_EXTRACT(${engagements.data}, '$.fields.customerSegment'))`,
+    })
+    .from(engagements)
+    .where(and(visibleEngagements(viewer), eq(engagements.id, id)))
+    .limit(1);
+  if (!row) return { status: "not_found" };
+  if (buildLockState({ userId: row.buildLockUserId, at: row.buildLockAt }, viewer.id, Date.now()) === "other") throw new BuildLockedError(await lockHolderName(row.buildLockUserId));
+  if (!row.segment) return { status: "blocked", reason: "The tracker record has no segment, so there is nothing to decide." };
+  const commercialPlan = storedCommercialPlan(jsonBoolean(row.commercialPlan), row.customerSegment);
+  const disagrees = segmentDisagrees(row.segment, commercialPlan);
+  if (choice === "match-tracker" && disagrees) return { status: "blocked", reason: "Save the FCP with the matching plan type first." };
+  if (choice === "keep-plan" && !disagrees) return { status: "blocked", reason: "The plan type already matches the tracker segment." };
+  const review: SegmentReview = { segment: row.segment, commercialPlan, choice, byUserId: viewer.id, byName, at: new Date().toISOString() };
+  await db.update(engagements).set({ segmentReview: review, updatedByUserId: viewer.id }).where(and(visibleEngagements(viewer), eq(engagements.id, id)));
+  await createFcpVersion(viewer, id, segmentDecisionLabel(row.segment, commercialPlan, choice), "decision");
+  return { status: "ok", value: review };
 }
 
 /**

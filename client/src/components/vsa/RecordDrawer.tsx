@@ -1,4 +1,5 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { HISTORY_REASON_LABEL } from "@shared/fcpRecord";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -270,7 +271,7 @@ function FcpTab({ data }: { data: TrackerRecord }) {
                     <span className="block truncate text-[13px] text-ink">{version.label}</span>
                     <span className="block text-xs text-ink-muted">{new Date(version.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}{version.createdByName ? ` · ${version.createdByName}` : ""}</span>
                   </span>
-                  <Chip>{{ manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore" }[version.reason]}</Chip>
+                  <Chip>{HISTORY_REASON_LABEL[version.reason]}</Chip>
                 </li>
               ))}
             </ol>

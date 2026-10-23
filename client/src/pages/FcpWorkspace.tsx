@@ -17,6 +17,8 @@ import { trpc } from "@/lib/trpc";
 import { sectionFromSearch, type WorkspaceSection } from "@/lib/fcpWorkspaceRoutes";
 import { useFcpEngagement } from "@/lib/useFcpEngagement";
 import { isCommercialPlan } from "@shared/buildingBlocks";
+import { HISTORY_REASON_LABEL, segmentWarning } from "@shared/fcpRecord";
+import { SegmentReview } from "@/components/fcp/SegmentReview";
 import { fundedFields, getFollowOnReadinessGuidance, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
 import { openSources, STAGE_LABELS } from "@shared/vsaStage";
 import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
@@ -43,14 +45,15 @@ const STATUS_LABEL: Record<SectionStatus, string> = { empty: "Not started", part
 const STATUS_DOT: Record<SectionStatus, string> = { empty: "border border-s300 bg-surface", partial: "bg-state-warn", complete: "bg-state-pass" };
 
 
-function sectionStatus(section: WorkspaceSection, document: EngagementDocument, openSourceCount: number | null, sourceCount: number | null): SectionStatus | null {
+function sectionStatus(section: WorkspaceSection, document: EngagementDocument, openSourceCount: number | null, sourceCount: number | null, segmentWarningOpen: boolean): SectionStatus | null {
   const f = document.fields;
   const report = document.report;
   const activities = document.adoptionTimeline.lanes.flatMap(lane => lane.bars).length;
   const level = (done: boolean, started: boolean): SectionStatus => (done ? "complete" : started ? "partial" : "empty");
   switch (section) {
     case "sources": return sourceCount === null ? null : level(sourceCount > 0 && openSourceCount === 0, openSourceCount !== sourceCount || report.briefVersion !== null);
-    case "engagement": return level(Boolean(f.customerName && (f.plannedProjectStart || f.targetStart) && f.targetComplete), Boolean(f.customerName));
+    // An open segment warning keeps the section in progress until a person decides it.
+    case "engagement": return level(Boolean(f.customerName && (f.plannedProjectStart || f.targetStart) && f.targetComplete) && !segmentWarningOpen, Boolean(f.customerName) || segmentWarningOpen);
     case "funding": return level(Boolean(fundedFields(f).entitlementStart && (f.fundingSource === "bsas" ? f.bsasHours : f.entitlementAmount)), Boolean(f.entitlementAmount || f.bsasHours || f.entitlementStart));
     case "estate": return level(Boolean(document.inventory.hosts && document.readiness.hardwarePlatforms.length), Boolean(document.inventory.hosts));
     case "scope": return level(Boolean(f.priorities.length && f.plannedImplementationStart), Boolean(f.priorities.length));
@@ -102,10 +105,12 @@ function Workspace({ id }: { id: number }) {
   }, [canSave]);
 
   const sources = record.data?.sources ?? null;
+  const tracker = record.data?.record ?? null;
+  const segmentWarningText = tracker ? segmentWarning(tracker.segment, fcp.document.fields.commercialPlan, tracker.segmentReview ?? null) : null;
   const statuses = useMemo(() => {
     const open = sources ? openSources(sources).length : null;
-    return Object.fromEntries(WORKSPACE_SECTIONS.map(item => [item.id, sectionStatus(item.id, fcp.document, open, sources ? sources.length : null)])) as Record<WorkspaceSection, SectionStatus | null>;
-  }, [fcp.document, sources]);
+    return Object.fromEntries(WORKSPACE_SECTIONS.map(item => [item.id, sectionStatus(item.id, fcp.document, open, sources ? sources.length : null, Boolean(segmentWarningText))])) as Record<WorkspaceSection, SectionStatus | null>;
+  }, [fcp.document, sources, segmentWarningText]);
 
   if (fcp.query.isLoading) return <div className="grid min-h-[70vh] place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div>;
   if (!fcp.query.data) return <NotAvailable />;
@@ -175,12 +180,13 @@ function Workspace({ id }: { id: number }) {
               <CustomerBriefImport document={document} onChange={fcp.mutateDocument} />
             </>}
             {section === "engagement" && <>
+              {tracker && <SegmentReview engagementId={id} document={document} segment={tracker.segment} segmentSource={tracker.segmentSource} review={tracker.segmentReview ?? null} readOnly={fcp.readOnly} saveDocument={fcp.saveDocument} />}
               <PlanSetup step="customer-details" {...setup} />
               <PlanSetup step="schedule" {...setup} />
             </>}
             {section === "funding" && <>
               <PlanSetup step="funding" {...setup} />
-              <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["entitlement", "licensing"]} />
+              <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["entitlement", "consumption", "licensing"]} />
             </>}
             {section === "estate" && <>
               <PlanSetup step="upload" {...setup} />
@@ -198,6 +204,12 @@ function Workspace({ id }: { id: number }) {
             {section === "plan" && <PlanSection document={document} onChange={fcp.mutateDocument} onRebuild={fcp.buildPlan} setup={setup} />}
             {section === "narrative" && <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={NARRATIVE_SECTIONS} />}
             {section === "review" && <>
+              {segmentWarningText && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-state-warn/30 bg-state-warn-soft p-4 text-sm" role="status">
+                  <span className="text-state-warn-text"><strong>Needs a decision:</strong> {segmentWarningText}</span>
+                  <Button variant="outline" size="sm" className="bg-surface" onClick={() => setSection("engagement")}>Decide in Engagement</Button>
+                </div>
+              )}
               <DeliveryPackageHeader document={document} />
               <section className="grid gap-3 rounded-lg border border-s100 bg-surface p-4 lg:grid-cols-2">
                 <ExportPreferenceCard title="Compatibility summary in the FCP" description="Include the target-release compatibility posture in the FCP: hosts by decision, the top compatibility actions, and the planning considerations from RVTools. The detailed evidence stays in the Compatibility Delivery Handoff." checked={document.fields.exportPreferences.includeVcfReadiness} onCheckedChange={includeVcfReadiness => fcp.mutateDocument({ ...document, fields: { ...document.fields, exportPreferences: { ...document.fields.exportPreferences, includeVcfReadiness } } })} switchId="include-vcf-readiness-export" />
@@ -272,8 +284,6 @@ function SectionRail({ section, statuses, onSelect, engagementId, onOpenHistory 
   );
 }
 
-const REASON_LABEL = { manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore" } as const;
-
 /** Saved snapshots of the FCP, newest first. Not versions: "version" is kept for issued plans (Phase 3). */
 function HistoryList({ engagementId, onOpenAll }: { engagementId: number; onOpenAll: () => void }) {
   const history = trpc.fcpRecord.versions.useQuery({ id: engagementId });
@@ -290,7 +300,7 @@ function HistoryList({ engagementId, onOpenAll }: { engagementId: number; onOpen
             {data.slice(0, 5).map(entry => (
               <li key={entry.id} className="px-2 py-1.5">
                 <p className="text-xs font-medium text-ink">{new Date(entry.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
-                <p className="truncate text-[11px] text-ink-muted">{REASON_LABEL[entry.reason]}{entry.reason === "manual" && entry.label ? `: ${entry.label}` : ""}{entry.createdByName ? ` · ${entry.createdByName}` : ""}</p>
+                <p className="truncate text-[11px] text-ink-muted">{HISTORY_REASON_LABEL[entry.reason]}{(entry.reason === "manual" || entry.reason === "decision") && entry.label ? `: ${entry.label}` : ""}{entry.createdByName ? ` · ${entry.createdByName}` : ""}</p>
               </li>
             ))}
           </ol>

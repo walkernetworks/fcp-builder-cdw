@@ -116,6 +116,13 @@ export function useFcpEngagement(id: number) {
     toast.success("VCF 9.1 playbook template applied to both planning views");
   };
   const saveNow = () => { setSaveState("saving"); update.mutate({ id, title, data: document, baseCustomerName: baseCustomerName.current, baseTitle: baseTitle.current }); };
+  /** Applies a change and saves it now, for a step the server checks against the saved FCP. Rejects if the save fails. */
+  const saveDocument = async (next: EngagementDocument) => {
+    if (readOnly) throw new Error(`${buildLock.lock.holder ?? "Someone"} is editing this FCP.`);
+    setDocument(next);
+    setSaveState("saving");
+    await update.mutateAsync({ id, title, data: next, baseCustomerName: baseCustomerName.current, baseTitle: baseTitle.current });
+  };
   const startExport = async (format: ExportFormat, documentType: ExportDocumentType = "condensed-fcp") => {
     if (activeExport) return;
     setActiveExport({ format, documentType });
@@ -146,7 +153,7 @@ export function useFcpEngagement(id: number) {
     hydrated: hydratedId.current === id && found,
     title, renameTitle,
     document, mutateDocument,
-    saveState, savedAt, saving: update.isPending, saveNow,
+    saveState, savedAt, saving: update.isPending, saveNow, saveDocument,
     preview: preview?.html ?? "", previewChecks: preview?.checks ?? [], previewPending: previewMutation.isPending,
     activeExport, startExport,
     buildPlan, reload,
