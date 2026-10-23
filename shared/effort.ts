@@ -492,6 +492,8 @@ export function barsForLine(item: Pick<EffortLine, "code" | "reduction">, discov
 const FIRST_MANAGEMENT_DOMAIN = /^bar-(management-domain|converge-management-domain)$/;
 /** Shown with the first management domain when it carries the NSX design because the full NSX design is not funded. */
 export const NSX_VLAN_NOTE = "NSX is deployed with VLAN-backed transport zones; overlay design follows after the entitlement.";
+/** The same note for a BSAS-only deal. */
+export const NSX_VLAN_NOTE_BSAS = "NSX is deployed with VLAN-backed transport zones; overlay design follows after the BSAS term.";
 
 /** Rounds each column so it foots to its target: floors, then hands the remainder to the largest fractions. */
 function footedColumn(values: number[], target: number): number[] {
@@ -699,7 +701,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       adjusted: Boolean(editable && (override.architect !== null || override.srConsultant !== null || override.projectManager !== null)),
       placement: override?.placement ?? "auto",
       owner,
-      ...(carriesNsxDesign && FIRST_MANAGEMENT_DOMAIN.test(id) ? { notes: [NSX_VLAN_NOTE] } : {}),
+      ...(carriesNsxDesign && FIRST_MANAGEMENT_DOMAIN.test(id) ? { notes: [document.fields.fundingSource === "bsas" ? NSX_VLAN_NOTE_BSAS : NSX_VLAN_NOTE] } : {}),
       ...(note ? { note } : !reason && sum === 0 ? { note: "not in the scoped hours" as const } : {}),
     };
   }).sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));

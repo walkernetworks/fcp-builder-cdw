@@ -6,6 +6,7 @@ import { exportFilename } from "../shared/exportFilename";
 import { createDefaultDocument, FIXED_GANTT_CATEGORIES, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
+import { renderFcpHtml } from "./fcpRenderer";
 import { scopedEffortForDocument } from "./rateCard";
 import { barWindow } from "../shared/buildingBlocks";
 
@@ -50,10 +51,19 @@ describe("Condensed FCP", () => {
   });
 
   it("carries exactly one dollar figure and nothing from the internal fit check", () => {
-    const document = engagement();
-    const visible = text(render(document));
-    expect(visible.match(/\$[\d,]+/g)).toEqual(["$79,403"]);
-    for (const internal of ["envelope", "shortfall", "Unfunded", "headroom", "AT RISK", "WATCH", "ON TRACK", "catch-up", "rate"]) expect(visible).not.toMatch(new RegExp(`\\b${internal}\\b`, "i"));
+    // With and without BSAS: a BSAS amount, rate or tier in the brief never reaches the page (BSAS is hours and dates only).
+    const bsasBrief = (raw: any) => { raw.bsas = { hours: 600, termStart: "2027-05-01", termEnd: "2028-04-30", amount: 424242, value: 313131, rate: 271, tier: "Tier Zeta" }; };
+    for (const document of [engagement(), engagement(bsasBrief)]) {
+      const visible = text(render(document));
+      expect(visible.match(/\$[\d,]+/g)).toEqual(["$79,403"]);
+      for (const internal of ["envelope", "shortfall", "Unfunded", "headroom", "AT RISK", "WATCH", "ON TRACK", "catch-up", "rate"]) expect(visible).not.toMatch(new RegExp(`\\b${internal}\\b`, "i"));
+      for (const bsasInternal of ["424,242", "424242", "313,131", "313131", "271", "Zeta"]) expect(visible).not.toContain(bsasInternal);
+      // The full FCP shows the entitlement value, and no other dollar figure, however often it repeats it.
+      const fullVisible = text(renderFcpHtml("Acme Health", document));
+      expect(Array.from(new Set(fullVisible.match(/\$[\d,]+/g)))).toEqual(["$79,403"]);
+      for (const bsasInternal of ["424,242", "424242", "313,131", "313131", "Zeta"]) expect(fullVisible).not.toContain(bsasInternal);
+    }
+    expect(text(render(engagement(bsasBrief)))).toContain("BSAS Hours");
   });
 
   it("is self-contained and printable", () => {

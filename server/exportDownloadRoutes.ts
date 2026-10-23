@@ -48,7 +48,7 @@ export function registerExportDownloadRoutes(app: Express) {
         const effort = scopedEffortForDocument(document);
         html = renderCondensedFcpHtml(row.title, document, { effort });
         // The condensed FCP goes to the customer as-is, so every content gate must pass first.
-        const failures = checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount });
+        const failures = checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount, bsasOnly: document.fields.fundingSource === "bsas" });
         // The entitlement window never goes over the entitlement value. Under v2 only protected, design and pinned work
         // can keep it over once the squeeze has run; that plan is flagged under-funded in the document and still exports.
         if (effort.internal.cost?.status === "over" && !effort.internal.fit?.underFunded) failures.push("The entitlement window costs more than the entitlement value. Reduce hours or move work to the Two-Year Notional on the Entitlement Adoption Timeline step.");

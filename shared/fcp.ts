@@ -695,6 +695,9 @@ export type ExportPreferences = z.infer<typeof exportPreferencesSchema>;
 export const customerSegmentSchema = z.preprocess(value => (value === "public-sector" ? "corporate" : value), z.enum(["unspecified", "commercial", "corporate"]));
 export type CustomerSegment = z.infer<typeof customerSegmentSchema>;
 
+export const fundingSourceSchema = z.enum(["entitlement", "entitlement-bsas", "bsas"]);
+export type FundingSource = z.infer<typeof fundingSourceSchema>;
+
 export const HOURS_FILL_DEFAULT_LABEL = "Optimization and Advisory Services";
 /**
  * A work package that takes up the entitlement hours the selected scope leaves unused (after the reserve), so the
@@ -813,6 +816,16 @@ export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   hoursModel: hoursModelSchema.default("v2"),
   estimateInputs: estimateInputsSchema.default({}),
   hoursFill: hoursFillSchema,
+  /**
+   * How the services are funded. "entitlement-bsas" adds Broadcom Software Adoption Services (BSAS) after the
+   * entitlement; "bsas" plans on BSAS alone, in the entitlement's place. BSAS is hours and dates only: its dollar
+   * amount and rates never enter the document.
+   */
+  fundingSource: fundingSourceSchema.default("entitlement"),
+  bsasHours: z.number().min(0).max(100_000).default(0),
+  bsasStart: z.string().default(""),
+  /** Blank: twelve months after the BSAS start. */
+  bsasEnd: z.string().default(""),
 });
 export type MinimalFields = z.infer<typeof minimalFieldsSchema>;
 
@@ -1436,7 +1449,20 @@ export function createDefaultFields(): MinimalFields {
     hoursFill: { enabled: false, label: HOURS_FILL_DEFAULT_LABEL },
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
+    fundingSource: "entitlement",
+    bsasHours: 0,
+    bsasStart: "",
+    bsasEnd: "",
   };
+}
+
+/**
+ * The fields the planner works from. A BSAS-only deal plans on BSAS in the entitlement's place: the BSAS term is the
+ * funded window and no dollar value is carried. Every other deal is returned unchanged.
+ */
+export function fundedFields<T extends Pick<MinimalFields, "fundingSource" | "bsasStart" | "bsasEnd" | "entitlementAmount" | "entitlementStart" | "entitlementEnd">>(fields: T): T {
+  if (fields.fundingSource !== "bsas") return fields;
+  return { ...fields, entitlementAmount: 0, entitlementStart: fields.bsasStart, entitlementEnd: fields.bsasEnd || calculateEntitlementEndDate(fields.bsasStart) };
 }
 
 function bar(id: string, startCol: number, endCol: number, color: TimelineColor, label: string, milestone = false, deferred = false, dependsOn?: string, outcome?: string): TimelineBar {
@@ -1541,7 +1567,7 @@ export function buildTwoYearNotionalColumns(serviceStartValue: string, _legacyEn
 }
 
 function timelineStartDate(fields: MinimalFields): string {
-  const candidate = fields.plannedProjectStart || fields.targetStart || fields.entitlementStart;
+  const candidate = fields.plannedProjectStart || fields.targetStart || fundedFields(fields).entitlementStart;
   return parseIsoDate(candidate) ? candidate : isoDate(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)));
 }
 
@@ -1570,6 +1596,8 @@ export function applyScheduleFieldPatch(fields: MinimalFields, patch: Partial<Mi
 }
 
 function entitlementNotionalEndDate(fields: MinimalFields): string {
+  // A BSAS-only deal runs to the BSAS end the planner entered, which need not be twelve months.
+  if (fields.fundingSource === "bsas") return fundedFields(fields).entitlementEnd;
   return calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd;
 }
 
@@ -3166,7 +3194,7 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const twoYearPlan = buildTwoYearPlan(fields, inventory, schedule);
   const carriedToYearTwo = schedule.lanes.flatMap(lane => lane.bars).filter(activity => activity.startCol > adoptionTimeline.columns.length).length;
   const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
-  const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
+  const amount = fields.fundingSource === "bsas" ? (fields.bsasHours ? `${fields.bsasHours.toLocaleString("en-US")} BSAS hours` : "the confirmed BSAS hours") : fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
   const plannedProjectStart = timelineStartDate(fields);
   const entitlementEnd = entitlementNotionalEndDate(fields);
   const entitlementNotionalStart = entitlementNotionalStartDate(fields);
@@ -3597,6 +3625,10 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
     hoursFill: { enabled: false, label: HOURS_FILL_DEFAULT_LABEL },
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
+    fundingSource: "entitlement",
+    bsasHours: 0,
+    bsasStart: "",
+    bsasEnd: "",
   };
 }
 
@@ -3702,7 +3734,7 @@ function needsPlaybookCategoryRebaseline(timeline: Timeline, fields: MinimalFiel
 
 function normalizePlanningDates(fields: MinimalFields): MinimalFields {
   const entitlementEnd = calculateEntitlementEndDate(fields.entitlementStart);
-  const plannedProjectStart = fields.plannedProjectStart || fields.targetStart || fields.entitlementStart;
+  const plannedProjectStart = fields.plannedProjectStart || fields.targetStart || fundedFields(fields).entitlementStart;
   const plannedImplementationStart = fields.plannedImplementationStart || plannedProjectStart;
   const upgradePath = canonicalVcfDeliveryPath(fields.adoptionDetails.upgradePath);
   return {

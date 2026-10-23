@@ -103,6 +103,7 @@ function focusOptions(detailKey: string): string[] {
 }
 
 const reportShape = reportSchema.shape;
+const isoDateOrNull = (value: unknown): string | null => (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null);
 const element = <T extends z.ZodType>(schema: T) => (schema as any).unwrap().element as z.ZodType<any>;
 
 /**
@@ -138,6 +139,7 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   // ---- Planning fields -------------------------------------------------------------------------
   const discovery = isPlainObject(brief.discovery) ? brief.discovery : {};
   const entitlement = isPlainObject(brief.entitlement) ? brief.entitlement : {};
+  const bsasBrief = isPlainObject(brief.bsas) ? brief.bsas : null;
   const customer = isPlainObject(brief.customer) ? brief.customer : {};
   const fieldsPatch: JsonObject = {};
   const detailsPatch: JsonObject = {};
@@ -167,6 +169,17 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   if (discovery.targetRelease !== undefined) fieldsPatch.compatibilityTargetRelease = discovery.targetRelease;
   if (typeof entitlement.value === "number") fieldsPatch.entitlementAmount = entitlement.value;
   if (typeof entitlement.termStart === "string") fieldsPatch.entitlementStart = entitlement.termStart;
+  // BSAS is hours and dates only. A BSAS amount, rate or tier in the brief is never read, so it never reaches the document.
+  // BSAS hours set the funding source: alongside an entitlement value, BSAS follows the entitlement; without one, BSAS only.
+  if (bsasBrief && typeof bsasBrief.hours === "number" && bsasBrief.hours > 0 && bsasBrief.hours <= 100_000) {
+    fieldsPatch.bsasHours = bsasBrief.hours;
+    const bsasStart = isoDateOrNull(bsasBrief.termStart);
+    const bsasEnd = isoDateOrNull(bsasBrief.termEnd);
+    if (bsasStart) fieldsPatch.bsasStart = bsasStart;
+    if (bsasEnd) fieldsPatch.bsasEnd = bsasEnd;
+    const entitlementValue = typeof fieldsPatch.entitlementAmount === "number" ? fieldsPatch.entitlementAmount : document.fields.entitlementAmount;
+    fieldsPatch.fundingSource = entitlementValue > 0 ? "entitlement-bsas" : "bsas";
+  }
   if (typeof discovery.plannedPath === "string") detailsPatch.upgradePath = discovery.plannedPath;
   if (typeof discovery.platformEdition === "string") detailsPatch.platformEdition = discovery.platformEdition;
   if (typeof discovery.consolidatedDomain === "boolean") detailsPatch.domainTopology = discovery.consolidatedDomain ? "consolidated" : "standard";
@@ -354,12 +367,17 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   reportCount("personnel", report.personnel.length);
   reportCount("milestonesToDate", report.milestonesToDate.length);
   reportCount("resourceAssignments", report.resourceAssignments.length);
+  if (bsasBrief && Object.keys(bsasBrief).some(key => !["hours", "termStart", "termEnd"].includes(key))) warnings.push("bsas: only BSAS hours and term dates are kept; any amount, rate or tier is left out of the plan");
   if (report.entitlement.hours !== prior.entitlement.hours) changes.push(`report.entitlement.hours: ${prior.entitlement.hours ?? "not set"} → ${report.entitlement.hours ?? "not set"}`);
 
   if (!fields.customerName) missing.push("Customer name");
-  if (!fields.entitlementStart) missing.push("Entitlement start date");
-  if (!fields.entitlementAmount) missing.push("Entitlement value");
-  if (report.entitlement.hours === null) missing.push("Entitled hours (Resource Assignments total)");
+  if (fields.fundingSource === "bsas") {
+    if (!fields.bsasStart) missing.push("BSAS start date");
+  } else {
+    if (!fields.entitlementStart) missing.push("Entitlement start date");
+    if (!fields.entitlementAmount) missing.push("Entitlement value");
+    if (report.entitlement.hours === null) missing.push("Entitled hours (Resource Assignments total)");
+  }
   if (report.entitlement.hoursConsumed === null) missing.push("Hours consumed to date");
   if (!report.headline) missing.push("Cover headline");
   if (!report.whatWeHeard.length) missing.push("What we heard");
