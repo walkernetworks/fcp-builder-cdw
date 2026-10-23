@@ -180,6 +180,12 @@ export const appRouter = router({
     decideSegment: protectedProcedure
       .input(z.object({ id: recordId, choice: z.enum(["match-tracker", "keep-plan"]) }))
       .mutation(async ({ ctx, input }) => unwrap(await lockAware(() => db.decideSegment(viewerFor(ctx.user), ctx.user.name ?? ctx.user.email ?? null, input.id, input.choice)))),
+    /** Hours consumed as of a date, newest first. */
+    consumption: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.listConsumptionEntries(viewerFor(ctx.user), input.id)) ?? []),
+    /** Anyone who can see the engagement records consumption by hand; Salesforce entries come only from the connector. */
+    addConsumption: protectedProcedure
+      .input(z.object({ id: recordId, asOf: isoDay, consumedHours: z.number().min(0).max(1_000_000), note: z.string().trim().max(2000).nullable().default(null) }))
+      .mutation(async ({ ctx, input }) => unwrap(await db.addConsumptionEntry(viewerFor(ctx.user), input.id, { asOf: input.asOf, consumedHours: Math.round(input.consumedHours * 100) / 100, note: input.note || null }))),
     restoreVersion: protectedProcedure.input(z.object({ id: recordId, versionId: recordId })).mutation(async ({ ctx, input }) => requireRow(await lockAware(() => db.restoreFcpVersion(viewerFor(ctx.user), input.id, input.versionId)))),
   }),
   reports: router({

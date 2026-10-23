@@ -268,7 +268,7 @@ If you would rather accept the plan changes for mismatched records instead, say 
 |---|---|---|
 | `engagements.segment` (Corporate / Strategic / Commercial) | The **deal segment**. Single source of truth for it. | The tracker (record drawer, Pipeline import). The FCP shows it read-only (PR B). |
 | `fields.commercialPlan` (boolean) | **Plan type**: the plan is built as Commercial, so it gets the Building Blocks workbook and may be VVF. | A person, in the FCP ("Plan type"). Defaulted once from the tracker segment when a record is created (PR B). |
-| `fields.adoptionDetails.platformEdition` (VCF / VVF) | **Platform edition**. VVF only on a Commercial plan. **Open question:** that rule is inherited from the old engine (`effectivePlatformEdition`), not confirmed as a business rule. It stays as built, and nothing new depends on it. | A person, in the FCP. |
+| `fields.adoptionDetails.platformEdition` (VCF / VVF) | **Platform edition**. VVF only on a Commercial plan (`effectivePlatformEdition`). **Confirmed as a business rule** (2026-10-23): VVF is sold only on a Commercial plan, and code may rely on it. | A person, in the FCP. |
 | `fields.customerSegment` | **Deprecated.** Kept so older documents parse, and read once by `migrateDocument`. Nothing in plan generation reads it. | Nobody, from now on. |
 
 **Steps, in two stacked PRs:**
@@ -362,3 +362,83 @@ UI only: no schema change and no change to generated output. `client/src/compone
 ## 12. Hiding the live preview
 
 The live preview column can be hidden with **Hide** in its header, and brought back with **Show live preview** above the section. Hiding it gives the editor the full width. **Preview the FCP** still opens the full preview in a dialog at any width. The choice is a per-viewer convenience kept in the browser (`localStorage`, read and written inside try/catch), so it never reaches the server and the page works without it. The preview keeps rendering while hidden, because the Plan section draws its timelines from it.
+
+## 13. Phase 3: Versions (design §7), plan
+
+### 13.1 Decisions (design §14, 2026-10-23)
+
+- **Numbering (14.1):** only issued versions are numbered, as `issueNumber` 1, 2, 3 per engagement (C-3). The existing `versionNumber` stays the save counter behind History. The working document is the draft and has no number.
+- **Approvals (14.2):** a recorded date, actor and optional note, per party (Broadcom, customer), on the issued version. No request flow or notifications.
+- **Consumption (14.3):**
+  - Entered by hand for now, by anyone in the workspace, and logged with who entered it.
+  - Each entry has a `source` (`manual` now; `salesforce` reserved) and an optional `externalId`. The future Salesforce read connector (north-star Phase 7, gated on IT) can then upsert on (`engagementId`, `source`, `externalId`) without duplicating manual rows. No schema change is needed when it lands.
+- **Snapshots (14.4):** JSON columns in MySQL, like engagements and History, covered by the same backup. `docs/SECURITY-REVIEW.md` says so.
+- **Watermark (14.6):** on the preview and on every export of the working document. An issued version downloads exactly as issued, without it (C-6).
+- **VVF (2026-10-23):** VVF is sold only on a Commercial plan. This is a business rule, and code may rely on it.
+
+### 13.2 Data (one additive migration)
+
+- **`fcpVersions`** gains these columns, all nullable, so every existing row stays a History save:
+  - `issueNumber`, unique per engagement;
+  - `status` (`issued` or `superseded`);
+  - `basedOnVersionId`, the issued version this one revises;
+  - `effortSnapshot`, `renderedHtml` and `renderHash`;
+  - `revisionNote` and `changeSummary`;
+  - `issuedAt` and `issuedByUserId`;
+  - `broadcomApprovedOn` (a date, like the tracker gates), `broadcomApprovedByUserId` and `broadcomApprovalNote`, with the same three for the customer.
+- **`reason`** gains `issued`. An issued version is the row written at issue: its `data` is the document snapshot.
+- **`fcpConsumptionEntries`:** `engagementId`, `asOf`, `consumedHours`, `source`, `externalId`, `note`, `enteredByUserId`, `createdAt`. It is append-only: a correction is a new entry.
+- **Tags:** every new column is tagged in `shared/vsaFields.ts`. `renderedHtml` and `revisionNote` are customer-facing; everything else is internal.
+- **Visibility:** both tables are reached only through a visible engagement, and `server/visibility.test.ts` covers them.
+
+### 13.3 Lifecycle
+
+- **Issue** renders the Condensed FCP from the saved document without the watermark. It runs the same content checks as an export, and refuses while someone else holds the edit lock. It then stores:
+  - the document, the effort and the HTML, with its hash;
+  - the revision note;
+  - the change summary against the latest issued version;
+  - the next `issueNumber`.
+
+  The previous issued version becomes `superseded`.
+- **Revise** saves the working document to History, then replaces it with the latest issued snapshot. A re-issue therefore starts from what the customer holds. It is offered when the working document has moved on since the last issue.
+- **Download** of any issued or superseded version returns its stored HTML, or a PDF rendered from that HTML, byte for byte as issued. Superseded versions stay downloadable.
+- **Consumption entries** need no re-issue. The latest entry fills the document's hours consumed and its date (on the workspace's normal save path), so the burndown moves on the next export or issue.
+
+### 13.4 Gates and the tracker
+
+The tracker's stage gates already read three dates: `fcpSubmittedOn`, `fcpBroadcomAcceptedOn` and `fcpCustomerAcceptedOn`. Phase 3 feeds them from the version state, without changing `shared/vsaStage.ts`:
+- issuing fills `fcpSubmittedOn`;
+- recording an approval fills the matching accepted date.
+
+Each is filled **only when the date is empty**. A date someone already entered on the tracker is never overwritten, and the tracker stays editable.
+
+Issuing does not move the stage. Stage moves stay explicit, so no `stageEvents` row is written. The `fcpVersions` rows are what a future Activity tab reads (C-1).
+
+### 13.5 Change summary (pure, `shared/fcpChangeSummary.ts`)
+
+Computed at issue against the issued version this one is based on, in customer-safe terms (hours and dates only):
+- work packages added, removed, moved to follow-on or back, with hour deltas per package and in total;
+- window changes;
+- key date changes: planned start, target completion, term end and BSAS term;
+- outcomes turned on or off, and depth changes;
+- consumption since the last issue.
+
+It is stored on the version. The revision note is the architect's wording; the computed facts are not editable. Printing it in the report is Phase 4.
+
+### 13.6 PRs
+
+1. **F, data and consumption:**
+   - the migration;
+   - tags and visibility;
+   - consumption history in Funding: list, add, and the latest entry fills hours consumed.
+2. **G, issue and revise:**
+   - issue, revise and supersede;
+   - downloads of issued versions;
+   - approvals;
+   - gate dates;
+   - watermark on working-document exports;
+   - the change summary;
+   - the Versions rail section above History, and Issue in Review.
+3. **H, compare:** pick two issued versions and see the change summary between them, with their reports side by side.
+
+Acceptance: issue v1, revise, issue v2; compare shows the diff; superseded v1 still downloads. `pnpm check` and `pnpm test` pass, and the golden files are unchanged (issued HTML is the existing renderer's output).

@@ -14,6 +14,7 @@ import {
   appSettings,
   engagementAssignments,
   engagements,
+  fcpConsumptionEntries,
   fcpVersions,
   type FcpVersion,
   savedReports,
@@ -756,6 +757,30 @@ export async function restoreFcpVersion(viewer: Viewer, engagementId: number, ve
   await createFcpVersion(viewer, engagementId, `Before restoring the copy saved ${version.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC`, "restore");
   const restored = { ...version.data, fields: { ...version.data.fields, customerName: current.customerName } };
   return updateEngagement(viewer, engagementId, current.title, restored, { customerName: current.customerName, title: current.title });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Consumption history: hours consumed as of a date. Append-only; a correction is a new entry.
+
+export type ConsumptionEntryInput = { asOf: string; consumedHours: number; note: string | null };
+
+export async function listConsumptionEntries(viewer: Viewer, engagementId: number) {
+  const db = await requireDb();
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return undefined;
+  return db
+    .select({ id: fcpConsumptionEntries.id, asOf: fcpConsumptionEntries.asOf, consumedHours: fcpConsumptionEntries.consumedHours, source: fcpConsumptionEntries.source, note: fcpConsumptionEntries.note, createdAt: fcpConsumptionEntries.createdAt, enteredByName: users.name })
+    .from(fcpConsumptionEntries)
+    .leftJoin(users, eq(users.id, fcpConsumptionEntries.enteredByUserId))
+    .where(eq(fcpConsumptionEntries.engagementId, engagementId))
+    .orderBy(desc(fcpConsumptionEntries.asOf), desc(fcpConsumptionEntries.id));
+}
+
+/** Records hours consumed, by anyone who can see the engagement, as a manual entry logged with who entered it. */
+export async function addConsumptionEntry(viewer: Viewer, engagementId: number, entry: ConsumptionEntryInput): Promise<WriteResult<number>> {
+  const db = await requireDb();
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return { status: "not_found" };
+  const result = await db.insert(fcpConsumptionEntries).values({ engagementId, asOf: entry.asOf, consumedHours: entry.consumedHours, source: "manual", externalId: null, note: entry.note, enteredByUserId: viewer.id });
+  return { status: "ok", value: Number(result[0].insertId) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

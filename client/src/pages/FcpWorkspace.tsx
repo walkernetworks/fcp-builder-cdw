@@ -191,7 +191,7 @@ function Workspace({ id }: { id: number }) {
               <PlanSetup step="schedule" {...setup} />
             </>}
             {section === "funding" && <>
-              <FundingSection document={document} onChange={fcp.mutateDocument} tracker={tracker ? { poHours: tracker.poHours, poReceivedOn: tracker.poReceivedOn } : null} readOnly={fcp.readOnly} />
+              <FundingSection engagementId={id} document={document} onChange={fcp.mutateDocument} tracker={tracker ? { poHours: tracker.poHours, poReceivedOn: tracker.poReceivedOn } : null} readOnly={fcp.readOnly} />
               <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["licensing"]} />
             </>}
             {section === "estate" && <>

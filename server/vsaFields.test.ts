@@ -1,13 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { getTableColumns } from "drizzle-orm";
 import { getTableConfig } from "drizzle-orm/mysql-core";
-import { engagements, type Engagement } from "../drizzle/schema";
+import { engagements, fcpConsumptionEntries, fcpVersions, type Engagement } from "../drizzle/schema";
 import { createDefaultDocument } from "../shared/fcp";
-import { customerFacingColumns, ENGAGEMENT_COLUMN_VISIBILITY, trackerPatchSchema } from "../shared/vsaFields";
+import { CONSUMPTION_ENTRY_COLUMN_VISIBILITY, customerFacingColumns, ENGAGEMENT_COLUMN_VISIBILITY, FCP_VERSION_COLUMN_VISIBILITY, trackerPatchSchema } from "../shared/vsaFields";
 
 describe("internal vs customer-facing columns", () => {
   it("tags every engagements column, and nothing else", () => {
     expect(Object.keys(ENGAGEMENT_COLUMN_VISIBILITY).sort()).toEqual(Object.keys(getTableColumns(engagements)).sort());
+  });
+
+  it("tags every FCP version and consumption entry column; only what the customer received is customer-facing", () => {
+    expect(Object.keys(FCP_VERSION_COLUMN_VISIBILITY).sort()).toEqual(Object.keys(getTableColumns(fcpVersions)).sort());
+    expect(Object.keys(CONSUMPTION_ENTRY_COLUMN_VISIBILITY).sort()).toEqual(Object.keys(getTableColumns(fcpConsumptionEntries)).sort());
+    const customer = (tags: Record<string, string>) => Object.entries(tags).filter(([, tag]) => tag === "customer").map(([key]) => key).sort();
+    expect(customer(FCP_VERSION_COLUMN_VISIBILITY)).toEqual(["renderedHtml", "revisionNote"]);
+    expect(customer(CONSUMPTION_ENTRY_COLUMN_VISIBILITY)).toEqual(["asOf", "consumedHours"]);
   });
 
   it("passes only customer-facing columns to customer documents", () => {
