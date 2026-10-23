@@ -358,3 +358,7 @@ UI only: no schema change and no change to generated output. `client/src/compone
   - a choice of which hours print while signed assignments exist (today entering assignments makes them print, and clearing them goes back);
   - editable per-package notes (the generated notes show read-only);
   - an editable lead role (derived from the workstream).
+
+## 12. Hiding the live preview
+
+The live preview column can be hidden with **Hide** in its header, and brought back with **Show live preview** above the section. Hiding it gives the editor the full width. **Preview the FCP** still opens the full preview in a dialog at any width. The choice is a per-viewer convenience kept in the browser (`localStorage`, read and written inside try/catch), so it never reaches the server and the page works without it. The preview keeps rendering while hidden, because the Plan section draws its timelines from it.

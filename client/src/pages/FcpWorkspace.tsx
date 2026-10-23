@@ -22,7 +22,7 @@ import { ScopeSection } from "@/components/fcp/ScopeSection";
 import { PlanEditor } from "@/components/fcp/PlanEditor";
 import { fundedFields, getFollowOnReadinessGuidance, type EngagementDocument } from "@shared/fcp";
 import { openSources, STAGE_LABELS } from "@shared/vsaStage";
-import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, PanelRightClose, PanelRightOpen, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { toast } from "sonner";
@@ -81,6 +81,8 @@ function Workspace({ id }: { id: number }) {
   const [section, setSectionState] = useState<WorkspaceSection>(() => sectionFromSearch(window.location.search));
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewHidden, setPreviewHidden] = useState(readPreviewHidden);
+  const hidePreview = (hidden: boolean) => { setPreviewHidden(hidden); writePreviewHidden(hidden); };
   const editorTop = useRef<HTMLDivElement>(null);
   const duplicate = trpc.engagement.duplicate.useMutation({ onSuccess: async row => { await utils.engagement.list.invalidate(); navigate(`/engagements/${row.id}/fcp`); toast.success("Engagement duplicated"); } });
   const remove = trpc.engagement.delete.useMutation({ onSuccess: async () => { await utils.engagement.list.invalidate(); navigate("/fcp"); toast.success("Engagement deleted"); } });
@@ -159,7 +161,7 @@ function Workspace({ id }: { id: number }) {
         </div>
       )}
 
-      <div className="mx-auto grid max-w-[1920px] gap-4 p-4 md:p-6 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[13rem_minmax(0,1fr)_minmax(0,40%)]">
+      <div className={`mx-auto grid max-w-[1920px] gap-4 p-4 md:p-6 lg:grid-cols-[13rem_minmax(0,1fr)] ${previewHidden ? "" : "xl:grid-cols-[13rem_minmax(0,1fr)_minmax(0,40%)]"}`}>
         <SectionRail section={section} statuses={statuses} onSelect={setSection} engagementId={id} onOpenHistory={() => setHistoryOpen(true)} />
 
         <main ref={editorTop} className="min-w-0 scroll-mt-40 space-y-5">
@@ -174,7 +176,10 @@ function Workspace({ id }: { id: number }) {
               <Button variant="outline" size="sm" onClick={() => setSection("sources")}>Go to Sources</Button>
             </div>
           )}
-          <Button variant="outline" size="sm" className="xl:hidden" onClick={() => setPreviewOpen(true)}><Eye className="size-4" /> Preview the FCP</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className={previewHidden ? "" : "xl:hidden"} onClick={() => setPreviewOpen(true)}><Eye className="size-4" /> Preview the FCP</Button>
+            {previewHidden && <Button variant="outline" size="sm" className="hidden xl:inline-flex" onClick={() => hidePreview(false)}><PanelRightOpen className="size-4" /> Show live preview</Button>}
+          </div>
           <fieldset disabled={fcp.readOnly} className="min-w-0 space-y-5">
             {section === "sources" && <>
               <FcpRecordStrip engagementId={id} document={document} onOpenSources={() => openRecord(id, "sources")} />
@@ -229,11 +234,13 @@ function Workspace({ id }: { id: number }) {
           </fieldset>
         </main>
 
-        <aside className="hidden min-w-0 xl:block">
-          <div className="sticky top-[150px] space-y-2">
-            <PreviewFrame html={fcp.preview} pending={fcp.previewPending} checks={fcp.previewChecks} onExpand={() => setPreviewOpen(true)} />
-          </div>
-        </aside>
+        {!previewHidden && (
+          <aside className="hidden min-w-0 xl:block">
+            <div className="sticky top-[150px] space-y-2">
+              <PreviewFrame html={fcp.preview} pending={fcp.previewPending} checks={fcp.previewChecks} onExpand={() => setPreviewOpen(true)} onHide={() => hidePreview(true)} />
+            </div>
+          </aside>
+        )}
       </div>
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
@@ -310,12 +317,21 @@ function HistoryList({ engagementId, onOpenAll }: { engagementId: number; onOpen
   );
 }
 
-function PreviewFrame({ html, pending, checks, onExpand }: { html: string; pending: boolean; checks: string[]; onExpand: () => void }) {
+// Whether the side preview is hidden is a per-viewer convenience: kept in this browser only, and the page works without it.
+const PREVIEW_HIDDEN_KEY = "fcp.workspace.previewHidden";
+function readPreviewHidden(): boolean {
+  try { return window.localStorage.getItem(PREVIEW_HIDDEN_KEY) === "1"; } catch { return false; }
+}
+function writePreviewHidden(hidden: boolean) {
+  try { if (hidden) window.localStorage.setItem(PREVIEW_HIDDEN_KEY, "1"); else window.localStorage.removeItem(PREVIEW_HIDDEN_KEY); } catch { /* storage unavailable: the choice lasts for this visit */ }
+}
+
+function PreviewFrame({ html, pending, checks, onExpand, onHide }: { html: string; pending: boolean; checks: string[]; onExpand: () => void; onHide: () => void }) {
   return (
     <div className="overflow-hidden rounded-lg border border-s100 bg-surface shadow-[var(--shadow-card)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-s100 bg-s50 px-3 py-2">
         <div className="flex items-center gap-2 text-xs font-semibold text-ink"><FileText className="size-4" /> Live preview <Chip>Draft</Chip>{pending && <Loader2 className="size-3.5 animate-spin text-ink-muted" aria-label="Updating" />}</div>
-        <Button variant="outline" size="sm" className="h-7" onClick={onExpand}><Eye className="size-3.5" /> Open full preview</Button>
+        <div className="flex gap-1.5"><Button variant="outline" size="sm" className="h-7" onClick={onExpand}><Eye className="size-3.5" /> Open full preview</Button><Button variant="ghost" size="sm" className="h-7" onClick={onHide} aria-label="Hide the live preview"><PanelRightClose className="size-3.5" /> Hide</Button></div>
       </div>
       {html ? <iframe title="Live FCP preview" srcDoc={html} sandbox="allow-scripts" className="h-[calc(100vh-230px)] min-h-[560px] w-full bg-surface" /> : <div className="grid h-[560px] place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div>}
       {checks.length > 0 && <p className="border-t border-s100 bg-s50 px-3 py-2 text-[11px] leading-5 text-ink-muted">{checks.length} content check{checks.length === 1 ? "" : "s"} would stop the export. They are listed when you export.</p>}
