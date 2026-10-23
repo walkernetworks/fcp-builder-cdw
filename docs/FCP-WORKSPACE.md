@@ -334,3 +334,27 @@ UI only: no schema change and no change to generated output. `client/src/compone
 - **Site prerequisites and notes**: the confirmed soft prerequisites, the industry discovery lens and the notes.
 - **View document source** is a collapsed read-only block of the scope fields, for debugging only.
 - The pure edits are in `client/src/lib/scopeEdits.ts`. `server/scopeEditor.test.ts` covers them and checks that the section writes `declined` from the chip alone.
+
+## 11. Phase 2E: Plan (design §5.6)
+
+UI only: no schema change and no change to generated output. `client/src/components/fcp/PlanEditor.tsx` replaces the scope register, the Condensed FCP panel and the raw assignments and customer-work editors in the Plan section.
+
+- **Above the table**, in a panel of what prints (hours only):
+  - **Hours source:** "Estimated from this plan" or "Signed resource assignments", with the assignments editor and **Clear assignments**.
+  - **Scope by bucket:** core, depth, follow-on, customer-funded and reserve. Shows the under-funded warning and the scope moves.
+  - **BSAS allocation:** hours available with the term's provenance, planned inside the term, forfeited, and follow-on BSAS does not cover.
+  - The buckets and the allocation come from `shared/planView.ts`, which works them out the way the Condensed FCP prints them. `server/planView.test.ts` checks them against the printed FCP for every fixture.
+- **The locked internal panel** holds the fit check, gap and risk band (`CostMeter`), the hours fill, and the entitlement fit with its rate and dollars.
+- **Work packages:** one row per package under the five categories, then work not on the timeline, then follow-on.
+  - Hours by role are inline, with the baseline as the placeholder, a provenance pill per row, and **Baseline** to go back.
+  - The window is a pair of column selects, applied on the timeline editor's path (`synchronizeEntitlementNotionalFromOperational`), so the plan becomes hand-edited.
+  - Each row also shows its lead role and owner.
+  - **Follow-on** sets the engine's placement to the Two-Year Notional, which effort records as "planned for later". The FCP prints the package under Follow-on Scope. The edits are in `client/src/lib/planEdits.ts`.
+- **Below the table:**
+  - the timeline sheets out of the rendered FCP itself (the live preview's HTML, in a script-free frame), so the drawing is the printed one;
+  - the drag-and-drop timeline editors, collapsed;
+  - customer-owned work as an add-row table.
+- **Not built, because each needs a stored field (out of scope for a UI-only PR):**
+  - a choice of which hours print while signed assignments exist (today entering assignments makes them print, and clearing them goes back);
+  - editable per-package notes (the generated notes show read-only);
+  - an editable lead role (derived from the workstream).

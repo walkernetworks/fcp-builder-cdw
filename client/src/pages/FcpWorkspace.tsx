@@ -1,18 +1,16 @@
-import { CondensedReportPanel, ReportJsonButton } from "@/components/CondensedReportPanel";
+import { ReportJsonButton } from "@/components/CondensedReportPanel";
 import { CustomerBriefImport } from "@/components/CustomerBriefImport";
 import { DeliveryBriefing } from "@/components/DeliveryBriefing";
-import { DeliverableCard, DeliveryPackageHeader, ExportPreferenceCard, ScopeAtGlance, StaffingSummary, WorkPackageRegister } from "@/components/fcp/workspaceParts";
+import { DeliverableCard, DeliveryPackageHeader, ExportPreferenceCard, ScopeAtGlance, StaffingSummary } from "@/components/fcp/workspaceParts";
 import { PlanSetup } from "@/components/PlanSetup";
 import { ReportContentEditor, type ReportSection } from "@/components/ReportContentEditor";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FcpRecordStrip, FcpVersionsSheet } from "@/components/vsa/FcpRecordPanels";
 import { Chip, DataMount, EmptyState } from "@/components/vsa/elements";
 import { useShell } from "@/components/vsa/ShellContext";
-import { EntitlementTimelineWithHours, NotionalTimelineWithHours } from "@/components/WorkPackageHours";
 import { trpc } from "@/lib/trpc";
 import { sectionFromSearch, type WorkspaceSection } from "@/lib/fcpWorkspaceRoutes";
 import { useFcpEngagement } from "@/lib/useFcpEngagement";
@@ -21,9 +19,10 @@ import { HISTORY_REASON_LABEL, segmentWarning } from "@shared/fcpRecord";
 import { SegmentReview } from "@/components/fcp/SegmentReview";
 import { FundingSection } from "@/components/fcp/FundingSection";
 import { ScopeSection } from "@/components/fcp/ScopeSection";
-import { fundedFields, getFollowOnReadinessGuidance, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
+import { PlanEditor } from "@/components/fcp/PlanEditor";
+import { fundedFields, getFollowOnReadinessGuidance, type EngagementDocument } from "@shared/fcp";
 import { openSources, STAGE_LABELS } from "@shared/vsaStage";
-import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
+import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { toast } from "sonner";
@@ -202,7 +201,7 @@ function Workspace({ id }: { id: number }) {
               {document.planAuthority === "manual" && <ManualPlanNotice onApply={fcp.buildPlan} />}
               <ScopeSection document={document} onChange={fcp.mutateDocument} />
             </>}
-            {section === "plan" && <PlanSection document={document} onChange={fcp.mutateDocument} onRebuild={fcp.buildPlan} setup={setup} />}
+            {section === "plan" && <PlanSection document={document} onChange={fcp.mutateDocument} onRebuild={fcp.buildPlan} setup={setup} previewHtml={fcp.preview} />}
             {section === "narrative" && <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={NARRATIVE_SECTIONS} />}
             {section === "review" && <>
               {segmentWarningText && (
@@ -324,23 +323,12 @@ function PreviewFrame({ html, pending, checks, onExpand }: { html: string; pendi
   );
 }
 
-function PlanSection({ document, onChange, onRebuild, setup }: { document: EngagementDocument; onChange: (document: EngagementDocument) => void; onRebuild: () => void; setup: Parameters<typeof PlanSetup>[0] }) {
+function PlanSection({ document, onChange, onRebuild, setup, previewHtml }: { document: EngagementDocument; onChange: (document: EngagementDocument) => void; onRebuild: () => void; setup: Parameters<typeof PlanSetup>[0]; previewHtml: string }) {
   const followOnGuidance = useMemo(() => getFollowOnReadinessGuidance(document.fields, document.inventory), [document.fields, document.inventory]);
   return <>
-    <WorkPackageRegister document={document} />
     <StaffingSummary document={document} />
-    <div className="rounded-lg border border-s100 bg-surface p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Delivery basis</p><p className="mt-2 max-w-5xl text-sm leading-6 text-s600">{document.rationale}</p></div><Button variant="outline" size="sm" onClick={onRebuild}><RefreshCw className="size-4" /> {document.planAuthority === "manual" ? "Apply Playbook Template" : "Rebuild Generated Plan"}</Button></div>
-      {document.fields.timelineNotes && <div className="mt-4 border-l-4 border-state-warn bg-state-warn-soft px-4 py-3 text-xs leading-5 text-state-warn-text"><strong>Calendar constraints:</strong> {document.fields.timelineNotes}</div>}
-    </div>
-    <PlanSetup {...setup} step="notes" />
-    <Tabs defaultValue="adoption" className="space-y-4">
-      <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-none border border-s100 bg-surface p-1"><TabsTrigger value="adoption" className="gap-2 rounded-none px-4 py-2"><UsersRound className="size-4" /> Entitlement Adoption Timeline</TabsTrigger><TabsTrigger value="two-year" className="gap-2 rounded-none px-4 py-2"><Workflow className="size-4" /> Two-Year Notional</TabsTrigger></TabsList>
-      <TabsContent value="adoption"><EntitlementTimelineWithHours document={document} onChange={onChange} onTimelineChange={adoptionTimeline => onChange(synchronizeEntitlementNotionalFromOperational(document, adoptionTimeline))} description={document.adoptionTimeline.cadence === "week" ? "Use this weekly Entitlement Adoption Timeline to sequence work packages, coordinate delivery roles, and protect key milestones. Drag activities or their edges to refine the delivery windows." : "Use this monthly Entitlement Adoption Timeline to sequence work packages, coordinate delivery roles, and protect key milestones. Drag activities or their edges to refine the delivery windows."} /></TabsContent>
-      <TabsContent value="two-year" className="space-y-4">{followOnGuidance.blocked && <section className="border border-state-warn/30 bg-state-warn-soft p-4"><p className="text-xs font-medium uppercase tracking-wide text-state-warn-text">Consumption plan inputs still needed</p><h3 className="mt-1 text-base font-semibold text-ink">{followOnGuidance.title}</h3><p className="mt-2 max-w-4xl text-sm leading-6 text-s600">{followOnGuidance.detail}</p></section>}<NotionalTimelineWithHours document={document} onChange={onChange} description="This monthly view starts with design and mobilization, preserves any intentional implementation delay, and extends the adoption roadmap through a full 24-month horizon." /></TabsContent>
-    </Tabs>
-    <CondensedReportPanel document={document} onChange={onChange} showJsonEditor={false} />
-    <ReportContentEditor document={document} onChange={onChange} sections={["assignments", "customer-work"]} />
+    {followOnGuidance.blocked && <section className="rounded-lg border border-state-warn/30 bg-state-warn-soft p-4"><p className="text-xs font-medium uppercase tracking-wide text-state-warn-text">Consumption plan inputs still needed</p><h3 className="mt-1 text-base font-semibold text-ink">{followOnGuidance.title}</h3><p className="mt-2 max-w-4xl text-sm leading-6 text-s600">{followOnGuidance.detail}</p></section>}
+    <PlanEditor document={document} onChange={onChange} onRebuild={onRebuild} previewHtml={previewHtml} notes={<PlanSetup {...setup} step="notes" />} />
   </>;
 }
 
