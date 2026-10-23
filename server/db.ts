@@ -680,7 +680,7 @@ export async function restoreFcpVersion(viewer: Viewer, engagementId: number, ve
   if (!version) return undefined;
   const current = await getEngagement(viewer, engagementId);
   if (!current) return undefined;
-  await createFcpVersion(viewer, engagementId, `Before restoring version ${version.versionNumber}`, "restore");
+  await createFcpVersion(viewer, engagementId, `Before restoring the copy saved ${version.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC`, "restore");
   const restored = { ...version.data, fields: { ...version.data.fields, customerName: current.customerName } };
   return updateEngagement(viewer, engagementId, current.title, restored, { customerName: current.customerName, title: current.title });
 }
@@ -770,7 +770,7 @@ export async function getUserForAdmin(viewer: Viewer, userId: number) {
 
   const activity: AdminActivity[] = [
     ...moves.map(move => ({ at: move.at, kind: "stage" as const, text: move.fromStage ? `Moved from ${STAGE_LABELS[move.fromStage]} to ${STAGE_LABELS[move.toStage]}` : `Created in ${STAGE_LABELS[move.toStage]}`, recordId: move.recordId, customerName: move.customerName })),
-    ...versions.map(version => ({ at: version.at, kind: "fcp_version" as const, text: `Saved FCP version ${version.versionNumber}: ${version.label}`, recordId: version.recordId, customerName: version.customerName })),
+    ...versions.map(version => ({ at: version.at, kind: "fcp_version" as const, text: `Saved the FCP: ${version.label}`, recordId: version.recordId, customerName: version.customerName })),
     ...userChanges.map(change => ({ at: change.at, kind: "user_change" as const, text: `Changed access for ${change.name ?? change.email ?? "a user"}`, recordId: null, customerName: null })),
     ...settingChanges.map(change => ({ at: change.at, kind: "setting" as const, text: `Changed setting ${change.key}`, recordId: null, customerName: null })),
   ]

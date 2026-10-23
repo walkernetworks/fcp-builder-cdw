@@ -173,7 +173,7 @@ export const appRouter = router({
     versions: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.listFcpVersions(viewerFor(ctx.user), input.id)) ?? []),
     version: protectedProcedure.input(z.object({ id: recordId, versionId: recordId })).query(async ({ ctx, input }) => {
       const version = requireRow(await db.getFcpVersion(viewerFor(ctx.user), input.id, input.versionId));
-      return { id: version.id, versionNumber: version.versionNumber, title: version.title, label: version.label, data: version.data };
+      return { id: version.id, versionNumber: version.versionNumber, title: version.title, label: version.label, createdAt: version.createdAt, data: version.data };
     }),
     saveVersion: protectedProcedure.input(z.object({ id: recordId, label: z.string().trim().min(1).max(160) })).mutation(async ({ ctx, input }) => requireRow(await db.createFcpVersion(viewerFor(ctx.user), input.id, input.label, "manual"))),
     restoreVersion: protectedProcedure.input(z.object({ id: recordId, versionId: recordId })).mutation(async ({ ctx, input }) => requireRow(await lockAware(() => db.restoreFcpVersion(viewerFor(ctx.user), input.id, input.versionId)))),

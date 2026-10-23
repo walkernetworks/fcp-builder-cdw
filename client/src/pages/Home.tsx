@@ -294,7 +294,7 @@ export default function Home() {
           {selectedIsListed ? <>
             <span className="hidden text-xs text-ink-muted sm:inline" aria-live="polite">{readOnly ? "Read only" : buildLock.lock.status === "pending" ? "Checking who is editing…" : saveState === "saving" ? "Saving…" : saveState === "unsaved" ? "Unsaved changes" : "Saved"}</span>
             <Button variant="outline" size="sm" onClick={() => selectedId && openRecord(selectedId)}><ListChecks className="size-4" /> Tracker details</Button>
-            <Button variant="outline" size="sm" onClick={() => setVersionsOpen(true)}><History className="size-4" /> Versions</Button>
+            <Button variant="outline" size="sm" onClick={() => setVersionsOpen(true)}><History className="size-4" /> History</Button>
             <Button variant="outline" size="sm" disabled={update.isPending || readOnly} onClick={saveNow}>{update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} Save</Button>
             <Button size="sm" disabled={readOnly} onClick={buildPlan}><RefreshCw className="size-4" /> {fcpDocument.planAuthority === "manual" ? "Apply playbook template" : "Rebuild plans"}</Button>
           </> : null}

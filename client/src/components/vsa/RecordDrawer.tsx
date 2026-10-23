@@ -260,14 +260,14 @@ function FcpTab({ data }: { data: TrackerRecord }) {
         </dl>
         {open.length > 0 && <p className="text-xs text-ink-muted">Not received yet: {open.map(item => item.label).join(", ")}</p>}
       </Section>
-      <Section title="Recent versions">
-        <DataMount id="drawerVersions" query={versionsQuery} isEmpty={list => list.length === 0} empty={{ icon: History, title: "No versions yet", sub: "Versions are saved on request, when the FCP goes for approval, and on every export." }}>
+      <Section title="Recent history">
+        <DataMount id="drawerVersions" query={versionsQuery} isEmpty={list => list.length === 0} empty={{ icon: History, title: "Nothing saved yet", sub: "A copy is kept on request, when the FCP goes for approval, and on every export." }}>
           {list => (
             <ol className="divide-y divide-s100 rounded-md border border-s100">
               {list.slice(0, 6).map(version => (
                 <li key={version.id} className="flex items-center justify-between gap-3 px-3 py-2">
                   <span className="min-w-0">
-                    <span className="block truncate text-[13px] text-ink">v{version.versionNumber} · {version.label}</span>
+                    <span className="block truncate text-[13px] text-ink">{version.label}</span>
                     <span className="block text-xs text-ink-muted">{new Date(version.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}{version.createdByName ? ` · ${version.createdByName}` : ""}</span>
                   </span>
                   <Chip>{{ manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore" }[version.reason]}</Chip>

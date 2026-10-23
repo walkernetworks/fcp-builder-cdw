@@ -76,6 +76,13 @@ describe("full template retired from the UI", () => {
     expect(readFileSync(path.join(ROOT, "server/routers.ts"), "utf8")).not.toMatch(/from "\.\/fcpRenderer"/);
   });
 
+  it("never shows the save counter as a version", () => {
+    // fcpVersions.versionNumber counts every save; "version" is kept for issued plans (issueNumber, Phase 3).
+    const clientHits = sourceFiles(path.join(ROOT, "client/src")).filter(file => readFileSync(file, "utf8").includes("versionNumber")).map(file => path.relative(ROOT, file));
+    expect(clientHits).toEqual([]);
+    expect(readFileSync(path.join(ROOT, "server/db.ts"), "utf8")).not.toMatch(/version \$\{version\.versionNumber\}/);
+  });
+
   it("is never requested by the client", () => {
     for (const file of sourceFiles(path.join(ROOT, "client/src"))) {
       const source = readFileSync(file, "utf8");

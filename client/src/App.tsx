@@ -9,6 +9,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import Admin from "./pages/Admin";
 import AdminUserProfile from "./pages/AdminUserProfile";
 import Home from "./pages/Home";
+import FcpWorkspace from "./pages/FcpWorkspace";
 import PipelineImport from "./pages/PipelineImport";
 import Expiry from "./pages/Expiry";
 import Overview from "./pages/Overview";
@@ -26,6 +27,7 @@ function Router() {
         <Route path="/queue" component={Queue} />
         <Route path="/records" component={Records} />
         <Route path="/reports" component={Reports} />
+        <Route path="/engagements/:id/fcp" component={FcpWorkspace} />
         <Route path="/fcp" component={Home} />
         <Route path="/import" component={PipelineImport} />
         <Route path="/admin" component={Admin} />
