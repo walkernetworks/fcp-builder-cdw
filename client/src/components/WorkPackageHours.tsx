@@ -1,5 +1,6 @@
 import { AdoptionTimelineEditor } from "@/components/AdoptionTimelineEditor";
 import { EntitlementFitPanel } from "@/components/EntitlementFitPanel";
+import { HoursFillPanel } from "@/components/HoursFillPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
@@ -19,6 +20,7 @@ const NOTE: Record<NonNullable<WorkPackageEffort["note"]>, string> = {
   "customer-owned": "Customer-owned",
   checkpoint: "Checkpoint",
   "not in the scoped hours": "No hours scoped",
+  merged: "Merged into the pathway package",
 };
 
 /** Scoped effort for the document, recalculated shortly after the plan stops changing. */
@@ -191,6 +193,7 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
         </p>
         {effort && <div className="mt-3"><AssignmentsInForce document={document} effort={effort} onChange={onChange} /></div>}
         {effort?.internal.cost && <div className="mt-3"><CostMeter cost={effort.internal.cost} hours={effort.totals.total} assignments={effort.source === "assignments"} fit={effort.internal.fit} /></div>}
+        <div className="mt-3"><HoursFillPanel document={document} effort={effort} onChange={onChange} /></div>
         <div className="mt-3"><EntitlementFitPanel document={document} effort={effort} onChange={onChange} /></div>
         {effort ? <div className="mt-4"><WorkPackageTable effort={effort} /></div> : <p className="mt-4 text-xs text-s400">Calculating…</p>}
       </section>

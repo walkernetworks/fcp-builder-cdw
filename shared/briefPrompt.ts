@@ -11,7 +11,7 @@ Rules
 - If something is not stated, use null for a single value or [] for a list. Do not write "TBD" or "unknown".
 - Dates are YYYY-MM-DD. Months alone (customerOwnedWork) are YYYY-MM.
 - Quote the customer's own words where you record their position or goals.
-- Do NOT include rates, PO values, work authorization or project numbers, or any Broadcom segment (Corporate, Strategic, Commercial pricing tier).
+- Do NOT include rates, PO values, work authorization or project numbers, or the Broadcom pricing tier. The customer segment (commercial or corporate) is fine to fill in.
 - Do NOT use the words "readiness", "workshop" or "TRW". Call discovery work "design discovery" and describe it in design terms.
 - Write to the customer, not about them ("Keep the existing array", not "the customer refuses to change storage").
 
@@ -19,6 +19,7 @@ What each section is for
 - customer, contacts: who the customer is and who is involved (customer, CDW, Broadcom), with roles. primaryContact is the customer's main contact as "Name, role"; accountId is the CDW account number when it appears in the sources.
 - schedule: dates the customer named. projectStart is when they want the engagement to start, implementationStart when build work can begin, targetComplete their target finish. hardwareLeadWeeks is the lead time for new hardware in weeks. calendarConstraints is one or two sentences on freezes, site dates, fiscal deadlines or other limits on timing.
 - entitlement: the services entitlement. value is the entitlement dollar value (the only dollar figure the report may show). hours is the entitled hours from the signed resource assignments. hoursConsumed and consumedAsOf come from the latest consumption record.
+- bsas: Broadcom Software Adoption Services, a second prepaid pool used after the entitlement, on its own PO. Leave hours null when the deal has no BSAS. hours is the BSAS hours; termStart and termEnd are the BSAS term. Never include the BSAS dollar amount, its rates or its rate tier.
 - discovery: answers to the discovery questionnaire (RVTools export, licensing and core counts, current versions, Enhanced Linked Mode, networking, vCenters, data centers, edge sites, ESX hosts, storage, hardware vendor, container platform, network details, jumbo frames, security tooling, DR, backup, hyperscalers, new hardware purchased, planned path, consolidated domain, add-ons considered or not wanted).
   - plannedPath: one of greenfield, in-place, converge, import-workload-domain, hybrid, design-only, undecided.
   - platformEdition: vcf or vvf (VMware vSphere Foundation) when the customer is licensed for VVF only.
@@ -65,9 +66,10 @@ JSON shape (fill every key; keep the structure exactly)
 {
   "schemaVersion": 1,
   "asOf": "YYYY-MM-DD",
-  "customer": { "name": null, "location": null, "segment": "commercial | public-sector | null", "accountId": null, "primaryContact": null },
+  "customer": { "name": null, "location": null, "segment": "commercial | corporate | null", "accountId": null, "primaryContact": null },
   "contacts": { "customer": [{ "name": "", "role": "" }], "cdw": [], "broadcom": [] },
   "entitlement": { "value": null, "hours": null, "termStart": null, "termEnd": null, "hoursConsumed": null, "consumedAsOf": null },
+  "bsas": { "hours": null, "termStart": null, "termEnd": null },
   "schedule": { "projectStart": null, "implementationStart": null, "targetComplete": null, "hardwareLeadWeeks": null, "calendarConstraints": null },
   "deliveryModel": "CDW + Broadcom",
   "headline": null,

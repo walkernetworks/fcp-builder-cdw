@@ -19,7 +19,7 @@ All of v1 is in `shared/effort.ts`, apart from the rate card and the budget sque
 | Moving stages out of the entitlement and the timelines that result | `deferWorkPackages`, `timelinesWithDeferrals`, `shared/effort.ts:604` and `620` |
 | Assembling rows, work packages, totals and the internal fit | `buildScopedEffort`, `shared/effort.ts:672` |
 | Burn-down (planner screens) | `buildBurndown`, `shared/effort.ts:808` |
-| Rate card, entitlement value to hours, cost, and the squeeze that moves the latest stages to the Two-Year Notional until the plan fits | `server/rateCard.ts` (`fundedHoursFromValue`, `withinBudget`, `scopedEffortForDocument`) |
+| Rate card, entitlement value to hours, cost, and the squeeze that moves unprotected work packages to the Two-Year Notional in priority order until the plan fits | `server/rateCard.ts` (`fundedHoursFromValue`, `withinBudget`, `scopedEffortForDocument`) |
 | tRPC route the planner screens call | `effort.scoped`, `server/routers.ts` |
 
 ## Consumers
@@ -63,3 +63,16 @@ The sweep behind `FCP Hours Research Reference.html` was a one-off script run fr
 | Model flag | `fields.hoursModel` (`"v1"` or `"v2"`). The default is v2; v1 stays selectable on the hours screen for one release. Saved engagements without the field load as v2. |
 | Planner screen | `client/src/components/EntitlementFitPanel.tsx` on the hours screen |
 | Customer document | Scope by Bucket table (hours only) in `server/condensedFcpRenderer.ts` |
+
+### Fully staffing the entitlement
+
+When the selected scope leaves entitlement hours unused after the reserve, the hours screen offers two ways to use them (`client/src/components/HoursFillPanel.tsx`).
+
+| What | Where |
+|---|---|
+| Unused hours: entitlement minus the reserve minus the plan's work packages, planner adjustments included | `unusedEntitlementHours` in `shared/effort.ts` |
+| Scope that fits: each outcome not in the plan and each next depth tier, priced as a whole plan rebuild, listed when it adds hours without pushing work out of the entitlement | `server/hoursFill.ts` (`effort.fillOptions`) |
+| The fill work package: `fields.hoursFill` turns it on; `withHoursFillLane` adds `bar-hours-fill` from implementation start to the entitlement end, on generated and hand-edited plans alike, and keeps a hand-moved window | `shared/fcp.ts` |
+| Its hours: whatever is left, in the plan's role mix, counted in the depth bucket (E2); hours the planner sets on the package stand instead | `withHoursFill` in `shared/effort.ts`, called from `server/rateCard.ts` |
+
+The reserve stays held back. The package carries no hours under signed resource assignments, when customer-owned, or when it starts after the entitlement ends.

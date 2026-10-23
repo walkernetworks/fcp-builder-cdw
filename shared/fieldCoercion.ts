@@ -68,7 +68,7 @@ export const FIELD_ALIASES: Record<string, Record<string, string>> = {
     "other": "other-existing", "existing": "other-existing", "existing-storage": "other-existing", "iscsi": "other-existing",
     "tbd": "undecided", "unknown": "undecided",
   },
-  customerSegment: { "public": "public-sector", "government": "public-sector", "gov": "public-sector", "tbd": "unspecified", "unknown": "unspecified" },
+  customerSegment: { "public-sector": "corporate", "public": "corporate", "government": "corporate", "gov": "corporate", "tbd": "unspecified", "unknown": "unspecified" },
   priorities: { "ops": "operations", "k8s": "kubernetes", "dr": "resilience", "disaster-recovery": "resilience", "ai": "private-ai" },
   softPrerequisites: {
     "dns": "dns-ntp", "ntp": "dns-ntp", "dns-and-ntp": "dns-ntp", "dns-ntp-services": "dns-ntp", "core-services": "dns-ntp",

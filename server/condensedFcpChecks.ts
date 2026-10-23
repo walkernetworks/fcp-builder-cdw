@@ -49,7 +49,8 @@ function footingFailures(html: string): string[] {
   return failures;
 }
 
-export function checkCondensedFcp(html: string, context: { customerName: string; entitlementValue: number }): string[] {
+/** `bsasOnly`: a BSAS-only plan, which carries no dollar figure at all (BSAS is hours and dates only). */
+export function checkCondensedFcp(html: string, context: { customerName: string; entitlementValue: number; bsasOnly?: boolean }): string[] {
   const failures: string[] = [];
   const text = visibleText(html);
 
@@ -63,7 +64,8 @@ export function checkCondensedFcp(html: string, context: { customerName: string;
   for (const path of INTERNAL_PATHS) if (html.includes(path)) failures.push(`Internal path or host in the document: "${path}".`);
 
   const dollars = new Set(Array.from(text.matchAll(/\$[\d,]+(?:\.\d{2})?/g), match => match[0].replace(/[.,]+$/, "")));
-  if (dollars.size > 1) failures.push(`More than one dollar figure on the page: ${Array.from(dollars).join(", ")}.`);
+  if (context.bsasOnly && dollars.size) failures.push(`A BSAS-only plan carries no dollar figure: ${Array.from(dollars).join(", ")}.`);
+  else if (dollars.size > 1) failures.push(`More than one dollar figure on the page: ${Array.from(dollars).join(", ")}.`);
   if (dollars.size === 1 && context.entitlementValue > 0) {
     const expected = `$${Math.round(context.entitlementValue).toLocaleString("en-US")}`;
     if (!dollars.has(expected)) failures.push(`The only dollar figure must be the entitlement value (${expected}).`);

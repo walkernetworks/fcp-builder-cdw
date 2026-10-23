@@ -7,6 +7,7 @@ import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
 import { renderFcpHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
+import { hoursFillOptions } from "./hoursFill";
 import { scopedEffortForDocument } from "./rateCard";
 import { canDeleteEngagement, viewerFor } from "./visibility";
 import { ASSIGNMENT_ROLES, fcpWaiverSchema, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, trackerPatchSchema, VSA_ROLES } from "../shared/vsaFields";
@@ -243,6 +244,8 @@ export const appRouter = router({
   effort: router({
     /** Scoped effort and the internal fit check; rates stay on the server. A mutation so the document travels in the body. */
     scoped: protectedProcedure.input(z.object({ data: engagementDocumentSchema })).mutation(({ input }) => scopedEffortForDocument(input.data)),
+    /** Scope that fits the entitlement hours the plan leaves unused, with the hours each addition brings. */
+    fillOptions: protectedProcedure.input(z.object({ data: engagementDocumentSchema })).mutation(({ input }) => hoursFillOptions(input.data)),
   }),
   document: router({
     preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ html: renderFcpHtml(input.title, input.data) })),

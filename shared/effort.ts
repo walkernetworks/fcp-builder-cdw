@@ -4,7 +4,7 @@ import { BUILD_STAGE_WEIGHTS, HOURS_V2 } from "./hoursConfig";
 import { lineRoles, loadedOf, scopeV2, type Pass1, type V2Code } from "./hoursV2";
 import { fitV2, type FitV2 } from "./hoursFit";
 import type { Timeline } from "./fcp";
-import { activityOwner, calculateEntitlementEndDate, domainBuildWeight, domainHosts, domainPackages, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
+import { activityOwner, calculateEntitlementEndDate, HOURS_FILL_BAR_ID, domainBuildWeight, domainHosts, domainPackages, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
 /**
  * Hours model for the Condensed FCP, after the fcp-builder skill's fcp_hours.py.
@@ -99,7 +99,7 @@ export type WorkPackageEffort = RoleHours & {
   end: string | null;
   total: number;
   /** Why a work package on the timeline carries no CDW hours. */
-  note?: "customer-owned" | "checkpoint" | "not in the scoped hours";
+  note?: "customer-owned" | "checkpoint" | "not in the scoped hours" | "merged";
   /** Why the work package moves after the entitlement window; it carries no entitlement hours. */
   deferred?: DeferralReason;
   /** Hours of deferred work, planned as follow-on scope in the Two-Year Notional; not counted in the entitlement. */
@@ -146,6 +146,11 @@ export type ScopedEffort = {
     money?: FitMoney;
     /** v2 only: the entitlement fit (Pass 2), with the month-by-month burn-down. Planner screens only. */
     fit?: FitV2 & { burndown: Array<{ month: string; target: number; actual: number | null }> };
+    /**
+     * v2, filled in by the server: the hours the entitlement value funds at the blended rate, after the reserve. The
+     * plan is never filled past it, even when the signed entitled hours are worth more than the value.
+     */
+    valueCapHours?: number;
   };
 };
 
@@ -395,6 +400,7 @@ const LEAD_ROLE_BY_BAR: Record<string, string> = {
   "bar-hcl-review": "VCF Architect with the customer platform lead",
   "bar-design-access-mapping": "VCF Architect with the customer identity owner",
   "bar-design-edge-sites": "VCF Architect with the customer site owners",
+  [HOURS_FILL_BAR_ID]: "VCF Architect with a Senior Consultant",
 };
 
 /**
@@ -465,7 +471,7 @@ const BUILD_CODES = /^(D\d|U\d|X1|D|D_VVF|S_storage|U_VVF|C1|R_remed|U3)$/;
 /** The component design package(s) an add-on's design work sits on. */
 const componentDesign = (addOn: { design: string }) => (id: string) => new RegExp(`^bar-playbook-component-design-(${addOn.design})$`).test(id);
 
-function barsForLine(item: EffortLine, discoveryInScope = true): (id: string) => boolean {
+export function barsForLine(item: Pick<EffortLine, "code" | "reduction">, discoveryInScope = true): (id: string) => boolean {
   // With a prior assessment there is no discovery line, and the architecture line covers requirements too.
   if (DESIGN_CODES.test(item.code)) return id => CORE_DESIGN_BARS.test(id) && !(discoveryInScope && DISCOVERY_BARS.test(id));
   if (DISCOVERY_CODES.test(item.code)) return id => DISCOVERY_BARS.test(id);
@@ -486,6 +492,8 @@ function barsForLine(item: EffortLine, discoveryInScope = true): (id: string) =>
 const FIRST_MANAGEMENT_DOMAIN = /^bar-(management-domain|converge-management-domain)$/;
 /** Shown with the first management domain when it carries the NSX design because the full NSX design is not funded. */
 export const NSX_VLAN_NOTE = "NSX is deployed with VLAN-backed transport zones; overlay design follows after the entitlement.";
+/** The same note for a BSAS-only deal. */
+export const NSX_VLAN_NOTE_BSAS = "NSX is deployed with VLAN-backed transport zones; overlay design follows after the BSAS term.";
 
 /** Rounds each column so it foots to its target: floors, then hands the remainder to the largest fractions. */
 function footedColumn(values: number[], target: number): number[] {
@@ -513,21 +521,28 @@ function footedColumn(values: number[], target: number): number[] {
 export function workPackageEffort(source: EngagementDocument, lines: EffortLine[], totals: RoleHours): WorkPackageEffort[] {
   const document = withOwnership(source);
   const timeline = document.adoptionTimeline;
-  const bars = timeline.lanes.flatMap(lane => lane.bars.map(bar => ({ lane, bar })));
+  const termEnd = entitlementTermEnd(document);
+  const adoptionBars = timeline.lanes.flatMap(lane => lane.bars.map(bar => ({ lane, bar, timeline })));
+  // Work the generator scheduled after the entitlement ends sits only in the Two-Year Notional. It is never dropped:
+  // it is a work package of its own, carried as follow-on scope with its share of the hours.
+  const onAdoption = new Set(adoptionBars.map(({ bar }) => bar.id));
+  const notional = document.twoYearPlan;
+  const afterTerm = termEnd ? notional.lanes.filter(lane => !/^lane-(follow-on-|two-year-)/.test(lane.id)).flatMap(lane => lane.bars.map(bar => ({ lane, bar, timeline: notional })))
+    .filter(({ bar }) => !onAdoption.has(bar.id) && !/^bar-two-year-/.test(bar.id) && (barWindow(notional, bar)?.start ?? "") > termEnd) : [];
+  const bars = [...adoptionBars, ...afterTerm];
   // Only CDW-owned work carries CDW hours.
   const cdw = (id: string) => { const placed = bars.find(({ bar }) => bar.id === id); return !placed || activityOwner(placed.bar) === "cdw"; };
-  const termEnd = entitlementTermEnd(document);
   const overrides = new Map(document.report.workPackageHours.map(item => [item.id, item]));
   const deferred = new Map<string, DeferralReason>();
   for (const item of lines) {
     const addOn = addOnBars(item.code);
     if (addOn && item.reduction === "design only") for (const { bar } of bars) if (addOn.bars.test(bar.id) && !componentDesign(addOn)(bar.id)) deferred.set(bar.id, "not funded");
   }
-  for (const { bar } of bars) {
+  for (const { bar, timeline: owner } of bars) {
     const placement = overrides.get(bar.id)?.placement ?? "auto";
     if (placement === "entitlement") deferred.delete(bar.id);
     if (placement === "notional") deferred.set(bar.id, "planned for later");
-    const window = barWindow(timeline, bar);
+    const window = barWindow(owner, bar);
     // Hours cannot be consumed after the entitlement ends, whatever the placement.
     if (termEnd && window && window.start > termEnd) deferred.set(bar.id, "after the entitlement window");
   }
@@ -538,6 +553,8 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   const followOn = new Map<string, Accumulated>();
   // An add-on build the planner pinned to the entitlement, beyond the catalog fit.
   const pinned = new Map<string, Accumulated>();
+  // The share of the entitlement lines that work after the entitlement takes with it: it is not handed to other packages.
+  const freed: RoleHours = { architect: 0, srConsultant: 0, projectManager: 0 };
   const add = (target: Map<string, Accumulated>, key: string, label: string, roles: RoleHours, share: number) => {
     const row = target.get(key) ?? { label, architect: 0, srConsultant: 0, projectManager: 0 };
     row.architect += roles.architect * share;
@@ -587,11 +604,15 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       const core = live(id => CORE_DESIGN_BARS.test(id));
       matches = core.length ? core : live(id => COMPONENT_DESIGN_BARS.test(id));
     }
-    // A fully scoped add-on designs its component on the component design package and builds on the rest.
+    // Work after the entitlement window keeps its own share as follow-on; the packages left in the window keep only theirs.
+    const late = (id: string) => deferred.get(id) === "after the entitlement window";
+    const sharing = matches.filter(({ bar }) => inEntitlement(bar.id) || late(bar.id));
+    // A fully scoped add-on designs its component on the component design package and builds on the rest, even when
+    // the build falls after the entitlement window.
     const addOnDesign = addOnBars(item.code);
     if (addOnDesign && item.reduction !== "design only" && !item.skipDesignShare) {
       const design = live(componentDesign(addOnDesign));
-      if (design.length && matches.some(({ bar }) => inEntitlement(bar.id))) {
+      if (design.length && sharing.length) {
         spread(design, scale(roles, ADD_ON_DESIGN_SHARE), () => true, inWindow);
         roles = scale(roles, 1 - ADD_ON_DESIGN_SHARE);
       }
@@ -601,10 +622,18 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     // The deploy line is split by how much work each build package is, not by how long its window is.
     // The hardware review and the access mapping are focused pieces of design: half a design package's share.
     const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => domainWeights.get(bar.id) ?? buildWeight(bar.id) : (bar: TimelineBar) => lengthWeight(bar) * (/^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(bar.id) ? 0.5 : 1);
-    if (current.length) spread(current, roles, () => true, inWindow, weightOf);
-    else add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
-    // Deferred packages of the line get their share as a follow-on estimate.
-    spread(matches, roles, id => deferred.has(id) && deferred.get(id) !== "planned for later", followOn, weightOf);
+    if (current.length) spread(sharing, roles, id => !late(id), inWindow, weightOf);
+    else if (!sharing.length) add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
+    if (sharing.some(({ bar }) => late(bar.id))) {
+      const moved = new Map<string, Accumulated>();
+      spread(sharing, roles, late, moved, weightOf);
+      for (const [key, row] of Array.from(moved.entries())) {
+        add(followOn, key, row.label, row, 1);
+        freed.architect += row.architect; freed.srConsultant += row.srConsultant; freed.projectManager += row.projectManager;
+      }
+    }
+    // Other deferred packages of the line get their share as a follow-on estimate.
+    spread(matches, roles, id => deferred.has(id) && deferred.get(id) !== "planned for later" && !late(id), followOn, weightOf);
     // An add-on cut to its design keeps the rest of its hours on its build packages, as follow-on scope.
     const addOn = addOnBars(item.code);
     if (addOn && item.reduction === "design only" && item.fullBase > item.base) {
@@ -635,12 +664,12 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     return entries.map(([id, row], index) => [id, { row, roles: { architect: columns[0][index], srConsultant: columns[1][index], projectManager: columns[2][index] } }] as const);
   };
   const baselines = new Map([
-    ...footed(inWindow, key => totals[key]),
+    ...footed(inWindow, key => totals[key] - freed[key]),
     ...footed(followOn, (_key, values) => Math.round(values.reduce((sum, value) => sum + value, 0))),
     ...footed(pinned, (_key, values) => Math.round(values.reduce((sum, value) => sum + value, 0))),
   ]);
   const entries = Array.from(baselines.entries());
-  const lanes = new Map(bars.map(({ lane, bar }) => [bar.id, { lane, bar }]));
+  const lanes = new Map(bars.map(({ lane, bar, timeline: owner }) => [bar.id, { lane, bar, timeline: owner }]));
   const carriesNsxDesign = lines.some(item => item.code === "NX");
   const ids = [...bars.map(({ bar }) => bar.id), ...entries.map(([id]) => id).filter(id => !lanes.has(id))];
 
@@ -648,7 +677,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     const placed = lanes.get(id);
     const entry = baselines.get(id);
     const baseline = entry?.roles ?? { architect: 0, srConsultant: 0, projectManager: 0 };
-    const window = placed ? barWindow(timeline, placed.bar) : null;
+    const window = placed ? barWindow(placed.timeline, placed.bar) : null;
     const owner = placed ? activityOwner(placed.bar) : "cdw";
     const note: WorkPackageEffort["note"] = owner === "checkpoint" ? "checkpoint" : owner === "customer" ? "customer-owned" : undefined;
     const override = overrides.get(id);
@@ -672,13 +701,23 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       adjusted: Boolean(editable && (override.architect !== null || override.srConsultant !== null || override.projectManager !== null)),
       placement: override?.placement ?? "auto",
       owner,
-      ...(carriesNsxDesign && FIRST_MANAGEMENT_DOMAIN.test(id) ? { notes: [NSX_VLAN_NOTE] } : {}),
+      ...(carriesNsxDesign && FIRST_MANAGEMENT_DOMAIN.test(id) ? { notes: [document.fields.fundingSource === "bsas" ? NSX_VLAN_NOTE_BSAS : NSX_VLAN_NOTE] } : {}),
       ...(note ? { note } : !reason && sum === 0 ? { note: "not in the scoped hours" as const } : {}),
     };
   }).sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));
 }
 
-/** Work packages that are design work; the budget limit never moves them out of the entitlement. */
+/**
+ * Work packages that always stay in the entitlement, whatever the hours: handover, the runbook and training, licensing
+ * and the management domains, plus CDW's first delivery wave. The generator keeps them inside the window by month.
+ */
+export function protectedWorkPackages(timeline: Timeline): Set<string> {
+  const all = timeline.lanes.flatMap(lane => lane.bars);
+  const firstWave = all.filter(bar => /^bar-playbook-execution-/.test(bar.id)).sort((left, right) => left.startCol - right.startCol)[0];
+  return new Set([...all.filter(bar => PROTECTED_PACKAGES.test(bar.id)).map(bar => bar.id), ...(firstWave ? [firstWave.id] : [])]);
+}
+const PROTECTED_PACKAGES = /^bar-(platform-(handover|runbook-transfer|enablement|licensing)|management-domain(-\d+)?|converge-management-domain)$/;
+
 /** Design and governance work stays in the entitlement; operating readiness for a later implementation can move. */
 export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || /^bar-playbook-(component-)?design-/.test(id) || /^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(id);
 
@@ -867,8 +906,82 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
   const fundedLines = effortLinesFromPass1(pass1, fundedBases).map(line => (designShared.has(line.code as V2Code) ? { ...line, reduction: "design only" as const } : line));
   const displacedLines = effortLinesFromPass1(pass1, displacedBases).map(line => (designShared.has(line.code as V2Code) ? { ...line, skipDesignShare: true } : line));
   const status: FitStatus = fit.underFunded ? "short" : displacedLines.length ? "fits-reduced" : "fits";
-  const effort = assembleScopedEffort(document, fundedLines, { envelopeHours, envelopeSource, fullScopeHours, status, shortfallHours: fit.underFunded?.gapHours ?? 0, headroomHours: fit.entitlementRemaining }, { pass1, fit: { ...fit, burndown: fitBurndown(document, fit) } });
+  const assembled = assembleScopedEffort(document, fundedLines, { envelopeHours, envelopeSource, fullScopeHours, status, shortfallHours: fit.underFunded?.gapHours ?? 0, headroomHours: fit.entitlementRemaining }, { pass1, fit: { ...fit, burndown: fitBurndown(document, fit) } });
+  const effort = withLateWorkReleased(assembled);
   return displacedLines.length ? withDisplacedLines(document, effort, displacedLines) : effort;
+}
+
+/**
+ * Funded work the timeline places after the entitlement ends carries its hours as follow-on scope. The buckets follow
+ * it, depth first, and the entitlement hours it leaves unused go to the reserve rather than to other packages.
+ */
+function withLateWorkReleased(effort: ScopedEffort): ScopedEffort {
+  const fit = effort.internal.fit;
+  const late = effort.workPackages.filter(row => row.deferred === "after the entitlement window" && (row.followOn?.total ?? 0) > 0);
+  if (!fit || !late.length) return effort;
+  const hours = late.reduce((sum, row) => sum + row.followOn!.total, 0);
+  const fromDepth = Math.min(fit.buckets.E2, hours);
+  return {
+    ...effort,
+    internal: {
+      ...effort.internal,
+      fit: {
+        ...fit,
+        buckets: { ...fit.buckets, E2: fit.buckets.E2 - fromDepth, E1: fit.buckets.E1 - (hours - fromDepth), F: fit.buckets.F + hours },
+        reserveHours: fit.reserveHours + hours,
+        scopeMoves: [...(fit.scopeMoves ?? []), ...late.map(row => ({ label: row.label, hours: row.followOn!.total, reason: "after the entitlement window" as const }))],
+      },
+    },
+  };
+}
+
+/**
+ * v2: entitlement hours the plan's work packages leave unused after the reserve; planner adjustments count. The lower
+ * of the entitlement hours and what the entitlement value funds is the limit. Null without a fit.
+ */
+export function unusedEntitlementHours(effort: ScopedEffort): number | null {
+  const fit = effort.internal.fit;
+  if (!fit) return null;
+  const planned = effort.workPackages.reduce((sum, row) => sum + row.total, 0);
+  const limit = Math.min(fit.entitlementHours - fit.reserveHours, effort.internal.valueCapHours ?? Infinity);
+  return Math.max(0, Math.floor(limit - planned));
+}
+
+/**
+ * The hours-fill work package takes up the entitlement hours the plan leaves unused, split in the plan's own role mix,
+ * and the depth bucket (E2) carries them. Hours the planner set on the package stand as they are; signed resource
+ * assignments, and a package customer-owned, deferred or off the timeline, take nothing.
+ */
+export function withHoursFill(effort: ScopedEffort): ScopedEffort {
+  const fit = effort.internal.fit;
+  const row = effort.workPackages.find(item => item.id === HOURS_FILL_BAR_ID);
+  if (!fit || !row || row.adjusted || row.deferred || row.owner !== "cdw" || effort.source === "assignments") return effort;
+  const unused = unusedEntitlementHours(effort) ?? 0;
+  if (unused < 1) return effort;
+  const others = effort.workPackages.filter(item => item.id !== HOURS_FILL_BAR_ID);
+  const mix = others.reduce((sum, item) => ({ architect: sum.architect + item.architect, srConsultant: sum.srConsultant + item.srConsultant, projectManager: sum.projectManager + item.projectManager }), { architect: 0, srConsultant: 0, projectManager: 0 });
+  const mixTotal = mix.architect + mix.srConsultant + mix.projectManager;
+  const shares = mixTotal > 0 ? [mix.architect / mixTotal, mix.srConsultant / mixTotal, mix.projectManager / mixTotal] : [0.4, 0.45, 0.15];
+  const [architect, srConsultant, projectManager] = footedColumn(shares.map(share => share * unused), unused);
+  const roles = { architect, srConsultant, projectManager };
+  const { note: _note, ...rest } = row;
+  const workPackages = effort.workPackages.map((item): WorkPackageEffort => (item.id === HOURS_FILL_BAR_ID ? { ...rest, ...roles, total: unused, baseline: roles } : item));
+  const totals = { ...effort.totals, architect: effort.totals.architect + architect, srConsultant: effort.totals.srConsultant + srConsultant, projectManager: effort.totals.projectManager + projectManager, total: effort.totals.total + unused };
+  // The buckets come from the catalog fit and do not see planner adjustments, so they take the fill only up to the
+  // plan's new total: the Scope by Bucket table never shows more in the entitlement than the work packages carry.
+  const planned = workPackages.reduce((sum, item) => sum + item.total, 0);
+  const toDepth = Math.min(unused, Math.max(0, planned - fit.buckets.E1 - fit.buckets.E2));
+  return {
+    ...effort,
+    workPackages,
+    totals,
+    internal: {
+      ...effort.internal,
+      planHours: effort.internal.planHours + unused,
+      headroomHours: 0,
+      fit: { ...fit, buckets: { ...fit.buckets, E2: fit.buckets.E2 + toDepth }, entitlementRemaining: 0 },
+    },
+  };
 }
 
 /** Displaced hours sit on their stages as follow-on scope; a stage with nothing left in the entitlement moves to the Two-Year Notional. */

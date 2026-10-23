@@ -21,7 +21,7 @@ import { engagementExists, engagementIdFromSearch, reconcileSelectedEngagementId
 import { trpc } from "@/lib/trpc";
 import { isCommercialCustomer } from "@shared/buildingBlocks";
 import { exportFilename, type ExportDocumentType } from "@shared/exportFilename";
-import { createDefaultDocument, DELIVERY_ROLE_BY_WORKSTREAM, getFollowOnReadinessGuidance, migrateDocument, refreshDerivedDocument, summarizeDeliveryStaffing, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
+import { createDefaultDocument, fundedFields, DELIVERY_ROLE_BY_WORKSTREAM, getFollowOnReadinessGuidance, migrateDocument, refreshDerivedDocument, summarizeDeliveryStaffing, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
 import { ArrowLeft, ArrowRight, History, LockKeyhole, BriefcaseBusiness, CheckCircle2, ChevronDown, ArrowLeftRight, Rows3, ListChecks, FileText, CalendarRange, ClipboardCheck, Coins, Copy, Download, FileCheck2, FileSpreadsheet, Layers3, Loader2, MoreHorizontal, PackageCheck, Plus, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -223,7 +223,7 @@ export default function Home() {
   };
   const planActivities = fcpDocument.adoptionTimeline.lanes.flatMap(lane => lane.bars);
   const stageDefinitions: Array<{ id: WorkspaceStage; step: string; label: string; summary: string; icon: typeof BriefcaseBusiness; complete: boolean }> = [
-    { id: "engagement", step: "01", label: "Engagement", summary: "Copilot brief, entitlement, dates, and estate", icon: BriefcaseBusiness, complete: Boolean(fcpDocument.fields.customerName && fcpDocument.fields.entitlementStart && fcpDocument.fields.plannedProjectStart) },
+    { id: "engagement", step: "01", label: "Engagement", summary: "Copilot brief, entitlement, dates, and estate", icon: BriefcaseBusiness, complete: Boolean(fcpDocument.fields.customerName && fundedFields(fcpDocument.fields).entitlementStart && fcpDocument.fields.plannedProjectStart) },
     { id: "plan", step: "02", label: "Service Plan", summary: "Outcomes, work packages, and assumptions", icon: Layers3, complete: Boolean(fcpDocument.fields.priorities.length && fcpDocument.fields.plannedImplementationStart) },
     { id: "staffing", step: "03", label: "Entitlement Adoption Timeline", summary: "Resource roles, milestones, and delivery windows", icon: UsersRound, complete: planActivities.length > 2 },
     { id: "technical", step: "04", label: "Technical Handoff", summary: "Compatibility actions and evidence gaps", icon: ShieldCheck, complete: Boolean(fcpDocument.inventory.hosts && fcpDocument.readiness.hardwarePlatforms.length) },
@@ -366,8 +366,9 @@ function EngagementCommandBar({ document, title, onOpenPackage }: { document: En
   const manual = document.planAuthority === "manual";
   return (
     <HeroBand eyebrow={`Broadcom services entitlement work plan · ${manual ? "Manual plan in force" : "Generated plan"}`} head={title} lead="Build the customer work plan, align resource demand to the adoption schedule, close technical readiness items, and issue one delivery-ready package.">
-      <HeroKpi label="Entitlement value" value={formatCurrency(f.entitlementAmount)} sub="Entered on the Engagement step" compact />
-      <HeroKpi label="Entitlement term" value={`${formatDate(f.entitlementStart)} – ${formatDate(f.entitlementEnd)}`} sub="Start entered; end follows the term" compact />
+      {f.fundingSource === "bsas"
+        ? <><HeroKpi label="BSAS hours" value={f.bsasHours ? `${f.bsasHours.toLocaleString("en-US")} hrs` : "—"} sub="BSAS only · entered on the Engagement step" compact /><HeroKpi label="BSAS term" value={`${formatDate(fundedFields(f).entitlementStart)} – ${formatDate(fundedFields(f).entitlementEnd)}`} sub="End defaults to twelve months" compact /></>
+        : <><HeroKpi label="Entitlement value" value={formatCurrency(f.entitlementAmount)} sub={f.fundingSource === "entitlement-bsas" ? `Plus ${f.bsasHours ? f.bsasHours.toLocaleString("en-US") : "—"} BSAS hours after the entitlement` : "Entered on the Engagement step"} compact /><HeroKpi label="Entitlement term" value={`${formatDate(f.entitlementStart)} – ${formatDate(f.entitlementEnd)}`} sub="Start entered; end follows the term" compact /></>}
       <HeroKpi label="Design starts" value={formatDate(f.plannedProjectStart || f.targetStart)} sub="Planned project start" compact />
       <HeroKpi label="Implementation starts" value={formatDate(f.plannedImplementationStart || f.plannedProjectStart)} sub="Falls back to the project start" compact />
       <div className="flex flex-col justify-between gap-3 sm:col-span-2 xl:col-span-4 xl:flex-row xl:items-center">
@@ -439,7 +440,7 @@ function StaffingSummary({ document }: { document: EngagementDocument }) {
 
 function DeliveryPackageHeader({ document }: { document: EngagementDocument }) {
   const checks = [
-    { label: "Customer and entitlement", ready: Boolean(document.fields.customerName && document.fields.entitlementStart) },
+    { label: document.fields.fundingSource === "bsas" ? "Customer and BSAS" : "Customer and entitlement", ready: Boolean(document.fields.customerName && fundedFields(document.fields).entitlementStart) },
     { label: "Service scope", ready: document.fields.priorities.length > 0 },
     { label: "Entitlement adoption timeline", ready: document.adoptionTimeline.lanes.some(lane => lane.bars.length) },
     { label: "Technical evidence", ready: Boolean(document.inventory.hosts && document.readiness.hardwarePlatforms.length) },

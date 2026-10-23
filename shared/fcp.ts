@@ -691,9 +691,23 @@ export const exportPreferencesSchema = z.object({
 });
 export type ExportPreferences = z.infer<typeof exportPreferencesSchema>;
 
-/** Commercial customers also receive the Broadcom Building Blocks workbook with each FCP. */
-export const customerSegmentSchema = z.enum(["unspecified", "commercial", "public-sector"]);
+/** Commercial customers also receive the Broadcom Building Blocks workbook with each FCP. Saved plans that say "public-sector" read as Corporate. */
+export const customerSegmentSchema = z.preprocess(value => (value === "public-sector" ? "corporate" : value), z.enum(["unspecified", "commercial", "corporate"]));
 export type CustomerSegment = z.infer<typeof customerSegmentSchema>;
+
+export const fundingSourceSchema = z.enum(["entitlement", "entitlement-bsas", "bsas"]);
+export type FundingSource = z.infer<typeof fundingSourceSchema>;
+
+export const HOURS_FILL_DEFAULT_LABEL = "Optimization and Advisory Services";
+/**
+ * A work package that takes up the entitlement hours the selected scope leaves unused (after the reserve), so the
+ * plan is fully staffed. Its hours follow whatever is left unless the planner sets them on the package.
+ */
+export const hoursFillSchema = z.object({
+  enabled: z.boolean().default(false),
+  label: z.string().trim().min(1).max(120).default(HOURS_FILL_DEFAULT_LABEL),
+}).default({ enabled: false, label: HOURS_FILL_DEFAULT_LABEL });
+export type HoursFill = z.infer<typeof hoursFillSchema>;
 
 /** Which hours model prices the plan: v1 (host brackets) or v2 (topology formulas with an entitlement fit). */
 export const hoursModelSchema = z.enum(["v1", "v2"]);
@@ -801,6 +815,17 @@ export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   customerSegment: customerSegmentSchema.default("unspecified"),
   hoursModel: hoursModelSchema.default("v2"),
   estimateInputs: estimateInputsSchema.default({}),
+  hoursFill: hoursFillSchema,
+  /**
+   * How the services are funded. "entitlement-bsas" adds Broadcom Software Adoption Services (BSAS) after the
+   * entitlement; "bsas" plans on BSAS alone, in the entitlement's place. BSAS is hours and dates only: its dollar
+   * amount and rates never enter the document.
+   */
+  fundingSource: fundingSourceSchema.default("entitlement"),
+  bsasHours: z.number().min(0).max(100_000).default(0),
+  bsasStart: z.string().default(""),
+  /** Blank: twelve months after the BSAS start. */
+  bsasEnd: z.string().default(""),
 });
 export type MinimalFields = z.infer<typeof minimalFieldsSchema>;
 
@@ -1421,9 +1446,23 @@ export function createDefaultFields(): MinimalFields {
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
     hoursModel: "v2",
     estimateInputs: {},
+    hoursFill: { enabled: false, label: HOURS_FILL_DEFAULT_LABEL },
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
+    fundingSource: "entitlement",
+    bsasHours: 0,
+    bsasStart: "",
+    bsasEnd: "",
   };
+}
+
+/**
+ * The fields the planner works from. A BSAS-only deal plans on BSAS in the entitlement's place: the BSAS term is the
+ * funded window and no dollar value is carried. Every other deal is returned unchanged.
+ */
+export function fundedFields<T extends Pick<MinimalFields, "fundingSource" | "bsasStart" | "bsasEnd" | "entitlementAmount" | "entitlementStart" | "entitlementEnd">>(fields: T): T {
+  if (fields.fundingSource !== "bsas") return fields;
+  return { ...fields, entitlementAmount: 0, entitlementStart: fields.bsasStart, entitlementEnd: fields.bsasEnd || calculateEntitlementEndDate(fields.bsasStart) };
 }
 
 function bar(id: string, startCol: number, endCol: number, color: TimelineColor, label: string, milestone = false, deferred = false, dependsOn?: string, outcome?: string): TimelineBar {
@@ -1528,7 +1567,7 @@ export function buildTwoYearNotionalColumns(serviceStartValue: string, _legacyEn
 }
 
 function timelineStartDate(fields: MinimalFields): string {
-  const candidate = fields.plannedProjectStart || fields.targetStart || fields.entitlementStart;
+  const candidate = fields.plannedProjectStart || fields.targetStart || fundedFields(fields).entitlementStart;
   return parseIsoDate(candidate) ? candidate : isoDate(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)));
 }
 
@@ -1557,6 +1596,8 @@ export function applyScheduleFieldPatch(fields: MinimalFields, patch: Partial<Mi
 }
 
 function entitlementNotionalEndDate(fields: MinimalFields): string {
+  // A BSAS-only deal runs to the BSAS end the planner entered, which need not be twelve months.
+  if (fields.fundingSource === "bsas") return fundedFields(fields).entitlementEnd;
   return calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd;
 }
 
@@ -1587,6 +1628,50 @@ function limitToEntitlement(fields: MinimalFields, schedule: Timeline): Timeline
         if (activity.startCol > count) return [];
         if (activity.endCol <= count + 1) return [activity];
         return [{ ...activity, endCol: count + 1, outcome: [activity.outcome, CONTINUES_AFTER_ENTITLEMENT].filter(Boolean).join(" ") }];
+      }),
+    })),
+  };
+}
+
+/** Work packages that always stay inside the entitlement: handover, the runbook and training, licensing and the management domains. */
+const PROTECTED_PACKAGES = /^bar-(platform-(handover|runbook-transfer|enablement|licensing)|management-domain(-\d+)?|converge-management-domain)$/;
+const COMPRESSED_INTO_ENTITLEMENT = "Compressed into the last entitlement month so it is delivered within the entitlement.";
+const HANDOVER_WITH_RUNBOOK = "Runs in the last entitlement month, alongside the runbook knowledge transfer, so the service is accepted within the entitlement.";
+
+/**
+ * Protected work packages, and CDW's first delivery wave, never fall after the entitlement: one that would start after
+ * entitlement end moves into the last entitlement month, overlapping the work before it (handover runs alongside the
+ * runbook knowledge transfer). Work that already starts in the window keeps its place; the waves may still run past it.
+ */
+function keepProtectedInEntitlement(fields: MinimalFields, schedule: Timeline): Timeline {
+  if (!entitlementLimitDate(fields)) return schedule;
+  const count = primaryColumns(fields).length;
+  if (schedule.columns.length <= count) return schedule;
+  const all = schedule.lanes.flatMap(lane => lane.bars);
+  const firstWave = all.filter(activity => /^bar-playbook-execution-/.test(activity.id)).sort((left, right) => left.startCol - right.startCol)[0];
+  const isProtected = (activity: TimelineBar) => PROTECTED_PACKAGES.test(activity.id) || activity.id === firstWave?.id;
+  if (!all.some(activity => isProtected(activity) && activity.startCol > count)) return schedule;
+  const placed = new Map(all.map(activity => [activity.id, activity]));
+  const moved = new Map<string, TimelineBar>();
+  for (const activity of all) {
+    if (!isProtected(activity) || activity.startCol <= count) continue;
+    const startCol = count;
+    // The wave keeps its length and continues in the Two-Year Notional; the rest are compressed into the month.
+    const endCol = activity.id === firstWave?.id ? count + (activity.endCol - activity.startCol) : count + 1;
+    moved.set(activity.id, { ...activity, startCol, endCol });
+  }
+  const finalCol = (id: string) => (moved.get(id) ?? placed.get(id))?.endCol ?? 0;
+  return {
+    ...schedule,
+    lanes: schedule.lanes.map(lane => ({
+      ...lane,
+      bars: lane.bars.map(activity => {
+        const next = moved.get(activity.id);
+        if (!next) return activity;
+        // It overlaps the work it followed, so it keeps only the prerequisites that still finish before it starts.
+        const prerequisites = (activity.prerequisites ?? []).filter(id => finalCol(id) <= next.startCol);
+        const note = activity.id === "bar-platform-handover" ? HANDOVER_WITH_RUNBOOK : COMPRESSED_INTO_ENTITLEMENT;
+        return { ...next, prerequisites, dependsOn: [activity.dependsOn, note].filter(Boolean).join(" ") };
       }),
     })),
   };
@@ -3104,12 +3189,12 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
   const hclPath = providedHclPath ?? getHclSchedulePath(inventory);
   const playbookPlan = playbookPlanForFields(fields);
   // Schedule everything first, then cap the entitlement view; the Two-Year Notional carries what falls after it.
-  const schedule = buildPrimaryTimeline(fields, inventory, hclPath, 0, context);
-  const adoptionTimeline = limitToEntitlement(fields, schedule);
+  const schedule = keepProtectedInEntitlement(fields, buildPrimaryTimeline(fields, inventory, hclPath, 0, context));
+  const adoptionTimeline = withHoursFillLane(limitToEntitlement(fields, schedule), fields);
   const twoYearPlan = buildTwoYearPlan(fields, inventory, schedule);
   const carriedToYearTwo = schedule.lanes.flatMap(lane => lane.bars).filter(activity => activity.startCol > adoptionTimeline.columns.length).length;
   const estate = inventory.vmCount ? `${inventory.vmCount.toLocaleString()} VMs across ${inventory.hosts.toLocaleString()} hosts` : "the imported estate";
-  const amount = fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
+  const amount = fields.fundingSource === "bsas" ? (fields.bsasHours ? `${fields.bsasHours.toLocaleString("en-US")} BSAS hours` : "the confirmed BSAS hours") : fields.entitlementAmount ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fields.entitlementAmount) : "the confirmed entitlement value";
   const plannedProjectStart = timelineStartDate(fields);
   const entitlementEnd = entitlementNotionalEndDate(fields);
   const entitlementNotionalStart = entitlementNotionalStartDate(fields);
@@ -3158,6 +3243,40 @@ export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySu
     : `Design, delivery baseline, and implementation services are currently planned to begin at the planned project start (${plannedProjectStart}); change the implementation-services start when the customer is still in design or planning.`;
   const rationale = `${customer} is planning a ${editionName} adoption around ${estate}, ${cadence}, and ${details}. Delivery posture: ${deliveryTiming} The selected ${editionName} pathway is ${playbookPlan.label}. The generated design package is ${designPackageSummary}. ${playbookPlan.description} ${editionContext ? `${editionContext} ` : ""}${prerequisiteContext ? `${prerequisiteContext} ` : ""}${yearTwoContext ? `${yearTwoContext} ` : ""}${hclContext} ${migrationGateContext} ${customerContext} ${timelineContext} ${industryContext} ${platformInventorySummary} The Entitlement Adoption Timeline begins at the planned project start (${entitlementNotionalStart}) and sequences the planned drawdown through entitlement end (${entitlementEnd || "TBD"}) against ${amount}. The separate Two-Year Notional extends the directional adoption roadmap through month 24 and is not a commitment that all work is funded by the current entitlement; ${followOnSummary}. Multiple independently typed workstreams can coexist within the same fixed category, and every lane and activity can be renamed, moved, resized, added, or removed.`;
   return { adoptionTimeline, twoYearPlan, rationale };
+}
+
+export const HOURS_FILL_BAR_ID = "bar-hours-fill";
+const HOURS_FILL_LANE_ID = "lane-hours-fill";
+
+/** The column a date falls in, clamped to the timeline. */
+function columnForDate(timeline: Timeline, value: string): number {
+  const start = parseIsoDate(timeline.startDate) ?? parseMonth(timeline.startDate);
+  const date = parseIsoDate(value);
+  if (!start || !date) return 1;
+  const offset = timeline.cadence === "week" ? Math.floor((date.getTime() - start.getTime()) / 604_800_000) : monthDifference(start, date);
+  return Math.max(1, Math.min(timeline.columns.length, offset + 1));
+}
+
+/**
+ * Adds the hours-fill work package when the planner turned it on, and removes it when they turned it off. It runs
+ * from the implementation start to the end of the entitlement. A package already on the plan keeps its window and
+ * label, so hand edits survive.
+ */
+export function withHoursFillLane(timeline: Timeline, fields: MinimalFields): Timeline {
+  const present = timeline.lanes.some(lane => lane.bars.some(item => item.id === HOURS_FILL_BAR_ID));
+  if (!fields.hoursFill.enabled) {
+    if (!present) return timeline;
+    const lanes = timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(item => item.id !== HOURS_FILL_BAR_ID) })).filter(lane => lane.id !== HOURS_FILL_LANE_ID || lane.bars.length);
+    return { ...timeline, lanes: lanes.length ? lanes : timeline.lanes };
+  }
+  if (present) return timeline;
+  const startCol = columnForDate(timeline, fields.plannedImplementationStart || timelineStartDate(fields));
+  const activity = bar(
+    HOURS_FILL_BAR_ID, startCol, timeline.columns.length + 1, colorForWorkstreamType("Consume / Handover"), fields.hoursFill.label, false, false,
+    "Platform in service and the customer's priorities for each request.",
+    "Time-boxed architect and consultant hours drawn down on request through the end of the entitlement: health checks, tuning, configuration reviews, and advisory sessions on the delivered platform.",
+  );
+  return { ...timeline, lanes: [...timeline.lanes, { id: HOURS_FILL_LANE_ID, name: fields.hoursFill.label, category: "Operations", workstreamType: "Consume / Handover", bars: [activity] }] };
 }
 
 export function buildTimeline(fields: MinimalFields, inventory: InventorySummary): { timeline: Timeline; rationale: string } {
@@ -3503,8 +3622,13 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
     hoursModel: "v2",
     estimateInputs: {},
+    hoursFill: { enabled: false, label: HOURS_FILL_DEFAULT_LABEL },
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
+    fundingSource: "entitlement",
+    bsasHours: 0,
+    bsasStart: "",
+    bsasEnd: "",
   };
 }
 
@@ -3610,7 +3734,7 @@ function needsPlaybookCategoryRebaseline(timeline: Timeline, fields: MinimalFiel
 
 function normalizePlanningDates(fields: MinimalFields): MinimalFields {
   const entitlementEnd = calculateEntitlementEndDate(fields.entitlementStart);
-  const plannedProjectStart = fields.plannedProjectStart || fields.targetStart || fields.entitlementStart;
+  const plannedProjectStart = fields.plannedProjectStart || fields.targetStart || fundedFields(fields).entitlementStart;
   const plannedImplementationStart = fields.plannedImplementationStart || plannedProjectStart;
   const upgradePath = canonicalVcfDeliveryPath(fields.adoptionDetails.upgradePath);
   return {
@@ -3866,10 +3990,10 @@ export function migrateDocument(value: unknown): EngagementDocument {
       };
     }
 
-    const adoptionTimeline = withRefreshedActivityDetails(withoutUnselectedGeneratedNetworking(
+    const adoptionTimeline = withHoursFillLane(withRefreshedActivityDetails(withoutUnselectedGeneratedNetworking(
       normalizeTimelineTaxonomy(withConsolidatedPlatformInventory(current.data.adoptionTimeline, current.data.inventory)),
       fields,
-    ), [generated.adoptionTimeline, generated.twoYearPlan], true);
+    ), [generated.adoptionTimeline, generated.twoYearPlan], true), fields);
     const candidateTwoYearPlan = withRefreshedActivityDetails(withoutUnselectedGeneratedNetworking(
       normalizeTimelineTaxonomy(withoutLegacyHostPlatformTwoYearLanes(current.data.twoYearPlan)),
       fields,
@@ -4094,7 +4218,7 @@ export function refreshDerivedDocument(document: EngagementDocument, options: { 
   const readiness = assessReadiness(document.fields, document.inventory, warnings);
   const plans = buildAdoptionPlans(document.fields, document.inventory, readiness.hclSchedulePath, { edgeSites: document.report.discovery.edgeSites });
   if (document.planAuthority === "manual" && !options.forceRebuild) {
-    return { ...document, readiness, rationale: plans.rationale };
+    return { ...document, readiness, rationale: plans.rationale, adoptionTimeline: withHoursFillLane(document.adoptionTimeline, document.fields) };
   }
   return { ...document, planAuthority: "generated", readiness, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
