@@ -319,3 +319,18 @@ If you would rather accept the plan changes for mismatched records instead, say 
   - Values are no longer grouped by source; the pill says where each one comes from.
 - **Field edits** go through `client/src/lib/fieldPatch.ts`. This is PlanSetup's own rule, moved out so the two editors cannot drift: a plan input rebuilds the plan once, and a hand-edited plan keeps its edits.
 - **Consumption history** (the `fcpConsumptionEntries` table) stays in Phase 3. Until then, "Hours consumed" is the latest entry, entered by hand.
+
+## 10. Phase 2E: Scope (design §5.5)
+
+UI only: no schema change and no change to generated output. `client/src/components/fcp/ScopeSection.tsx` edits the same fields the plan generator already reads, so a record that is opened and left alone renders exactly as before. The section has no effects; it changes the document only when a person acts.
+
+- **Delivery motion and pathway** come first: the motion (VVF shows only its own paths), domain topology, principal storage and hardware availability, then the pathway the motion selects, with its design and implementation packages read-only. Each package shows its outcome and when it is accepted; the decisions the pathway settles show as chips.
+- **One card per capability** (Operations, Automation, VCF networking (NSX), Security, Resilience and DR, Kubernetes, Private AI), with a switch, a depth tier and its focus options when on. Networking and Security share a depth tier, as do Kubernetes and Private AI; Resilience has none. Efficiency depth sits on the Operations card. A card counts as on when it is a priority or any focus under it is selected, as the generator counts it.
+  - **Off** collapses the card to one line. Turning a card off clears its priority and focuses and never writes a note. **Mark not requested** is the only thing that adds the card's name to `report.declined`, which the FCP prints as "(X not requested)" for a category with no work. Turning the card back on withdraws the note.
+  - A card the plan pulls in as a prerequisite says **"<outcome> included for: <outcome>"** from `resolvePlanOutcomes`. `platform:nsx` belongs to the networking card, and `platform:ssp` to Security.
+  - A card listed by a brief as considered only shows a **Follow-on** chip (`adoptionDetails.followOnOnly`).
+- **Design profile**: six fields, with the generated text as each placeholder and the pathway's decisions as prompts.
+- **Design elements**: the add-row table, with the generated rows shown and adoptable.
+- **Site prerequisites and notes**: the confirmed soft prerequisites, the industry discovery lens and the notes.
+- **View document source** is a collapsed read-only block of the scope fields, for debugging only.
+- The pure edits are in `client/src/lib/scopeEdits.ts`. `server/scopeEditor.test.ts` covers them and checks that the section writes `declined` from the chip alone.

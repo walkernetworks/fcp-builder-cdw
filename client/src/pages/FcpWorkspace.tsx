@@ -20,6 +20,7 @@ import { isCommercialPlan } from "@shared/buildingBlocks";
 import { HISTORY_REASON_LABEL, segmentWarning } from "@shared/fcpRecord";
 import { SegmentReview } from "@/components/fcp/SegmentReview";
 import { FundingSection } from "@/components/fcp/FundingSection";
+import { ScopeSection } from "@/components/fcp/ScopeSection";
 import { fundedFields, getFollowOnReadinessGuidance, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
 import { openSources, STAGE_LABELS } from "@shared/vsaStage";
 import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
@@ -198,9 +199,8 @@ function Workspace({ id }: { id: number }) {
             </>}
             {section === "scope" && <>
               <ScopeAtGlance document={document} />
-              <PlanSetup step="scope" {...setup} />
               {document.planAuthority === "manual" && <ManualPlanNotice onApply={fcp.buildPlan} />}
-              <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["profile", "elements"]} />
+              <ScopeSection document={document} onChange={fcp.mutateDocument} />
             </>}
             {section === "plan" && <PlanSection document={document} onChange={fcp.mutateDocument} onRebuild={fcp.buildPlan} setup={setup} />}
             {section === "narrative" && <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={NARRATIVE_SECTIONS} />}
