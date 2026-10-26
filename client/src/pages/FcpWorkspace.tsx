@@ -19,6 +19,7 @@ import { useFcpEngagement } from "@/lib/useFcpEngagement";
 import { isCommercialPlan } from "@shared/buildingBlocks";
 import { HISTORY_REASON_LABEL, segmentWarning } from "@shared/fcpRecord";
 import { SegmentReview } from "@/components/fcp/SegmentReview";
+import { FundingSection } from "@/components/fcp/FundingSection";
 import { fundedFields, getFollowOnReadinessGuidance, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
 import { openSources, STAGE_LABELS } from "@shared/vsaStage";
 import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
@@ -185,8 +186,8 @@ function Workspace({ id }: { id: number }) {
               <PlanSetup step="schedule" {...setup} />
             </>}
             {section === "funding" && <>
-              <PlanSetup step="funding" {...setup} />
-              <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["entitlement", "consumption", "licensing"]} />
+              <FundingSection document={document} onChange={fcp.mutateDocument} tracker={tracker ? { poHours: tracker.poHours, poReceivedOn: tracker.poReceivedOn } : null} readOnly={fcp.readOnly} />
+              <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["licensing"]} />
             </>}
             {section === "estate" && <>
               <PlanSetup step="upload" {...setup} />
