@@ -20,6 +20,7 @@ import { SegmentReview } from "@/components/fcp/SegmentReview";
 import { FundingSection } from "@/components/fcp/FundingSection";
 import { ScopeSection } from "@/components/fcp/ScopeSection";
 import { PlanEditor } from "@/components/fcp/PlanEditor";
+import { IssuedRailList, IssuedVersionsList, IssuePanel } from "@/components/fcp/IssuedVersions";
 import { fundedFields, getFollowOnReadinessGuidance, type EngagementDocument } from "@shared/fcp";
 import { openSources, STAGE_LABELS } from "@shared/vsaStage";
 import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, PanelRightClose, PanelRightOpen, ShieldCheck, Trash2 } from "lucide-react";
@@ -109,6 +110,7 @@ function Workspace({ id }: { id: number }) {
 
   const sources = record.data?.sources ?? null;
   const tracker = record.data?.record ?? null;
+  const issueActions = { engagementId: id, title: fcp.title, document: fcp.document, readOnly: fcp.readOnly, saveDocument: fcp.saveDocument, reload: fcp.reload, segment: tracker?.segment ?? null };
   const segmentWarningText = tracker ? segmentWarning(tracker.segment, fcp.document.fields.commercialPlan, tracker.segmentReview ?? null) : null;
   const statuses = useMemo(() => {
     const open = sources ? openSources(sources).length : null;
@@ -191,7 +193,7 @@ function Workspace({ id }: { id: number }) {
               <PlanSetup step="schedule" {...setup} />
             </>}
             {section === "funding" && <>
-              <FundingSection document={document} onChange={fcp.mutateDocument} tracker={tracker ? { poHours: tracker.poHours, poReceivedOn: tracker.poReceivedOn } : null} readOnly={fcp.readOnly} />
+              <FundingSection engagementId={id} document={document} onChange={fcp.mutateDocument} tracker={tracker ? { poHours: tracker.poHours, poReceivedOn: tracker.poReceivedOn } : null} readOnly={fcp.readOnly} />
               <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["licensing"]} />
             </>}
             {section === "estate" && <>
@@ -216,12 +218,14 @@ function Workspace({ id }: { id: number }) {
                 </div>
               )}
               <DeliveryPackageHeader document={document} />
+              <IssuePanel {...issueActions} />
+              <IssuedVersionsList {...issueActions} />
               <section className="grid gap-3 rounded-lg border border-s100 bg-surface p-4 lg:grid-cols-2">
                 <ExportPreferenceCard title="Compatibility summary in the FCP" description="Include the target-release compatibility posture in the FCP: hosts by decision, the top compatibility actions, and the planning considerations from RVTools. The detailed evidence stays in the Compatibility Delivery Handoff." checked={document.fields.exportPreferences.includeVcfReadiness} onCheckedChange={includeVcfReadiness => fcp.mutateDocument({ ...document, fields: { ...document.fields, exportPreferences: { ...document.fields.exportPreferences, includeVcfReadiness } } })} switchId="include-vcf-readiness-export" />
                 <ExportPreferenceCard title="Delivery adoption timeline" description="Include the entitlement adoption timeline in the FCP so delivery leadership can align resources to the work-package windows. When it is off, the Two-Year Notional covers the whole plan from the project start." checked={document.fields.exportPreferences.includeOperationalTimeline} onCheckedChange={includeOperationalTimeline => fcp.mutateDocument({ ...document, fields: { ...document.fields, exportPreferences: { ...document.fields.exportPreferences, includeOperationalTimeline } } })} switchId="include-operational-timeline-export" />
               </section>
               <section className="grid gap-px overflow-hidden border border-s100 bg-s100 lg:grid-cols-2">
-                <DeliverableCard title="Functional Consumption Plan" label="For customer review" description="The customer plan: entitlement burndown, scoped effort, customer effort, design profile, timeline, and the adoption recommendation. Content checks run before every download." icon={FileCheck2} activeExport={fcp.activeExport} documentType="condensed-fcp" onExport={fcp.startExport} />
+                <DeliverableCard title="Functional Consumption Plan" label="Draft export" description="The working FCP, marked DRAFT on every page: for internal review. To send the customer a copy, issue a version above and download it from Issued versions. Content checks run before every download." icon={FileCheck2} activeExport={fcp.activeExport} documentType="condensed-fcp" onExport={fcp.startExport} />
                 <DeliverableCard title="Compatibility Delivery Handoff" label="Technical engineer evidence pack" description="Maintained-catalog host cohorts, release support, blockers, evidence gaps, owners, and the actions required before platform build." icon={ShieldCheck} activeExport={fcp.activeExport} documentType="plan-output" onExport={fcp.startExport} />
                 {isCommercialPlan(document.fields) && <DeliverableCard title="Building Blocks Workbook" label="Commercial plan · VCF 9 Building Blocks" description="Every Building Blocks tool block with its category start date, status, projected dates, and dependencies taken from this plan. Out-of-scope blocks start hidden." icon={FileSpreadsheet} activeExport={fcp.activeExport} documentType="building-blocks" formats={["xlsx"]} onExport={fcp.startExport} />}
               </section>
@@ -286,6 +290,7 @@ function SectionRail({ section, statuses, onSelect, engagementId, onOpenHistory 
           })}
         </ol>
       </nav>
+      <IssuedRailList engagementId={engagementId} onOpen={() => onSelect("review")} />
       <HistoryList engagementId={engagementId} onOpenAll={onOpenHistory} />
     </div>
   );

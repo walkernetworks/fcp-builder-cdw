@@ -306,7 +306,22 @@ SharePoint mapping: "Sales Rep / Owner" â†’ `sales_rep`, "CDW Account Manager" â
 
 This is a table rather than six `*UserId` columns on `engagements` because most imported assignees will not be app users yet. A row can hold a name and email now and link to a user later, and each role carries its own Broadcom email without twelve more columns.
 
-### 6.4 `app_settings` (new)
+### 6.4 `fcpVersions` issue columns and `fcpConsumptionEntries` (FCP Phase 3)
+
+`fcpVersions` keeps every History save. An **issued** version is a row with `reason = 'issued'` and an `issueNumber` (1, 2, 3 per engagement; unique with the engagement):
+- `status` is `issued`, then `superseded` when the next one is issued.
+- `basedOnVersionId` points to the version it revises.
+- `effortSnapshot`, `renderedHtml` and `renderHash` hold what was issued.
+- It also carries `revisionNote`, `changeSummary`, `issuedAt` and `issuedByUserId`.
+- Approvals are recorded per party: `broadcomApprovedOn`, `broadcomApprovedByUserId` and `broadcomApprovalNote`, and the same three for the customer.
+
+On a History save every one of these columns is null.
+
+`fcpConsumptionEntries` holds `engagementId`, `asOf`, `consumedHours`, `source` (`manual`, or the reserved `salesforce`), `externalId`, `note`, `enteredByUserId` and `createdAt`. It is append-only. The unique key (`engagementId`, `source`, `externalId`) lets a future Salesforce read upsert its rows without touching manual ones.
+
+Both tables are reached only through a visible engagement. The column tags are `FCP_VERSION_COLUMN_VISIBILITY` and `CONSUMPTION_ENTRY_COLUMN_VISIBILITY` in `shared/vsaFields.ts`. See `docs/FCP-WORKSPACE.md` section 13.
+
+### 6.5 `app_settings` (new)
 
 Workflow parameters an admin can change: the per-stage stale thresholds, the work plan warning, the expiry band limits, and the gate display labels. The stage sequence and gate applicability stay in code. One row per key (`key`, `value` json, `updatedByUserId`, `updatedAt`), seeded from the code constants, which remain the fallback. The keys and rules are in `docs/CONFIGURATION.md` (Operational settings) and `shared/appSettings.ts`.
 
