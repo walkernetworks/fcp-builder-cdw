@@ -59,6 +59,15 @@ describe("fully staffing the entitlement", () => {
     expect(hoursFillOptions(document).unusedHours).toBeLessThan(1500 * 0.92 - planHours(scopedEffortForDocument({ ...document, fields: { ...document.fields, hoursFill: { ...document.fields.hoursFill, enabled: false } } })));
   });
 
+  it("fills a BSAS-only deal to the BSAS hours after the reserve, not to the entitlement value", () => {
+    const document = withFill(doc(900_000, { fundingSource: "bsas", bsasHours: 2000, bsasStart: "2027-01-04" }));
+    const effort = scopedEffortForDocument(document);
+    const fit = effort.internal.fit!;
+    expect(fit.entitlementHours).toBe(2000);
+    expect(effort.workPackages.find(item => item.id === HOURS_FILL_BAR_ID)!.total).toBeGreaterThan(0);
+    expect(planHours(effort)).toBe(Math.floor(2000 - fit.reserveHours));
+  });
+
   it("never shows more in the entitlement buckets than the work packages carry, after planner cuts", () => {
     const base = withFill(doc());
     const cut = scopedEffortForDocument(base).workPackages.find(row => row.total > 40 && row.id !== HOURS_FILL_BAR_ID)!;
