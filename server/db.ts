@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { and, asc, desc, eq, getTableColumns, inArray, isNull, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, isNotNull, isNull, max, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { createDefaultDocument, EngagementDocument } from "../shared/fcp";
 import { renameInTitle, resolveFcpSaveNames } from "../shared/customerName";
-import { buildLockState, sourceUpdatesFromDocument } from "../shared/fcpRecord";
+import { buildLockState, segmentDecisionLabel, segmentDisagrees, sourceUpdatesFromDocument, storedCommercialPlan, type SegmentChoice, type SegmentReview } from "../shared/fcpRecord";
 import { IMPORT_FIELDS, IMPORT_ROLES, planMappedRows, type ExistingRecord, type ImportPlan, type ImportRole } from "../shared/sharepointImport";
 import type { PipelineBatch } from "./pipelineSource";
 import type { AssignmentRole, FcpWaiver, SourceItemKind, SourceItemStatus, TrackerPatch } from "../shared/vsaFields";
@@ -14,7 +14,9 @@ import {
   appSettings,
   engagementAssignments,
   engagements,
+  fcpConsumptionEntries,
   fcpVersions,
+  type FcpVersion,
   savedReports,
   InsertEngagement,
   InsertUser,
@@ -27,6 +29,8 @@ import {
 import { ENV } from "./_core/env";
 import { deletableEngagements, editableReports, visibleEngagements, visibleReports, type Viewer } from "./visibility";
 import type { ReportConfig } from "../shared/vsaReports";
+import type { ScopedEffort } from "../shared/effort";
+import type { ChangeSummary } from "../shared/fcpChangeSummary";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -118,6 +122,40 @@ export async function linkAssignmentsToUser(user: User) {
     .update(engagementAssignments)
     .set({ userId: user.id })
     .where(and(isNull(engagementAssignments.userId), eq(engagementAssignments.email, user.email), inArray(engagementAssignments.engagementId, visibleIds)));
+}
+
+/**
+ * How many visible records have a tracker segment that disagrees with the FCP's plan type. A count for the admin
+ * status line only: it reads the two plan-input values, never the rest of the document, and changes nothing.
+ */
+export async function countSegmentMismatches(viewer: Viewer): Promise<number> {
+  const db = await requireDb();
+  const rows = await db
+    .select({
+      segment: engagements.segment,
+      commercialPlan: sql<unknown>`JSON_EXTRACT(${engagements.data}, '$.fields.commercialPlan')`,
+      customerSegment: sql<unknown>`JSON_UNQUOTE(JSON_EXTRACT(${engagements.data}, '$.fields.customerSegment'))`,
+    })
+    .from(engagements)
+    .where(visibleEngagements(viewer));
+  return rows.filter(row => segmentDisagrees(row.segment, storedCommercialPlan(jsonBoolean(row.commercialPlan), row.customerSegment))).length;
+}
+
+/** How many visible records have a tracker segment migration 0009 inferred from the FCP and no person has confirmed since. */
+export async function countInferredSegments(viewer: Viewer): Promise<number> {
+  const db = await requireDb();
+  const [row] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(engagements)
+    .where(and(visibleEngagements(viewer), eq(engagements.segmentSource, "inferred_from_fcp")));
+  return Number(row?.count ?? 0);
+}
+
+/** mysql2 returns a JSON_EXTRACT boolean as true/false, 1/0 or the text "true"/"false" depending on the driver path. */
+function jsonBoolean(value: unknown): unknown {
+  if (value === "true" || value === 1) return true;
+  if (value === "false" || value === 0) return false;
+  return value;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -263,10 +301,20 @@ export async function releaseBuildLock(viewer: Viewer, id: number) {
     .where(and(visibleEngagements(viewer), eq(engagements.id, id), eq(engagements.buildLockUserId, viewer.id)));
 }
 
+/**
+ * Deletes the record and, by cascade, everything that hangs off it: History, issued versions, consumption, stage
+ * history, sources and assignments. Owner or admin only. Issued versions point at the issue they revised, so those
+ * links are cleared first in the same transaction and the cascade never meets a row another row still references.
+ */
 export async function deleteEngagement(viewer: Viewer, id: number) {
   const db = await requireDb();
-  const result = await db.delete(engagements).where(and(deletableEngagements(viewer), eq(engagements.id, id)));
-  return result[0].affectedRows > 0;
+  return db.transaction(async tx => {
+    const [row] = await tx.select({ id: engagements.id }).from(engagements).where(and(deletableEngagements(viewer), eq(engagements.id, id))).limit(1).for("update");
+    if (!row) return false;
+    await tx.update(fcpVersions).set({ basedOnVersionId: null }).where(eq(fcpVersions.engagementId, row.id));
+    const result = await tx.delete(engagements).where(and(deletableEngagements(viewer), eq(engagements.id, row.id)));
+    return result[0].affectedRows > 0;
+  });
 }
 
 /** Copies the FCP document only. Tracker fields, identifiers, and history stay with the original. */
@@ -357,6 +405,8 @@ export async function updateTrackerFields(viewer: Viewer, id: number, expectedRo
       .set({
         ...patch,
         ...titlePatch,
+        // A person setting the segment confirms it; an inferred one stops being inferred.
+        ...("segment" in patch ? { segmentSource: null } : {}),
         // The FCP document carries its own copy of the customer name; keep it in step with the column.
         ...(patch.customerName ? { data: sql`JSON_SET(${engagements.data}, '$.fields.customerName', ${patch.customerName})` } : {}),
         rowVersion: sql`${engagements.rowVersion} + 1`,
@@ -547,6 +597,8 @@ export async function runPipelineImport(viewer: Viewer, batch: PipelineBatch, mo
     for (const create of plan.creates) {
       const data = createDefaultDocument();
       data.fields.customerName = String(create.fields.customerName ?? "");
+      // The plan type starts from the tracker segment, once, at creation. A default: a person can change it in the FCP.
+      data.fields.commercialPlan = create.fields.segment === "commercial";
       const result = await tx.insert(engagements).values({
         ...(create.fields as Partial<InsertEngagement>),
         ownerId: viewer.id,
@@ -582,6 +634,8 @@ export async function runPipelineImport(viewer: Viewer, batch: PipelineBatch, mo
         .update(engagements)
         .set({
           ...(update.fields as Partial<InsertEngagement>),
+          // A segment from the Pipeline List is confirmed, so an inferred one stops being inferred.
+          ...("segment" in update.fields ? { segmentSource: null } : {}),
           ...(typeof update.fields.customerName === "string" ? { data: sql`JSON_SET(${engagements.data}, '$.fields.customerName', ${update.fields.customerName})`, ...titlePatch } : {}),
           ...(update.stageChange ? { stage: update.stageChange.to, stageEnteredOn: update.stageChange.effectiveOn } : {}),
           importSnapshot: update.snapshot,
@@ -657,7 +711,7 @@ export async function getFcpVersion(viewer: Viewer, engagementId: number, versio
 }
 
 /** Saves the stored FCP as a new version. An export of an FCP identical to the latest version is not saved again. */
-export async function createFcpVersion(viewer: Viewer, engagementId: number, label: string, reason: "manual" | "submitted" | "export" | "restore") {
+export async function createFcpVersion(viewer: Viewer, engagementId: number, label: string, reason: FcpVersion["reason"]) {
   const db = await requireDb();
   const engagement = await getEngagement(viewer, engagementId);
   if (!engagement) return undefined;
@@ -672,6 +726,38 @@ export async function createFcpVersion(viewer: Viewer, engagementId: number, lab
 }
 
 /**
+ * Records a person's decision on a tracker segment that disagrees with the FCP plan type, and keeps a copy of the FCP
+ * in History with the decision as its label. It changes neither the segment nor the plan: "match-tracker" is recorded
+ * after the workspace has saved the plan with the matching type (refused until it has), "keep-plan" while they still
+ * disagree. Refused while someone else holds the build lock.
+ */
+export async function decideSegment(viewer: Viewer, byName: string | null, id: number, choice: SegmentChoice): Promise<WriteResult<SegmentReview>> {
+  const db = await requireDb();
+  const [row] = await db
+    .select({
+      segment: engagements.segment,
+      buildLockUserId: engagements.buildLockUserId,
+      buildLockAt: engagements.buildLockAt,
+      commercialPlan: sql<unknown>`JSON_EXTRACT(${engagements.data}, '$.fields.commercialPlan')`,
+      customerSegment: sql<unknown>`JSON_UNQUOTE(JSON_EXTRACT(${engagements.data}, '$.fields.customerSegment'))`,
+    })
+    .from(engagements)
+    .where(and(visibleEngagements(viewer), eq(engagements.id, id)))
+    .limit(1);
+  if (!row) return { status: "not_found" };
+  if (buildLockState({ userId: row.buildLockUserId, at: row.buildLockAt }, viewer.id, Date.now()) === "other") throw new BuildLockedError(await lockHolderName(row.buildLockUserId));
+  if (!row.segment) return { status: "blocked", reason: "The tracker record has no segment, so there is nothing to decide." };
+  const commercialPlan = storedCommercialPlan(jsonBoolean(row.commercialPlan), row.customerSegment);
+  const disagrees = segmentDisagrees(row.segment, commercialPlan);
+  if (choice === "match-tracker" && disagrees) return { status: "blocked", reason: "Save the FCP with the matching plan type first." };
+  if (choice === "keep-plan" && !disagrees) return { status: "blocked", reason: "The plan type already matches the tracker segment." };
+  const review: SegmentReview = { segment: row.segment, commercialPlan, choice, byUserId: viewer.id, byName, at: new Date().toISOString() };
+  await db.update(engagements).set({ segmentReview: review, updatedByUserId: viewer.id }).where(and(visibleEngagements(viewer), eq(engagements.id, id)));
+  await createFcpVersion(viewer, id, segmentDecisionLabel(row.segment, commercialPlan, choice), "decision");
+  return { status: "ok", value: review };
+}
+
+/**
  * Restores a version's FCP content. The current FCP is saved as a version first, so a restore can itself be undone.
  * The engagement keeps its current customer name and title; only the document content goes back.
  */
@@ -680,9 +766,185 @@ export async function restoreFcpVersion(viewer: Viewer, engagementId: number, ve
   if (!version) return undefined;
   const current = await getEngagement(viewer, engagementId);
   if (!current) return undefined;
-  await createFcpVersion(viewer, engagementId, `Before restoring version ${version.versionNumber}`, "restore");
+  await createFcpVersion(viewer, engagementId, `Before restoring the copy saved ${version.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC`, "restore");
   const restored = { ...version.data, fields: { ...version.data.fields, customerName: current.customerName } };
   return updateEngagement(viewer, engagementId, current.title, restored, { customerName: current.customerName, title: current.title });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Issued FCP versions (docs/FCP-WORKSPACE.md section 13): numbered, immutable snapshots of what the customer received.
+
+const issuer = alias(users, "issuer");
+const broadcomApprover = alias(users, "broadcom_approver");
+const customerApprover = alias(users, "customer_approver");
+const issuedSummary = {
+  id: fcpVersions.id,
+  issueNumber: fcpVersions.issueNumber,
+  status: fcpVersions.status,
+  title: fcpVersions.title,
+  label: fcpVersions.label,
+  revisionNote: fcpVersions.revisionNote,
+  changeSummary: fcpVersions.changeSummary,
+  dataHash: fcpVersions.dataHash,
+  basedOnVersionId: fcpVersions.basedOnVersionId,
+  issuedAt: fcpVersions.issuedAt,
+  issuedByName: issuer.name,
+  broadcomApprovedOn: fcpVersions.broadcomApprovedOn,
+  broadcomApprovedByName: broadcomApprover.name,
+  broadcomApprovalNote: fcpVersions.broadcomApprovalNote,
+  customerApprovedOn: fcpVersions.customerApprovedOn,
+  customerApprovedByName: customerApprover.name,
+  customerApprovalNote: fcpVersions.customerApprovalNote,
+};
+
+/** Issued and superseded versions, newest first, without their snapshots. */
+export async function listIssuedVersions(viewer: Viewer, engagementId: number) {
+  const db = await requireDb();
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return undefined;
+  return db
+    .select(issuedSummary)
+    .from(fcpVersions)
+    .leftJoin(issuer, eq(issuer.id, fcpVersions.issuedByUserId))
+    .leftJoin(broadcomApprover, eq(broadcomApprover.id, fcpVersions.broadcomApprovedByUserId))
+    .leftJoin(customerApprover, eq(customerApprover.id, fcpVersions.customerApprovedByUserId))
+    .where(and(eq(fcpVersions.engagementId, engagementId), isNotNull(fcpVersions.issueNumber)))
+    .orderBy(desc(fcpVersions.issueNumber));
+}
+
+/** One issued version with its snapshots and HTML; undefined for a History save or another workspace's record. */
+export async function getIssuedVersion(viewer: Viewer, engagementId: number, versionId: number) {
+  const version = await getFcpVersion(viewer, engagementId, versionId);
+  return version && version.issueNumber !== null ? version : undefined;
+}
+
+/** The current issued version (status issued), if any. */
+export async function getLatestIssuedVersion(viewer: Viewer, engagementId: number) {
+  const db = await requireDb();
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return undefined;
+  const [latest] = await db.select().from(fcpVersions).where(and(eq(fcpVersions.engagementId, engagementId), eq(fcpVersions.status, "issued"))).orderBy(desc(fcpVersions.issueNumber)).limit(1);
+  return latest ?? null;
+}
+
+export type IssueInput = {
+  title: string;
+  data: EngagementDocument;
+  effort: ScopedEffort;
+  html: string;
+  label: string;
+  revisionNote: string | null;
+  changeSummary: ChangeSummary;
+  /** The issued version the snapshot was compared against; the issue is refused if another was issued meanwhile. */
+  basedOnVersionId: number | null;
+};
+
+/**
+ * Issues the next version: stores the snapshot as given, supersedes the previous issued version, and fills the
+ * tracker's "FCP submitted" date when it is empty (never overwriting one). One transaction, on the locked row.
+ * Refused while someone else holds the build lock.
+ */
+export async function issueFcpVersion(viewer: Viewer, engagementId: number, input: IssueInput): Promise<WriteResult<{ id: number; issueNumber: number }>> {
+  const db = await requireDb();
+  return db.transaction(async tx => {
+    const record = await requireVisibleEngagement(tx, viewer, engagementId, true);
+    if (!record) return { status: "not_found" } as const;
+    if (buildLockState({ userId: record.buildLockUserId, at: record.buildLockAt }, viewer.id, Date.now()) === "other") throw new BuildLockedError(await lockHolderName(record.buildLockUserId));
+    const [current] = await tx.select({ id: fcpVersions.id }).from(fcpVersions).where(and(eq(fcpVersions.engagementId, engagementId), eq(fcpVersions.status, "issued"))).orderBy(desc(fcpVersions.issueNumber)).limit(1);
+    if ((current?.id ?? null) !== input.basedOnVersionId) return { status: "conflict" } as const;
+    const [{ highestSave, highestIssue }] = await tx.select({ highestSave: max(fcpVersions.versionNumber), highestIssue: max(fcpVersions.issueNumber) }).from(fcpVersions).where(eq(fcpVersions.engagementId, engagementId));
+    const issueNumber = (highestIssue ?? 0) + 1;
+    const now = new Date();
+    const result = await tx.insert(fcpVersions).values({
+      engagementId,
+      versionNumber: (highestSave ?? 0) + 1,
+      title: input.title.slice(0, 240),
+      data: input.data,
+      dataHash: createHash("sha256").update(JSON.stringify(input.data)).digest("hex"),
+      label: (input.label || `Issue ${issueNumber}`).slice(0, 160),
+      reason: "issued",
+      createdByUserId: viewer.id,
+      issueNumber,
+      status: "issued",
+      basedOnVersionId: input.basedOnVersionId,
+      effortSnapshot: input.effort,
+      renderedHtml: input.html,
+      renderHash: createHash("sha256").update(input.html).digest("hex"),
+      revisionNote: input.revisionNote,
+      changeSummary: input.changeSummary,
+      issuedAt: now,
+      issuedByUserId: viewer.id,
+    });
+    if (current) await tx.update(fcpVersions).set({ status: "superseded" }).where(and(eq(fcpVersions.id, current.id), eq(fcpVersions.engagementId, engagementId)));
+    if (!record.fcpSubmittedOn) await tx.update(engagements).set({ fcpSubmittedOn: today(), rowVersion: sql`${engagements.rowVersion} + 1`, updatedByUserId: viewer.id }).where(and(visibleEngagements(viewer), eq(engagements.id, engagementId), isNull(engagements.fcpSubmittedOn)));
+    return { status: "ok", value: { id: Number(result[0].insertId), issueNumber } } as const;
+  });
+}
+
+/**
+ * Starts the next revision from the latest issued version, so a re-issue begins from what the customer holds. The
+ * working FCP is saved to History first, so nothing is lost. The engagement keeps its current customer name and title.
+ */
+export async function reviseFromIssued(viewer: Viewer, engagementId: number): Promise<WriteResult<{ issueNumber: number }>> {
+  const latest = await getLatestIssuedVersion(viewer, engagementId);
+  if (latest === undefined) return { status: "not_found" };
+  if (latest === null || latest.issueNumber === null) return { status: "blocked", reason: "Nothing has been issued yet, so there is nothing to revise from." };
+  const current = await getEngagement(viewer, engagementId);
+  if (!current) return { status: "not_found" };
+  await createFcpVersion(viewer, engagementId, `Before revising from issue ${latest.issueNumber}`, "restore");
+  const restored = { ...latest.data, fields: { ...latest.data.fields, customerName: current.customerName } };
+  const saved = await updateEngagement(viewer, engagementId, current.title, restored, { customerName: current.customerName, title: current.title });
+  return saved ? { status: "ok", value: { issueNumber: latest.issueNumber } } : { status: "not_found" };
+}
+
+export type ApprovalParty = "broadcom" | "customer";
+
+/**
+ * Records an approval of the current issued version: the date, who recorded it and an optional note. Recorded once
+ * per party. Fills the tracker's matching acceptance date when it is empty, so the stage gates read it; a date already
+ * on the tracker is never overwritten.
+ */
+export async function recordApproval(viewer: Viewer, engagementId: number, versionId: number, party: ApprovalParty, approval: { on: string; note: string | null }): Promise<WriteResult<null>> {
+  const db = await requireDb();
+  if (approval.on > today()) return { status: "blocked", reason: "An approval cannot be dated in the future." };
+  return db.transaction(async tx => {
+    const record = await requireVisibleEngagement(tx, viewer, engagementId, true);
+    if (!record) return { status: "not_found" } as const;
+    const [version] = await tx.select({ status: fcpVersions.status, broadcomApprovedOn: fcpVersions.broadcomApprovedOn, customerApprovedOn: fcpVersions.customerApprovedOn }).from(fcpVersions).where(and(eq(fcpVersions.id, versionId), eq(fcpVersions.engagementId, engagementId))).limit(1);
+    if (!version || version.status === null) return { status: "not_found" } as const;
+    if (version.status !== "issued") return { status: "blocked", reason: "Approvals are recorded on the current issued version." } as const;
+    if ((party === "broadcom" ? version.broadcomApprovedOn : version.customerApprovedOn) !== null) return { status: "blocked", reason: "This approval is already recorded." } as const;
+    await tx.update(fcpVersions).set(party === "broadcom"
+      ? { broadcomApprovedOn: approval.on, broadcomApprovedByUserId: viewer.id, broadcomApprovalNote: approval.note }
+      : { customerApprovedOn: approval.on, customerApprovedByUserId: viewer.id, customerApprovalNote: approval.note }).where(and(eq(fcpVersions.id, versionId), eq(fcpVersions.engagementId, engagementId)));
+    const gate = party === "broadcom" ? engagements.fcpBroadcomAcceptedOn : engagements.fcpCustomerAcceptedOn;
+    if ((party === "broadcom" ? record.fcpBroadcomAcceptedOn : record.fcpCustomerAcceptedOn) === null) {
+      await tx.update(engagements).set({ [party === "broadcom" ? "fcpBroadcomAcceptedOn" : "fcpCustomerAcceptedOn"]: approval.on, rowVersion: sql`${engagements.rowVersion} + 1`, updatedByUserId: viewer.id }).where(and(visibleEngagements(viewer), eq(engagements.id, engagementId), isNull(gate)));
+    }
+    return { status: "ok", value: null } as const;
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Consumption history: hours consumed as of a date. Append-only; a correction is a new entry.
+
+export type ConsumptionEntryInput = { asOf: string; consumedHours: number; note: string | null };
+
+export async function listConsumptionEntries(viewer: Viewer, engagementId: number) {
+  const db = await requireDb();
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return undefined;
+  return db
+    .select({ id: fcpConsumptionEntries.id, asOf: fcpConsumptionEntries.asOf, consumedHours: fcpConsumptionEntries.consumedHours, source: fcpConsumptionEntries.source, note: fcpConsumptionEntries.note, createdAt: fcpConsumptionEntries.createdAt, enteredByName: users.name })
+    .from(fcpConsumptionEntries)
+    .leftJoin(users, eq(users.id, fcpConsumptionEntries.enteredByUserId))
+    .where(eq(fcpConsumptionEntries.engagementId, engagementId))
+    .orderBy(desc(fcpConsumptionEntries.asOf), desc(fcpConsumptionEntries.id));
+}
+
+/** Records hours consumed, by anyone who can see the engagement, as a manual entry logged with who entered it. */
+export async function addConsumptionEntry(viewer: Viewer, engagementId: number, entry: ConsumptionEntryInput): Promise<WriteResult<number>> {
+  const db = await requireDb();
+  if (!(await requireVisibleEngagement(db, viewer, engagementId))) return { status: "not_found" };
+  const result = await db.insert(fcpConsumptionEntries).values({ engagementId, asOf: entry.asOf, consumedHours: entry.consumedHours, source: "manual", externalId: null, note: entry.note, enteredByUserId: viewer.id });
+  return { status: "ok", value: Number(result[0].insertId) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -770,7 +1032,7 @@ export async function getUserForAdmin(viewer: Viewer, userId: number) {
 
   const activity: AdminActivity[] = [
     ...moves.map(move => ({ at: move.at, kind: "stage" as const, text: move.fromStage ? `Moved from ${STAGE_LABELS[move.fromStage]} to ${STAGE_LABELS[move.toStage]}` : `Created in ${STAGE_LABELS[move.toStage]}`, recordId: move.recordId, customerName: move.customerName })),
-    ...versions.map(version => ({ at: version.at, kind: "fcp_version" as const, text: `Saved FCP version ${version.versionNumber}: ${version.label}`, recordId: version.recordId, customerName: version.customerName })),
+    ...versions.map(version => ({ at: version.at, kind: "fcp_version" as const, text: `Saved the FCP: ${version.label}`, recordId: version.recordId, customerName: version.customerName })),
     ...userChanges.map(change => ({ at: change.at, kind: "user_change" as const, text: `Changed access for ${change.name ?? change.email ?? "a user"}`, recordId: null, customerName: null })),
     ...settingChanges.map(change => ({ at: change.at, kind: "setting" as const, text: `Changed setting ${change.key}`, recordId: null, customerName: null })),
   ]

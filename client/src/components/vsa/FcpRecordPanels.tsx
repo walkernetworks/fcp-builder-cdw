@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { HISTORY_REASON_LABEL } from "@shared/fcpRecord";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -45,18 +46,21 @@ export function FcpRecordStrip({ engagementId, document, onOpenSources }: { enga
   );
 }
 
-/** Version history: named snapshots, automatic ones on submission and export, preview, download, and restore. */
+/**
+ * FCP history: saved copies (on request, on submission, on export), with preview, download, and restore. These are
+ * saves, not versions: the save counter is never shown, and "version" is kept for issued plans.
+ */
 export function FcpVersionsSheet({ engagementId, open, onClose, readOnly, onRestored }: { engagementId: number; open: boolean; onClose: () => void; readOnly: boolean; onRestored: () => void }) {
   const utils = trpc.useUtils();
   const versions = trpc.fcpRecord.versions.useQuery({ id: engagementId }, { enabled: open });
   const [label, setLabel] = useState("");
   const [previewId, setPreviewId] = useState<number | null>(null);
   const save = trpc.fcpRecord.saveVersion.useMutation({
-    onSuccess: async result => { setLabel(""); toast.success(`Saved version ${result.versionNumber}`); await utils.fcpRecord.versions.invalidate({ id: engagementId }); },
+    onSuccess: async result => { setLabel(""); toast.success("Saved to history"); await utils.fcpRecord.versions.invalidate({ id: engagementId }); },
     onError: error => toast.error(error.message),
   });
   const restore = trpc.fcpRecord.restoreVersion.useMutation({
-    onSuccess: async () => { toast.success("Version restored. The FCP as it was before is saved as a version."); await utils.fcpRecord.versions.invalidate({ id: engagementId }); onRestored(); },
+    onSuccess: async () => { toast.success("Restored. The FCP as it was before is kept in history."); await utils.fcpRecord.versions.invalidate({ id: engagementId }); onRestored(); },
     onError: error => toast.error(error.message),
   });
   const html = trpc.document.html.useMutation({ onError: error => toast.error(error.message) });
@@ -65,37 +69,37 @@ export function FcpVersionsSheet({ engagementId, open, onClose, readOnly, onRest
   async function download(versionId: number) {
     const version = await utils.fcpRecord.version.fetch({ id: engagementId, versionId });
     const file = await html.mutateAsync({ title: version.title, data: version.data });
-    downloadText(file.filename.replace(/\.html$/, `-v${version.versionNumber}.html`), file.mime, file.content);
+    downloadText(file.filename.replace(/\.html$/, `-saved-${savedStamp(version.createdAt)}.html`), file.mime, file.content);
   }
 
   return (
     <Sheet open={open} onOpenChange={value => !value && onClose()}>
       <SheetContent side="right" className="w-full gap-0 overflow-y-auto bg-s50 p-0 sm:max-w-[520px]">
         <SheetHeader className="bg-surface px-5 pb-4 pt-6">
-          <p className="cta-eyebrow">FCP version history</p>
-          <SheetTitle className="text-xl font-semibold tracking-tight text-ink">Versions</SheetTitle>
-          <SheetDescription className="text-xs text-ink-muted">A version is saved when you ask, when the FCP leaves FCP Draft for approval, and on every FCP export. Restoring keeps the current FCP as a version first.</SheetDescription>
+          <p className="cta-eyebrow">FCP history</p>
+          <SheetTitle className="text-xl font-semibold tracking-tight text-ink">History</SheetTitle>
+          <SheetDescription className="text-xs text-ink-muted">A copy is kept when you save one, when the FCP leaves FCP Draft for approval, and on every FCP export. Restoring keeps the current FCP in history first.</SheetDescription>
         </SheetHeader>
         <form className="flex gap-2 border-t border-s100 bg-surface px-5 py-3" onSubmit={event => { event.preventDefault(); if (label.trim()) save.mutate({ id: engagementId, label: label.trim() }); }}>
-          <Input value={label} onChange={event => setLabel(event.target.value)} maxLength={160} placeholder="Name this version, e.g. Sent to customer for review" className="h-9 rounded-md" aria-label="Version name" />
-          <Button type="submit" size="sm" className="h-9 shrink-0" disabled={!label.trim() || save.isPending}><Save className="size-4" /> Save version</Button>
+          <Input value={label} onChange={event => setLabel(event.target.value)} maxLength={160} placeholder="Name this save, e.g. Sent to customer for review" className="h-9 rounded-md" aria-label="Name for this save" />
+          <Button type="submit" size="sm" className="h-9 shrink-0" disabled={!label.trim() || save.isPending}><Save className="size-4" /> Save to history</Button>
         </form>
-        <DataMount id="fcpVersions" query={query} isEmpty={data => data.length === 0} empty={{ icon: History, title: "No versions yet", sub: "Save one above. Versions are also saved when the FCP goes for approval and when it is exported." }} className="border-t border-s100">
+        <DataMount id="fcpVersions" query={query} isEmpty={data => data.length === 0} empty={{ icon: History, title: "Nothing saved yet", sub: "Save one above. A copy is also kept when the FCP goes for approval and when it is exported." }} className="border-t border-s100">
           {data => (
             <ol className="divide-y divide-s100">
               {data.map(version => (
                 <li key={version.id} className="space-y-2 bg-surface px-5 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-ink">v{version.versionNumber} · {version.label}</p>
+                      <p className="text-sm font-semibold text-ink">{version.label}</p>
                       <p className="text-xs text-ink-muted">{new Date(version.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}{version.createdByName ? ` · ${version.createdByName}` : ""}</p>
                     </div>
-                    <Chip>{{ manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore" }[version.reason]}</Chip>
+                    <Chip>{HISTORY_REASON_LABEL[version.reason]}</Chip>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" className="h-7" onClick={() => setPreviewId(version.id)}><Eye className="size-3.5" /> Preview</Button>
                     <Button variant="outline" size="sm" className="h-7" disabled={html.isPending} onClick={() => void download(version.id)}><Download className="size-3.5" /> HTML</Button>
-                    <Button variant="outline" size="sm" className="h-7" disabled={readOnly || restore.isPending} title={readOnly ? "Someone else is editing this FCP" : undefined} onClick={() => { if (window.confirm(`Restore version ${version.versionNumber}? The FCP as it is now is saved as a version first.`)) restore.mutate({ id: engagementId, versionId: version.id }); }}><RotateCcw className="size-3.5" /> Restore</Button>
+                    <Button variant="outline" size="sm" className="h-7" disabled={readOnly || restore.isPending} title={readOnly ? "Someone else is editing this FCP" : undefined} onClick={() => { if (window.confirm(`Restore the FCP as it was saved on ${savedWhen(version.createdAt)}? The FCP as it is now is kept in history first.`)) restore.mutate({ id: engagementId, versionId: version.id }); }}><RotateCcw className="size-3.5" /> Restore</Button>
                   </div>
                 </li>
               ))}
@@ -107,6 +111,10 @@ export function FcpVersionsSheet({ engagementId, open, onClose, readOnly, onRest
     </Sheet>
   );
 }
+
+const savedWhen = (at: Date | string) => new Date(at).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+/** A file-name-safe save time, e.g. 2026-10-23-1405. */
+const savedStamp = (at: Date | string) => { const d = new Date(at); const pad = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`; };
 
 function VersionPreview({ engagementId, versionId, onClose }: { engagementId: number; versionId: number | null; onClose: () => void }) {
   const version = trpc.fcpRecord.version.useQuery({ id: engagementId, versionId: versionId ?? 0 }, { enabled: versionId !== null });
@@ -121,10 +129,10 @@ function VersionPreview({ engagementId, versionId, onClose }: { engagementId: nu
     <Dialog open={versionId !== null} onOpenChange={value => !value && onClose()}>
       <DialogContent className="h-[85vh] max-w-5xl sm:max-w-5xl">
         <DialogHeader>
-          <DialogTitle>{version.data ? `Version ${version.data.versionNumber}: ${version.data.label}` : "Version preview"}</DialogTitle>
+          <DialogTitle>{version.data ? `Saved ${savedWhen(version.data.createdAt)}: ${version.data.label}` : "Saved FCP"}</DialogTitle>
           <DialogDescription>How the FCP read at this version. Read only.</DialogDescription>
         </DialogHeader>
-        {html?.id === versionId ? <iframe title="Version preview" sandbox="" srcDoc={html.html} className="h-full w-full rounded-lg border border-s100 bg-surface" /> : <div className="grid h-full place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div>}
+        {html?.id === versionId ? <iframe title="Saved FCP preview" sandbox="" srcDoc={html.html} className="h-full w-full rounded-lg border border-s100 bg-surface" /> : <div className="grid h-full place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div>}
       </DialogContent>
     </Dialog>
   );

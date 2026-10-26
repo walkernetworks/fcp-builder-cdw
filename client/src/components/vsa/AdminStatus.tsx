@@ -95,6 +95,8 @@ function StatusPanels({ data }: { data: Status }) {
           <dl className="divide-y divide-s100 text-[13px]">
             <Fact label="Outbound network">{data.outbound}</Fact>
             <Fact label="Connector approvals">{data.connectorApprovals}</Fact>
+            <Fact label="Segment review">{data.segmentMismatches === 0 ? "Every record's FCP plan type matches its tracker segment." : <span className="text-state-warn-text">{data.segmentMismatches === 1 ? "1 record has" : `${data.segmentMismatches} records have`} a tracker segment that differs from how its FCP plan is built. Nothing changes either side automatically.</span>}</Fact>
+            <Fact label="Segments filled from the FCP">{data.inferredSegments === 0 ? "None waiting for review." : <span className="text-state-warn-text">{data.inferredSegments} (review for Strategic). These tracker segments were inferred from the FCP's old segment field, which had no Strategic value. Setting the segment on the record confirms it.</span>}</Fact>
             <Fact label="Sign-in mode">{data.signInMode ? <code>{data.signInMode}</code> : <span className="text-state-blocked-text">Not set: no request is signed in</span>}</Fact>
           </dl>
         </Panel>

@@ -8,8 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { CompatibilityHandoffPanel, DECISION_VERDICT } from "@/components/CompatibilityHandoffPanel";
+import { withFieldPatch } from "@/lib/fieldPatch";
 import { parseRvToolsFiles } from "@/lib/rvtools";
-import { applyScheduleFieldPatch, assessReadiness, calculateEntitlementEndDate, effectivePlatformEdition, emptyInventory, isPlanOutcomeAvailable, withPlatformEdition, type PlatformEdition, getHclSchedulePath, refreshDerivedDocument, summarizeVcfCompatibility, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
+import { assessReadiness, calculateEntitlementEndDate, effectivePlatformEdition, emptyInventory, isPlanOutcomeAvailable, withPlatformEdition, type PlatformEdition, getHclSchedulePath, refreshDerivedDocument, summarizeVcfCompatibility, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
 import { HCL_CATALOG_RELEASES, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings, type HclFinding } from "@shared/hcl";
 import { Download, ExternalLink, FileSpreadsheet, HardDrive, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
@@ -25,36 +26,13 @@ const capabilities: Array<{ value: Capability; label: string; description: strin
   { value: "private-ai", label: "Private AI", description: "AI-ready infrastructure after platform planning and design" },
 ];
 
-const derivedPlanInputFields = new Set<keyof EngagementDocument["fields"]>([
-  "entitlementAmount",
-  "entitlementStart",
-  "entitlementEnd",
-  // A BSAS-only deal plans on the BSAS term.
-  "fundingSource",
-  "bsasHours",
-  "bsasStart",
-  "bsasEnd",
-  "plannedProjectStart",
-  "plannedImplementationStart",
-  "targetStart",
-  "targetComplete",
-  "adoptionCadence",
-  "hardwareAvailability",
-  "hardwareLeadWeeks",
-  "priorities",
-  "timelineNotes",
-  "adoptionDetails",
-  "compatibilityTargetRelease",
-  // The segment decides whether a VVF edition choice applies.
-  "customerSegment",
-]);
-
 type Props = {
   document: EngagementDocument;
   onChange: (document: EngagementDocument) => void;
   onExportPlanOutput: (format: "html" | "pdf") => void;
   exportingPlanOutput: "html" | "pdf" | null;
-  step?: "upload" | "customer" | "timeline" | "review";
+  /** "customer", "timeline" and "review" are the combined steps of the six-step page; the rest are single sections of the FCP workspace. */
+  step?: "upload" | "customer" | "timeline" | "review" | "customer-details" | "funding" | "schedule" | "scope" | "target-release" | "notes";
 };
 
 export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPlanOutput, step }: Props) {
@@ -62,16 +40,7 @@ export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPla
   const [importing, setImporting] = useState(false);
   const fields = document.fields;
 
-  const updateFields = (patch: Partial<typeof fields>) => {
-    const nextFields = applyScheduleFieldPatch(fields, patch);
-    const changesDerivedPlan = Object.keys(patch).some(field => derivedPlanInputFields.has(field as keyof EngagementDocument["fields"]));
-    if (changesDerivedPlan) {
-      // Rebuild once: refreshDerivedDocument calculates readiness and the full plan together.
-      onChange(refreshDerivedDocument({ ...document, fields: nextFields }));
-      return;
-    }
-    onChange({ ...document, fields: nextFields, readiness: assessReadiness(nextFields, document.inventory, document.inventorySources.flatMap(source => source.warnings)) });
-  };
+  const updateFields = (patch: Partial<typeof fields>) => onChange(withFieldPatch(document, patch));
 
   const importFiles = async (files: File[]) => {
     if (!files.length) return;
@@ -93,6 +62,53 @@ export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPla
     const empty = emptyInventory();
     onChange(refreshDerivedDocument({ ...document, inventorySources: [], inventory: empty, readiness: assessReadiness(fields, empty) }));
   };
+
+  // Field groups, so the FCP workspace can place each in its own section; the combined steps render them in the original order.
+  const customerFields = <>
+            <Field label="Customer name" required><Input value={fields.customerName} onChange={event => updateFields({ customerName: event.target.value })} placeholder="Customer organization" /></Field>
+            <Field label="CDW account / customer ID"><Input value={fields.accountId} onChange={event => updateFields({ accountId: event.target.value })} placeholder="Optional internal identifier" /></Field>
+            <Field label="Primary location"><Input value={fields.location} onChange={event => updateFields({ location: event.target.value })} placeholder="City, state or region" /></Field>
+            <Field label="Primary customer contact"><Input value={fields.primaryContact} onChange={event => updateFields({ primaryContact: event.target.value })} placeholder="Name or role" /></Field>
+            <Field label="Plan type" required hint="A Commercial plan adds the Broadcom Building Blocks workbook to the delivery package and can be built on VVF. The deal segment stays on the tracker record."><Select value={fields.commercialPlan ? "commercial" : "standard"} onValueChange={value => { const commercialPlan = value === "commercial"; updateFields({ commercialPlan, ...(!commercialPlan && fields.adoptionDetails.platformEdition === "vvf" ? { adoptionDetails: withPlatformEdition(fields.adoptionDetails, "vcf") } : {}) }); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="standard">Standard plan</SelectItem><SelectItem value="commercial">Commercial plan (Building Blocks workbook)</SelectItem></SelectContent></Select></Field>
+            <Field label="Platform edition" required hint={effectivePlatformEdition(fields) === "vvf" ? "VVF includes vCenter, VCF Operations, VKS, and vSAN. NSX, vDefend, VCF Automation, HCX, and Private AI need VCF and are left out of the plan." : fields.commercialPlan ? "VCF includes NSX, VCF Automation, HCX, and Private AI Services. Choose VVF for a vSphere Foundation plan." : "VCF includes NSX, VCF Automation, HCX, and Private AI Services. VVF is available on a Commercial plan."}><Select value={effectivePlatformEdition(fields)} onValueChange={value => updateFields({ adoptionDetails: withPlatformEdition(fields.adoptionDetails, value as PlatformEdition) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="vcf">VMware Cloud Foundation (VCF)</SelectItem><SelectItem value="vvf" disabled={!fields.commercialPlan}>VMware vSphere Foundation (VVF)</SelectItem></SelectContent></Select></Field>
+  </>;
+  const fundingFields = <>
+            <Field label="Funding" required hint="Entitlement + BSAS: Broadcom Software Adoption Services fund follow-on work after the entitlement. BSAS only: the plan runs on BSAS hours and the BSAS term. BSAS is entered as hours and dates only, never its amount or rates."><Select value={fields.fundingSource} onValueChange={value => updateFields({ fundingSource: value as typeof fields.fundingSource })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="entitlement">Entitlement only</SelectItem><SelectItem value="entitlement-bsas">Entitlement + BSAS</SelectItem><SelectItem value="bsas">BSAS only</SelectItem></SelectContent></Select></Field>
+            {fields.fundingSource !== "bsas" && <>
+              <Field label="Entitlement amount (USD)" required hint="Total customer entitlement funds available for this term."><Input type="number" min={0} step="1000" value={fields.entitlementAmount || ""} onChange={event => updateFields({ entitlementAmount: Math.max(0, Number(event.target.value) || 0) })} placeholder="0" /></Field>
+              <Field label="Reserve held back (%)" hint="Share of the entitlement kept out of the plan. Defaults to 8%; set 0 to remove it once the PO gives the exact figure. The plan never exceeds what is left; work that does not fit moves to the Two-Year Notional as follow-on."><Input type="number" min={0} max={50} step="1" value={fields.estimateInputs.reservePercent ?? ""} onChange={event => { const raw = event.target.value; const { reservePercent: _previous, ...rest } = fields.estimateInputs; updateFields({ estimateInputs: raw === "" ? rest : { ...rest, reservePercent: Math.min(50, Math.max(0, Number(raw) || 0)) } }); }} placeholder="8" /></Field>
+              <Field label="Entitlement starts" required><Input type="date" value={fields.entitlementStart} onChange={event => updateFields({ entitlementStart: event.target.value })} /></Field>
+              <Field label="Entitlement ends" required hint="Calculated as twelve calendar months after the entitlement start date."><Input type="date" value={calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd} readOnly aria-readonly="true" className="bg-slate-50 text-slate-600" /></Field>
+            </>}
+            {fields.fundingSource !== "entitlement" && <>
+              <Field label="BSAS hours" required hint="Hours from the BSAS quote. Never enter the BSAS amount or rates."><Input type="number" min={0} step="10" value={fields.bsasHours || ""} onChange={event => updateFields({ bsasHours: Math.min(100_000, Math.max(0, Number(event.target.value) || 0)) })} placeholder="0" /></Field>
+              {fields.fundingSource === "bsas" && <Field label="Reserve held back (%)" hint="Share of the BSAS hours kept out of the plan. Defaults to 8%; set 0 to remove it. The plan never exceeds what is left; work that does not fit moves to the Two-Year Notional as follow-on."><Input type="number" min={0} max={50} step="1" value={fields.estimateInputs.reservePercent ?? ""} onChange={event => { const raw = event.target.value; const { reservePercent: _previous, ...rest } = fields.estimateInputs; updateFields({ estimateInputs: raw === "" ? rest : { ...rest, reservePercent: Math.min(50, Math.max(0, Number(raw) || 0)) } }); }} placeholder="8" /></Field>}
+              <Field label="BSAS term starts" required={fields.fundingSource === "bsas"} hint={fields.fundingSource === "bsas" ? undefined : "Leave blank for the day after the entitlement ends."}><Input type="date" value={fields.bsasStart} onChange={event => updateFields({ bsasStart: event.target.value })} /></Field>
+              <Field label="BSAS term ends" hint="Leave blank for twelve months after the BSAS start. BSAS hours not used by this date are forfeited."><Input type="date" value={fields.bsasEnd} onChange={event => updateFields({ bsasEnd: event.target.value })} /></Field>
+            </>}
+  </>;
+  const releaseField = <>
+            <Field label="Compatibility target release" required hint="The maintained catalog is evaluated against this release. Current ESXi versions remain derived from RVTools evidence."><Select value={fields.compatibilityTargetRelease} onValueChange={value => updateFields({ compatibilityTargetRelease: value as typeof fields.compatibilityTargetRelease })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{HCL_CATALOG_RELEASES.map(release => <SelectItem key={release} value={release}>{release}</SelectItem>)}</SelectContent></Select></Field>
+  </>;
+  const scheduleFields = <>
+              <Field label="Planned project start" required hint="When design, mobilization, and delivery-baseline work begins. This is independent of the entitlement period."><Input type="date" value={fields.plannedProjectStart || fields.targetStart} onChange={event => updateFields({ plannedProjectStart: event.target.value })} /></Field>
+              <Field label="Implementation services start" required hint="When management-domain build, upgrade, migration, and other implementation services are expected to begin. Use a later date when the customer is starting with design now."><Input type="date" min={fields.plannedProjectStart || fields.targetStart} value={fields.plannedImplementationStart || fields.plannedProjectStart || fields.targetStart} onChange={event => updateFields({ plannedImplementationStart: event.target.value })} /></Field>
+              <Field label="Planned project completion" required><Input type="date" value={fields.targetComplete} onChange={event => updateFields({ targetComplete: event.target.value })} /></Field>
+              <Field label="Execution schedule cadence" hint="Design starts at the planned project start; implementation activities begin at the implementation-services start. Monthly is best for a high-level plan."><Select value={fields.adoptionCadence} onValueChange={value => updateFields({ adoptionCadence: value as typeof fields.adoptionCadence })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="month">Calendar months</SelectItem><SelectItem value="week">Weekly windows</SelectItem></SelectContent></Select></Field>
+  </>;
+  const hardwareFields = <>
+              <Field label="Hardware availability"><Select value={fields.hardwareAvailability} onValueChange={value => updateFields({ hardwareAvailability: value as typeof fields.hardwareAvailability })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="existing">Existing / available</SelectItem><SelectItem value="new">New procurement required</SelectItem><SelectItem value="unknown">Not yet known</SelectItem></SelectContent></Select></Field>
+              {fields.hardwareAvailability === "new" && <Field label="Estimated lead time (weeks)"><Input type="number" min={0} max={104} value={fields.hardwareLeadWeeks || ""} onChange={event => updateFields({ hardwareLeadWeeks: Math.min(104, Math.max(0, Number(event.target.value) || 0)) })} /></Field>}
+  </>;
+  const deliveryStartNote = <>
+            {fields.plannedProjectStart && fields.plannedImplementationStart && fields.plannedImplementationStart > fields.plannedProjectStart ? <div className="mt-5 rounded-lg border border-s200 bg-s50/70 px-4 py-3 text-sm leading-6 text-s600"><strong>Design-first plan:</strong> design and delivery-baseline work begins on {fields.plannedProjectStart}; implementation, upgrade, and migration services are held for {fields.plannedImplementationStart}. The generated Entitlement Notional will show that preparation gap rather than implying services start immediately.</div> : <div className="mt-5 rounded-lg border border-s100 bg-s50 px-4 py-3 text-sm leading-6 text-s600"><strong>Immediate implementation plan:</strong> design, mobilization, and implementation services currently share the planned project start. Move the implementation-services start later when the customer is not ready for build or migration work.</div>}
+  </>;
+  const outcomePicker = <>
+            <div className="mt-7"><Label className="text-sm font-semibold">Which VCF outcomes should the plan prioritize?</Label><div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">{capabilities.map(capability => { const checked = fields.priorities.includes(capability.value); const available = isPlanOutcomeAvailable(`${capability.value}:core`, effectivePlatformEdition(fields)); return <label key={capability.value} className={`flex items-start gap-3 rounded-lg border p-4 transition-colors ${available ? "cursor-pointer" : "cursor-not-allowed opacity-60"} ${checked && available ? "border-s600 bg-s600 text-white" : "border-s100 hover:bg-s50"}`}><Checkbox checked={checked} disabled={!available && !checked} className="mt-0.5" onCheckedChange={next => updateFields({ priorities: next ? [...fields.priorities, capability.value] : fields.priorities.filter(item => item !== capability.value) })} /><span><strong className="block text-sm">{capability.label}</strong><span className={`mt-1 block text-xs leading-5 ${checked && available ? "text-s200" : "text-s400"}`}>{available ? capability.description : "Requires VCF; not included with VVF."}</span></span></label>; })}</div></div>
+  </>;
+  const timelineNotesField = <>
+            <Field label="Delivery Assumptions and Calendar Constraints" hint="Capture only material assumptions, fixed dates, customer responsibilities, blackout windows, or sequencing constraints."><Textarea className="mt-2 min-h-28" value={fields.timelineNotes} onChange={event => updateFields({ timelineNotes: event.target.value })} placeholder="Example: customer supplies DNS and IP allocations; production freeze in December; datacenter exit must finish by Q3." /></Field>
+  </>;
 
   return (
     <div className="space-y-5">
@@ -118,26 +134,9 @@ export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPla
 
         <TabsContent value="customer">
           <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm md:p-7"><p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Minimum input</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Customer and funding</h2><p className="mt-2 text-sm text-s500">Only information that cannot be observed in RVTools is requested.</p><div className="mt-6 grid gap-5 md:grid-cols-2">
-            <Field label="Customer name" required><Input value={fields.customerName} onChange={event => updateFields({ customerName: event.target.value })} placeholder="Customer organization" /></Field>
-            <Field label="CDW account / customer ID"><Input value={fields.accountId} onChange={event => updateFields({ accountId: event.target.value })} placeholder="Optional internal identifier" /></Field>
-            <Field label="Primary location"><Input value={fields.location} onChange={event => updateFields({ location: event.target.value })} placeholder="City, state or region" /></Field>
-            <Field label="Primary customer contact"><Input value={fields.primaryContact} onChange={event => updateFields({ primaryContact: event.target.value })} placeholder="Name or role" /></Field>
-            <Field label="Customer segment" required hint="Commercial customers also get the Broadcom Building Blocks workbook in the delivery package."><Select value={fields.customerSegment} onValueChange={value => updateFields({ customerSegment: value as typeof fields.customerSegment })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="unspecified">Not yet confirmed</SelectItem><SelectItem value="commercial">Commercial</SelectItem><SelectItem value="corporate">Corporate</SelectItem></SelectContent></Select></Field>
-            {fields.customerSegment === "commercial" && <Field label="Platform edition" required hint={effectivePlatformEdition(fields) === "vvf" ? "VVF includes vCenter, VCF Operations, VKS, and vSAN. NSX, vDefend, VCF Automation, HCX, and Private AI need VCF and are left out of the plan." : "VCF includes NSX, VCF Automation, HCX, and Private AI Services. Choose VVF for a vSphere Foundation plan."}><Select value={fields.adoptionDetails.platformEdition} onValueChange={value => updateFields({ adoptionDetails: withPlatformEdition(fields.adoptionDetails, value as PlatformEdition) })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="vcf">VMware Cloud Foundation (VCF)</SelectItem><SelectItem value="vvf">VMware vSphere Foundation (VVF)</SelectItem></SelectContent></Select></Field>}
-            <Field label="Funding" required hint="Entitlement + BSAS: Broadcom Software Adoption Services fund follow-on work after the entitlement. BSAS only: the plan runs on BSAS hours and the BSAS term. BSAS is entered as hours and dates only, never its amount or rates."><Select value={fields.fundingSource} onValueChange={value => updateFields({ fundingSource: value as typeof fields.fundingSource })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="entitlement">Entitlement only</SelectItem><SelectItem value="entitlement-bsas">Entitlement + BSAS</SelectItem><SelectItem value="bsas">BSAS only</SelectItem></SelectContent></Select></Field>
-            {fields.fundingSource !== "bsas" && <>
-              <Field label="Entitlement amount (USD)" required hint="Total customer entitlement funds available for this term."><Input type="number" min={0} step="1000" value={fields.entitlementAmount || ""} onChange={event => updateFields({ entitlementAmount: Math.max(0, Number(event.target.value) || 0) })} placeholder="0" /></Field>
-              <Field label="Reserve held back (%)" hint="Share of the entitlement kept out of the plan. Defaults to 8%; set 0 to remove it once the PO gives the exact figure. The plan never exceeds what is left; work that does not fit moves to the Two-Year Notional as follow-on."><Input type="number" min={0} max={50} step="1" value={fields.estimateInputs.reservePercent ?? ""} onChange={event => { const raw = event.target.value; const { reservePercent: _previous, ...rest } = fields.estimateInputs; updateFields({ estimateInputs: raw === "" ? rest : { ...rest, reservePercent: Math.min(50, Math.max(0, Number(raw) || 0)) } }); }} placeholder="8" /></Field>
-              <Field label="Entitlement starts" required><Input type="date" value={fields.entitlementStart} onChange={event => updateFields({ entitlementStart: event.target.value })} /></Field>
-              <Field label="Entitlement ends" required hint="Calculated as twelve calendar months after the entitlement start date."><Input type="date" value={calculateEntitlementEndDate(fields.entitlementStart) || fields.entitlementEnd} readOnly aria-readonly="true" className="bg-slate-50 text-slate-600" /></Field>
-            </>}
-            {fields.fundingSource !== "entitlement" && <>
-              <Field label="BSAS hours" required hint="Hours from the BSAS quote. Never enter the BSAS amount or rates."><Input type="number" min={0} step="10" value={fields.bsasHours || ""} onChange={event => updateFields({ bsasHours: Math.min(100_000, Math.max(0, Number(event.target.value) || 0)) })} placeholder="0" /></Field>
-              {fields.fundingSource === "bsas" && <Field label="Reserve held back (%)" hint="Share of the BSAS hours kept out of the plan. Defaults to 8%; set 0 to remove it. The plan never exceeds what is left; work that does not fit moves to the Two-Year Notional as follow-on."><Input type="number" min={0} max={50} step="1" value={fields.estimateInputs.reservePercent ?? ""} onChange={event => { const raw = event.target.value; const { reservePercent: _previous, ...rest } = fields.estimateInputs; updateFields({ estimateInputs: raw === "" ? rest : { ...rest, reservePercent: Math.min(50, Math.max(0, Number(raw) || 0)) } }); }} placeholder="8" /></Field>}
-              <Field label="BSAS term starts" required={fields.fundingSource === "bsas"} hint={fields.fundingSource === "bsas" ? undefined : "Leave blank for the day after the entitlement ends."}><Input type="date" value={fields.bsasStart} onChange={event => updateFields({ bsasStart: event.target.value })} /></Field>
-              <Field label="BSAS term ends" hint="Leave blank for twelve months after the BSAS start. BSAS hours not used by this date are forfeited."><Input type="date" value={fields.bsasEnd} onChange={event => updateFields({ bsasEnd: event.target.value })} /></Field>
-            </>}
-            <Field label="Compatibility target release" required hint="The maintained catalog is evaluated against this release. Current ESXi versions remain derived from RVTools evidence."><Select value={fields.compatibilityTargetRelease} onValueChange={value => updateFields({ compatibilityTargetRelease: value as typeof fields.compatibilityTargetRelease })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{HCL_CATALOG_RELEASES.map(release => <SelectItem key={release} value={release}>{release}</SelectItem>)}</SelectContent></Select></Field>
+            {customerFields}
+            {fundingFields}
+            {releaseField}
           </div></section>
         </TabsContent>
 
@@ -147,18 +146,38 @@ export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPla
             <h2 className="mt-1 text-2xl font-semibold tracking-tight">Delivery Scope, Timing, and Outcomes</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-s500">Set the planned project start for design and mobilization, then set the implementation-services start for the month when platform build, upgrade, and migration work is expected to begin. For example, a customer can start design now and target March for implementation. Changing these dates or other confirmed inputs immediately refreshes the deterministic operational plan. The separate Notional remains monthly and runs from the planned project start through the calculated entitlement end.</p>
             <div className="mt-6 grid gap-5 md:grid-cols-2">
-              <Field label="Planned project start" required hint="When design, mobilization, and delivery-baseline work begins. This is independent of the entitlement period."><Input type="date" value={fields.plannedProjectStart || fields.targetStart} onChange={event => updateFields({ plannedProjectStart: event.target.value })} /></Field>
-              <Field label="Implementation services start" required hint="When management-domain build, upgrade, migration, and other implementation services are expected to begin. Use a later date when the customer is starting with design now."><Input type="date" min={fields.plannedProjectStart || fields.targetStart} value={fields.plannedImplementationStart || fields.plannedProjectStart || fields.targetStart} onChange={event => updateFields({ plannedImplementationStart: event.target.value })} /></Field>
-              <Field label="Planned project completion" required><Input type="date" value={fields.targetComplete} onChange={event => updateFields({ targetComplete: event.target.value })} /></Field>
-              <Field label="Execution schedule cadence" hint="Design starts at the planned project start; implementation activities begin at the implementation-services start. Monthly is best for a high-level plan."><Select value={fields.adoptionCadence} onValueChange={value => updateFields({ adoptionCadence: value as typeof fields.adoptionCadence })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="month">Calendar months</SelectItem><SelectItem value="week">Weekly windows</SelectItem></SelectContent></Select></Field>
-              <Field label="Hardware availability"><Select value={fields.hardwareAvailability} onValueChange={value => updateFields({ hardwareAvailability: value as typeof fields.hardwareAvailability })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="existing">Existing / available</SelectItem><SelectItem value="new">New procurement required</SelectItem><SelectItem value="unknown">Not yet known</SelectItem></SelectContent></Select></Field>
-              {fields.hardwareAvailability === "new" && <Field label="Estimated lead time (weeks)"><Input type="number" min={0} max={104} value={fields.hardwareLeadWeeks || ""} onChange={event => updateFields({ hardwareLeadWeeks: Math.min(104, Math.max(0, Number(event.target.value) || 0)) })} /></Field>}
+              {scheduleFields}
+              {hardwareFields}
             </div>
-            {fields.plannedProjectStart && fields.plannedImplementationStart && fields.plannedImplementationStart > fields.plannedProjectStart ? <div className="mt-5 rounded-lg border border-s200 bg-s50/70 px-4 py-3 text-sm leading-6 text-s600"><strong>Design-first plan:</strong> design and delivery-baseline work begins on {fields.plannedProjectStart}; implementation, upgrade, and migration services are held for {fields.plannedImplementationStart}. The generated Entitlement Notional will show that preparation gap rather than implying services start immediately.</div> : <div className="mt-5 rounded-lg border border-s100 bg-s50 px-4 py-3 text-sm leading-6 text-s600"><strong>Immediate implementation plan:</strong> design, mobilization, and implementation services currently share the planned project start. Move the implementation-services start later when the customer is not ready for build or migration work.</div>}
-            <div className="mt-7"><Label className="text-sm font-semibold">Which VCF outcomes should the plan prioritize?</Label><div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">{capabilities.map(capability => { const checked = fields.priorities.includes(capability.value); const available = isPlanOutcomeAvailable(`${capability.value}:core`, effectivePlatformEdition(fields)); return <label key={capability.value} className={`flex items-start gap-3 rounded-lg border p-4 transition-colors ${available ? "cursor-pointer" : "cursor-not-allowed opacity-60"} ${checked && available ? "border-s600 bg-s600 text-white" : "border-s100 hover:bg-s50"}`}><Checkbox checked={checked} disabled={!available && !checked} className="mt-0.5" onCheckedChange={next => updateFields({ priorities: next ? [...fields.priorities, capability.value] : fields.priorities.filter(item => item !== capability.value) })} /><span><strong className="block text-sm">{capability.label}</strong><span className={`mt-1 block text-xs leading-5 ${checked && available ? "text-s200" : "text-s400"}`}>{available ? capability.description : "Requires VCF; not included with VVF."}</span></span></label>; })}</div></div>
+            {deliveryStartNote}
+            {outcomePicker}
             <DetailedAdoptionIntake fields={fields} onPatch={updateFields} />
-            <Field label="Delivery Assumptions and Calendar Constraints" hint="Capture only material assumptions, fixed dates, customer responsibilities, blackout windows, or sequencing constraints."><Textarea className="mt-2 min-h-28" value={fields.timelineNotes} onChange={event => updateFields({ timelineNotes: event.target.value })} placeholder="Example: customer supplies DNS and IP allocations; production freeze in December; datacenter exit must finish by Q3." /></Field>
+            {timelineNotesField}
           </section>
+        </TabsContent>
+
+        <TabsContent value="customer-details">
+          <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm md:p-7"><p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Who</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Customer</h2><div className="mt-6 grid gap-5 md:grid-cols-2">{customerFields}</div></section>
+        </TabsContent>
+
+        <TabsContent value="funding">
+          <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm md:p-7"><p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Funding</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Entitlement and BSAS</h2><div className="mt-6 grid gap-5 md:grid-cols-2">{fundingFields}</div></section>
+        </TabsContent>
+
+        <TabsContent value="schedule">
+          <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm md:p-7"><p className="text-xs font-medium uppercase tracking-wide text-ink-muted">When</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Schedule</h2><div className="mt-6 grid gap-5 md:grid-cols-2">{scheduleFields}</div>{deliveryStartNote}</section>
+        </TabsContent>
+
+        <TabsContent value="scope">
+          <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm md:p-7"><p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Scope</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Outcomes and delivery scope</h2><div className="mt-6 grid gap-5 md:grid-cols-2">{hardwareFields}</div>{outcomePicker}<DetailedAdoptionIntake fields={fields} onPatch={updateFields} /></section>
+        </TabsContent>
+
+        <TabsContent value="target-release">
+          <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm md:p-7"><p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Compatibility</p><h2 className="mt-1 text-2xl font-semibold tracking-tight">Target release</h2><div className="mt-6 grid gap-5 md:grid-cols-2">{releaseField}</div></section>
+        </TabsContent>
+
+        <TabsContent value="notes">
+          <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm md:p-7">{timelineNotesField}</section>
         </TabsContent>
 
         <TabsContent value="review" className="space-y-5">

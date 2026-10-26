@@ -1,11 +1,14 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { createDefaultDocument, engagementDocumentSchema } from "../shared/fcp";
+import { createHash } from "node:crypto";
+import { createDefaultDocument, engagementDocumentSchema, migrateDocument, type EngagementDocument } from "../shared/fcp";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
-import { renderFcpHtml } from "./fcpRenderer";
+import { compareIssued, prepareIssue } from "./fcpIssue";
+import { checkCondensedFcp } from "./condensedFcpChecks";
+import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { renderPdf } from "./pdf";
 import { hoursFillOptions } from "./hoursFill";
 import { scopedEffortForDocument } from "./rateCard";
@@ -25,6 +28,16 @@ import { systemStatus } from "./systemStatus";
 function requireRow<T>(row: T | undefined): T {
   if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Engagement not found" });
   return row;
+}
+
+/**
+ * The FCP as the workspace shows it: the condensed (customer) report with the draft mark, and the content checks it
+ * would face on export. Effort is priced here so rates never reach the client.
+ */
+function draftFcp(title: string, document: EngagementDocument) {
+  const html = renderCondensedFcpHtml(title, document, { effort: scopedEffortForDocument(document), draft: true });
+  const checks = checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount, bsasOnly: document.fields.fundingSource === "bsas" });
+  return { html, checks };
 }
 
 /** Turns a db write result into the procedure's return value or the matching tRPC error. */
@@ -162,9 +175,57 @@ export const appRouter = router({
     versions: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.listFcpVersions(viewerFor(ctx.user), input.id)) ?? []),
     version: protectedProcedure.input(z.object({ id: recordId, versionId: recordId })).query(async ({ ctx, input }) => {
       const version = requireRow(await db.getFcpVersion(viewerFor(ctx.user), input.id, input.versionId));
-      return { id: version.id, versionNumber: version.versionNumber, title: version.title, label: version.label, data: version.data };
+      return { id: version.id, versionNumber: version.versionNumber, title: version.title, label: version.label, createdAt: version.createdAt, data: version.data };
     }),
     saveVersion: protectedProcedure.input(z.object({ id: recordId, label: z.string().trim().min(1).max(160) })).mutation(async ({ ctx, input }) => requireRow(await db.createFcpVersion(viewerFor(ctx.user), input.id, input.label, "manual"))),
+    /** A person's decision on a tracker segment that disagrees with the FCP plan type; logged in History. */
+    decideSegment: protectedProcedure
+      .input(z.object({ id: recordId, choice: z.enum(["match-tracker", "keep-plan"]) }))
+      .mutation(async ({ ctx, input }) => unwrap(await lockAware(() => db.decideSegment(viewerFor(ctx.user), ctx.user.name ?? ctx.user.email ?? null, input.id, input.choice)))),
+    /** Issued versions, newest first, and whether the working FCP has moved on since the current one. */
+    issued: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => {
+      const viewer = viewerFor(ctx.user);
+      const versions = requireRow(await db.listIssuedVersions(viewer, input.id));
+      const current = requireRow(await db.getEngagement(viewer, input.id));
+      const latest = versions.find(version => version.status === "issued");
+      const hash = createHash("sha256").update(JSON.stringify(migrateDocument(current.data))).digest("hex");
+      return { versions: versions.map(({ dataHash: _hash, ...version }) => version), changedSinceIssue: latest ? latest.dataHash !== hash : null };
+    }),
+    /** What issuing now would produce: the checks and the change summary. Writes nothing. */
+    issuePreview: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => {
+      const prepared = requireRow(await prepareIssue(viewerFor(ctx.user), input.id));
+      return { failures: prepared.failures, changeSummary: prepared.changeSummary, unchanged: prepared.unchanged, basedOnIssue: prepared.basedOn?.issueNumber ?? null };
+    }),
+    /** Issues the saved FCP as the next numbered version, exactly as rendered now, without the draft mark. */
+    issue: protectedProcedure
+      .input(z.object({ id: recordId, label: z.string().trim().max(160).default(""), revisionNote: z.string().trim().max(2000).nullable().default(null) }))
+      .mutation(async ({ ctx, input }) => {
+        const viewer = viewerFor(ctx.user);
+        const prepared = requireRow(await prepareIssue(viewer, input.id));
+        if (prepared.failures.length) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued because it failed these checks:\n- ${prepared.failures.join("\n- ")}` });
+        if (prepared.unchanged) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Nothing has changed since issue ${prepared.basedOn?.issueNumber}.` });
+        return unwrap(await lockAware(() => db.issueFcpVersion(viewer, input.id, { title: prepared.title, data: prepared.document, effort: prepared.effort, html: prepared.html, label: input.label, revisionNote: input.revisionNote || null, changeSummary: prepared.changeSummary, basedOnVersionId: prepared.basedOn?.id ?? null })));
+      }),
+    /** Replaces the working FCP with the current issued version (saved to History first), to start the next revision. */
+    revise: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => unwrap(await lockAware(() => db.reviseFromIssued(viewerFor(ctx.user), input.id)))),
+    recordApproval: protectedProcedure
+      .input(z.object({ id: recordId, versionId: recordId, party: z.enum(["broadcom", "customer"]), on: isoDay, note: z.string().trim().max(2000).nullable().default(null) }))
+      .mutation(async ({ ctx, input }) => unwrap(await db.recordApproval(viewerFor(ctx.user), input.id, input.versionId, input.party, { on: input.on, note: input.note || null }))),
+    /** Two issued versions compared: the change summary from the earlier to the later, and both as issued. */
+    compareIssued: protectedProcedure
+      .input(z.object({ id: recordId, versionIds: z.tuple([recordId, recordId]).refine(([a, b]) => a !== b, "Pick two different issued versions") }))
+      .query(async ({ ctx, input }) => requireRow(await compareIssued(viewerFor(ctx.user), input.id, input.versionIds))),
+    /** A signed link to an issued version, exactly as issued. Downloading it writes nothing. */
+    issuedDownloadTicket: protectedProcedure.input(z.object({ id: recordId, versionId: recordId, format: z.enum(["html", "pdf"]) })).mutation(async ({ ctx, input }) => {
+      requireRow(await db.getIssuedVersion(viewerFor(ctx.user), input.id, input.versionId));
+      return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, "issued-fcp", input.versionId)}` };
+    }),
+    /** Hours consumed as of a date, newest first. */
+    consumption: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.listConsumptionEntries(viewerFor(ctx.user), input.id)) ?? []),
+    /** Anyone who can see the engagement records consumption by hand; Salesforce entries come only from the connector. */
+    addConsumption: protectedProcedure
+      .input(z.object({ id: recordId, asOf: isoDay, consumedHours: z.number().min(0).max(1_000_000), note: z.string().trim().max(2000).nullable().default(null) }))
+      .mutation(async ({ ctx, input }) => unwrap(await db.addConsumptionEntry(viewerFor(ctx.user), input.id, { asOf: input.asOf, consumedHours: Math.round(input.consumedHours * 100) / 100, note: input.note || null }))),
     restoreVersion: protectedProcedure.input(z.object({ id: recordId, versionId: recordId })).mutation(async ({ ctx, input }) => requireRow(await lockAware(() => db.restoreFcpVersion(viewerFor(ctx.user), input.id, input.versionId)))),
   }),
   reports: router({
@@ -239,7 +300,10 @@ export const appRouter = router({
       }),
     }),
     /** Read-only. There is deliberately no procedure that changes a source or flag: that is an environment change plus an approval record. */
-    status: adminProcedure.query(() => systemStatus()),
+    status: adminProcedure.query(async ({ ctx }) => {
+      const viewer = viewerFor(ctx.user);
+      return { ...systemStatus(), segmentMismatches: await db.countSegmentMismatches(viewer), inferredSegments: await db.countInferredSegments(viewer) };
+    }),
   }),
   effort: router({
     /** Scoped effort and the internal fit check; rates stay on the server. A mutation so the document travels in the body. */
@@ -248,8 +312,8 @@ export const appRouter = router({
     fillOptions: protectedProcedure.input(z.object({ data: engagementDocumentSchema })).mutation(({ input }) => hoursFillOptions(input.data)),
   }),
   document: router({
-    preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ html: renderFcpHtml(input.title, input.data) })),
-    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum(["fcp", "condensed-fcp", "plan-output", "building-blocks"]).default("fcp") })).mutation(async ({ ctx, input }) => {
+    preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => draftFcp(input.title, input.data)),
+    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum([/** @deprecated The full template; no UI sends it. Removed with server/fcpRenderer.ts. */ "fcp", "condensed-fcp", "plan-output", "building-blocks"]).default("condensed-fcp") })).mutation(async ({ ctx, input }) => {
       if ((input.format === "xlsx") !== (input.documentType === "building-blocks")) throw new TRPCError({ code: "BAD_REQUEST", message: "The Building Blocks workbook is only available as XLSX." });
       requireRow(await db.getEngagement(viewerFor(ctx.user), input.id));
       // Every customer document export keeps the FCP as it was sent.
@@ -258,9 +322,9 @@ export const appRouter = router({
       }
       return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, input.documentType)}` };
     }),
-    html: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ filename: safeFilename(input.title, "html"), mime: "text/html;charset=utf-8", content: renderFcpHtml(input.title, input.data) })),
+    html: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ filename: safeFilename(input.title, "html"), mime: "text/html;charset=utf-8", content: draftFcp(input.title, input.data).html })),
     pdf: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(async ({ input }) => {
-      const pdf = await renderPdf(renderFcpHtml(input.title, input.data));
+      const pdf = await renderPdf(draftFcp(input.title, input.data).html);
       return { filename: safeFilename(input.title, "pdf"), mime: "application/pdf", base64: Buffer.from(pdf).toString("base64") };
     }),
   }),

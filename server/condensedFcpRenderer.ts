@@ -265,7 +265,14 @@ tr{break-inside:avoid}
 @media screen{body{max-width:11in;margin:0 auto}.cover{width:100%}}
 `;
 
-export type CondensedFcpOptions = { today?: string; effort: ScopedEffort };
+/**
+ * `draft` is a render option, never a document field, so it cannot be saved into a document. It marks every page
+ * "DRAFT, not for distribution"; when it is absent the output is byte-identical to before it existed.
+ */
+export type CondensedFcpOptions = { today?: string; effort: ScopedEffort; draft?: boolean };
+
+/** Fixed position, so print repeats it on every page. Text and CSS only, no fonts or images. */
+const DRAFT_MARK = `<style>.draft-mark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font:800 60px/1 Arial,"Helvetica Neue",sans-serif;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;color:rgba(110,110,110,.24);pointer-events:none;z-index:9999}@media print{.draft-mark{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style><div class="draft-mark" aria-hidden="true">Draft, not for distribution</div>`;
 
 export function renderCondensedFcpHtml(title: string, input: EngagementDocument, options: CondensedFcpOptions): string {
   // A BSAS-only deal is drawn with BSAS in the entitlement's place: BSAS hours, the BSAS term, and no dollar figure.
@@ -619,5 +626,5 @@ ${report.revision ? `<div class="revision">Revision: ${esc(report.revision)}</di
 
   const cover = `<section class="cover">${cdwLogoSvg("logo")}${cdwLogoSvg("orbit", "")}<div class="eyebrow">Functional Consumption Plan · ${esc(customer)}</div><h1>Amazing happens when ${esc(customer)} runs a modern VMware Cloud Foundation private cloud with confidence.</h1><div class="sign">Make Amazing Happen.</div><div class="meta"><div><b>Prepared for</b>${esc(customer)}</div><div><b>Date</b>${esc(longDate(asOf))}</div><div><b>Prepared by</b>CDW Consulting Solution Architecture</div></div><div class="legend">${esc(LEGEND)}</div></section>`;
 
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} - FCP</title><style>${CSS}</style></head><body>${cover}<table class="page"><thead><tr><td>${strip}</td></tr></thead><tfoot><tr><td><div class="legendrow">${esc(LEGEND)}</div></td></tr></tfoot><tbody><tr><td>${body}</td></tr></tbody></table><button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} - FCP</title><style>${CSS}</style></head><body>${options.draft ? DRAFT_MARK : ""}${cover}<table class="page"><thead><tr><td>${strip}</td></tr></thead><tfoot><tr><td><div class="legendrow">${esc(LEGEND)}</div></td></tr></tfoot><tbody><tr><td>${body}</td></tr></tbody></table><button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button></body></html>`;
 }

@@ -58,10 +58,11 @@ These values were read from the live schemas. The injector also reads them from 
 | `hardwareAvailability` | `existing` \| `new` \| `unknown` |
 | `adoptionCadence` | `month` \| `week` |
 | `compatibilityTargetRelease` | `ESXi 9.0` \| `ESXi 9.1` |
-| `customerSegment` | `unspecified` \| `commercial` \| `public-sector` |
+| `commercialPlan` | `true` \| `false`: the plan is built as Commercial (Building Blocks workbook, VVF allowed) |
+| `customerSegment` | Deprecated: read only once, for documents saved before `commercialPlan`. The deal segment is set on the tracker record. |
 | `priorities[]` | `operations` \| `automation` \| `networking` \| `security` \| `resilience` \| `kubernetes` \| `private-ai` |
 | `adoptionDetails.upgradePath` | `undecided` \| `in-place` \| `converge` \| `import-workload-domain` \| `greenfield` \| `hybrid` \| `design-only` \| `new-build` \| `migration-waves` (the last two are older values the builder converts) |
-| `adoptionDetails.platformEdition` | `vcf` \| `vvf` (VVF applies only when `customerSegment` is `commercial`) |
+| `adoptionDetails.platformEdition` | `vcf` \| `vvf` (VVF applies only when `commercialPlan` is `true`) |
 | `adoptionDetails.domainTopology` | `undecided` \| `consolidated` \| `standard` |
 | `adoptionDetails.principalStorage` | `undecided` \| `vsan` \| `nfs-v3` \| `vmfs-fc` \| `other-existing` |
 | `adoptionDetails.industryTemplate` | `general-enterprise` \| `healthcare-life-sciences` \| `financial-services-insurance` \| `manufacturing-retail-distributed` \| `public-sector-education` \| `digital-products-technology` |
@@ -91,7 +92,7 @@ These values were read from the live schemas. The injector also reads them from 
   "priorities": ["Operations", "Automation", "Private AI", "DR"],
   "adoptionCadence": "monthly",
   "compatibilityTargetRelease": "VCF 9.1",
-  "customerSegment": "Commercial",
+  "commercialPlan": true,
   "adoptionDetails": {
     "upgradePath": "in-place upgrade",
     "domainTopology": "Standard",

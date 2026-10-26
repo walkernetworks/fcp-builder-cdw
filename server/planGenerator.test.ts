@@ -245,10 +245,10 @@ describe("greenfield delivery length", () => {
 
 describe("VMware vSphere Foundation plans", () => {
   const vvf = (details: AdoptionDetailsPatch, fields: Partial<EngagementDocument["fields"]> = {}) =>
-    plan({ platformEdition: "vvf", ...details }, { customerSegment: "commercial", ...fields });
+    plan({ platformEdition: "vvf", ...details }, { customerSegment: "commercial", commercialPlan: true, ...fields });
 
-  it("applies VVF only to commercial customers", () => {
-    const corporate = plan({ platformEdition: "vvf", upgradePath: "greenfield" }, { customerSegment: "corporate" });
+  it("applies VVF only on a Commercial plan", () => {
+    const corporate = plan({ platformEdition: "vvf", upgradePath: "greenfield" }, { customerSegment: "corporate", commercialPlan: false });
     expect(activities(corporate.adoptionTimeline).some(item => item.id === "bar-management-domain")).toBe(true);
     const commercial = vvf({ upgradePath: "greenfield" });
     expect(activities(commercial.adoptionTimeline).some(item => item.id === "bar-management-domain")).toBe(false);
@@ -301,7 +301,7 @@ describe("generated plans across pathways and editions", () => {
           kubernetes: ["developer-experience"],
           automation: ["data-services"],
           privateAi: ["pilot-onboarding"],
-        }, { customerSegment: "commercial", priorities: ["operations", "networking", "security", "resilience", "kubernetes", "automation", "private-ai"] });
+        }, { customerSegment: "commercial", commercialPlan: true, priorities: ["operations", "networking", "security", "resilience", "kubernetes", "automation", "private-ai"] });
         for (const timeline of [document.adoptionTimeline, document.twoYearPlan]) expect(validateTimeline(timeline)).toEqual([]);
         expect(validateTimelineSequence(document.adoptionTimeline)).toEqual([]);
       });

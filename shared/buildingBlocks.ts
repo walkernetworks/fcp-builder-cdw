@@ -305,6 +305,6 @@ function withRequiredDependencies(assessments: BuildingBlockAssessment[], vvf: b
   return assessments;
 }
 
-export function isCommercialCustomer(fields: Pick<MinimalFields, "customerSegment">): boolean {
-  return fields.customerSegment === "commercial";
+export function isCommercialPlan(fields: Pick<MinimalFields, "commercialPlan">): boolean {
+  return fields.commercialPlan;
 }

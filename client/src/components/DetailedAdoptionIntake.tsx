@@ -7,9 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryReviewContent, industryDiscoveryPromptBlock, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "@shared/industryDiscovery";
 import { effectivePlatformEdition, FIXED_GANTT_CATEGORIES, getVcfComponentDesignOwnership, getVcfPlaybookPlan, getVcfPlaybookWorkPackageOwnership, isPlanOutcomeAvailable, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, VVF_DELIVERY_PATHS, type AdoptionDepth, type AdoptionDetails, type Capability, type DomainTopology, type IndustryTemplateId, type MinimalFields, type PrincipalStorage, type UpgradePath } from "@shared/fcp";
 
-type DetailKey = "operations" | "automation" | "networking" | "security" | "resilience" | "kubernetes" | "privateAi";
+export type DetailKey = "operations" | "automation" | "networking" | "security" | "resilience" | "kubernetes" | "privateAi";
 
-type DiscoveryGroup = {
+export type DiscoveryGroup = {
   capability: Capability;
   key: DetailKey;
   title: string;
@@ -17,7 +17,7 @@ type DiscoveryGroup = {
   options: Array<{ value: string; label: string; description: string }>;
 };
 
-const discoveryGroups: DiscoveryGroup[] = [
+export const discoveryGroups: DiscoveryGroup[] = [
   {
     capability: "operations",
     key: "operations",
@@ -112,7 +112,7 @@ const discoveryGroups: DiscoveryGroup[] = [
   },
 ];
 
-const upgradeOptions: Array<{ value: UpgradePath; label: string; description: string }> = [
+export const upgradeOptions: Array<{ value: UpgradePath; label: string; description: string }> = [
   { value: "undecided", label: "Pathway decision required", description: "Generate the requirements and decision register first; do not imply implementation until the pathway is approved." },
   { value: "in-place", label: "In-place upgrade", description: "Upgrade supported existing vSphere in place, validate each wave, and bring the accepted platform under VCF management." },
   { value: "converge", label: "Converge existing vCenter", description: "Convert a healthy existing vCenter and cluster into the VCF management domain." },
@@ -122,13 +122,13 @@ const upgradeOptions: Array<{ value: UpgradePath; label: string; description: st
   { value: "design-only", label: "Architecture and implementation-ready design", description: "Deliver the complete requirements, decisions, logical/physical design, runbook, and acceptance package without execution." },
 ];
 
-const topologyOptions: Array<{ value: DomainTopology; label: string }> = [
+export const topologyOptions: Array<{ value: DomainTopology; label: string }> = [
   { value: "undecided", label: "Topology decision required" },
   { value: "standard", label: "Standard — separate management and workload domains" },
   { value: "consolidated", label: "Consolidated — management and workloads share the management domain" },
 ];
 
-const storageOptions: Array<{ value: PrincipalStorage; label: string }> = [
+export const storageOptions: Array<{ value: PrincipalStorage; label: string }> = [
   { value: "undecided", label: "Storage decision required" },
   { value: "vsan", label: "vSAN" },
   { value: "nfs-v3", label: "NFS v3" },
@@ -136,7 +136,7 @@ const storageOptions: Array<{ value: PrincipalStorage; label: string }> = [
   { value: "other-existing", label: "Other existing storage — validate workflow" },
 ];
 
-const depthOptions: Array<{ value: AdoptionDepth; label: string; description: string }> = [
+export const depthOptions: Array<{ value: AdoptionDepth; label: string; description: string }> = [
   { value: "not-selected", label: "Not selected", description: "No delivery depth is committed." },
   { value: "tier-1", label: "Tier 1 · Deployed", description: "Installed and functional with baseline configuration." },
   { value: "tier-2", label: "Tier 2 · Operationalized", description: "Used by the platform team with customer-specific workflows and controls." },
@@ -153,7 +153,7 @@ const componentDesignTitles: Record<Capability, string> = {
   "private-ai": "Private AI Design",
 };
 
-const softPrerequisiteOptions = [
+export const softPrerequisiteOptions = [
   { value: "dns-ntp", label: "DNS, NTP, and core services", description: "Validate required shared services before platform build." },
   { value: "ip-pools", label: "Management and workload IP pools", description: "Reserve and validate addressing independently of hardware delivery." },
   { value: "tor-switch-design", label: "ToR switch design and ports", description: "Finalize physical-fabric port design and readiness in parallel with provisioning." },
@@ -207,7 +207,7 @@ export function DetailedAdoptionIntake({ fields, onPatch }: Props) {
     <section className="mt-7 border border-s100 bg-s50/70 p-4 md:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4"><div className="max-w-3xl"><p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Work package design</p><h3 className="mt-1 text-lg font-semibold text-ink">Shape the high-level SOW plan</h3><p className="mt-2 text-sm leading-6 text-s500">Confirm the delivery path, outcomes, assumptions, and prerequisites that should become delivery work packages. Unselected work is not assumed to be in scope.</p></div><div className="rounded-lg border border-s100 bg-surface px-4 py-2 text-right"><p className="text-[11px] font-medium uppercase tracking-wide text-s400">Detailed outcomes selected</p><p className="mt-1 text-xl font-semibold text-ink">{selectedFocusCount}</p></div></div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-[1.1fr_.9fr]"><div className="rounded-lg border border-s100 bg-surface p-4">{fields.customerSegment === "commercial" && <p className="mb-3 text-xs leading-5 text-s400"><strong className="text-s600">Platform edition:</strong> {edition === "vvf" ? "VMware vSphere Foundation (VVF)" : "VMware Cloud Foundation (VCF)"} · change it on the Customer step.</p>}<Label className="text-sm font-semibold">{edition === "vvf" ? "VVF" : "VCF"} adoption pathway</Label><Select value={playbookPlan.path} onValueChange={value => updateDetails({ upgradePath: value as UpgradePath })}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent>{pathwayOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select><p className="mt-2 text-xs leading-5 text-s400">{pathwayOptions.find(option => option.value === playbookPlan.path)?.description || playbookPlan.description}</p><div className="mt-4 grid gap-3 md:grid-cols-2"><div><Label className="text-xs font-semibold">Domain topology</Label><Select value={details.domainTopology} onValueChange={value => updateDetails({ domainTopology: value as DomainTopology })}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent>{topologyOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div><div><Label className="text-xs font-semibold">Principal storage</Label><Select value={details.principalStorage} onValueChange={value => updateDetails({ principalStorage: value as PrincipalStorage })}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent>{storageOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div></div></div><div className="rounded-lg border border-s100 bg-surface p-4"><Label className="text-sm font-semibold">Customer outcome and assumption summary</Label><Textarea className="mt-2 min-h-32 bg-surface" value={details.notes} onChange={event => updateDetails({ notes: event.target.value })} placeholder="Capture confirmed desired outcomes, scope boundaries, integration constraints, pilot assumptions, decision owners, or customer responsibilities." /></div></div>
+      <div className="mt-5 grid gap-4 xl:grid-cols-[1.1fr_.9fr]"><div className="rounded-lg border border-s100 bg-surface p-4"><p className="mb-3 text-xs leading-5 text-s400"><strong className="text-s600">Platform edition:</strong> {edition === "vvf" ? "VMware vSphere Foundation (VVF)" : "VMware Cloud Foundation (VCF)"} · change it with the customer details.</p><Label className="text-sm font-semibold">{edition === "vvf" ? "VVF" : "VCF"} adoption pathway</Label><Select value={playbookPlan.path} onValueChange={value => updateDetails({ upgradePath: value as UpgradePath })}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent>{pathwayOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select><p className="mt-2 text-xs leading-5 text-s400">{pathwayOptions.find(option => option.value === playbookPlan.path)?.description || playbookPlan.description}</p><div className="mt-4 grid gap-3 md:grid-cols-2"><div><Label className="text-xs font-semibold">Domain topology</Label><Select value={details.domainTopology} onValueChange={value => updateDetails({ domainTopology: value as DomainTopology })}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent>{topologyOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div><div><Label className="text-xs font-semibold">Principal storage</Label><Select value={details.principalStorage} onValueChange={value => updateDetails({ principalStorage: value as PrincipalStorage })}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent>{storageOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div></div></div><div className="rounded-lg border border-s100 bg-surface p-4"><Label className="text-sm font-semibold">Customer outcome and assumption summary</Label><Textarea className="mt-2 min-h-32 bg-surface" value={details.notes} onChange={event => updateDetails({ notes: event.target.value })} placeholder="Capture confirmed desired outcomes, scope boundaries, integration constraints, pilot assumptions, decision owners, or customer responsibilities." /></div></div>
 
       <section className="mt-4 overflow-hidden rounded-lg border border-s100 bg-surface shadow-[var(--shadow-card)]"><div className="border-b-2 border-cdw-red bg-s50 px-4 py-4"><p className="cta-eyebrow">Generated from the selected pathway</p><div className="mt-1 flex flex-wrap items-start justify-between gap-3"><div><h4 className="text-lg font-semibold text-ink">{playbookPlan.label}</h4><p className="mt-1 max-w-3xl text-xs leading-5 text-ink-muted">{playbookPlan.description}</p></div><span className="chip">{playbookPlan.designPackages.length} design · {playbookPlan.implementationPackages.length} implementation</span></div></div><div className="grid gap-px bg-s100 lg:grid-cols-2"><div className="bg-surface p-4"><p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Design deliverables</p><div className="mt-3 space-y-3">{playbookPlan.designPackages.map((item, index) => <article key={item.id} className="border-l-2 border-cdw-red pl-3"><p className="text-xs font-semibold text-ink">{index + 1}. {item.title}</p><p className="mt-1 text-xs leading-5 text-s500">{item.outcome}</p><p className="mt-1 text-[11px] leading-4 text-s400"><strong>Accepted when:</strong> {item.acceptance}</p></article>)}</div></div><div className="bg-surface p-4"><p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Implementation and adoption</p>{playbookPlan.implementationPackages.length ? <div className="mt-3 space-y-3">{playbookPlan.implementationPackages.map((item, index) => <article key={item.id} className="border-l-2 border-cdw-red pl-3"><p className="text-xs font-semibold text-ink">{index + 1}. {item.title}</p><p className="mt-1 text-xs leading-5 text-s500">{item.outcome}</p><p className="mt-1 text-[11px] leading-4 text-s400"><strong>Starts after:</strong> {item.dependsOn}</p></article>)}</div> : <p className="mt-3 text-xs leading-5 text-s500">No implementation work is generated until the pathway is selected or execution is explicitly included.</p>}</div></div><div className="border-t border-s100 bg-s50 px-4 py-3 text-xs leading-5 text-s500"><strong>Decision inputs:</strong> {playbookPlan.decisions.join(" · ")}</div></section>
 

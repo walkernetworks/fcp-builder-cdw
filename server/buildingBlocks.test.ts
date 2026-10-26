@@ -10,7 +10,7 @@ function commercialPlan(hoursModel: "v1" | "v2" = "v1"): EngagementDocument {
   Object.assign(document.fields, {
     hoursModel,
     customerName: "Acme",
-    customerSegment: "commercial",
+    customerSegment: "commercial", commercialPlan: true,
     plannedProjectStart: "2026-06-01",
     plannedImplementationStart: "2026-08-01",
     entitlementStart: "2026-06-01",
@@ -197,7 +197,7 @@ describe("building blocks workbook", () => {
 describe("building blocks for a VVF plan", () => {
   it("covers VVF Core instead of the VCF management domain", () => {
     const document = createDefaultDocument();
-    Object.assign(document.fields, { customerName: "Acme", customerSegment: "commercial", plannedProjectStart: "2026-06-01", plannedImplementationStart: "2026-06-01", entitlementStart: "2026-06-01", priorities: ["security"] });
+    Object.assign(document.fields, { customerName: "Acme", customerSegment: "commercial", commercialPlan: true, plannedProjectStart: "2026-06-01", plannedImplementationStart: "2026-06-01", entitlementStart: "2026-06-01", priorities: ["security"] });
     Object.assign(document.fields.adoptionDetails, { upgradePath: "greenfield", platformEdition: "vvf", principalStorage: "vsan", security: ["waf"] });
     const plan = refreshDerivedDocument(document, { forceRebuild: true });
     const byArea = new Map(assessBuildingBlocks(plan, "2026-09-23").map(item => [item.area, item]));
