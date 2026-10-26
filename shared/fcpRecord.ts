@@ -128,4 +128,4 @@ export function segmentDecisionLabel(segment: Segment, commercialPlan: boolean, 
 }
 
 /** The History chip for each reason a copy was kept. */
-export const HISTORY_REASON_LABEL = { manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore", decision: "Decision" } as const;
+export const HISTORY_REASON_LABEL = { manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore", decision: "Decision", issued: "Issued" } as const;
