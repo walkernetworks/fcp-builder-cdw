@@ -1,10 +1,12 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { createDefaultDocument, engagementDocumentSchema, type EngagementDocument } from "../shared/fcp";
+import { createHash } from "node:crypto";
+import { createDefaultDocument, engagementDocumentSchema, migrateDocument, type EngagementDocument } from "../shared/fcp";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
+import { compareIssued, prepareIssue } from "./fcpIssue";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { renderPdf } from "./pdf";
@@ -180,6 +182,44 @@ export const appRouter = router({
     decideSegment: protectedProcedure
       .input(z.object({ id: recordId, choice: z.enum(["match-tracker", "keep-plan"]) }))
       .mutation(async ({ ctx, input }) => unwrap(await lockAware(() => db.decideSegment(viewerFor(ctx.user), ctx.user.name ?? ctx.user.email ?? null, input.id, input.choice)))),
+    /** Issued versions, newest first, and whether the working FCP has moved on since the current one. */
+    issued: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => {
+      const viewer = viewerFor(ctx.user);
+      const versions = requireRow(await db.listIssuedVersions(viewer, input.id));
+      const current = requireRow(await db.getEngagement(viewer, input.id));
+      const latest = versions.find(version => version.status === "issued");
+      const hash = createHash("sha256").update(JSON.stringify(migrateDocument(current.data))).digest("hex");
+      return { versions: versions.map(({ dataHash: _hash, ...version }) => version), changedSinceIssue: latest ? latest.dataHash !== hash : null };
+    }),
+    /** What issuing now would produce: the checks and the change summary. Writes nothing. */
+    issuePreview: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => {
+      const prepared = requireRow(await prepareIssue(viewerFor(ctx.user), input.id));
+      return { failures: prepared.failures, changeSummary: prepared.changeSummary, unchanged: prepared.unchanged, basedOnIssue: prepared.basedOn?.issueNumber ?? null };
+    }),
+    /** Issues the saved FCP as the next numbered version, exactly as rendered now, without the draft mark. */
+    issue: protectedProcedure
+      .input(z.object({ id: recordId, label: z.string().trim().max(160).default(""), revisionNote: z.string().trim().max(2000).nullable().default(null) }))
+      .mutation(async ({ ctx, input }) => {
+        const viewer = viewerFor(ctx.user);
+        const prepared = requireRow(await prepareIssue(viewer, input.id));
+        if (prepared.failures.length) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued because it failed these checks:\n- ${prepared.failures.join("\n- ")}` });
+        if (prepared.unchanged) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Nothing has changed since issue ${prepared.basedOn?.issueNumber}.` });
+        return unwrap(await lockAware(() => db.issueFcpVersion(viewer, input.id, { title: prepared.title, data: prepared.document, effort: prepared.effort, html: prepared.html, label: input.label, revisionNote: input.revisionNote || null, changeSummary: prepared.changeSummary, basedOnVersionId: prepared.basedOn?.id ?? null })));
+      }),
+    /** Replaces the working FCP with the current issued version (saved to History first), to start the next revision. */
+    revise: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => unwrap(await lockAware(() => db.reviseFromIssued(viewerFor(ctx.user), input.id)))),
+    recordApproval: protectedProcedure
+      .input(z.object({ id: recordId, versionId: recordId, party: z.enum(["broadcom", "customer"]), on: isoDay, note: z.string().trim().max(2000).nullable().default(null) }))
+      .mutation(async ({ ctx, input }) => unwrap(await db.recordApproval(viewerFor(ctx.user), input.id, input.versionId, input.party, { on: input.on, note: input.note || null }))),
+    /** Two issued versions compared: the change summary from the earlier to the later, and both as issued. */
+    compareIssued: protectedProcedure
+      .input(z.object({ id: recordId, versionIds: z.tuple([recordId, recordId]).refine(([a, b]) => a !== b, "Pick two different issued versions") }))
+      .query(async ({ ctx, input }) => requireRow(await compareIssued(viewerFor(ctx.user), input.id, input.versionIds))),
+    /** A signed link to an issued version, exactly as issued. Downloading it writes nothing. */
+    issuedDownloadTicket: protectedProcedure.input(z.object({ id: recordId, versionId: recordId, format: z.enum(["html", "pdf"]) })).mutation(async ({ ctx, input }) => {
+      requireRow(await db.getIssuedVersion(viewerFor(ctx.user), input.id, input.versionId));
+      return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, "issued-fcp", input.versionId)}` };
+    }),
     /** Hours consumed as of a date, newest first. */
     consumption: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.listConsumptionEntries(viewerFor(ctx.user), input.id)) ?? []),
     /** Anyone who can see the engagement records consumption by hand; Salesforce entries come only from the connector. */
