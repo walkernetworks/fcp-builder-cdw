@@ -35,7 +35,7 @@ describe("db.ts engagement access", () => {
   const functions = [...source.matchAll(/^export async function (\w+)\(([\s\S]*?)^}$/gm)].map(([, name, body]) => ({ name, body }));
   // Direct use of the helper, or delegation to a function that is itself scoped (checked by this same test).
   const scoped = /visibleEngagements\(|deletableEngagements\(|requireVisibleEngagement\(|getEngagement\(viewer|getFcpVersion\(viewer/;
-  const touchesEngagementData = /\b(engagements|stageEvents|sourceChainItems|engagementAssignments|fcpVersions)\b/;
+  const touchesEngagementData = /\b(engagements|stageEvents|sourceChainItems|engagementAssignments|fcpVersions|fcpConsumptionEntries)\b/;
   // Delegates to scoped functions, or writes a new row into the viewer's own workspace.
   const allowed: Record<string, RegExp> = {
     createEngagement: /workspaceId: viewer\.workspaceId/,

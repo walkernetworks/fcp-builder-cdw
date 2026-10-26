@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { HISTORY_REASON_LABEL } from "@shared/fcpRecord";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -93,7 +94,7 @@ export function FcpVersionsSheet({ engagementId, open, onClose, readOnly, onRest
                       <p className="text-sm font-semibold text-ink">{version.label}</p>
                       <p className="text-xs text-ink-muted">{new Date(version.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}{version.createdByName ? ` · ${version.createdByName}` : ""}</p>
                     </div>
-                    <Chip>{{ manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore" }[version.reason]}</Chip>
+                    <Chip>{HISTORY_REASON_LABEL[version.reason]}</Chip>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" className="h-7" onClick={() => setPreviewId(version.id)}><Eye className="size-3.5" /> Preview</Button>

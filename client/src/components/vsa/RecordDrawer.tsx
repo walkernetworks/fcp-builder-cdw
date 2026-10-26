@@ -1,4 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
+import { HISTORY_REASON_LABEL } from "@shared/fcpRecord";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -12,7 +14,7 @@ import { buildLockState } from "@shared/fcpRecord";
 import { staleness } from "@shared/vsaDashboard";
 import { authorizationCheck, canTransition, customerApprovalItems, fcpTrailing, isMainStage, openSources, requiresBroadcomApproval, STAGE_LABELS, stageProgression, STAGES, stageWarnings, type GateDates, type Stage } from "@shared/vsaStage";
 import { expiryVerdict, formatDay, formatMoney } from "@shared/vsaViews";
-import { ExternalLink, File, FileText, Folder, FolderOpen, History, Link2, Lock } from "lucide-react";
+import { ExternalLink, File, FileText, Folder, FolderOpen, History, Link2, Loader2, Lock, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -34,7 +36,7 @@ export function RecordDrawer({ id, onClose, initialTab = "overview" }: { id: num
       <SheetContent side="right" className="w-full gap-0 overflow-y-auto bg-surface p-0 sm:max-w-[720px]">
         {!record.data && <SheetTitle className="sr-only">Engagement details</SheetTitle>}
         <DataMount id="recordDrawer" query={query} empty={{ title: "Engagement not found", sub: "It may have been deleted, or it belongs to another workspace." }} className="min-h-full">
-          {data => <RecordDetail key={`${data.record.id}-${initialTab}`} data={data} initialTab={initialTab} />}
+          {data => <RecordDetail key={`${data.record.id}-${initialTab}`} data={data} initialTab={initialTab} onDeleted={onClose} />}
         </DataMount>
       </SheetContent>
     </Sheet>
@@ -62,7 +64,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: DrawerTab }) {
+function RecordDetail({ data, initialTab, onDeleted }: { data: TrackerRecord; initialTab: DrawerTab; onDeleted: () => void }) {
   const today = todayIso();
   const settings = useOperationalSettings();
   const { record, sources, assignments } = data;
@@ -127,6 +129,7 @@ function RecordDetail({ data, initialTab }: { data: TrackerRecord; initialTab: D
             <p className="text-[11px] text-ink-subtle">From the gate dates on Stage &amp; gates.</p>
           </Section>
           <RecordFieldGroups form={form} groups={OVERVIEW_GROUPS} />
+          <DeleteRecord record={record} onDeleted={onDeleted} />
         </TabsContent>
 
         <TabsContent value="stage" className="mt-0"><StageAndGates data={data} form={form} /></TabsContent>
@@ -237,6 +240,48 @@ function MoveStage({ data, to, setTo }: { data: TrackerRecord; to: Stage | ""; s
   );
 }
 
+/** Deleting the record, for its owner or an admin; everything that hangs off it goes with it. */
+function DeleteRecord({ record, onDeleted }: { record: TrackerRecord["record"]; onDeleted: () => void }) {
+  const { user } = useAuth();
+  const utils = trpc.useUtils();
+  const [confirming, setConfirming] = useState(false);
+  const remove = trpc.engagement.delete.useMutation();
+  const canDelete = Boolean(user) && (user?.role === "admin" || record.ownerId === user?.id);
+  const confirm = async () => {
+    try {
+      await remove.mutateAsync({ id: record.id });
+      setConfirming(false);
+      onDeleted();
+      await utils.invalidate();
+      toast.success(`${record.customerName} deleted`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The record was not deleted");
+    }
+  };
+  return (
+    <Section title="Delete record">
+      {canDelete ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="max-w-md text-xs text-ink-muted">Removes the record, its FCP, History, issued versions, consumption, stage history, sources and people. This cannot be undone.</p>
+          <Button variant="outline" size="sm" className="text-state-blocked-text" onClick={() => setConfirming(true)}><Trash2 className="size-3.5" /> Delete record</Button>
+        </div>
+      ) : <p className="text-xs text-ink-muted">Only the record's owner or an admin can delete it.</p>}
+      <AlertDialog open={confirming} onOpenChange={open => !remove.isPending && setConfirming(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {record.customerName}?</AlertDialogTitle>
+            <AlertDialogDescription>The record, its FCP, History, issued versions, consumption, stage history, sources and people are removed for everyone in the workspace. This cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={remove.isPending} onClick={event => { event.preventDefault(); void confirm(); }}>{remove.isPending && <Loader2 className="size-4 animate-spin" />} Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Section>
+  );
+}
+
 /** The FCP behind the record: readiness, who is editing, its dates, and the latest versions. */
 function FcpTab({ data }: { data: TrackerRecord }) {
   const { record, sources } = data;
@@ -270,7 +315,7 @@ function FcpTab({ data }: { data: TrackerRecord }) {
                     <span className="block truncate text-[13px] text-ink">{version.label}</span>
                     <span className="block text-xs text-ink-muted">{new Date(version.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}{version.createdByName ? ` · ${version.createdByName}` : ""}</span>
                   </span>
-                  <Chip>{{ manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore" }[version.reason]}</Chip>
+                  <Chip>{HISTORY_REASON_LABEL[version.reason]}</Chip>
                 </li>
               ))}
             </ol>

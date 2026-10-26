@@ -97,3 +97,35 @@ export function segmentDisagrees(segment: Segment | null, commercialPlan: boolea
   if (!segment) return false;
   return (segment === "commercial") !== commercialPlan;
 }
+
+export type SegmentChoice = "match-tracker" | "keep-plan";
+/** A person's decision on a segment mismatch, stored on the record (`engagements.segmentReview`). */
+export type SegmentReview = { segment: Segment; commercialPlan: boolean; choice: SegmentChoice; byUserId: number; byName: string | null; at: string };
+
+export const SEGMENT_NAMES: Record<Segment, string> = { corporate: "Corporate", strategic: "Strategic", commercial: "Commercial" };
+const planName = (commercialPlan: boolean) => (commercialPlan ? "Commercial" : "Standard");
+
+/**
+ * The readiness warning for a tracker segment that disagrees with the plan type, or null. A person's decision on
+ * exactly this pair silences it; a change to either side raises it again. The system never resolves it.
+ */
+export function segmentWarning(segment: Segment | null, commercialPlan: boolean, review: SegmentReview | null): string | null {
+  if (!segment || !segmentDisagrees(segment, commercialPlan)) return null;
+  if (review && review.segment === segment && review.commercialPlan === commercialPlan) return null;
+  return `Tracker segment is ${SEGMENT_NAMES[segment]}; this plan is built as ${planName(commercialPlan)}.`;
+}
+
+/** The plan type that matches a tracker segment. */
+export function commercialPlanForSegment(segment: Segment): boolean {
+  return segment === "commercial";
+}
+
+/** The History label for a decision. */
+export function segmentDecisionLabel(segment: Segment, commercialPlan: boolean, choice: SegmentChoice): string {
+  return choice === "match-tracker"
+    ? `Segment decision: plan changed to ${planName(commercialPlan)} to match the tracker segment (${SEGMENT_NAMES[segment]})`
+    : `Segment decision: plan kept as ${planName(commercialPlan)}; tracker segment is ${SEGMENT_NAMES[segment]}`;
+}
+
+/** The History chip for each reason a copy was kept. */
+export const HISTORY_REASON_LABEL = { manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore", decision: "Decision", issued: "Issued" } as const;

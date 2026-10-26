@@ -117,6 +117,7 @@ The **Vis** column is the structural tag from section 7: **C** = customer-facing
 |---|---|---|---|---|---|
 | `segment` | enum `corporate`, `strategic`, `commercial` | yes | | I | "BC Segment". New field. The deal segment. Separate from the FCP plan inputs (`data.fields.commercialPlan`, `adoptionDetails.platformEdition`), and never copied into them on an existing record (docs/FCP-WORKSPACE.md §8.2) |
 | `segmentSource` | enum `inferred_from_fcp` | yes | | I | NULL: the segment was set by a person or the import (confirmed). `inferred_from_fcp`: filled by migration 0009 from the FCP's old segment field, which had no Strategic value, so it needs review. Cleared by any later segment edit or import. Admin → System status counts these. |
+| `segmentReview` | json | yes | | I | Migration 0010. A person's decision on a tracker segment that disagrees with the FCP plan type: `{ segment, commercialPlan, choice: match-tracker \| keep-plan, byUserId, byName, at }`. Silences the warning for exactly that pair; a change to either side raises it again. Written only by `fcpRecord.decideSegment`. |
 | `program` | enum `entitlement`, `extended_expert`, `bsas`, `cash_sow`, `government_entitlement`, `government_bsas` | yes | | I | "Program" |
 | `region` | enum `west`, `east` | yes | | I | "West vs East" |
 | `customerState` | varchar(64) | yes | | I | "Customer State" (US state of the customer) |
@@ -305,7 +306,22 @@ SharePoint mapping: "Sales Rep / Owner" → `sales_rep`, "CDW Account Manager" �
 
 This is a table rather than six `*UserId` columns on `engagements` because most imported assignees will not be app users yet. A row can hold a name and email now and link to a user later, and each role carries its own Broadcom email without twelve more columns.
 
-### 6.4 `app_settings` (new)
+### 6.4 `fcpVersions` issue columns and `fcpConsumptionEntries` (FCP Phase 3)
+
+`fcpVersions` keeps every History save. An **issued** version is a row with `reason = 'issued'` and an `issueNumber` (1, 2, 3 per engagement; unique with the engagement):
+- `status` is `issued`, then `superseded` when the next one is issued.
+- `basedOnVersionId` points to the version it revises.
+- `effortSnapshot`, `renderedHtml` and `renderHash` hold what was issued.
+- It also carries `revisionNote`, `changeSummary`, `issuedAt` and `issuedByUserId`.
+- Approvals are recorded per party: `broadcomApprovedOn`, `broadcomApprovedByUserId` and `broadcomApprovalNote`, and the same three for the customer.
+
+On a History save every one of these columns is null.
+
+`fcpConsumptionEntries` holds `engagementId`, `asOf`, `consumedHours`, `source` (`manual`, or the reserved `salesforce`), `externalId`, `note`, `enteredByUserId` and `createdAt`. It is append-only. The unique key (`engagementId`, `source`, `externalId`) lets a future Salesforce read upsert its rows without touching manual ones.
+
+Both tables are reached only through a visible engagement. The column tags are `FCP_VERSION_COLUMN_VISIBILITY` and `CONSUMPTION_ENTRY_COLUMN_VISIBILITY` in `shared/vsaFields.ts`. See `docs/FCP-WORKSPACE.md` section 13.
+
+### 6.5 `app_settings` (new)
 
 Workflow parameters an admin can change: the per-stage stale thresholds, the work plan warning, the expiry band limits, and the gate display labels. The stage sequence and gate applicability stay in code. One row per key (`key`, `value` json, `updatedByUserId`, `updatedAt`), seeded from the code constants, which remain the fallback. The keys and rules are in `docs/CONFIGURATION.md` (Operational settings) and `shared/appSettings.ts`.
 
@@ -650,7 +666,7 @@ Each FCP belongs to its tracker record. The workspace shows the record's stage, 
 | `data` | json | no | The full FCP document. Customer-facing content, same classification as `engagements.data` |
 | `dataHash` | varchar(64) | no | SHA-256 of the document JSON |
 | `label` | varchar(160) | no | For example "Sent to customer for review", "Submitted: moved to Broadcom Approval", "Exported Condensed FCP (PDF)" |
-| `reason` | enum `manual`, `submitted`, `export`, `restore` | no | |
+| `reason` | enum `manual`, `submitted`, `export`, `restore`, `decision` (migration 0010: a person resolved a tracker segment mismatch; the label states the choice) | no | |
 | `createdByUserId` | int | yes | FK `users.id`, `ON DELETE SET NULL` |
 | `createdAt` | timestamp | no | |
 

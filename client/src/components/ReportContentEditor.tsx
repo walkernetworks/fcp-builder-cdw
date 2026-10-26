@@ -1,4 +1,5 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { signedAssignmentHours } from "@shared/fcpRecord";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,7 @@ type Props = {
 };
 
 export type ReportSection =
-  | "entitlement" | "heard" | "problems" | "questions" | "people" | "milestones" | "open-items" | "cover"
+  | "entitlement" | "consumption" | "heard" | "problems" | "questions" | "people" | "milestones" | "open-items" | "cover"
   | "situation" | "profile" | "elements" | "technical" | "constraints" | "asks" | "customer-work"
   | "sizing" | "environment" | "licensing" | "assignments" | "details";
 
@@ -45,13 +46,28 @@ function YesNo({ value, onChange }: { value: boolean | null; onChange: (value: b
   );
 }
 
-type GeneratedProps<Row> = {
+export type GeneratedProps<Row> = {
   generated: Array<GeneratedRow<Row>>;
   hiddenCount: number;
   onOverride: (item: GeneratedRow<Row>) => void;
   onHide: (key: string) => void;
   onRestore: () => void;
 };
+
+/** Wiring for a section the app partly generates: override copies the row into the planner's rows and hides the original. */
+export function generatedRowsFor<S extends GeneratedSection>(document: EngagementDocument, generated: GeneratedReport, section: S, onChange: (document: EngagementDocument) => void): GeneratedProps<GeneratedReport[S][number]["row"]> {
+  const report = document.report;
+  const all = generated[section] as Array<GeneratedRow<any>>;
+  const hidden = new Set(report.hiddenGenerated);
+  const setHidden = (hiddenGenerated: string[]) => onChange({ ...document, report: { ...report, hiddenGenerated } });
+  return {
+    generated: visibleGenerated(document, generated, section) as Array<GeneratedRow<any>>,
+    hiddenCount: all.filter(item => hidden.has(item.key)).length,
+    onOverride: item => onChange({ ...document, report: { ...report, [section]: [...(report[section] as unknown[]), structuredClone(item.row)], hiddenGenerated: Array.from(new Set([...report.hiddenGenerated, item.key])) } }),
+    onHide: key => setHidden(Array.from(new Set([...report.hiddenGenerated, key]))),
+    onRestore: () => setHidden(report.hiddenGenerated.filter(key => !all.some(item => item.key === key))),
+  };
+}
 
 function GeneratedActions({ onOverride, onHide }: { onOverride: () => void; onHide: () => void }) {
   return (
@@ -70,7 +86,7 @@ function RestoreHidden({ count, onRestore }: { count: number; onRestore: () => v
 const FROM_PLAN = <span className="mr-2 inline-block rounded bg-s100 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-s500">From the plan</span>;
 
 /** A list of lines; generated lines appear first and can be overridden or hidden. */
-function TextList({ items, onChange, placeholder, generated }: { items: string[]; onChange: (items: string[]) => void; placeholder: string; generated?: GeneratedProps<string> }) {
+export function TextList({ items, onChange, placeholder, generated }: { items: string[]; onChange: (items: string[]) => void; placeholder: string; generated?: GeneratedProps<string> }) {
   return (
     <div className="space-y-2">
       {generated?.generated.map(item => (
@@ -94,7 +110,7 @@ function TextList({ items, onChange, placeholder, generated }: { items: string[]
 }
 
 /** An editable table of rows; generated rows appear first, read-only, and can be overridden or hidden. */
-function RowTable<Row extends Record<string, unknown>>({ rows, columns, blank, onChange, addLabel, generated }: { rows: Row[]; columns: Array<Column<Row>>; blank: Row; onChange: (rows: Row[]) => void; addLabel: string; generated?: GeneratedProps<Row> }) {
+export function RowTable<Row extends Record<string, unknown>>({ rows, columns, blank, onChange, addLabel, generated }: { rows: Row[]; columns: Array<Column<Row>>; blank: Row; onChange: (rows: Row[]) => void; addLabel: string; generated?: GeneratedProps<Row> }) {
   const update = (index: number, key: keyof Row, value: unknown) => onChange(rows.map((row, position) => (position === index ? { ...row, [key]: value } : row)));
   const display = (value: unknown) => (Array.isArray(value) ? (value.length ? value.join(", ") : "to be named") : value === null || value === undefined || value === "" ? "—" : String(value));
   const cell = (row: Row, index: number, column: Column<Row>) => {
@@ -160,13 +176,13 @@ function Section({ value, title, heading, filled, hint, children }: { value: Rep
   );
 }
 
-function Group({ title, description, members, children }: { title: string; description: string; members: readonly ReportSection[]; children: ReactNode }) {
+function Group({ title, description, members, children }: { title?: string; description?: string; members: readonly ReportSection[]; children: ReactNode }) {
   const filter = useContext(SectionFilter);
   if (filter && !members.some(member => filter.has(member))) return null;
   return (
     <div className="mt-6">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-s400">{title}</p>
-      <p className="mt-1 text-xs leading-5 text-s400">{description}</p>
+      {title && <p className="text-[11px] font-medium uppercase tracking-wide text-s400">{title}</p>}
+      {description && <p className="mt-1 text-xs leading-5 text-s400">{description}</p>}
       {children}
     </div>
   );
@@ -186,23 +202,13 @@ export function ReportContentEditor({ document, onChange, sections }: Props) {
   const setEntitlement = (patch: Partial<ReportContent["entitlement"]>) => set("entitlement", { ...report.entitlement, ...patch });
   // A BSAS-only deal takes its hours from the Engagement step; the consumption record here is the BSAS consumption.
   const bsasOnly = document.fields.fundingSource === "bsas";
+  const signedHours = signedAssignmentHours(document);
   const setDiscovery = (patch: Partial<ReportContent["discovery"]>) => set("discovery", { ...report.discovery, ...patch });
   const textInput = (value: string | null, onValue: (value: string | null) => void, placeholder = "") => <Input className="bg-surface" value={value ?? ""} placeholder={placeholder} onChange={event => onValue(event.target.value === "" ? null : event.target.value)} />;
   const numberInput = (value: number | null, onValue: (value: number | null) => void, placeholder = "") => <Input className="bg-surface" type="number" min={0} value={value ?? ""} placeholder={placeholder} onChange={event => onValue(numberOrNull(event.target.value))} />;
   const dateInput = (value: string | null, onValue: (value: string | null) => void) => <Input className="bg-surface" type="date" value={value ?? ""} onChange={event => onValue(event.target.value || null)} />;
 
-  /** Wiring for a section the app partly generates: override copies the row into the planner's rows and hides the original. */
-  function generatedFor<S extends GeneratedSection>(section: S): GeneratedProps<GeneratedReport[S][number]["row"]> {
-    const all = generated[section] as Array<GeneratedRow<any>>;
-    const hidden = new Set(report.hiddenGenerated);
-    return {
-      generated: visibleGenerated(document, generated, section) as Array<GeneratedRow<any>>,
-      hiddenCount: all.filter(item => hidden.has(item.key)).length,
-      onOverride: item => onChange({ ...document, report: { ...report, [section]: [...(report[section] as unknown[]), structuredClone(item.row)], hiddenGenerated: Array.from(new Set([...report.hiddenGenerated, item.key])) } }),
-      onHide: key => set("hiddenGenerated", Array.from(new Set([...report.hiddenGenerated, key]))),
-      onRestore: () => set("hiddenGenerated", report.hiddenGenerated.filter(key => !all.some(item => item.key === key))),
-    };
-  }
+  const generatedFor = <S extends GeneratedSection>(section: S) => generatedRowsFor(document, generated, section, onChange);
 
   const missing = [
     !bsasOnly && !report.entitlement.hours && "Entitled hours",
@@ -227,16 +233,28 @@ export function ReportContentEditor({ document, onChange, sections }: Props) {
       </div>
       </>}
 
-      <Group title="From the customer" description="What only a conversation with the customer can provide." members={["entitlement", "heard", "problems", "questions", "people", "milestones", "open-items", "cover"]}>
-        <Accordion type="multiple" defaultValue={opened(["entitlement", "heard"])} className="border-t border-s100">
-          <Section value="entitlement" title={bsasOnly ? "BSAS consumption" : "Entitlement hours"} filled={Boolean((bsasOnly || report.entitlement.hours) && report.entitlement.hoursConsumed !== null)} hint={bsasOnly ? "From the latest BSAS consumption record. This drives the KPI tiles, burndown and weekly pace. The BSAS hours and term are on the Engagement step." : "From the signed resource assignments and the latest consumption record. These drive the KPI tiles, burndown and weekly pace. The entitlement value and start date are on the Engagement step."}>
+      {/* Funding facts come from the order and CDW's own records, not from a conversation with the customer. */}
+      <Group members={["entitlement", "consumption"]}>
+        <Accordion type="multiple" defaultValue={opened(["entitlement", "consumption"])} className="border-t border-s100">
+          {!bsasOnly && (
+            <Section value="entitlement" title="Entitled hours" filled={Boolean(report.entitlement.hours)} hint="What the entitlement funds. Enter the total from the signed Broadcom resource assignments when they exist. Left blank, the plan derives the funded hours from the entitlement value.">
+              <div className="grid gap-3 md:grid-cols-3">
+                <Field label="Entitled hours">{numberInput(report.entitlement.hours, value => setEntitlement({ hours: value }), signedHours ? `${signedHours} from the signed resource assignments` : "Derived from the entitlement value")}</Field>
+              </div>
+              {signedHours !== null && <p className="mt-2 text-xs leading-5 text-s400">The signed resource assignments on this record total {signedHours} hours.</p>}
+            </Section>
+          )}
+          <Section value="consumption" title={bsasOnly ? "BSAS hours consumed" : "Hours consumed"} filled={report.entitlement.hoursConsumed !== null} hint={bsasOnly ? "From the latest BSAS consumption entry: the hours used so far and the date of that entry. The BSAS hours and term are set above." : "From the latest consumption entry in CDW's records: the hours used so far and the date of that entry. A different number from the entitled hours, from a different source."}>
             <div className="grid gap-3 md:grid-cols-3">
-              {!bsasOnly && <Field label="Entitled hours">{numberInput(report.entitlement.hours, value => setEntitlement({ hours: value }))}</Field>}
               <Field label="Hours consumed">{numberInput(report.entitlement.hoursConsumed, value => setEntitlement({ hoursConsumed: value }))}</Field>
               <Field label="Consumed as of">{dateInput(report.entitlement.consumedAsOf, value => setEntitlement({ consumedAsOf: value }))}</Field>
             </div>
           </Section>
+        </Accordion>
+      </Group>
 
+      <Group title="From the customer" description="What only a conversation with the customer can provide." members={["heard", "problems", "questions", "people", "milestones", "open-items", "cover"]}>
+        <Accordion type="multiple" defaultValue={opened(["heard"])} className="border-t border-s100">
           <Section value="heard" title="Customer positions" heading="What we heard, and what we have built to" filled={report.whatWeHeard.length > 0} hint="For each area (goal, build path, storage, networking, DR, add-ons): what the customer said, in their words, and how this plan responds.">
             <RowTable rows={report.whatWeHeard} columns={[{ key: "component", label: "Area", width: "16%", placeholder: "Storage" }, { key: "customerPosition", label: "What the customer said", type: "longtext", placeholder: "Keep the existing array" }, { key: "whereItLands", label: "How the plan responds", type: "longtext", placeholder: "Fibre Channel stays principal storage" }]} blank={{ component: "", customerPosition: "", whereItLands: "" }} addLabel="Add position" onChange={rows => set("whatWeHeard", rows)} />
           </Section>

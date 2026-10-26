@@ -8,8 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DetailedAdoptionIntake } from "@/components/DetailedAdoptionIntake";
 import { CompatibilityHandoffPanel, DECISION_VERDICT } from "@/components/CompatibilityHandoffPanel";
+import { withFieldPatch } from "@/lib/fieldPatch";
 import { parseRvToolsFiles } from "@/lib/rvtools";
-import { applyScheduleFieldPatch, assessReadiness, calculateEntitlementEndDate, effectivePlatformEdition, emptyInventory, isPlanOutcomeAvailable, withPlatformEdition, type PlatformEdition, getHclSchedulePath, refreshDerivedDocument, summarizeVcfCompatibility, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
+import { assessReadiness, calculateEntitlementEndDate, effectivePlatformEdition, emptyInventory, isPlanOutcomeAvailable, withPlatformEdition, type PlatformEdition, getHclSchedulePath, refreshDerivedDocument, summarizeVcfCompatibility, type Capability, type EngagementDocument, type HardwarePlatformAssessment } from "@shared/fcp";
 import { HCL_CATALOG_RELEASES, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, hclFindingSeverityLabel, hclStatusLabel, summarizeHclFindings, type HclFinding } from "@shared/hcl";
 import { Download, ExternalLink, FileSpreadsheet, HardDrive, Loader2, MonitorCog, RotateCcw, Server, ShieldCheck, Upload } from "lucide-react";
 import { useRef, useState } from "react";
@@ -25,30 +26,6 @@ const capabilities: Array<{ value: Capability; label: string; description: strin
   { value: "private-ai", label: "Private AI", description: "AI-ready infrastructure after platform planning and design" },
 ];
 
-const derivedPlanInputFields = new Set<keyof EngagementDocument["fields"]>([
-  "entitlementAmount",
-  "entitlementStart",
-  "entitlementEnd",
-  // A BSAS-only deal plans on the BSAS term.
-  "fundingSource",
-  "bsasHours",
-  "bsasStart",
-  "bsasEnd",
-  "plannedProjectStart",
-  "plannedImplementationStart",
-  "targetStart",
-  "targetComplete",
-  "adoptionCadence",
-  "hardwareAvailability",
-  "hardwareLeadWeeks",
-  "priorities",
-  "timelineNotes",
-  "adoptionDetails",
-  "compatibilityTargetRelease",
-  // A Commercial plan decides whether a VVF edition choice applies.
-  "commercialPlan",
-]);
-
 type Props = {
   document: EngagementDocument;
   onChange: (document: EngagementDocument) => void;
@@ -63,16 +40,7 @@ export function PlanSetup({ document, onChange, onExportPlanOutput, exportingPla
   const [importing, setImporting] = useState(false);
   const fields = document.fields;
 
-  const updateFields = (patch: Partial<typeof fields>) => {
-    const nextFields = applyScheduleFieldPatch(fields, patch);
-    const changesDerivedPlan = Object.keys(patch).some(field => derivedPlanInputFields.has(field as keyof EngagementDocument["fields"]));
-    if (changesDerivedPlan) {
-      // Rebuild once: refreshDerivedDocument calculates readiness and the full plan together.
-      onChange(refreshDerivedDocument({ ...document, fields: nextFields }));
-      return;
-    }
-    onChange({ ...document, fields: nextFields, readiness: assessReadiness(nextFields, document.inventory, document.inventorySources.flatMap(source => source.warnings)) });
-  };
+  const updateFields = (patch: Partial<typeof fields>) => onChange(withFieldPatch(document, patch));
 
   const importFiles = async (files: File[]) => {
     if (!files.length) return;

@@ -1,25 +1,29 @@
-import { CondensedReportPanel, ReportJsonButton } from "@/components/CondensedReportPanel";
+import { ReportJsonButton } from "@/components/CondensedReportPanel";
 import { CustomerBriefImport } from "@/components/CustomerBriefImport";
 import { DeliveryBriefing } from "@/components/DeliveryBriefing";
-import { DeliverableCard, DeliveryPackageHeader, ExportPreferenceCard, ScopeAtGlance, StaffingSummary, WorkPackageRegister } from "@/components/fcp/workspaceParts";
+import { DeliverableCard, DeliveryPackageHeader, ExportPreferenceCard, ScopeAtGlance, StaffingSummary } from "@/components/fcp/workspaceParts";
 import { PlanSetup } from "@/components/PlanSetup";
 import { ReportContentEditor, type ReportSection } from "@/components/ReportContentEditor";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FcpRecordStrip, FcpVersionsSheet } from "@/components/vsa/FcpRecordPanels";
 import { Chip, DataMount, EmptyState } from "@/components/vsa/elements";
 import { useShell } from "@/components/vsa/ShellContext";
-import { EntitlementTimelineWithHours, NotionalTimelineWithHours } from "@/components/WorkPackageHours";
 import { trpc } from "@/lib/trpc";
 import { sectionFromSearch, type WorkspaceSection } from "@/lib/fcpWorkspaceRoutes";
 import { useFcpEngagement } from "@/lib/useFcpEngagement";
 import { isCommercialPlan } from "@shared/buildingBlocks";
-import { fundedFields, getFollowOnReadinessGuidance, synchronizeEntitlementNotionalFromOperational, type EngagementDocument } from "@shared/fcp";
+import { HISTORY_REASON_LABEL, segmentWarning } from "@shared/fcpRecord";
+import { SegmentReview } from "@/components/fcp/SegmentReview";
+import { FundingSection } from "@/components/fcp/FundingSection";
+import { ScopeSection } from "@/components/fcp/ScopeSection";
+import { PlanEditor } from "@/components/fcp/PlanEditor";
+import { IssuedRailList, IssuedVersionsList, IssuePanel } from "@/components/fcp/IssuedVersions";
+import { fundedFields, getFollowOnReadinessGuidance, type EngagementDocument } from "@shared/fcp";
 import { openSources, STAGE_LABELS } from "@shared/vsaStage";
-import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, ShieldCheck, Trash2, UsersRound, Workflow } from "lucide-react";
+import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, PanelRightClose, PanelRightOpen, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { toast } from "sonner";
@@ -43,14 +47,15 @@ const STATUS_LABEL: Record<SectionStatus, string> = { empty: "Not started", part
 const STATUS_DOT: Record<SectionStatus, string> = { empty: "border border-s300 bg-surface", partial: "bg-state-warn", complete: "bg-state-pass" };
 
 
-function sectionStatus(section: WorkspaceSection, document: EngagementDocument, openSourceCount: number | null, sourceCount: number | null): SectionStatus | null {
+function sectionStatus(section: WorkspaceSection, document: EngagementDocument, openSourceCount: number | null, sourceCount: number | null, segmentWarningOpen: boolean): SectionStatus | null {
   const f = document.fields;
   const report = document.report;
   const activities = document.adoptionTimeline.lanes.flatMap(lane => lane.bars).length;
   const level = (done: boolean, started: boolean): SectionStatus => (done ? "complete" : started ? "partial" : "empty");
   switch (section) {
     case "sources": return sourceCount === null ? null : level(sourceCount > 0 && openSourceCount === 0, openSourceCount !== sourceCount || report.briefVersion !== null);
-    case "engagement": return level(Boolean(f.customerName && (f.plannedProjectStart || f.targetStart) && f.targetComplete), Boolean(f.customerName));
+    // An open segment warning keeps the section in progress until a person decides it.
+    case "engagement": return level(Boolean(f.customerName && (f.plannedProjectStart || f.targetStart) && f.targetComplete) && !segmentWarningOpen, Boolean(f.customerName) || segmentWarningOpen);
     case "funding": return level(Boolean(fundedFields(f).entitlementStart && (f.fundingSource === "bsas" ? f.bsasHours : f.entitlementAmount)), Boolean(f.entitlementAmount || f.bsasHours || f.entitlementStart));
     case "estate": return level(Boolean(document.inventory.hosts && document.readiness.hardwarePlatforms.length), Boolean(document.inventory.hosts));
     case "scope": return level(Boolean(f.priorities.length && f.plannedImplementationStart), Boolean(f.priorities.length));
@@ -77,6 +82,8 @@ function Workspace({ id }: { id: number }) {
   const [section, setSectionState] = useState<WorkspaceSection>(() => sectionFromSearch(window.location.search));
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewHidden, setPreviewHidden] = useState(readPreviewHidden);
+  const hidePreview = (hidden: boolean) => { setPreviewHidden(hidden); writePreviewHidden(hidden); };
   const editorTop = useRef<HTMLDivElement>(null);
   const duplicate = trpc.engagement.duplicate.useMutation({ onSuccess: async row => { await utils.engagement.list.invalidate(); navigate(`/engagements/${row.id}/fcp`); toast.success("Engagement duplicated"); } });
   const remove = trpc.engagement.delete.useMutation({ onSuccess: async () => { await utils.engagement.list.invalidate(); navigate("/fcp"); toast.success("Engagement deleted"); } });
@@ -102,10 +109,13 @@ function Workspace({ id }: { id: number }) {
   }, [canSave]);
 
   const sources = record.data?.sources ?? null;
+  const tracker = record.data?.record ?? null;
+  const issueActions = { engagementId: id, title: fcp.title, document: fcp.document, readOnly: fcp.readOnly, saveDocument: fcp.saveDocument, reload: fcp.reload, segment: tracker?.segment ?? null };
+  const segmentWarningText = tracker ? segmentWarning(tracker.segment, fcp.document.fields.commercialPlan, tracker.segmentReview ?? null) : null;
   const statuses = useMemo(() => {
     const open = sources ? openSources(sources).length : null;
-    return Object.fromEntries(WORKSPACE_SECTIONS.map(item => [item.id, sectionStatus(item.id, fcp.document, open, sources ? sources.length : null)])) as Record<WorkspaceSection, SectionStatus | null>;
-  }, [fcp.document, sources]);
+    return Object.fromEntries(WORKSPACE_SECTIONS.map(item => [item.id, sectionStatus(item.id, fcp.document, open, sources ? sources.length : null, Boolean(segmentWarningText))])) as Record<WorkspaceSection, SectionStatus | null>;
+  }, [fcp.document, sources, segmentWarningText]);
 
   if (fcp.query.isLoading) return <div className="grid min-h-[70vh] place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div>;
   if (!fcp.query.data) return <NotAvailable />;
@@ -153,7 +163,7 @@ function Workspace({ id }: { id: number }) {
         </div>
       )}
 
-      <div className="mx-auto grid max-w-[1920px] gap-4 p-4 md:p-6 lg:grid-cols-[13rem_minmax(0,1fr)] xl:grid-cols-[13rem_minmax(0,1fr)_minmax(0,40%)]">
+      <div className={`mx-auto grid max-w-[1920px] gap-4 p-4 md:p-6 lg:grid-cols-[13rem_minmax(0,1fr)] ${previewHidden ? "" : "xl:grid-cols-[13rem_minmax(0,1fr)_minmax(0,40%)]"}`}>
         <SectionRail section={section} statuses={statuses} onSelect={setSection} engagementId={id} onOpenHistory={() => setHistoryOpen(true)} />
 
         <main ref={editorTop} className="min-w-0 scroll-mt-40 space-y-5">
@@ -168,19 +178,23 @@ function Workspace({ id }: { id: number }) {
               <Button variant="outline" size="sm" onClick={() => setSection("sources")}>Go to Sources</Button>
             </div>
           )}
-          <Button variant="outline" size="sm" className="xl:hidden" onClick={() => setPreviewOpen(true)}><Eye className="size-4" /> Preview the FCP</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" className={previewHidden ? "" : "xl:hidden"} onClick={() => setPreviewOpen(true)}><Eye className="size-4" /> Preview the FCP</Button>
+            {previewHidden && <Button variant="outline" size="sm" className="hidden xl:inline-flex" onClick={() => hidePreview(false)}><PanelRightOpen className="size-4" /> Show live preview</Button>}
+          </div>
           <fieldset disabled={fcp.readOnly} className="min-w-0 space-y-5">
             {section === "sources" && <>
               <FcpRecordStrip engagementId={id} document={document} onOpenSources={() => openRecord(id, "sources")} />
               <CustomerBriefImport document={document} onChange={fcp.mutateDocument} />
             </>}
             {section === "engagement" && <>
+              {tracker && <SegmentReview engagementId={id} document={document} segment={tracker.segment} segmentSource={tracker.segmentSource} review={tracker.segmentReview ?? null} readOnly={fcp.readOnly} saveDocument={fcp.saveDocument} />}
               <PlanSetup step="customer-details" {...setup} />
               <PlanSetup step="schedule" {...setup} />
             </>}
             {section === "funding" && <>
-              <PlanSetup step="funding" {...setup} />
-              <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["entitlement", "licensing"]} />
+              <FundingSection engagementId={id} document={document} onChange={fcp.mutateDocument} tracker={tracker ? { poHours: tracker.poHours, poReceivedOn: tracker.poReceivedOn } : null} readOnly={fcp.readOnly} />
+              <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["licensing"]} />
             </>}
             {section === "estate" && <>
               <PlanSetup step="upload" {...setup} />
@@ -191,20 +205,27 @@ function Workspace({ id }: { id: number }) {
             </>}
             {section === "scope" && <>
               <ScopeAtGlance document={document} />
-              <PlanSetup step="scope" {...setup} />
               {document.planAuthority === "manual" && <ManualPlanNotice onApply={fcp.buildPlan} />}
-              <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["profile", "elements"]} />
+              <ScopeSection document={document} onChange={fcp.mutateDocument} />
             </>}
-            {section === "plan" && <PlanSection document={document} onChange={fcp.mutateDocument} onRebuild={fcp.buildPlan} setup={setup} />}
+            {section === "plan" && <PlanSection document={document} onChange={fcp.mutateDocument} onRebuild={fcp.buildPlan} setup={setup} previewHtml={fcp.preview} />}
             {section === "narrative" && <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={NARRATIVE_SECTIONS} />}
             {section === "review" && <>
+              {segmentWarningText && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-state-warn/30 bg-state-warn-soft p-4 text-sm" role="status">
+                  <span className="text-state-warn-text"><strong>Needs a decision:</strong> {segmentWarningText}</span>
+                  <Button variant="outline" size="sm" className="bg-surface" onClick={() => setSection("engagement")}>Decide in Engagement</Button>
+                </div>
+              )}
               <DeliveryPackageHeader document={document} />
+              <IssuePanel {...issueActions} />
+              <IssuedVersionsList {...issueActions} />
               <section className="grid gap-3 rounded-lg border border-s100 bg-surface p-4 lg:grid-cols-2">
                 <ExportPreferenceCard title="Compatibility summary in the FCP" description="Include the target-release compatibility posture in the FCP: hosts by decision, the top compatibility actions, and the planning considerations from RVTools. The detailed evidence stays in the Compatibility Delivery Handoff." checked={document.fields.exportPreferences.includeVcfReadiness} onCheckedChange={includeVcfReadiness => fcp.mutateDocument({ ...document, fields: { ...document.fields, exportPreferences: { ...document.fields.exportPreferences, includeVcfReadiness } } })} switchId="include-vcf-readiness-export" />
                 <ExportPreferenceCard title="Delivery adoption timeline" description="Include the entitlement adoption timeline in the FCP so delivery leadership can align resources to the work-package windows. When it is off, the Two-Year Notional covers the whole plan from the project start." checked={document.fields.exportPreferences.includeOperationalTimeline} onCheckedChange={includeOperationalTimeline => fcp.mutateDocument({ ...document, fields: { ...document.fields, exportPreferences: { ...document.fields.exportPreferences, includeOperationalTimeline } } })} switchId="include-operational-timeline-export" />
               </section>
               <section className="grid gap-px overflow-hidden border border-s100 bg-s100 lg:grid-cols-2">
-                <DeliverableCard title="Functional Consumption Plan" label="For customer review" description="The customer plan: entitlement burndown, scoped effort, customer effort, design profile, timeline, and the adoption recommendation. Content checks run before every download." icon={FileCheck2} activeExport={fcp.activeExport} documentType="condensed-fcp" onExport={fcp.startExport} />
+                <DeliverableCard title="Functional Consumption Plan" label="Draft export" description="The working FCP, marked DRAFT on every page: for internal review. To send the customer a copy, issue a version above and download it from Issued versions. Content checks run before every download." icon={FileCheck2} activeExport={fcp.activeExport} documentType="condensed-fcp" onExport={fcp.startExport} />
                 <DeliverableCard title="Compatibility Delivery Handoff" label="Technical engineer evidence pack" description="Maintained-catalog host cohorts, release support, blockers, evidence gaps, owners, and the actions required before platform build." icon={ShieldCheck} activeExport={fcp.activeExport} documentType="plan-output" onExport={fcp.startExport} />
                 {isCommercialPlan(document.fields) && <DeliverableCard title="Building Blocks Workbook" label="Commercial plan · VCF 9 Building Blocks" description="Every Building Blocks tool block with its category start date, status, projected dates, and dependencies taken from this plan. Out-of-scope blocks start hidden." icon={FileSpreadsheet} activeExport={fcp.activeExport} documentType="building-blocks" formats={["xlsx"]} onExport={fcp.startExport} />}
               </section>
@@ -217,11 +238,13 @@ function Workspace({ id }: { id: number }) {
           </fieldset>
         </main>
 
-        <aside className="hidden min-w-0 xl:block">
-          <div className="sticky top-[150px] space-y-2">
-            <PreviewFrame html={fcp.preview} pending={fcp.previewPending} checks={fcp.previewChecks} onExpand={() => setPreviewOpen(true)} />
-          </div>
-        </aside>
+        {!previewHidden && (
+          <aside className="hidden min-w-0 xl:block">
+            <div className="sticky top-[150px] space-y-2">
+              <PreviewFrame html={fcp.preview} pending={fcp.previewPending} checks={fcp.previewChecks} onExpand={() => setPreviewOpen(true)} onHide={() => hidePreview(true)} />
+            </div>
+          </aside>
+        )}
       </div>
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
@@ -267,12 +290,11 @@ function SectionRail({ section, statuses, onSelect, engagementId, onOpenHistory 
           })}
         </ol>
       </nav>
+      <IssuedRailList engagementId={engagementId} onOpen={() => onSelect("review")} />
       <HistoryList engagementId={engagementId} onOpenAll={onOpenHistory} />
     </div>
   );
 }
-
-const REASON_LABEL = { manual: "Saved", submitted: "Submitted", export: "Exported", restore: "Before restore" } as const;
 
 /** Saved snapshots of the FCP, newest first. Not versions: "version" is kept for issued plans (Phase 3). */
 function HistoryList({ engagementId, onOpenAll }: { engagementId: number; onOpenAll: () => void }) {
@@ -290,7 +312,7 @@ function HistoryList({ engagementId, onOpenAll }: { engagementId: number; onOpen
             {data.slice(0, 5).map(entry => (
               <li key={entry.id} className="px-2 py-1.5">
                 <p className="text-xs font-medium text-ink">{new Date(entry.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</p>
-                <p className="truncate text-[11px] text-ink-muted">{REASON_LABEL[entry.reason]}{entry.reason === "manual" && entry.label ? `: ${entry.label}` : ""}{entry.createdByName ? ` · ${entry.createdByName}` : ""}</p>
+                <p className="truncate text-[11px] text-ink-muted">{HISTORY_REASON_LABEL[entry.reason]}{(entry.reason === "manual" || entry.reason === "decision") && entry.label ? `: ${entry.label}` : ""}{entry.createdByName ? ` · ${entry.createdByName}` : ""}</p>
               </li>
             ))}
           </ol>
@@ -300,12 +322,21 @@ function HistoryList({ engagementId, onOpenAll }: { engagementId: number; onOpen
   );
 }
 
-function PreviewFrame({ html, pending, checks, onExpand }: { html: string; pending: boolean; checks: string[]; onExpand: () => void }) {
+// Whether the side preview is hidden is a per-viewer convenience: kept in this browser only, and the page works without it.
+const PREVIEW_HIDDEN_KEY = "fcp.workspace.previewHidden";
+function readPreviewHidden(): boolean {
+  try { return window.localStorage.getItem(PREVIEW_HIDDEN_KEY) === "1"; } catch { return false; }
+}
+function writePreviewHidden(hidden: boolean) {
+  try { if (hidden) window.localStorage.setItem(PREVIEW_HIDDEN_KEY, "1"); else window.localStorage.removeItem(PREVIEW_HIDDEN_KEY); } catch { /* storage unavailable: the choice lasts for this visit */ }
+}
+
+function PreviewFrame({ html, pending, checks, onExpand, onHide }: { html: string; pending: boolean; checks: string[]; onExpand: () => void; onHide: () => void }) {
   return (
     <div className="overflow-hidden rounded-lg border border-s100 bg-surface shadow-[var(--shadow-card)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-s100 bg-s50 px-3 py-2">
         <div className="flex items-center gap-2 text-xs font-semibold text-ink"><FileText className="size-4" /> Live preview <Chip>Draft</Chip>{pending && <Loader2 className="size-3.5 animate-spin text-ink-muted" aria-label="Updating" />}</div>
-        <Button variant="outline" size="sm" className="h-7" onClick={onExpand}><Eye className="size-3.5" /> Open full preview</Button>
+        <div className="flex gap-1.5"><Button variant="outline" size="sm" className="h-7" onClick={onExpand}><Eye className="size-3.5" /> Open full preview</Button><Button variant="ghost" size="sm" className="h-7" onClick={onHide} aria-label="Hide the live preview"><PanelRightClose className="size-3.5" /> Hide</Button></div>
       </div>
       {html ? <iframe title="Live FCP preview" srcDoc={html} sandbox="allow-scripts" className="h-[calc(100vh-230px)] min-h-[560px] w-full bg-surface" /> : <div className="grid h-[560px] place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div>}
       {checks.length > 0 && <p className="border-t border-s100 bg-s50 px-3 py-2 text-[11px] leading-5 text-ink-muted">{checks.length} content check{checks.length === 1 ? "" : "s"} would stop the export. They are listed when you export.</p>}
@@ -313,23 +344,12 @@ function PreviewFrame({ html, pending, checks, onExpand }: { html: string; pendi
   );
 }
 
-function PlanSection({ document, onChange, onRebuild, setup }: { document: EngagementDocument; onChange: (document: EngagementDocument) => void; onRebuild: () => void; setup: Parameters<typeof PlanSetup>[0] }) {
+function PlanSection({ document, onChange, onRebuild, setup, previewHtml }: { document: EngagementDocument; onChange: (document: EngagementDocument) => void; onRebuild: () => void; setup: Parameters<typeof PlanSetup>[0]; previewHtml: string }) {
   const followOnGuidance = useMemo(() => getFollowOnReadinessGuidance(document.fields, document.inventory), [document.fields, document.inventory]);
   return <>
-    <WorkPackageRegister document={document} />
     <StaffingSummary document={document} />
-    <div className="rounded-lg border border-s100 bg-surface p-5 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Delivery basis</p><p className="mt-2 max-w-5xl text-sm leading-6 text-s600">{document.rationale}</p></div><Button variant="outline" size="sm" onClick={onRebuild}><RefreshCw className="size-4" /> {document.planAuthority === "manual" ? "Apply Playbook Template" : "Rebuild Generated Plan"}</Button></div>
-      {document.fields.timelineNotes && <div className="mt-4 border-l-4 border-state-warn bg-state-warn-soft px-4 py-3 text-xs leading-5 text-state-warn-text"><strong>Calendar constraints:</strong> {document.fields.timelineNotes}</div>}
-    </div>
-    <PlanSetup {...setup} step="notes" />
-    <Tabs defaultValue="adoption" className="space-y-4">
-      <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-none border border-s100 bg-surface p-1"><TabsTrigger value="adoption" className="gap-2 rounded-none px-4 py-2"><UsersRound className="size-4" /> Entitlement Adoption Timeline</TabsTrigger><TabsTrigger value="two-year" className="gap-2 rounded-none px-4 py-2"><Workflow className="size-4" /> Two-Year Notional</TabsTrigger></TabsList>
-      <TabsContent value="adoption"><EntitlementTimelineWithHours document={document} onChange={onChange} onTimelineChange={adoptionTimeline => onChange(synchronizeEntitlementNotionalFromOperational(document, adoptionTimeline))} description={document.adoptionTimeline.cadence === "week" ? "Use this weekly Entitlement Adoption Timeline to sequence work packages, coordinate delivery roles, and protect key milestones. Drag activities or their edges to refine the delivery windows." : "Use this monthly Entitlement Adoption Timeline to sequence work packages, coordinate delivery roles, and protect key milestones. Drag activities or their edges to refine the delivery windows."} /></TabsContent>
-      <TabsContent value="two-year" className="space-y-4">{followOnGuidance.blocked && <section className="border border-state-warn/30 bg-state-warn-soft p-4"><p className="text-xs font-medium uppercase tracking-wide text-state-warn-text">Consumption plan inputs still needed</p><h3 className="mt-1 text-base font-semibold text-ink">{followOnGuidance.title}</h3><p className="mt-2 max-w-4xl text-sm leading-6 text-s600">{followOnGuidance.detail}</p></section>}<NotionalTimelineWithHours document={document} onChange={onChange} description="This monthly view starts with design and mobilization, preserves any intentional implementation delay, and extends the adoption roadmap through a full 24-month horizon." /></TabsContent>
-    </Tabs>
-    <CondensedReportPanel document={document} onChange={onChange} showJsonEditor={false} />
-    <ReportContentEditor document={document} onChange={onChange} sections={["assignments", "customer-work"]} />
+    {followOnGuidance.blocked && <section className="rounded-lg border border-state-warn/30 bg-state-warn-soft p-4"><p className="text-xs font-medium uppercase tracking-wide text-state-warn-text">Consumption plan inputs still needed</p><h3 className="mt-1 text-base font-semibold text-ink">{followOnGuidance.title}</h3><p className="mt-2 max-w-4xl text-sm leading-6 text-s600">{followOnGuidance.detail}</p></section>}
+    <PlanEditor document={document} onChange={onChange} onRebuild={onRebuild} previewHtml={previewHtml} notes={<PlanSetup {...setup} step="notes" />} />
   </>;
 }
 

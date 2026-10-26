@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Engagement } from "../drizzle/schema";
+import type { Engagement, FcpConsumptionEntry, FcpVersion } from "../drizzle/schema";
 import { SEGMENTS } from "./vsaStage";
 
 /** Enum values for the VSA tracker columns. docs/VSA-TRACKER-DATA-MODEL.md sections 3 to 6. */
@@ -23,6 +23,12 @@ export const VSA_ROLES = ["sales", "architect", "presales", "pm", "leadership"] 
  * NULL: set by a person or the import (confirmed). Any later segment edit clears it.
  */
 export const SEGMENT_SOURCES = ["inferred_from_fcp"] as const;
+/** Why an FCP copy was kept in History. "decision": a person resolved a tracker segment mismatch. */
+export const FCP_VERSION_REASONS = ["manual", "submitted", "export", "restore", "decision", "issued"] as const;
+/** An issued FCP version, then superseded when the next one is issued. A History save has no status. */
+export const FCP_VERSION_STATUSES = ["issued", "superseded"] as const;
+/** Where a consumption entry came from: entered by hand, or (reserved) read from Salesforce. */
+export const CONSUMPTION_SOURCES = ["manual", "salesforce"] as const;
 export const FCP_WAIVER_PARTIES = ["pm", "broadcom"] as const;
 
 export type Program = (typeof PROGRAMS)[number];
@@ -74,6 +80,7 @@ export const ENGAGEMENT_COLUMN_VISIBILITY = {
   entitlementGroupId: "internal",
   segment: "internal",
   segmentSource: "internal",
+  segmentReview: "internal",
   program: "internal",
   region: "internal",
   customerState: "internal",
@@ -123,6 +130,53 @@ export const ENGAGEMENT_COLUMN_VISIBILITY = {
   rowVersion: "internal",
   updatedByUserId: "internal",
 } as const satisfies Record<keyof Engagement, "customer" | "internal">;
+
+/**
+ * The same tags for FCP versions and consumption entries. Only what the customer received is customer-facing: the
+ * issued HTML, its revision note, and the hours consumed as of a date that the burndown prints. Everything else,
+ * History saves included, is internal.
+ */
+export const FCP_VERSION_COLUMN_VISIBILITY = {
+  id: "internal",
+  engagementId: "internal",
+  versionNumber: "internal",
+  title: "internal",
+  data: "internal",
+  dataHash: "internal",
+  label: "internal",
+  reason: "internal",
+  createdByUserId: "internal",
+  createdAt: "internal",
+  issueNumber: "internal",
+  status: "internal",
+  basedOnVersionId: "internal",
+  effortSnapshot: "internal",
+  renderedHtml: "customer",
+  renderHash: "internal",
+  revisionNote: "customer",
+  changeSummary: "internal",
+  issuedAt: "internal",
+  issuedByUserId: "internal",
+  broadcomApprovedOn: "internal",
+  broadcomApprovedByUserId: "internal",
+  broadcomApprovalNote: "internal",
+  customerApprovedOn: "internal",
+  customerApprovedByUserId: "internal",
+  customerApprovalNote: "internal",
+} as const satisfies Record<keyof FcpVersion, "customer" | "internal">;
+
+export const CONSUMPTION_ENTRY_COLUMN_VISIBILITY = {
+  id: "internal",
+  engagementId: "internal",
+  // The latest entry reaches the burndown the customer sees.
+  asOf: "customer",
+  consumedHours: "customer",
+  source: "internal",
+  externalId: "internal",
+  note: "internal",
+  enteredByUserId: "internal",
+  createdAt: "internal",
+} as const satisfies Record<keyof FcpConsumptionEntry, "customer" | "internal">;
 
 type CustomerColumn = { [K in keyof typeof ENGAGEMENT_COLUMN_VISIBILITY]: (typeof ENGAGEMENT_COLUMN_VISIBILITY)[K] extends "customer" ? K : never }[keyof typeof ENGAGEMENT_COLUMN_VISIBILITY];
 

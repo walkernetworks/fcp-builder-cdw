@@ -7,9 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { appendIndustryDiscoveryPrompts, getIndustryDiscoveryReviewContent, industryDiscoveryPromptBlock, industryDiscoveryTemplates, removeIndustryDiscoveryPrompts } from "@shared/industryDiscovery";
 import { effectivePlatformEdition, FIXED_GANTT_CATEGORIES, getVcfComponentDesignOwnership, getVcfPlaybookPlan, getVcfPlaybookWorkPackageOwnership, isPlanOutcomeAvailable, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, VVF_DELIVERY_PATHS, type AdoptionDepth, type AdoptionDetails, type Capability, type DomainTopology, type IndustryTemplateId, type MinimalFields, type PrincipalStorage, type UpgradePath } from "@shared/fcp";
 
-type DetailKey = "operations" | "automation" | "networking" | "security" | "resilience" | "kubernetes" | "privateAi";
+export type DetailKey = "operations" | "automation" | "networking" | "security" | "resilience" | "kubernetes" | "privateAi";
 
-type DiscoveryGroup = {
+export type DiscoveryGroup = {
   capability: Capability;
   key: DetailKey;
   title: string;
@@ -17,7 +17,7 @@ type DiscoveryGroup = {
   options: Array<{ value: string; label: string; description: string }>;
 };
 
-const discoveryGroups: DiscoveryGroup[] = [
+export const discoveryGroups: DiscoveryGroup[] = [
   {
     capability: "operations",
     key: "operations",
@@ -112,7 +112,7 @@ const discoveryGroups: DiscoveryGroup[] = [
   },
 ];
 
-const upgradeOptions: Array<{ value: UpgradePath; label: string; description: string }> = [
+export const upgradeOptions: Array<{ value: UpgradePath; label: string; description: string }> = [
   { value: "undecided", label: "Pathway decision required", description: "Generate the requirements and decision register first; do not imply implementation until the pathway is approved." },
   { value: "in-place", label: "In-place upgrade", description: "Upgrade supported existing vSphere in place, validate each wave, and bring the accepted platform under VCF management." },
   { value: "converge", label: "Converge existing vCenter", description: "Convert a healthy existing vCenter and cluster into the VCF management domain." },
@@ -122,13 +122,13 @@ const upgradeOptions: Array<{ value: UpgradePath; label: string; description: st
   { value: "design-only", label: "Architecture and implementation-ready design", description: "Deliver the complete requirements, decisions, logical/physical design, runbook, and acceptance package without execution." },
 ];
 
-const topologyOptions: Array<{ value: DomainTopology; label: string }> = [
+export const topologyOptions: Array<{ value: DomainTopology; label: string }> = [
   { value: "undecided", label: "Topology decision required" },
   { value: "standard", label: "Standard — separate management and workload domains" },
   { value: "consolidated", label: "Consolidated — management and workloads share the management domain" },
 ];
 
-const storageOptions: Array<{ value: PrincipalStorage; label: string }> = [
+export const storageOptions: Array<{ value: PrincipalStorage; label: string }> = [
   { value: "undecided", label: "Storage decision required" },
   { value: "vsan", label: "vSAN" },
   { value: "nfs-v3", label: "NFS v3" },
@@ -136,7 +136,7 @@ const storageOptions: Array<{ value: PrincipalStorage; label: string }> = [
   { value: "other-existing", label: "Other existing storage — validate workflow" },
 ];
 
-const depthOptions: Array<{ value: AdoptionDepth; label: string; description: string }> = [
+export const depthOptions: Array<{ value: AdoptionDepth; label: string; description: string }> = [
   { value: "not-selected", label: "Not selected", description: "No delivery depth is committed." },
   { value: "tier-1", label: "Tier 1 · Deployed", description: "Installed and functional with baseline configuration." },
   { value: "tier-2", label: "Tier 2 · Operationalized", description: "Used by the platform team with customer-specific workflows and controls." },
@@ -153,7 +153,7 @@ const componentDesignTitles: Record<Capability, string> = {
   "private-ai": "Private AI Design",
 };
 
-const softPrerequisiteOptions = [
+export const softPrerequisiteOptions = [
   { value: "dns-ntp", label: "DNS, NTP, and core services", description: "Validate required shared services before platform build." },
   { value: "ip-pools", label: "Management and workload IP pools", description: "Reserve and validate addressing independently of hardware delivery." },
   { value: "tor-switch-design", label: "ToR switch design and ports", description: "Finalize physical-fabric port design and readiness in parallel with provisioning." },
