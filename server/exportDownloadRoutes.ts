@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { isCommercialCustomer } from "../shared/buildingBlocks";
+import { isCommercialPlan } from "../shared/buildingBlocks";
 import { exportFilename } from "../shared/exportFilename";
 import { migrateDocument } from "../shared/fcp";
 import * as db from "./db";
@@ -41,7 +41,7 @@ export function registerExportDownloadRoutes(app: Express) {
       res.setHeader("X-Content-Type-Options", "nosniff");
 
       if (ticket.documentType === "building-blocks") {
-        if (!isCommercialCustomer(document.fields)) return deny(res, 409, "The Building Blocks workbook is produced only for commercial customers. Set the customer segment to Commercial.");
+        if (!isCommercialPlan(document.fields)) return deny(res, 409, "The Building Blocks workbook is produced only for a Commercial plan. Set the plan type to Commercial.");
         const workbook = renderBuildingBlocksWorkbook(document);
         res.setHeader("Content-Disposition", `attachment; filename="${buildingBlocksFilename(row.title)}"`);
         return res.status(200).type(BUILDING_BLOCKS_MIME).send(Buffer.from(workbook));

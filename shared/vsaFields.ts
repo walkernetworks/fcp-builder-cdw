@@ -17,6 +17,12 @@ export const SOURCE_ITEM_STATUSES = ["needed", "requested", "received", "verifie
 export const ASSIGNMENT_ROLES = ["sales_rep", "account_manager", "presales", "architect", "pm", "sr_consultant", "broadcom_ad"] as const;
 export const VSA_ROLES = ["sales", "architect", "presales", "pm", "leadership"] as const;
 /** Who said FCP approval isn't needed. */
+/**
+ * Where a tracker segment came from, when not from a person or the Pipeline import. "inferred_from_fcp": filled by
+ * migration 0009 from the FCP's old segment field, which had no Strategic value, so it needs a person's review.
+ * NULL: set by a person or the import (confirmed). Any later segment edit clears it.
+ */
+export const SEGMENT_SOURCES = ["inferred_from_fcp"] as const;
 export const FCP_WAIVER_PARTIES = ["pm", "broadcom"] as const;
 
 export type Program = (typeof PROGRAMS)[number];
@@ -67,6 +73,7 @@ export const ENGAGEMENT_COLUMN_VISIBILITY = {
   isFundingExtension: "internal",
   entitlementGroupId: "internal",
   segment: "internal",
+  segmentSource: "internal",
   program: "internal",
   region: "internal",
   customerState: "internal",

@@ -221,8 +221,7 @@ Answered on 2026-10-23; see section 8.
 - **C-5 / C-6.** The draft watermark is a **render option** (`CondensedFcpOptions.draft`), never a document field, so it cannot be saved into a document or reach print by accident. When it is off, the output is byte-identical, which the golden files cover. Phase 1 uses it on the preview only; Phase 3 adds it to draft exports once "issued" exists. Known gap until Phase 3: exported PDFs carry no watermark. That is today's behaviour, so there is no regression.
 - **C-7.** `compatibilityHandoffRenderer.ts` stays.
 - **C-8.** `engagements.segment` (Corporate / Strategic / Commercial) is the single source of truth. The FCP workspace shows it read-only and never writes it. The FCP's own field is `adoptionDetails.platformEdition` (VVF / VCF), labelled "Platform edition". Strategic is already offered wherever `engagements.segment` is edited (`trackerPatchSchema` uses `SEGMENTS`; the SharePoint import maps "BC Segment").
-  - **The third field is `fields.customerSegment`** (`unspecified | commercial | corporate`, in the document). It stops being an input. It becomes a **mirror of `engagements.segment`, written only by the server** (on `engagement.get`, `engagement.update` and export): `commercial → commercial`, `corporate → corporate`, `strategic → strategic` (added to `customerSegmentSchema`, additively), `null → unspecified`. The engine keeps reading the mirror (`isCommercialCustomer` for Building Blocks, and `effectivePlatformEdition`, which allows VVF only when the customer is Commercial), so nothing on the preserve list is refactored. Brief import stops writing it; a brief's `customer.segment` becomes a note, "segment is set on the tracker record". The "Customer segment" select in `PlanSetup` is replaced by a read-only chip from `tracker.get`.
-  - **This touches a guardrail ("every existing FCP renders identically"); see 8.1.** The work is therefore its own PR at the start of Phase 2, not part of Phase 1, which keeps its editors unchanged.
+  - **The third field is `fields.customerSegment`.** The mirror first proposed here is **rejected** (see 8.2): the tracker segment is never copied into an existing FCP. The FCP's plan behavior moves to explicit plan inputs instead.
 - **C-11.** The golden files for all four fixtures are the first commit of Phase 1, on their own.
 - **C-4, C-9, C-10, C-12.** Checked against the guardrails (one dollar figure, additive only, the visibility helper, golden files):
   - C-4 changes only the on-screen preview.
@@ -242,7 +241,7 @@ Answered on 2026-10-23; see section 8.
   - The header button is relabelled "History".
 - **Versions / Issued** is reserved for Phase 3's `issueNumber`. It becomes its own rail section, above History.
 
-### 8.1 C-8 and the "renders identically" guardrail
+### 8.1 C-8 and the "renders identically" guardrail (superseded by 8.2)
 
 Mirroring `fields.customerSegment` from the tracker changes a plan wherever the two disagree today. They have never been synced, so mismatches are possible:
 
@@ -258,3 +257,30 @@ Proposal for the Phase 2 C-8 PR:
 3. Only then does the server start mirroring.
 
 If you would rather accept the plan changes for mismatched records instead, say so and step 2 is dropped.
+
+### 8.2 C-8 decision (2026-10-23): the deal segment and the plan inputs are separate
+
+**Decision.** The tracker segment is never copied into the FCP on an existing record. The FCP's fields drive plan generation (Building Blocks, VVF vs VCF), so overwriting them would change customer-facing output, which is prohibited. The copy is never an option.
+
+**The fields after this change:**
+
+| Field | What it is | Who sets it |
+|---|---|---|
+| `engagements.segment` (Corporate / Strategic / Commercial) | The **deal segment**. Single source of truth for it. | The tracker (record drawer, Pipeline import). The FCP shows it read-only (PR B). |
+| `fields.commercialPlan` (boolean) | **Plan type**: the plan is built as Commercial, so it gets the Building Blocks workbook and may be VVF. | A person, in the FCP ("Plan type"). Defaulted once from the tracker segment when a record is created (PR B). |
+| `fields.adoptionDetails.platformEdition` (VCF / VVF) | **Platform edition**. VVF only on a Commercial plan. **Open question:** that rule is inherited from the old engine (`effectivePlatformEdition`), not confirmed as a business rule. It stays as built, and nothing new depends on it. | A person, in the FCP. |
+| `fields.customerSegment` | **Deprecated.** Kept so older documents parse, and read once by `migrateDocument`. Nothing in plan generation reads it. | Nobody, from now on. |
+
+**Steps, in two stacked PRs:**
+
+- **PR A (`fcp-plan-inputs`): explicit plan inputs, backfill, count.**
+  1. *3c.* `commercialPlan` is a new document field (zod default `false`, plus the defaults in `createDefaultFields`). `migrateDocument` fills it, once, for a document saved without it, from what drove the plan then: `commercialPlan = (customerSegment === "commercial")`. A stored VVF on a non-Commercial plan, which the old rule ignored, is normalized to VCF. After that `commercialPlan` is present and the segment is never read again. `effectivePlatformEdition` reads `commercialPlan`; `isCommercialCustomer` becomes `isCommercialPlan`. A customer brief that states a segment still sets the plan type, as it did before, and warns if it asks for VVF off Commercial. **No saved plan changes:** the four golden files render byte-identical, also from a copy of each fixture saved without the new field, and a synthetic dry run (3 segments × 2 editions × 4 pathways, each generated and hand-edited: 48 plans) shows 0 moved activities, identical rationale and readiness, and identical rendered FCPs (`server/planInputs.test.ts`).
+  2. *Step 1.* Migration `0009_tracker_segment_source` fills **only empty** tracker segments from the FCP's segment (`commercial` → Commercial; `corporate` and the older `public-sector` → Corporate), and marks each one `engagements.segmentSource = 'inferred_from_fcp'`. A set tracker segment is never changed, and the FCP document is never written. Run with `pnpm db:migrate`, which takes a backup first.
+     - An inferred segment is **not confirmed**. It can never be Strategic, because the old FCP field had no Strategic value. It also matches the FCP by construction, so it never shows in the mismatch count.
+     - The marker is cleared when a person sets the segment on the record, or when the Pipeline import writes it. It is internal (`ENGAGEMENT_COLUMN_VISIBILITY`) and can later drive a provenance chip.
+  3. *Step 2.* Admin → System status → Boundaries shows two counts, through `visibleEngagements`. Neither shows names or changes anything.
+     - **Segment review**: records whose tracker segment disagrees with the FCP's plan type (`countSegmentMismatches`). It reads only the two plan-input values.
+     - **Segments filled from the FCP**: records still marked inferred, to review for Strategic (`countInferredSegments`).
+- **PR B (`fcp-segment-review`): defaults on create, and a person decides each mismatch.**
+  1. *3a.* A record created by the Pipeline import gets `commercialPlan` from the tracker segment it is created with. This is a default, set once at creation, and editable.
+  2. *3b.* On an existing record, a mismatch is a readiness **warning** in the FCP ("Tracker segment is Strategic; this plan is built as Commercial"), next to the read-only tracker segment. A person resolves it by choosing explicitly (change the plan type to match the tracker, or keep the plan as built). The choice is saved with who and when, in History, and that same pair is not raised again. The system never resolves it.

@@ -250,7 +250,10 @@ export const appRouter = router({
       }),
     }),
     /** Read-only. There is deliberately no procedure that changes a source or flag: that is an environment change plus an approval record. */
-    status: adminProcedure.query(() => systemStatus()),
+    status: adminProcedure.query(async ({ ctx }) => {
+      const viewer = viewerFor(ctx.user);
+      return { ...systemStatus(), segmentMismatches: await db.countSegmentMismatches(viewer), inferredSegments: await db.countInferredSegments(viewer) };
+    }),
   }),
   effort: router({
     /** Scoped effort and the internal fit check; rates stay on the server. A mutation so the document travels in the body. */

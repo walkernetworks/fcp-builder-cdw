@@ -4,6 +4,7 @@
  */
 import type { EngagementDocument } from "./fcp";
 import type { SourceItemKind, SourceItemStatus } from "./vsaFields";
+import type { Segment } from "./vsaStage";
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Source checklist evidence
@@ -76,4 +77,23 @@ export function buildLockState(lock: { userId: number | null; at: Date | string 
   if (lock.userId === null || lock.at === null) return "free";
   if (now - new Date(lock.at).getTime() > BUILD_LOCK_STALE_MS) return "free";
   return lock.userId === viewerId ? "mine" : "other";
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Deal segment and plan type. The tracker segment (`engagements.segment`) is the deal segment; the FCP's
+// `commercialPlan` is a plan input a person sets. Neither is ever copied over the other on an existing record.
+// docs/FCP-WORKSPACE.md section 8.2.
+
+/**
+ * Whether a stored FCP is built as Commercial, read from its saved fields without parsing the whole document. A
+ * document saved before `commercialPlan` existed reads as `migrateDocument` derives it: Commercial when its segment was.
+ */
+export function storedCommercialPlan(commercialPlan: unknown, customerSegment: unknown): boolean {
+  return typeof commercialPlan === "boolean" ? commercialPlan : customerSegment === "commercial";
+}
+
+/** The tracker segment and the plan type disagree. An unset tracker segment has nothing to disagree with. */
+export function segmentDisagrees(segment: Segment | null, commercialPlan: boolean): boolean {
+  if (!segment) return false;
+  return (segment === "commercial") !== commercialPlan;
 }
