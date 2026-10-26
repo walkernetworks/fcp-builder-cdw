@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,7 +10,7 @@ import type { ChangeSummary } from "@shared/fcpChangeSummary";
 import { issuedFilename } from "@shared/exportFilename";
 import type { EngagementDocument } from "@shared/fcp";
 import { requiresBroadcomApproval, type Segment } from "@shared/vsaStage";
-import { Download, FileCheck2, Loader2, RotateCcw, Send } from "lucide-react";
+import { Columns2, Download, FileCheck2, Loader2, RotateCcw, Send } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -118,6 +119,7 @@ export function IssuedVersionsList({ engagementId, title, readOnly, segment }: I
   const issued = trpc.fcpRecord.issued.useQuery({ id: engagementId });
   const ticket = trpc.fcpRecord.issuedDownloadTicket.useMutation();
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [comparing, setComparing] = useState(false);
   const versions = issued.data?.versions ?? [];
 
   const download = async (versionId: number, issueNumber: number, format: "html" | "pdf") => {
@@ -134,7 +136,7 @@ export function IssuedVersionsList({ engagementId, title, readOnly, segment }: I
   };
 
   return (
-    <Panel title="Issued versions" sub="What the customer received, numbered. Superseded versions stay downloadable exactly as they were issued." bodyClassName="p-0">
+    <Panel title="Issued versions" sub="What the customer received, numbered. Superseded versions stay downloadable exactly as they were issued." actions={versions.length >= 2 ? <Button variant="outline" size="sm" onClick={() => setComparing(true)}><Columns2 className="size-4" /> Compare</Button> : undefined} bodyClassName="p-0">
       {issued.isLoading ? <p className="p-4 text-xs text-ink-muted">Loading…</p> : versions.length === 0 ? <div className="p-4"><EmptyState icon={FileCheck2} title="Nothing issued yet" sub="Issue the first version above when the FCP is ready for the customer." /></div> : (
         <ul className="divide-y divide-s100">
           {versions.map(version => (
@@ -163,7 +165,53 @@ export function IssuedVersionsList({ engagementId, title, readOnly, segment }: I
           ))}
         </ul>
       )}
+      {comparing && <CompareIssued engagementId={engagementId} versions={versions} onClose={() => setComparing(false)} />}
     </Panel>
+  );
+}
+
+/** Two issued versions: the change summary from the earlier to the later, and both reports as issued. Read only. */
+function CompareIssued({ engagementId, versions, onClose }: { engagementId: number; versions: Array<{ id: number; issueNumber: number | null }>; onClose: () => void }) {
+  // Newest first: compare the current issue with the one before it unless the user picks others.
+  const [pair, setPair] = useState<[number, number]>([versions[1].id, versions[0].id]);
+  const same = pair[0] === pair[1];
+  const comparison = trpc.fcpRecord.compareIssued.useQuery({ id: engagementId, versionIds: pair }, { enabled: !same });
+  const data = comparison.data;
+  const picker = (index: 0 | 1, label: string) => (
+    <div className="space-y-1">
+      <Label htmlFor={`compare-${index}`} className="text-[11px]">{label}</Label>
+      <select id={`compare-${index}`} className="h-8 rounded-md border border-s200 bg-surface px-2 text-sm text-ink" value={pair[index]} onChange={event => { const next = [...pair] as [number, number]; next[index] = Number(event.target.value); setPair(next); }}>
+        {versions.map(version => <option key={version.id} value={version.id}>Issue {version.issueNumber}</option>)}
+      </select>
+    </div>
+  );
+  return (
+    <Dialog open onOpenChange={value => !value && onClose()}>
+      <DialogContent className="flex h-[94vh] max-w-[min(1600px,97vw)] flex-col sm:max-w-[min(1600px,97vw)]">
+        <DialogHeader>
+          <DialogTitle>Compare issued versions</DialogTitle>
+          <DialogDescription>What changed between two issues, and both as the customer received them. Read only.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-wrap items-end gap-3">{picker(0, "Compare")}{picker(1, "With")}</div>
+        {same ? <p className="text-xs text-ink-muted">Pick two different issues.</p>
+          : comparison.error ? <p className="text-xs text-state-blocked-text">{comparison.error.message}</p>
+          : !data ? <div className="grid flex-1 place-items-center"><Loader2 className="size-6 animate-spin text-cdw-red" /></div>
+          : <>
+            <details open className="max-h-[30vh] shrink-0 overflow-auto rounded-lg border border-s100">
+              <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-ink">Changes from issue {data.from.issueNumber} to issue {data.to.issueNumber}</summary>
+              <div className="border-t border-s100 p-3"><ChangeSummaryView summary={data.changeSummary} heading={`Issue ${data.from.issueNumber} → issue ${data.to.issueNumber}`} /></div>
+            </details>
+            <div className="grid min-h-0 flex-1 gap-3 md:grid-cols-2">
+              {[data.from, data.to].map(side => (
+                <div key={side.id} className="flex min-h-0 flex-col gap-1">
+                  <p className="text-xs font-medium text-ink">Issue {side.issueNumber} <span className="font-normal text-ink-muted">· issued {when(side.issuedAt)}</span></p>
+                  <iframe title={`Issue ${side.issueNumber} as issued`} sandbox="" srcDoc={side.html} className="min-h-0 w-full flex-1 rounded-lg border border-s100 bg-surface" />
+                </div>
+              ))}
+            </div>
+          </>}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -195,7 +243,7 @@ function Approval({ engagementId, versionId, party, title, on, by, note, canReco
 }
 
 /** The computed changes, in hours and dates. Read-only: the revision note is where the wording goes. */
-export function ChangeSummaryView({ summary }: { summary: ChangeSummary }) {
+export function ChangeSummaryView({ summary, heading }: { summary: ChangeSummary; heading?: string }) {
   if (summary.basedOnIssue === null) return <p className="text-xs text-ink-muted">First issue: there is nothing earlier to compare with. Entitlement hours {hours(summary.entitlementHours.after)}; follow-on {hours(summary.followOnHours.after)}.</p>;
   const rows: Array<[string, ReactNode]> = [];
   if (summary.packages.length) rows.push(["Work packages", <ul className="space-y-0.5">{summary.packages.map(item => <li key={item.id}><strong className="font-medium text-ink">{item.label}</strong>: {PACKAGE_CHANGE[item.change]}{item.change === "hours" || item.change === "added" || item.change === "removed" || item.change === "to-follow-on" || item.change === "from-follow-on" ? ` (${hours(item.hoursBefore)} → ${hours(item.hoursAfter)} h, ${signed(item.hoursAfter - item.hoursBefore)})` : ""}</li>)}</ul>]);
@@ -209,7 +257,7 @@ export function ChangeSummaryView({ summary }: { summary: ChangeSummary }) {
   if (summary.consumption) rows.push(["Consumption", `${hours(summary.consumption.hours)} hours delivered, as of ${summary.consumption.asOf}`]);
   return (
     <dl className="grid gap-x-4 gap-y-2 text-xs sm:grid-cols-[10rem_minmax(0,1fr)]">
-      <dt className="col-span-full text-[11px] font-medium uppercase tracking-wide text-ink-muted">Since issue {summary.basedOnIssue}</dt>
+      <dt className="col-span-full text-[11px] font-medium uppercase tracking-wide text-ink-muted">{heading ?? `Since issue ${summary.basedOnIssue}`}</dt>
       {rows.map(([term, value]) => [<dt key={`${term}-t`} className="text-ink-muted">{term}</dt>, <dd key={`${term}-d`} className="text-ink">{value}</dd>])}
     </dl>
   );

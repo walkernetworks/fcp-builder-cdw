@@ -55,3 +55,26 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, today?:
     basedOn: latest && latest.issueNumber !== null ? { id: latest.id, issueNumber: latest.issueNumber } : null,
   };
 }
+
+export type IssuedComparison = {
+  from: { id: number; issueNumber: number; issuedAt: Date | null; html: string };
+  to: { id: number; issueNumber: number; issuedAt: Date | null; html: string };
+  changeSummary: ChangeSummary;
+};
+
+/**
+ * Two issued versions side by side: the change summary from the earlier to the later, computed from their stored
+ * snapshots, and the HTML each was issued as. Undefined when either is not an issued version of this visible record.
+ * Writes nothing.
+ */
+export async function compareIssued(viewer: Viewer, engagementId: number, versionIds: [number, number]): Promise<IssuedComparison | undefined> {
+  const loaded = await Promise.all(versionIds.map(versionId => db.getIssuedVersion(viewer, engagementId, versionId)));
+  if (loaded.some(version => !version || version.issueNumber === null || !version.effortSnapshot || version.renderedHtml === null)) return undefined;
+  const [earlier, later] = (loaded as NonNullable<(typeof loaded)[number]>[]).sort((a, b) => a.issueNumber! - b.issueNumber!);
+  const side = (version: typeof earlier) => ({ id: version.id, issueNumber: version.issueNumber!, issuedAt: version.issuedAt, html: version.renderedHtml! });
+  return {
+    from: side(earlier),
+    to: side(later),
+    changeSummary: computeChangeSummary({ document: earlier.data, effort: earlier.effortSnapshot!, issueNumber: earlier.issueNumber }, { document: later.data, effort: later.effortSnapshot! }),
+  };
+}

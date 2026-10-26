@@ -189,3 +189,33 @@ describe("issued filename", () => {
     expect(issuedFilename("Northwind Mfg", 2, "pdf")).toBe("Northwind Mfg - FCP Issue 2.pdf");
   });
 });
+
+describe("fcpRecord.compareIssued", () => {
+  const issued = (id: number, issueNumber: number, document: EngagementDocument) => ({ id, issueNumber, status: issueNumber === 2 ? "issued" : "superseded", issuedAt: new Date("2026-10-01T12:00:00Z"), data: document, effortSnapshot: effortOf(document), renderedHtml: `<!doctype html><p>issue ${issueNumber}</p>` });
+  beforeEach(() => vi.mocked(db.getIssuedVersion).mockReset());
+
+  it("compares the earlier issue with the later, whichever order they are picked in, from the stored snapshots", async () => {
+    const before = acmeHealth();
+    const after = acmeHealth();
+    after.fields.targetComplete = "2027-12-31";
+    vi.mocked(db.getIssuedVersion).mockImplementation(async (_viewer, _id, versionId) => (versionId === 91 ? issued(91, 2, after) : issued(90, 1, before)) as never);
+    const result = await caller().fcpRecord.compareIssued({ id: 4, versionIds: [91, 90] });
+    expect(db.getIssuedVersion).toHaveBeenCalledWith({ id: 7, workspaceId: 1, role: "user" }, 4, 90);
+    expect(db.getIssuedVersion).toHaveBeenCalledWith({ id: 7, workspaceId: 1, role: "user" }, 4, 91);
+    expect([result.from.issueNumber, result.to.issueNumber]).toEqual([1, 2]);
+    expect([result.from.html, result.to.html]).toEqual(["<!doctype html><p>issue 1</p>", "<!doctype html><p>issue 2</p>"]);
+    expect(result.changeSummary.basedOnIssue).toBe(1);
+    expect(result.changeSummary.dates).toContainEqual(expect.objectContaining({ key: "targetComplete", after: "2027-12-31" }));
+    expect(result.changeSummary).toEqual(computeChangeSummary(snapshot(before, 1), { document: after, effort: effortOf(after) }));
+  });
+
+  it("is not found when either version is not an issued version of a visible record", async () => {
+    vi.mocked(db.getIssuedVersion).mockImplementation(async (_viewer, _id, versionId) => (versionId === 90 ? issued(90, 1, acmeHealth()) : undefined) as never);
+    await expect(caller().fcpRecord.compareIssued({ id: 4, versionIds: [90, 55] })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("needs two different versions", async () => {
+    await expect(caller().fcpRecord.compareIssued({ id: 4, versionIds: [90, 90] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(db.getIssuedVersion).not.toHaveBeenCalled();
+  });
+});

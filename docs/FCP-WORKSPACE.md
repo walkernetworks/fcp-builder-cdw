@@ -450,3 +450,8 @@ Acceptance: issue v1, revise, issue v2; compare shows the diff; superseded v1 st
 - **Issued versions** lists every issue with HTML and PDF downloads (`fcpRecord.issuedDownloadTicket`, an `issued-fcp` ticket carrying the version id), the change summary, and the Broadcom and customer approvals (`fcpRecord.recordApproval`). Broadcom approval shows as not needed for a Commercial engagement.
 - The rail shows **Issued** above History.
 - **Draft exports:** the Condensed FCP export of the working document now carries the draft mark (C-6). It is checked unmarked, so the checks are the ones the customer copy passes.
+
+### 13.8 As built (PR H)
+
+- **Compare** (in the Issued versions header, once there are two issues) opens a dialog with two pickers, which default to the current issue and the one before it. It shows the change summary from the earlier issue to the later, computed from their stored snapshots (`fcpRecord.compareIssued`, in `server/fcpIssue.ts`). Both reports appear side by side, exactly as stored when issued, in sandboxed frames that cannot run scripts. It writes nothing.
+- For two consecutive issues, the comparison is the same as the change summary stored on the later issue.
