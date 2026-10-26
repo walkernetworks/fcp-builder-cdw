@@ -9,7 +9,8 @@ RVTools files are parsed in browser memory. Raw workbooks and per-object invento
 | Capability | Implementation |
 |---|---|
 | Protected workspace | Config-driven trusted OIDC gateway for CDW Entra ID or Okta; the app has no login flow or third-party platform dependency of its own. |
-| Engagement management | Owner-scoped create, list, open, update, duplicate, and delete operations. |
+| Engagement management | Workspace-scoped create, list, open, update, and duplicate operations; delete by the owner or an admin. |
+| VSA tracker (in progress) | Stage model, gate dates, source checklist, and assignments for each engagement, a dashboard home page (Overview), a sortable pipeline table with a board view, an Expiry & Burndown view, role queues (My Queue), customizable reports with saved definitions and CSV/Excel export (alternative plans counted once), and a daily import of the SharePoint VSA Pipeline List CSV with a reconciliation report (`/import`). The FCP workspace is at `/fcp`, tied to its record: FCP Draft readiness from the source checklist, the hours source, version history, and a one-editor build lock. See `docs/VSA-TRACKER-DATA-MODEL.md`. |
 | Local RVTools intake | Multi-file XLSX/CSV parsing and duplicate-aware aggregation in the browser, with no raw-inventory upload API. |
 | Minimal confirmed inputs | Customer identity, entitled physical cores, entitlement dollar value, entitlement start/end dates, desired outcomes, and timeline notes. |
 | Planning considerations | Evidence-based VCF 9.1 observations with explicit unknowns for items RVTools cannot prove. |

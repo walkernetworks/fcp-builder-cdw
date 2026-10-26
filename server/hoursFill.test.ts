@@ -8,7 +8,7 @@ import { scopedEffortForDocument } from "./rateCard";
 function doc(entitlement = 900_000, patch: Partial<MinimalFields> = {}): EngagementDocument {
   const document = createDefaultDocument();
   Object.assign(document.fields, {
-    customerName: "Acme Health", customerSegment: "commercial", entitlementAmount: entitlement, entitlementStart: "2027-01-04", plannedProjectStart: "2027-01-04", hoursModel: "v2",
+    customerName: "Acme Health", customerSegment: "commercial", commercialPlan: true, entitlementAmount: entitlement, entitlementStart: "2027-01-04", plannedProjectStart: "2027-01-04", hoursModel: "v2",
     priorities: ["operations"],
     ...patch,
   });

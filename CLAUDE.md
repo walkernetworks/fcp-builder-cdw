@@ -43,9 +43,12 @@ Real customer data lives only in the local MySQL database reached through `DATAB
 - `shared/fcp.ts`: engagement document model, schema, and plan/timeline generation. This is the core domain logic.
 - `server/fcpRenderer.ts`: FCP HTML document; the PDF is rendered from this HTML by `server/pdf.ts`
 - `server/compatibilityHandoffRenderer.ts`: compatibility delivery handoff document
-- `server/routers.ts`: all tRPC procedures; `server/db.ts`: data access (always owner-scoped)
+- `server/routers.ts`: all tRPC procedures; `server/db.ts`: data access (always through `server/visibility.ts`)
+- VSA tracker: `docs/VSA-TRACKER-DATA-MODEL.md` (schema and decisions), `shared/vsaStage.ts` (stage rules, pure), `shared/vsaFields.ts` (enums, editable fields, internal vs customer-facing tags), `shared/sharepointImport.ts` (Pipeline List CSV import: mapping, matching, merge; pure; reconciliation takes `RawPipelineRow[]` from `server/pipelineSource.ts`), `server/fileSource.ts` (record file links), `shared/vsaReports.ts` (report field catalog, engine, presets; pure), `shared/fcpRecord.ts` (FCP source evidence, hours source, build lock; pure) with `server/reportWorkbook.ts` (XLSX)
+- Admin (`/admin` and `/admin/users/:id`, admins only): `client/src/pages/Admin.tsx`, `AdminUserProfile.tsx`, and `client/src/components/vsa/Admin*.tsx`; procedures under `admin.*` in `server/routers.ts`, all `adminProcedure`. Operational settings: `shared/appSettings.ts` (keys, defaults, validation; pure), stored in `app_settings`, read on the client with `useOperationalSettings()`. Status: `server/systemStatus.ts` (read-only)
 - `server/trustedSso.ts`: sign-in; `server/exportTickets.ts` + `server/exportDownloadRoutes.ts`: signed download links
-- `client/src/pages/Home.tsx`: main workspace; `client/src/components/`: `PlanSetup`, `AdoptionTimelineEditor`, `DetailedAdoptionIntake`, `CompatibilityHandoffPanel`
+- `client/src/pages/Overview.tsx` (home, `/`), `Pipeline.tsx` (`/pipeline` and `/records`), `Expiry.tsx` (`/expiry`), `Queue.tsx` (`/queue`), `Reports.tsx`, `PipelineImport.tsx`; `client/src/components/vsa/` (AppShell, navigation, EngagementTable, PipelineBoard, RecordDrawer, design elements); `shared/vsaDashboard.ts` (attention, stale stages, expiry bands, queues; pure). UI patterns: `docs/VSA-TRACKER-UI.md`
+- `client/src/pages/Home.tsx`: FCP workspace (`/fcp`); `client/src/components/`: `PlanSetup`, `AdoptionTimelineEditor`, `DetailedAdoptionIntake`, `CompatibilityHandoffPanel`
 - `client/src/lib/rvtools.ts`: RVTools XLSX/CSV parsing, in the browser only
 - `shared/hcl.ts`, `shared/hclCatalog.ts`: hardware compatibility data; `shared/hclCorpus.ts` applies the corpus rules in `shared/vcfCorpus.ts` (generated)
 
@@ -54,8 +57,9 @@ Real customer data lives only in the local MySQL database reached through `DATAB
 - **Sign-in is gateway-only.** Identity comes from trusted OIDC gateway headers (`FCP_AUTH_MODE=trusted-proxy`); the app has no login flow. Do not add OAuth, session cookies, or any hosted-platform integration.
 - **No Manus or other third-party platform code.** `server/noThirdPartyPlatform.test.ts` must keep passing.
 - **Raw RVTools data never leaves the browser.** Only aggregate facts are sent to the server and stored.
-- **No outbound network calls from the app** other than the database. Exported HTML must be self-contained, with no external fonts, scripts, or images.
-- **Every engagement query stays scoped to the signed-in owner.**
+- **No outbound network calls from the app** other than the database, until a specific connector is approved and built. The integration seams (`server/fileSource.ts`, `server/pipelineSource.ts`) make none; `server/integrationSeams.test.ts` checks. Exported HTML must be self-contained, with no external fonts, scripts, or images.
+- **Every engagement query goes through `server/visibility.ts`.** Records are visible to users in the same workspace; `ownerId` is attribution, and delete is limited to the owner or an admin. Never filter engagements, or tables that hang off them, any other way. `server/visibility.test.ts` enforces this for `server/db.ts`.
+- **The UI follows `docs/DESIGN-SYSTEM.md` and `docs/VSA-TRACKER-UI.md`.** It uses tokens rather than raw brand hexes (with a dark value for each), one accent, two button styles, pills for verdicts and chips for labels, and every data area has an empty state. `server/designSystem.test.ts` enforces the checkable parts. Exported FCP documents keep their own palette.
 - **Configuration and docs change together.** New environment variables go in `docs/CONFIGURATION.md`, and security-relevant changes also update `docs/SECURITY-REVIEW.md`.
 
 ## Reading large files cheaply

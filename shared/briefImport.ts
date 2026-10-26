@@ -292,7 +292,15 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   if (!fieldsCheck.success) {
     return { ...fail("Some planning values in the brief are not valid."), coerced: coercer.coerced, warnings: [...warnings, ...fieldsCheck.error.issues.map(issue => `${issue.path.join(".")}: ${issue.message}`)] };
   }
-  const fields: MinimalFields = fieldsCheck.data;
+  // A segment the brief states sets the plan inputs: Commercial builds a Commercial plan, and VVF is kept only there.
+  const commercialPlan = "customerSegment" in fieldsPatch ? fieldsCheck.data.customerSegment === "commercial" : fieldsCheck.data.commercialPlan;
+  const vvfDropped = !commercialPlan && fieldsCheck.data.adoptionDetails.platformEdition === "vvf";
+  if (vvfDropped && "platformEdition" in detailsPatch) warnings.push("discovery.platformEdition: VVF applies only to a Commercial plan; planned as VCF");
+  const fields: MinimalFields = {
+    ...fieldsCheck.data,
+    commercialPlan,
+    adoptionDetails: vvfDropped ? { ...fieldsCheck.data.adoptionDetails, platformEdition: "vcf" } : fieldsCheck.data.adoptionDetails,
+  };
 
   // ---- Report content --------------------------------------------------------------------------
   const prior = document.report;

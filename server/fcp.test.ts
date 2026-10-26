@@ -1338,7 +1338,9 @@ describe("planning considerations, exports, and access boundary", () => {
     document.fields.customerName = "Meridian Health";
     const result = await appRouter.createCaller(authenticatedContext()).document.html({ title: "Meridian Health / FCP", data: document });
     expect(result.filename).toBe("Meridian-Health-FCP.html");
-    expect(result.content).toContain("Entitlement Adoption Timeline");
+    // The condensed FCP, marked as a draft: the full template is retired from every UI path.
+    expect(result.content).toContain("<h2>Adoption Timeline</h2>");
+    expect(result.content).toContain("Draft, not for distribution");
   });
 
   it("rejects business-data procedures without an authenticated user", async () => {
@@ -1533,7 +1535,7 @@ describe("stage names on the Condensed FCP", () => {
     for (const edition of ["vcf", "vvf"] as const) for (const path of paths) {
       const document = createDefaultDocument();
       Object.assign(document.fields, {
-        customerSegment: "commercial",
+        customerSegment: "commercial", commercialPlan: true,
         entitlementAmount: 5_000_000,
         entitlementStart: "2027-01-01",
         entitlementEnd: "2027-12-31",

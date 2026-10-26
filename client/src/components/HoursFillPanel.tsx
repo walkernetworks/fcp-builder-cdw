@@ -32,35 +32,35 @@ export function HoursFillPanel({ document, effort, onChange }: { document: Engag
   const stillUnused = Math.max(0, (unused ?? 0) - fillHours);
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 text-xs leading-5 text-slate-800">
+    <div className="space-y-3 rounded-lg border border-s100 bg-surface p-4 text-xs leading-5 text-ink">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-[10px] font-black uppercase tracking-[.14em] text-slate-600">Fully staff the entitlement · internal</span>
+        <span className="text-[11px] font-medium uppercase tracking-wide text-s500">Fully staff the entitlement · internal</span>
         {unused !== null && <span className="font-semibold">{unused < 1 ? "The plan uses every fillable hour" : `${hours(unused)} hours unused after the ${hours(fit.reserveHours)}-hour reserve`}</span>}
       </div>
-      {options.isPending && !options.data && <p className="text-slate-500">Pricing the scope that would fit…</p>}
-      {options.error && <p className="text-red-800">The fill options could not be priced: {options.error.message}</p>}
+      {options.isPending && !options.data && <p className="text-s500">Pricing the scope that would fit…</p>}
+      {options.error && <p className="text-state-blocked-text">The fill options could not be priced: {options.error.message}</p>}
 
       {options.data && unused !== null && unused >= 1 && (
         <div>
           <p className="mb-1 font-semibold">Scope that fits the unused hours</p>
           {options.data.options.length ? (
-            <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
+            <ul className="divide-y divide-s100 rounded-lg border border-s100">
               {options.data.options.map(option => (
                 <li key={option.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
-                  <span className="min-w-0 flex-1"><b>{option.label}</b> <span className="text-slate-500">{option.detail}</span></span>
-                  <span className="tabular-nums text-slate-700">+{hours(option.hours)} h</span>
+                  <span className="min-w-0 flex-1"><b>{option.label}</b> <span className="text-s500">{option.detail}</span></span>
+                  <span className="tabular-nums text-s600">+{hours(option.hours)} h</span>
                   <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-[11px]" onClick={() => setFields(option.patch)}>Add</Button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-600">No outcome or depth tier on its own fits in {hours(unused)} hours.</p>
+            <p className="rounded-lg bg-s50 px-3 py-2 text-s500">No outcome or depth tier on its own fits in {hours(unused)} hours.</p>
           )}
-          {options.data.tooLarge > 0 && <p className="mt-1 text-slate-500">{options.data.tooLarge} more addition{options.data.tooLarge === 1 ? " needs" : "s need"} more hours than are left, so {options.data.tooLarge === 1 ? "it is" : "they are"} not listed.</p>}
+          {options.data.tooLarge > 0 && <p className="mt-1 text-s500">{options.data.tooLarge} more addition{options.data.tooLarge === 1 ? " needs" : "s need"} more hours than are left, so {options.data.tooLarge === 1 ? "it is" : "they are"} not listed.</p>}
         </div>
       )}
 
-      <div className="space-y-2 rounded-lg bg-slate-50 p-3">
+      <div className="space-y-2 rounded-lg bg-s50 p-3">
         {fill.enabled ? (
           <>
             <p>
@@ -70,12 +70,12 @@ export function HoursFillPanel({ document, effort, onChange }: { document: Engag
             </p>
             <div className="flex flex-wrap items-end gap-2">
               <label className="grid gap-1" htmlFor="hours-fill-label">
-                <span className="text-[10px] font-black uppercase tracking-[.14em] text-slate-600">Work package name</span>
-                <Input id="hours-fill-label" className="w-72 bg-white" maxLength={120} defaultValue={fill.label} placeholder={HOURS_FILL_DEFAULT_LABEL} onBlur={event => { const label = event.target.value.trim() || HOURS_FILL_DEFAULT_LABEL; if (label !== fill.label) setFill({ label }); }} />
+                <span className="text-[11px] font-medium uppercase tracking-wide text-s500">Work package name</span>
+                <Input id="hours-fill-label" className="w-72 bg-surface" maxLength={120} defaultValue={fill.label} placeholder={HOURS_FILL_DEFAULT_LABEL} onBlur={event => { const label = event.target.value.trim() || HOURS_FILL_DEFAULT_LABEL; if (label !== fill.label) setFill({ label }); }} />
               </label>
               <Button type="button" size="sm" variant="outline" className="h-8 text-xs" onClick={() => setFill({ enabled: false })}>Remove the package</Button>
             </div>
-            <p className="text-slate-500">The name applies when the package is added; rename it on the timeline after that. Click it on the timeline to set its hours by role or move its window.</p>
+            <p className="text-s500">The name applies when the package is added; rename it on the timeline after that. Click it on the timeline to set its hours by role or move its window.</p>
           </>
         ) : (
           <div className="flex flex-wrap items-center gap-2">

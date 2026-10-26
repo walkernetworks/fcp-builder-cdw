@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultDocument } from "../shared/fcp";
 
-vi.mock("./db", () => ({ getEngagement: vi.fn() }));
+vi.mock("./db", () => ({ getEngagement: vi.fn(), getUserById: vi.fn() }));
 vi.mock("./pdf", () => ({ renderPdf: vi.fn(async () => Buffer.from("%PDF-1.7\npreview export\n", "utf8")) }));
 
 import * as db from "./db";
@@ -11,6 +11,7 @@ import { registerExportDownloadRoutes, safeExportFilename } from "./exportDownlo
 import { createExportTicket, verifyExportTicket } from "./exportTickets";
 
 const getEngagement = vi.mocked(db.getEngagement);
+const getUserById = vi.mocked(db.getUserById);
 let server: Server;
 let baseUrl = "";
 
@@ -33,6 +34,8 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  getUserById.mockReset();
+  getUserById.mockResolvedValue({ id: 7, workspaceId: 1, role: "user" } as never);
   getEngagement.mockReset();
   getEngagement.mockResolvedValue({
     id: 41,
@@ -71,7 +74,16 @@ describe("signed binary export downloads", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(content.length).toBeGreaterThan(1_000);
     expect(content).toContain("Functional Consumption Plan");
-    expect(getEngagement).toHaveBeenCalledWith(7, 41);
+    expect(getEngagement).toHaveBeenCalledWith({ id: 7, workspaceId: 1, role: "user" }, 41);
+  });
+
+  it("rechecks visibility at download time and refuses a ticket whose user is gone", async () => {
+    getUserById.mockResolvedValueOnce(undefined);
+    const ticket = createExportTicket(7, 41, "html");
+    const response = await fetch(`${baseUrl}/api/download/${ticket}`);
+
+    expect(response.status).toBe(404);
+    expect(getEngagement).not.toHaveBeenCalled();
   });
 
   it("streams a protected PDF attachment with valid MIME and signature", async () => {
@@ -84,7 +96,7 @@ describe("signed binary export downloads", () => {
     expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - FCP.pdf"');
     expect(content.subarray(0, 5).toString("utf8")).toBe("%PDF-");
     expect(content.length).toBeGreaterThan(20);
-    expect(getEngagement).toHaveBeenCalledWith(7, 41);
+    expect(getEngagement).toHaveBeenCalledWith({ id: 7, workspaceId: 1, role: "user" }, 41);
   });
 
   it("streams the separate plan-output document with its own safe filename", async () => {
@@ -100,9 +112,10 @@ describe("signed binary export downloads", () => {
     expect(content).toContain("Compatibility action register");
   });
 
-  it("streams the Building Blocks workbook for commercial customers", async () => {
+  it("streams the Building Blocks workbook for a Commercial plan", async () => {
     const data = createDefaultDocument();
     data.fields.customerSegment = "commercial";
+    data.fields.commercialPlan = true;
     getEngagement.mockResolvedValueOnce({ ...(await getEngagement.getMockImplementation()!(7, 41))!, data });
     const ticket = createExportTicket(7, 41, "xlsx", "building-blocks");
     const response = await fetch(`${baseUrl}/api/download/${ticket}`);
@@ -115,12 +128,12 @@ describe("signed binary export downloads", () => {
     expect(content.subarray(0, 2).toString("utf8")).toBe("PK");
   });
 
-  it("refuses the Building Blocks workbook unless the customer is commercial", async () => {
+  it("refuses the Building Blocks workbook unless the plan is Commercial", async () => {
     const ticket = createExportTicket(7, 41, "xlsx", "building-blocks");
     const response = await fetch(`${baseUrl}/api/download/${ticket}`);
 
     expect(response.status).toBe(409);
-    expect(await response.text()).toContain("commercial customers");
+    expect(await response.text()).toContain("only for a Commercial plan");
   });
 
   it("only issues XLSX tickets for the Building Blocks workbook", () => {

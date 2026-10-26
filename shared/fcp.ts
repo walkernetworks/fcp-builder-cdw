@@ -389,11 +389,11 @@ const VVF_PLAYBOOK_PATHS: Partial<Record<VcfDeliveryPath, Omit<VcfPlaybookPlan, 
   },
 };
 
-type EditionFields = { customerSegment: MinimalFields["customerSegment"]; adoptionDetails: Pick<AdoptionDetails, "platformEdition" | "upgradePath"> };
+type EditionFields = { commercialPlan: MinimalFields["commercialPlan"]; adoptionDetails: Pick<AdoptionDetails, "platformEdition" | "upgradePath"> };
 
-/** VVF applies only to commercial customers; every other segment plans VCF. */
+/** VVF is offered only on a Commercial plan; every other plan is VCF. `migrateDocument` keeps the stored edition consistent with that. */
 export function effectivePlatformEdition(fields: EditionFields): PlatformEdition {
-  return fields.customerSegment === "commercial" && fields.adoptionDetails.platformEdition === "vvf" ? "vvf" : "vcf";
+  return fields.commercialPlan && fields.adoptionDetails.platformEdition === "vvf" ? "vvf" : "vcf";
 }
 
 /** The pathway the plan is built on: a VCF-only pathway selected for a VVF plan falls back to a pathway decision. */
@@ -812,7 +812,16 @@ export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   adoptionDetails: adoptionDetailsSchema,
   exportPreferences: exportPreferencesSchema.default({ includeVcfReadiness: true, includeOperationalTimeline: true }),
   compatibilityTargetRelease: z.enum(HCL_CATALOG_RELEASES).default(HCL_TARGET_RELEASE),
+  /**
+   * Deprecated: the deal segment lives on the tracker record (`engagements.segment`). Kept so older documents still
+   * parse and so `migrateDocument` can derive `commercialPlan` from it once. Nothing in plan generation reads it.
+   */
   customerSegment: customerSegmentSchema.default("unspecified"),
+  /**
+   * The plan is built as Commercial: the Broadcom Building Blocks workbook is produced and VVF may be chosen as the
+   * platform edition. A plan input, set by a person; never copied from the tracker segment on an existing record.
+   */
+  commercialPlan: z.boolean().default(false),
   hoursModel: hoursModelSchema.default("v2"),
   estimateInputs: estimateInputsSchema.default({}),
   hoursFill: hoursFillSchema,
@@ -1449,6 +1458,7 @@ export function createDefaultFields(): MinimalFields {
     hoursFill: { enabled: false, label: HOURS_FILL_DEFAULT_LABEL },
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
+    commercialPlan: false,
     fundingSource: "entitlement",
     bsasHours: 0,
     bsasStart: "",
@@ -3625,6 +3635,7 @@ function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): Minim
     hoursFill: { enabled: false, label: HOURS_FILL_DEFAULT_LABEL },
     compatibilityTargetRelease: HCL_TARGET_RELEASE,
     customerSegment: "unspecified",
+    commercialPlan: false,
     fundingSource: "entitlement",
     bsasHours: 0,
     bsasStart: "",
@@ -3954,8 +3965,28 @@ function withRefreshedActivityDetails(timeline: Timeline, sources: Timeline[], w
   };
 }
 
+/**
+ * The plan inputs (Commercial plan and platform edition) are explicit fields. A document saved before they existed
+ * gets them derived from what drove the plan then: Commercial when the segment was Commercial, and VVF kept only on a
+ * Commercial plan (it was ignored on every other segment). So no saved plan changes. Runs once: after that,
+ * `commercialPlan` is present and nothing reads the segment again.
+ */
+function withExplicitPlanInputs(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const document = value as Record<string, unknown>;
+  const fields = document.fields;
+  if (!fields || typeof fields !== "object" || typeof (fields as Record<string, unknown>).commercialPlan === "boolean") return value;
+  const rawFields = fields as Record<string, unknown>;
+  const commercialPlan = rawFields.customerSegment === "commercial";
+  const details = rawFields.adoptionDetails;
+  const adoptionDetails = !commercialPlan && details && typeof details === "object" && (details as Record<string, unknown>).platformEdition === "vvf"
+    ? { ...(details as Record<string, unknown>), platformEdition: "vcf" }
+    : details;
+  return { ...document, fields: { ...rawFields, commercialPlan, ...(adoptionDetails === undefined ? {} : { adoptionDetails }) } };
+}
+
 export function migrateDocument(value: unknown): EngagementDocument {
-  const normalizedValue = normalizeRawTimelineTaxonomy(value);
+  const normalizedValue = normalizeRawTimelineTaxonomy(withExplicitPlanInputs(value));
   const current = engagementDocumentV11Schema.safeParse(normalizedValue);
   if (current.success) {
     const fields = normalizePlanningDates(current.data.fields);

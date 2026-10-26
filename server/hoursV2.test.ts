@@ -31,7 +31,7 @@ function doc(options: Options = {}): EngagementDocument {
   let document = createDefaultDocument();
   const focus = options.focus ?? {};
   Object.assign(document.fields, {
-    customerName: "Test", customerSegment: "commercial", entitlementAmount: options.entitlement ?? 0, entitlementStart: "2027-01-04", plannedProjectStart: "2027-01-04", hoursModel: "v2",
+    customerName: "Test", customerSegment: "commercial", commercialPlan: true, entitlementAmount: options.entitlement ?? 0, entitlementStart: "2027-01-04", plannedProjectStart: "2027-01-04", hoursModel: "v2",
     priorities: options.priorities ?? Object.keys(focus).map(key => CAPABILITY[key]),
     estimateInputs: options.inputs ?? {},
     adoptionDetails: {

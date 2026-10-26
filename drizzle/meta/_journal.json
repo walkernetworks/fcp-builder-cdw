@@ -15,6 +15,76 @@
       "when": 1784254742399,
       "tag": "0001_romantic_sasquatch",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1792155762262,
+      "tag": "0002_vsa_tracker_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1792163859939,
+      "tag": "0003_saved_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1792169462394,
+      "tag": "0004_fcp_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1792586151340,
+      "tag": "0005_admin_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1792586158807,
+      "tag": "0006_seed_app_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1792588875230,
+      "tag": "0007_seed_gate_labels",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1792599599589,
+      "tag": "0008_delivery_requirements",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1792764162306,
+      "tag": "0009_tracker_segment_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1792768061144,
+      "tag": "0010_segment_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1792780044952,
+      "tag": "0011_fcp_versions_issue",
+      "breakpoints": true
     }
   ]
 }
