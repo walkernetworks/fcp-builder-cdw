@@ -111,3 +111,20 @@ describe("old FCP links", () => {
     expect(app).not.toMatch(/from "\.\/pages\/Home"/);
   });
 });
+
+describe("hiding the live preview", () => {
+  const workspace = readFileSync(path.join(import.meta.dirname, "../client/src/pages/FcpWorkspace.tsx"), "utf8");
+
+  it("removes the side column when hidden and keeps the full preview a click away", () => {
+    expect(workspace).toMatch(/\{!previewHidden && \(\s*<aside/);
+    expect(workspace).toMatch(/previewHidden \? "" : "xl:grid-cols-\[13rem_minmax\(0,1fr\)_minmax\(0,40%\)\]"/);
+    expect(workspace).toMatch(/className=\{previewHidden \? "" : "xl:hidden"\} onClick=\{\(\) => setPreviewOpen\(true\)\}/);
+    expect(workspace).toContain("Show live preview");
+  });
+
+  it("remembers the choice in this browser only, and works without storage", () => {
+    const helpers = workspace.slice(workspace.indexOf("const PREVIEW_HIDDEN_KEY"), workspace.indexOf("function PreviewFrame("));
+    expect(helpers.match(/localStorage/g)?.length).toBe(3);
+    expect(helpers.match(/try \{/g)?.length).toBe(2);
+  });
+});

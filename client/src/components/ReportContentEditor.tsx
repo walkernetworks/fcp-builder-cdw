@@ -46,13 +46,28 @@ function YesNo({ value, onChange }: { value: boolean | null; onChange: (value: b
   );
 }
 
-type GeneratedProps<Row> = {
+export type GeneratedProps<Row> = {
   generated: Array<GeneratedRow<Row>>;
   hiddenCount: number;
   onOverride: (item: GeneratedRow<Row>) => void;
   onHide: (key: string) => void;
   onRestore: () => void;
 };
+
+/** Wiring for a section the app partly generates: override copies the row into the planner's rows and hides the original. */
+export function generatedRowsFor<S extends GeneratedSection>(document: EngagementDocument, generated: GeneratedReport, section: S, onChange: (document: EngagementDocument) => void): GeneratedProps<GeneratedReport[S][number]["row"]> {
+  const report = document.report;
+  const all = generated[section] as Array<GeneratedRow<any>>;
+  const hidden = new Set(report.hiddenGenerated);
+  const setHidden = (hiddenGenerated: string[]) => onChange({ ...document, report: { ...report, hiddenGenerated } });
+  return {
+    generated: visibleGenerated(document, generated, section) as Array<GeneratedRow<any>>,
+    hiddenCount: all.filter(item => hidden.has(item.key)).length,
+    onOverride: item => onChange({ ...document, report: { ...report, [section]: [...(report[section] as unknown[]), structuredClone(item.row)], hiddenGenerated: Array.from(new Set([...report.hiddenGenerated, item.key])) } }),
+    onHide: key => setHidden(Array.from(new Set([...report.hiddenGenerated, key]))),
+    onRestore: () => setHidden(report.hiddenGenerated.filter(key => !all.some(item => item.key === key))),
+  };
+}
 
 function GeneratedActions({ onOverride, onHide }: { onOverride: () => void; onHide: () => void }) {
   return (
@@ -71,7 +86,7 @@ function RestoreHidden({ count, onRestore }: { count: number; onRestore: () => v
 const FROM_PLAN = <span className="mr-2 inline-block rounded bg-s100 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-s500">From the plan</span>;
 
 /** A list of lines; generated lines appear first and can be overridden or hidden. */
-function TextList({ items, onChange, placeholder, generated }: { items: string[]; onChange: (items: string[]) => void; placeholder: string; generated?: GeneratedProps<string> }) {
+export function TextList({ items, onChange, placeholder, generated }: { items: string[]; onChange: (items: string[]) => void; placeholder: string; generated?: GeneratedProps<string> }) {
   return (
     <div className="space-y-2">
       {generated?.generated.map(item => (
@@ -95,7 +110,7 @@ function TextList({ items, onChange, placeholder, generated }: { items: string[]
 }
 
 /** An editable table of rows; generated rows appear first, read-only, and can be overridden or hidden. */
-function RowTable<Row extends Record<string, unknown>>({ rows, columns, blank, onChange, addLabel, generated }: { rows: Row[]; columns: Array<Column<Row>>; blank: Row; onChange: (rows: Row[]) => void; addLabel: string; generated?: GeneratedProps<Row> }) {
+export function RowTable<Row extends Record<string, unknown>>({ rows, columns, blank, onChange, addLabel, generated }: { rows: Row[]; columns: Array<Column<Row>>; blank: Row; onChange: (rows: Row[]) => void; addLabel: string; generated?: GeneratedProps<Row> }) {
   const update = (index: number, key: keyof Row, value: unknown) => onChange(rows.map((row, position) => (position === index ? { ...row, [key]: value } : row)));
   const display = (value: unknown) => (Array.isArray(value) ? (value.length ? value.join(", ") : "to be named") : value === null || value === undefined || value === "" ? "—" : String(value));
   const cell = (row: Row, index: number, column: Column<Row>) => {
@@ -193,18 +208,7 @@ export function ReportContentEditor({ document, onChange, sections }: Props) {
   const numberInput = (value: number | null, onValue: (value: number | null) => void, placeholder = "") => <Input className="bg-surface" type="number" min={0} value={value ?? ""} placeholder={placeholder} onChange={event => onValue(numberOrNull(event.target.value))} />;
   const dateInput = (value: string | null, onValue: (value: string | null) => void) => <Input className="bg-surface" type="date" value={value ?? ""} onChange={event => onValue(event.target.value || null)} />;
 
-  /** Wiring for a section the app partly generates: override copies the row into the planner's rows and hides the original. */
-  function generatedFor<S extends GeneratedSection>(section: S): GeneratedProps<GeneratedReport[S][number]["row"]> {
-    const all = generated[section] as Array<GeneratedRow<any>>;
-    const hidden = new Set(report.hiddenGenerated);
-    return {
-      generated: visibleGenerated(document, generated, section) as Array<GeneratedRow<any>>,
-      hiddenCount: all.filter(item => hidden.has(item.key)).length,
-      onOverride: item => onChange({ ...document, report: { ...report, [section]: [...(report[section] as unknown[]), structuredClone(item.row)], hiddenGenerated: Array.from(new Set([...report.hiddenGenerated, item.key])) } }),
-      onHide: key => set("hiddenGenerated", Array.from(new Set([...report.hiddenGenerated, key]))),
-      onRestore: () => set("hiddenGenerated", report.hiddenGenerated.filter(key => !all.some(item => item.key === key))),
-    };
-  }
+  const generatedFor = <S extends GeneratedSection>(section: S) => generatedRowsFor(document, generated, section, onChange);
 
   const missing = [
     !bsasOnly && !report.entitlement.hours && "Entitled hours",

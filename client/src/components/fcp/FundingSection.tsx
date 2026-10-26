@@ -1,3 +1,4 @@
+import { ConsumptionHistory } from "@/components/fcp/ConsumptionHistory";
 import { InternalPanel, ProvenancePill } from "@/components/fcp/Provenance";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +33,7 @@ function Row({ label, required, hint, fact, onConfirm, readOnly, children }: { l
  * values that never print sit in the locked internal panel beside them. Entitled hours and consumed hours are two
  * numbers from two sources and are labelled apart. docs/FCP-WORKSPACE.md section 9.
  */
-export function FundingSection({ document, onChange, tracker, readOnly }: { document: EngagementDocument; onChange: (document: EngagementDocument) => void; tracker: TrackerFunding; readOnly: boolean }) {
+export function FundingSection({ engagementId, document, onChange, tracker, readOnly }: { engagementId: number; document: EngagementDocument; onChange: (document: EngagementDocument) => void; tracker: TrackerFunding; readOnly: boolean }) {
   const { fields, report } = document;
   const facts = fundingProvenance(document);
   const effort = useScopedEffort(document);
@@ -108,15 +109,8 @@ export function FundingSection({ document, onChange, tracker, readOnly }: { docu
                 <Input type="number" min={0} value={report.entitlement.hours ?? ""} onChange={event => setEntitlement({ hours: numberOrNull(event.target.value) })} />
               </Row>
             )}
-            <Row label={bsasOnly ? "BSAS hours consumed" : "Hours consumed"} fact={facts.hoursConsumed} readOnly={readOnly} hint="From the latest consumption entry in CDW's records. A different number from the entitled hours, from a different source; it drives the burndown and weekly pace.">
-              <Input type="number" min={0} value={report.entitlement.hoursConsumed ?? ""} onChange={event => setEntitlement({ hoursConsumed: numberOrNull(event.target.value) })} />
-            </Row>
-            <div className="space-y-1.5">
-              <Label>Consumed as of</Label>
-              <Input type="date" value={report.entitlement.consumedAsOf ?? ""} onChange={event => setEntitlement({ consumedAsOf: event.target.value || null })} />
-              <p className="text-xs leading-5 text-s400">The date of that consumption entry.</p>
-            </div>
           </div>
+          <div className="mt-4"><ConsumptionHistory engagementId={engagementId} document={document} onChange={onChange} readOnly={readOnly} bsasOnly={bsasOnly} /></div>
         </div>
       </Panel>
 

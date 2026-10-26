@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
-import { boolean, date, decimal, index, int, json, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar, type AnyMySqlColumn } from "drizzle-orm/mysql-core";
+import { boolean, date, decimal, index, int, json, mediumtext, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar, type AnyMySqlColumn } from "drizzle-orm/mysql-core";
 import type { EngagementDocument } from "../shared/fcp";
 import {
   ASSIGNMENT_ROLES,
+  CONSUMPTION_SOURCES,
   ENTITLEMENT_INTEREST,
   FCP_VERSION_REASONS,
+  FCP_VERSION_STATUSES,
   FCP_WAIVER_PARTIES,
   HEALTH,
   INTAKE_SOURCES,
@@ -21,6 +23,8 @@ import {
 } from "../shared/vsaFields";
 import type { IntakeAnswers } from "../shared/vsaFields";
 import type { SegmentReview } from "../shared/fcpRecord";
+import type { ScopedEffort } from "../shared/effort";
+import type { ChangeSummary } from "../shared/fcpChangeSummary";
 import { SEGMENTS, STAGES } from "../shared/vsaStage";
 import type { ReportConfig } from "../shared/vsaReports";
 import type { AppSettingValue } from "../shared/appSettings";
@@ -267,9 +271,53 @@ export const fcpVersions = mysqlTable(
     reason: mysqlEnum("reason", FCP_VERSION_REASONS).notNull(),
     createdByUserId: int("createdByUserId").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
+    // Issued versions (docs/FCP-WORKSPACE.md section 13). Null on every History save.
+    /** 1, 2, 3 per engagement, for issued versions only; the save counter above is never shown as a version. */
+    issueNumber: int("issueNumber"),
+    status: mysqlEnum("status", FCP_VERSION_STATUSES),
+    /** The issued version this one revises. */
+    basedOnVersionId: int("basedOnVersionId").references((): AnyMySqlColumn => fcpVersions.id, { onDelete: "set null" }),
+    effortSnapshot: json("effortSnapshot").$type<ScopedEffort>(),
+    /** The Condensed FCP exactly as issued; downloads of the version return it unchanged. */
+    renderedHtml: mediumtext("renderedHtml"),
+    /** SHA-256 of renderedHtml. */
+    renderHash: varchar("renderHash", { length: 64 }),
+    revisionNote: text("revisionNote"),
+    changeSummary: json("changeSummary").$type<ChangeSummary>(),
+    issuedAt: timestamp("issuedAt"),
+    issuedByUserId: int("issuedByUserId").references(() => users.id, { onDelete: "set null" }),
+    broadcomApprovedOn: day("broadcomApprovedOn"),
+    broadcomApprovedByUserId: int("broadcomApprovedByUserId").references(() => users.id, { onDelete: "set null" }),
+    broadcomApprovalNote: text("broadcomApprovalNote"),
+    customerApprovedOn: day("customerApprovedOn"),
+    customerApprovedByUserId: int("customerApprovedByUserId").references(() => users.id, { onDelete: "set null" }),
+    customerApprovalNote: text("customerApprovalNote"),
   },
-  table => [uniqueIndex("fcp_versions_number_uq").on(table.engagementId, table.versionNumber)],
+  table => [uniqueIndex("fcp_versions_number_uq").on(table.engagementId, table.versionNumber), uniqueIndex("fcp_versions_issue_uq").on(table.engagementId, table.issueNumber)],
 );
+
+/**
+ * Hours consumed against the entitlement, as of a date: the burndown's history. Append-only; a correction is a new
+ * entry. Entered by hand today; `source` and `externalId` let a future Salesforce read upsert its own rows without
+ * touching manual ones (docs/FCP-WORKSPACE.md section 13.1).
+ */
+export const fcpConsumptionEntries = mysqlTable(
+  "fcpConsumptionEntries",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    engagementId: int("engagementId").notNull().references(() => engagements.id, { onDelete: "cascade" }),
+    asOf: day("asOf").notNull(),
+    consumedHours: decimal("consumedHours", { precision: 10, scale: 2, mode: "number" }).notNull(),
+    source: mysqlEnum("source", CONSUMPTION_SOURCES).notNull().default("manual"),
+    externalId: varchar("externalId", { length: 128 }),
+    note: text("note"),
+    enteredByUserId: int("enteredByUserId").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("fcp_consumption_engagement_idx").on(table.engagementId, table.asOf, table.id), uniqueIndex("fcp_consumption_external_uq").on(table.engagementId, table.source, table.externalId)],
+);
+
+export type FcpConsumptionEntry = typeof fcpConsumptionEntries.$inferSelect;
 
 export type FcpVersion = typeof fcpVersions.$inferSelect;
 
