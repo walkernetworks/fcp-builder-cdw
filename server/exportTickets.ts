@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { REPORT_FORMAT_CHOICES, type ReportFormatChoice } from "../shared/reportFormat";
 
 export type ExportFormat = "html" | "pdf" | "xlsx";
 export type ExportDocumentType = "fcp" | "condensed-fcp" | "plan-output" | "building-blocks" | "issued-fcp";
@@ -10,6 +11,8 @@ type ExportTicketPayload = {
   documentType: ExportDocumentType;
   /** The issued version, for "issued-fcp" only. */
   versionId?: number;
+  /** The customer format of an FCP draft, for "condensed-fcp" only; absent renders the long report. */
+  reportFormat?: ReportFormatChoice;
   expiresAt: number;
 };
 
@@ -25,13 +28,14 @@ function sign(payload: string) {
   return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
 
-export function createExportTicket(userId: number, engagementId: number, format: ExportFormat, documentType: ExportDocumentType = "fcp", versionId?: number) {
+export function createExportTicket(userId: number, engagementId: number, format: ExportFormat, documentType: ExportDocumentType = "fcp", versionId?: number, reportFormat?: ReportFormatChoice) {
   const payload: ExportTicketPayload = {
     userId,
     engagementId,
     format,
     documentType,
     ...(versionId !== undefined ? { versionId } : {}),
+    ...(reportFormat !== undefined ? { reportFormat } : {}),
     expiresAt: Date.now() + TICKET_LIFETIME_MS,
   };
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
@@ -57,6 +61,7 @@ export function verifyExportTicket(ticket: string): ExportTicketPayload | null {
     if ((parsed.documentType === "issued-fcp") !== (parsed.versionId !== undefined)) return null;
     if (parsed.versionId !== undefined && (!Number.isInteger(parsed.versionId) || parsed.versionId <= 0)) return null;
     if (parsed.documentType === "issued-fcp" && parsed.format === "xlsx") return null;
+    if (parsed.reportFormat !== undefined && (parsed.documentType !== "condensed-fcp" || !(REPORT_FORMAT_CHOICES as readonly string[]).includes(parsed.reportFormat))) return null;
     // The Building Blocks workbook is only ever issued as XLSX, and XLSX only for that workbook.
     if ((parsed.format === "xlsx") !== (parsed.documentType === "building-blocks")) return null;
     if (typeof parsed.expiresAt !== "number" || parsed.expiresAt < Date.now()) return null;

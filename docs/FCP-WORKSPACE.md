@@ -463,3 +463,30 @@ Acceptance: issue v1, revise, issue v2; compare shows the diff; superseded v1 st
 
 - **Compare** (in the Issued versions header, once there are two issues) opens a dialog with two pickers, which default to the current issue and the one before it. It shows the change summary from the earlier issue to the later, computed from their stored snapshots (`fcpRecord.compareIssued`, in `server/fcpIssue.ts`). Both reports appear side by side, exactly as stored when issued, in sandboxed frames that cannot run scripts. It writes nothing.
 - For two consecutive issues, the comparison is the same as the change summary stored on the later issue.
+
+## 14. Report formats (replaces Phase 4; spec in `docs/fcp-formats/`)
+
+### 14.1 Phase 3 review decisions (2026-10-27)
+
+All three open points from Phase 3 were accepted:
+
+1. Issuing fills only empty tracker gate dates, writes no stage events and leaves the stage alone. The `fcpVersions` row is the audit record.
+2. Working-document exports carry the draft mark; an unmarked FCP requires issuing.
+3. Approvals are recorded by hand: date, approver name (added in PR 1, migration 0012), the recording user and a note.
+
+### 14.2 As built: Summary (PR 2)
+
+- **Format option.** `renderCondensedFcpHtml` takes `format` (`"summary"`) and `version` (`{ issueNumber, issuedOn }`). With no format the long report renders byte-identical to before (the existing goldens pass unchanged); `version` is ignored without a format. The Summary renderer is `server/fcpSummaryRenderer.ts`; pieces shared with the long report moved to `server/fcpReportParts.ts`.
+- **Choice and default.** `shared/reportFormat.ts`: `defaultReportFormat(segment)` gives Commercial the Summary and everyone else `"full"`, the long report, until the Standard format exists (PR 3 switches Corporate and Strategic to it). The workspace's Review section has a **Customer format** picker; a choice there applies to this session's preview, draft export and issue. Draft export tickets carry the format, resolved from the segment when the client sends none.
+- **Issued format.** `fcpVersions.reportFormat` (migration 0013) records what the customer received: `summary`, `standard`, or null for the long report. "Nothing changed since issue N" now means the same pages: the current FCP rendered with issue N's number, date and format equals what was stored; a format change counts as a change.
+- **Hours reconcile (spec 6, 7.1, 7.2).** `reconcileHours` counts hours delivered (`report.entitlement.hoursConsumed`) plus hours planned (`effort.totals.total`) against the entitled hours. The Summary prints delivered hours as their own "Delivered to date" row and says "X delivered plus Y planned equals the Z-hour entitlement" only when that is true; otherwise the total is "Total CDW hours" with no claim. The buckets, the reserve and the under-funded gap never print in the Summary.
+- **Delivered row label.** The notes on the consumption entries up to the printed figure (`deliveredNotes`, oldest first, each once) label the "Delivered to date" row; with no notes it reads "Hours delivered to date". Preview, draft export and issue load them for the record; nothing is invented.
+- **Tolerance (review decision 2026-10-27).** One hour either way still reconciles (`RECONCILE_TOLERANCE_HOURS`). The page says "equals" only when the figures add up exactly, and "uses …, to within an hour of rounding" otherwise. Hours left unplanned read: "N hours are not planned and will be forfeited at term end."
+- **Issue gate.** `fundingProblem` (internal wording) is non-null when delivered plus planned is over or under the entitled hours by more than the tolerance, or, with no entitled hours on record, when the fit flags the plan under-funded. Issuing is then refused unless the issue carries a reason; the reason is stored on the version (`fcpVersions.fundingOverrideNote`) and shown in Issued versions. Draft exports are not gated by it.
+- **Two pages, always (review 2026-10-27).** A plan with a long scope list or a crowded timeline ran to three pages. Each page is now laid out at its printed width (11 in for the first, 10.1 in after) and an inline script scales a page that is taller than its sheet down to fit, never below `FIT_MIN_ZOOM` (0.72). The script makes no network calls, so the HTML stays self-contained, and it applies to browser printing as well as the PDF. The Summary timeline leaves out delivery categories with nothing scheduled (spec 6); the long report keeps every row. `server/fcpSummaryPages.test.ts` prints the fixtures and a crowded plan and expects two pages; it needs Chrome or Chromium and is skipped without one (CI).
+- **Draft mark.** Exports from the workspace are drafts and carry the mark (Phase 3, C-5/C-6); only an issued version leaves without it.
+- **Caps.** Key dates 5 (the entitlement end always shows), commitments 3, open items 3, each with "See the full list in the Standard FCP." when more exist.
+- **Footer.** Every page carries "Functional Consumption Plan · customer · Version N · Page x of y" (or "Working draft") in CSS `@page` margin boxes, so the page count is the printed one.
+- **Naming.** The draft export is named "… - FCP Draft"; its History label is "Exported FCP draft, Summary (PDF)". "Condensed" stays only inside the long report, which goes when Standard replaces it.
+- **Fixtures.** `acmeHealthReconciled` is Acme Health with its plan reconciled the way a planner would (discovery already delivered carries no more hours; the waves cut to proving waves): 39 + 223 = 262. Golden: `server/__golden__/summary-acme-health.html`.
+- **Known gap, not changed here:** the fit envelope and the hours fill work from the entitled hours and do not subtract hours already delivered, and the fill stops short of the reserve. So a plan with consumption, or one that keeps a reserve, does not reconcile by itself: the planner adjusts the packages, or issues with a reason. Changing the envelope changes the long report's goldens and is left for a decision.

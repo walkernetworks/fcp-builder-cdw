@@ -161,7 +161,7 @@ describe("condensed FCP downloads", () => {
     getEngagement.mockResolvedValue({ ...row!, data: applyCustomerBrief(createDefaultDocument(), brief).document });
     const response = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 41, "html", "condensed-fcp")}`);
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - Condensed - FCP.html"');
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - FCP Draft.html"');
     expect(await response.text()).toContain("Adoption Plan &amp; Recommendation");
   });
 

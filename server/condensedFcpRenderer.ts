@@ -1,15 +1,18 @@
-import { allocateBsas, bsasTerm, fundedDocument, isBsasOnly, type BsasTerm } from "../shared/bsas";
+import { allocateBsas, type BsasTerm } from "../shared/bsas";
 import { barWindow } from "../shared/buildingBlocks";
-import { buildBurndown, buildCustomerEffort, formatWindow, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
-import { activityOwner, calculateEntitlementEndDate, domainHosts, domainPackages, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
-import { effectiveReport, minimumTargetRelease, planKeyDates, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
+import { buildCustomerEffort, formatWindow, type ScopedEffort } from "../shared/effort";
+import { activityOwner, domainHosts, domainPackages, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
+import { minimumTargetRelease, planKeyDates, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
+import type { ReportFormat } from "../shared/reportFormat";
 import { VCF_CORPUS } from "../shared/vcfCorpus";
 import { DOMAIN_BUILD_WEIGHTS } from "../shared/hoursConfig";
 import { summarizeHclFindings } from "../shared/hcl";
 import { deliveryBriefing, renewalStartsCurrentTerm } from "../shared/deliveryBriefing";
 import { getIndustryDiscoveryTemplate } from "../shared/industryDiscovery";
 import { cdwLogoSvg } from "./brand/cdwLogo";
-import { projectOperationalTimelineToMonths, renderTimeline, sliceTimeline } from "./timelineHtml";
+import { customerFacing, DRAFT_MARK, ENTITLEMENT_WORDING, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, sentence, shortDate, UNDECIDED_DEPTH, type Wording } from "./fcpReportParts";
+import { renderSummaryFcpHtml, type IssueStamp } from "./fcpSummaryRenderer";
+import { renderTimeline, sliceTimeline } from "./timelineHtml";
 
 /**
  * Condensed FCP (FCP 2.0, "Make Amazing Happen"). Customer-facing: carries exactly one dollar figure
@@ -17,33 +20,8 @@ import { projectOperationalTimelineToMonths, renderTimeline, sliceTimeline } fro
  * Self-contained HTML (no external fonts, scripts, or images); the PDF is printed from it.
  */
 
-const esc = (value: unknown) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const LEGEND = "CDW — Proprietary and confidential. Copying restricted.";
 
-/** Picks the entitlement wording, or the BSAS wording for a BSAS-only deal. */
-type Wording = (entitlement: string, bsas: string) => string;
-const ENTITLEMENT_WORDING: Wording = entitlement => entitlement;
-
-function parseIso(value: string): Date | null {
-  const match = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(value);
-  return match ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3] ?? 1))) : null;
-}
-function longDate(value: string): string {
-  const date = parseIso(value);
-  return date ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(date) : value;
-}
-function shortDate(value: string): string {
-  const date = parseIso(value);
-  if (!date) return value;
-  const month = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(date);
-  return `${date.getUTCDate()} ${month} ${date.getUTCFullYear()}`;
-}
-const firstSentence = (text = "", maximum = 150) => {
-  const sentence = (text.split(/(?<=\.)\s/)[0] || "").trim();
-  return sentence.length > maximum ? `${sentence.slice(0, maximum - 1).trim()}…` : sentence;
-};
-const hours = (value: number) => `${Math.round(value).toLocaleString("en-US")}`;
-const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 
 // ---------------------------------------------------------------------------------------------
 // Plan items: the generated timeline condensed for the customer view
@@ -102,12 +80,6 @@ function planItems(document: EngagementDocument, customer: string): PlanItem[] {
   return items.sort((left, right) => left.start.localeCompare(right.start) || left.label.localeCompare(right.label));
 }
 
-/** Text that ends in exactly one full stop, whatever the source text ended with. */
-function sentence(text: string): string {
-  const trimmed = text.trim();
-  return /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
-}
-
 function deadlines(document: EngagementDocument, termEnd: string | null): PlanItem[] {
   const out: PlanItem[] = [];
   if (termEnd) out.push({ category: "Program Management & Governance", label: `Expiry ${shortDate(termEnd).replace(/ \d{4}$/, "")}${termEndAssumed(document) ? " (to confirm)" : ""}`, start: termEnd, end: termEnd, swatch: "muted", milestone: true, outcome: "Unconsumed hours are not refunded.", dependsOn: [] });
@@ -137,22 +109,12 @@ function table(headers: string[], rows: string[][], options: { total?: string[];
   return `<table${options.foot ? ' data-foot="sum"' : ""}><thead><tr>${headers.map((header, index) => cell(esc(header), index, "th")).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((value, index) => cell(value, index, "td")).join("")}</tr>`).join("")}${options.total ? `<tr class="total">${options.total.map((value, index) => cell(value, index, "td")).join("")}</tr>` : ""}</tbody></table>`;
 }
 
-/** Bar labels without the planner's "depth to be confirmed" prompt, which is not for the customer. */
-const UNDECIDED_DEPTH = / — depth to be confirmed$/;
-const customerFacing = (timeline: Timeline): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, label: bar.label.replace(UNDECIDED_DEPTH, "") })) })) });
-
 /** The entitlement window and the two-year notional, drawn with the same category Gantt as the full FCP. */
 function timelineSheets(document: EngagementDocument, windowStart: string, windowEnd: string, termEnd: string | null, includeEntitlement = true, bsas: BsasTerm | null = null, w: Wording = ENTITLEMENT_WORDING): { entitlement: string; notional: string } {
   const bsasLine = bsas ? ` Broadcom Software Adoption Services (BSAS) fund up to ${hours(bsas.hours)} hours of this work from ${esc(longDate(bsas.termStart))} to ${esc(longDate(bsas.termEnd))}; BSAS hours not used by then are forfeited.` : "";
   const sheet = (eyebrow: string, heading: string, intro: string, timeline: Timeline, empty: string) =>
     `<section class="tl-sheet"><div class="tl-head"><span>${esc(eyebrow)}</span><h2>${esc(heading)}</h2><p>${intro}</p></div>${renderTimeline(timeline, empty)}</section>`;
-  const operational = projectOperationalTimelineToMonths(customerFacing(document.adoptionTimeline));
-  // The entitlement window spans up to 13 calendar months when it starts and ends mid-month, and stops at the end of
-  // the term when less than a year is left.
-  const opStart = /^(\d{4})-(\d{2})/.exec(operational.startDate);
-  const opEnd = termEnd ? /^(\d{4})-(\d{2})/.exec(termEnd) : null;
-  const termColumns = opStart && opEnd ? (Number(opEnd[1]) - Number(opStart[1])) * 12 + Number(opEnd[2]) - Number(opStart[2]) + 1 : 13;
-  const entitlementWindow = sliceTimeline(operational, 1, Math.max(1, Math.min(13, termColumns, operational.columns.length)));
+  const entitlementWindow = entitlementWindowTimeline(document, termEnd);
   const entitlement = includeEntitlement && document.adoptionTimeline.lanes.length
     ? sheet(w("Adoption Timeline · entitlement window", "Adoption Timeline · BSAS term"), "Private Cloud Adoption Timeline", `${esc(windowStart)} through ${esc(windowEnd)}. ${w("The entitlement-funded delivery sequence by month, under the five standard categories; work after the entitlement ends is carried in the Two-Year Notional.", "The BSAS-funded delivery sequence by month, under the five standard categories; work after the BSAS term ends is carried in the Two-Year Notional.")} ◆ marks key delivered functionality.`, entitlementWindow, w("No activities are scheduled in the entitlement window.", "No activities are scheduled in the BSAS term."))
     : "";
@@ -269,34 +231,25 @@ tr{break-inside:avoid}
  * `draft` is a render option, never a document field, so it cannot be saved into a document. It marks every page
  * "DRAFT, not for distribution"; when it is absent the output is byte-identical to before it existed.
  */
-export type CondensedFcpOptions = { today?: string; effort: ScopedEffort; draft?: boolean };
+export type CondensedFcpOptions = {
+  today?: string;
+  effort: ScopedEffort;
+  draft?: boolean;
+  /** The customer format; absent renders the long report, byte-identical to before the formats existed. */
+  format?: ReportFormat;
+  /** The issue this render is for; absent on a working draft. */
+  version?: IssueStamp;
+  /** What the delivered hours were for, from the consumption entries' notes (shared/consumption.ts deliveredNotes). */
+  deliveredNotes?: string[];
+};
 
-/** Fixed position, so print repeats it on every page. Text and CSS only, no fonts or images. */
-const DRAFT_MARK = `<style>.draft-mark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font:800 60px/1 Arial,"Helvetica Neue",sans-serif;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;color:rgba(110,110,110,.24);pointer-events:none;z-index:9999}@media print{.draft-mark{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style><div class="draft-mark" aria-hidden="true">Draft, not for distribution</div>`;
 
 export function renderCondensedFcpHtml(title: string, input: EngagementDocument, options: CondensedFcpOptions): string {
-  // A BSAS-only deal is drawn with BSAS in the entitlement's place: BSAS hours, the BSAS term, and no dollar figure.
-  const source = fundedDocument(input);
-  const bsasOnly = isBsasOnly(source.fields);
-  const w: Wording = (entitlement, bsasText) => (bsasOnly ? bsasText : entitlement);
-  // The report as it prints: generated rows the planner kept plus the planner's completed rows.
-  // Work the entitlement cannot carry is drawn after it, in the Two-Year Notional.
-  const deferredWork = options.effort.workPackages.filter(row => row.deferred);
-  // Every bar carries who owns it (the planner's choice or the default) for drawing and sequencing.
-  const customerTimelines = timelinesWithDeferrals(withOwnership(source), deferredWork.map(row => row.id));
-  const planned: EngagementDocument = { ...source, adoptionTimeline: customerTimelines.adoption, twoYearPlan: customerTimelines.notional };
-  const document: EngagementDocument = { ...planned, report: effectiveReport(planned) };
+  if (options.format === "summary") return renderSummaryFcpHtml(title, input, options);
+  const { bsasOnly, w, deferredWork, customerTimelines, document, today, asOf, customer, burndown, termEnd, assumedEnd, termStart, bsas } = prepareReport(input, options);
   const { fields, report } = document;
-  const today = options.today ?? new Date().toISOString().slice(0, 10);
-  const asOf = report.asOf || today;
-  const customer = fields.customerName || "the customer";
   const stamp = `For customer review · ${shortDate(asOf)}`;
   const plan = playbookPlanForFields(fields);
-  const burndown: Burndown | null = buildBurndown(document, today);
-  const termEnd = burndown?.termEnd || report.entitlement.termEnd || calculateEntitlementEndDate(fields.entitlementStart) || null;
-  const assumedEnd = termEndAssumed(document);
-  const termStart = burndown?.termStart || report.entitlement.termStart || fields.entitlementStart || null;
-  const bsas = bsasTerm(fields, termEnd);
   const effort = options.effort;
   // The report as it prints, so customer-run waves the plan generated count toward the customer's effort.
   const customerEffort = buildCustomerEffort(document);

@@ -9,8 +9,9 @@ import { viewerFor } from "./visibility";
 import { renderCompatibilityHandoffHtml } from "./compatibilityHandoffRenderer";
 import { renderFcpHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
-import { condensedReleaseFailures } from "./fcpIssue";
+import { condensedReleaseFailures, recordDeliveredNotes } from "./fcpIssue";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
+import { reportFormatOption } from "../shared/reportFormat";
 import { scopedEffortForDocument } from "./rateCard";
 
 export function safeExportFilename(title: string, extension: "html" | "pdf", documentType: "fcp" | "condensed-fcp" | "plan-output" = "fcp") {
@@ -63,10 +64,12 @@ export function registerExportDownloadRoutes(app: Express) {
       let html: string;
       if (ticket.documentType === "condensed-fcp") {
         const effort = scopedEffortForDocument(document);
+        const format = ticket.reportFormat ? reportFormatOption(ticket.reportFormat) : undefined;
+        const formatOptions = format ? { format, deliveredNotes: await recordDeliveredNotes(viewerFor(user!), ticket.engagementId, document) } : {};
         // Checked as it would go to the customer, then marked as a draft: only an issued version leaves without the mark.
-        const failures = condensedReleaseFailures(renderCondensedFcpHtml(row.title, document, { effort }), document, effort);
-        if (failures.length) return deny(res, 409, `The Condensed FCP was not exported because it failed these checks:\n- ${failures.join("\n- ")}`);
-        html = renderCondensedFcpHtml(row.title, document, { effort, draft: true });
+        const failures = condensedReleaseFailures(renderCondensedFcpHtml(row.title, document, { effort, ...formatOptions }), document, effort, format);
+        if (failures.length) return deny(res, 409, `The FCP was not exported because it failed these checks:\n- ${failures.join("\n- ")}`);
+        html = renderCondensedFcpHtml(row.title, document, { effort, draft: true, ...formatOptions });
       } else {
         // "fcp" is the retired full template (deprecated): no UI path asks for it, and it goes with server/fcpRenderer.ts.
         html = ticket.documentType === "plan-output" ? renderCompatibilityHandoffHtml(row.title, document) : renderFcpHtml(row.title, document);

@@ -6,7 +6,8 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
-import { compareIssued, prepareIssue } from "./fcpIssue";
+import { compareIssued, prepareIssue, recordDeliveredNotes } from "./fcpIssue";
+import { defaultReportFormat, REPORT_FORMAT_CHOICES, REPORT_FORMAT_LABELS, reportFormatOption, type ReportFormatChoice } from "../shared/reportFormat";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { renderPdf } from "./pdf";
@@ -31,14 +32,17 @@ function requireRow<T>(row: T | undefined): T {
 }
 
 /**
- * The FCP as the workspace shows it: the condensed (customer) report with the draft mark, and the content checks it
- * would face on export. Effort is priced here so rates never reach the client.
+ * The FCP as the workspace shows it: the customer report in the chosen format with the draft mark, and the content
+ * checks it would face on export. Effort is priced here so rates never reach the client. No format renders the long
+ * report.
  */
-function draftFcp(title: string, document: EngagementDocument) {
-  const html = renderCondensedFcpHtml(title, document, { effort: scopedEffortForDocument(document), draft: true });
-  const checks = checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount, bsasOnly: document.fields.fundingSource === "bsas" });
+function draftFcp(title: string, document: EngagementDocument, choice?: ReportFormatChoice, deliveredNotes: string[] = []) {
+  const format = choice ? reportFormatOption(choice) : undefined;
+  const html = renderCondensedFcpHtml(title, document, { effort: scopedEffortForDocument(document), draft: true, ...(format ? { format, deliveredNotes } : {}) });
+  const checks = checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount, bsasOnly: document.fields.fundingSource === "bsas", format });
   return { html, checks };
 }
+const reportFormatInput = z.enum(REPORT_FORMAT_CHOICES).optional();
 
 /** Turns a db write result into the procedure's return value or the matching tRPC error. */
 function unwrap<T>(result: db.WriteResult<T>): T {
@@ -192,19 +196,28 @@ export const appRouter = router({
       return { versions: versions.map(({ dataHash: _hash, ...version }) => version), changedSinceIssue: latest ? latest.dataHash !== hash : null };
     }),
     /** What issuing now would produce: the checks and the change summary. Writes nothing. */
-    issuePreview: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => {
-      const prepared = requireRow(await prepareIssue(viewerFor(ctx.user), input.id));
-      return { failures: prepared.failures, changeSummary: prepared.changeSummary, unchanged: prepared.unchanged, basedOnIssue: prepared.basedOn?.issueNumber ?? null };
+    issuePreview: protectedProcedure.input(z.object({ id: recordId, reportFormat: reportFormatInput })).mutation(async ({ ctx, input }) => {
+      const prepared = requireRow(await prepareIssue(viewerFor(ctx.user), input.id, { reportFormat: input.reportFormat }));
+      return { failures: prepared.failures, fundingProblem: prepared.fundingProblem, reportFormat: prepared.reportFormat, changeSummary: prepared.changeSummary, unchanged: prepared.unchanged, basedOnIssue: prepared.basedOn?.issueNumber ?? null };
     }),
     /** Issues the saved FCP as the next numbered version, exactly as rendered now, without the draft mark. */
     issue: protectedProcedure
-      .input(z.object({ id: recordId, label: z.string().trim().max(160).default(""), revisionNote: z.string().trim().max(2000).nullable().default(null) }))
+      .input(z.object({
+        id: recordId,
+        label: z.string().trim().max(160).default(""),
+        revisionNote: z.string().trim().max(2000).nullable().default(null),
+        reportFormat: reportFormatInput,
+        /** Why to issue although the hours do not reconcile with the funding; logged on the version. */
+        fundingOverride: z.string().trim().max(2000).nullable().default(null),
+      }))
       .mutation(async ({ ctx, input }) => {
         const viewer = viewerFor(ctx.user);
-        const prepared = requireRow(await prepareIssue(viewer, input.id));
+        const prepared = requireRow(await prepareIssue(viewer, input.id, { reportFormat: input.reportFormat }));
         if (prepared.failures.length) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued because it failed these checks:\n- ${prepared.failures.join("\n- ")}` });
+        if (prepared.fundingProblem && !input.fundingOverride) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued: ${prepared.fundingProblem} To issue it anyway, give the reason.` });
         if (prepared.unchanged) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Nothing has changed since issue ${prepared.basedOn?.issueNumber}.` });
-        return unwrap(await lockAware(() => db.issueFcpVersion(viewer, input.id, { title: prepared.title, data: prepared.document, effort: prepared.effort, html: prepared.html, label: input.label, revisionNote: input.revisionNote || null, changeSummary: prepared.changeSummary, basedOnVersionId: prepared.basedOn?.id ?? null })));
+        const reportFormat = reportFormatOption(prepared.reportFormat) ?? null;
+        return unwrap(await lockAware(() => db.issueFcpVersion(viewer, input.id, { title: prepared.title, data: prepared.document, effort: prepared.effort, html: prepared.html, label: input.label, revisionNote: input.revisionNote || null, changeSummary: prepared.changeSummary, basedOnVersionId: prepared.basedOn?.id ?? null, reportFormat, fundingOverrideNote: prepared.fundingProblem ? input.fundingOverride : null })));
       }),
     /** Replaces the working FCP with the current issued version (saved to History first), to start the next revision. */
     revise: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => unwrap(await lockAware(() => db.reviseFromIssued(viewerFor(ctx.user), input.id)))),
@@ -312,15 +325,21 @@ export const appRouter = router({
     fillOptions: protectedProcedure.input(z.object({ data: engagementDocumentSchema })).mutation(({ input }) => hoursFillOptions(input.data)),
   }),
   document: router({
-    preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => draftFcp(input.title, input.data)),
-    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum([/** @deprecated The full template; no UI sends it. Removed with server/fcpRenderer.ts. */ "fcp", "condensed-fcp", "plan-output", "building-blocks"]).default("condensed-fcp") })).mutation(async ({ ctx, input }) => {
+    /** `id`, when given, is the record whose consumption notes label the delivered hours; it must be visible. */
+    preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema, reportFormat: reportFormatInput, id: recordId.optional() })).mutation(async ({ ctx, input }) => {
+      const notes = input.id && input.reportFormat && input.reportFormat !== "full" ? await recordDeliveredNotes(viewerFor(ctx.user), input.id, input.data) : [];
+      return draftFcp(input.title, input.data, input.reportFormat, notes);
+    }),
+    downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum([/** @deprecated The full template; no UI sends it. Removed with server/fcpRenderer.ts. */ "fcp", "condensed-fcp", "plan-output", "building-blocks"]).default("condensed-fcp"), reportFormat: reportFormatInput })).mutation(async ({ ctx, input }) => {
       if ((input.format === "xlsx") !== (input.documentType === "building-blocks")) throw new TRPCError({ code: "BAD_REQUEST", message: "The Building Blocks workbook is only available as XLSX." });
-      requireRow(await db.getEngagement(viewerFor(ctx.user), input.id));
+      const row = requireRow(await db.getEngagement(viewerFor(ctx.user), input.id));
+      // The FCP draft in the chosen format, or the one the tracker segment gives.
+      const reportFormat = input.documentType === "condensed-fcp" ? input.reportFormat ?? defaultReportFormat(row.segment) : undefined;
       // Every customer document export keeps the FCP as it was sent.
       if (input.documentType === "fcp" || input.documentType === "condensed-fcp") {
-        await db.createFcpVersion(viewerFor(ctx.user), input.id, `Exported ${input.documentType === "fcp" ? "FCP" : "Condensed FCP"} (${input.format.toUpperCase()})`, "export");
+        await db.createFcpVersion(viewerFor(ctx.user), input.id, `Exported ${input.documentType === "fcp" ? "full-template FCP" : `FCP draft, ${REPORT_FORMAT_LABELS[reportFormat!]}`} (${input.format.toUpperCase()})`, "export");
       }
-      return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, input.documentType)}` };
+      return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, input.documentType, undefined, reportFormat)}` };
     }),
     html: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(({ input }) => ({ filename: safeFilename(input.title, "html"), mime: "text/html;charset=utf-8", content: draftFcp(input.title, input.data).html })),
     pdf: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema })).mutation(async ({ input }) => {

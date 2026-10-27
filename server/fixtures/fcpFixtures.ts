@@ -27,6 +27,23 @@ export function acmeHealth(): EngagementDocument {
   return fromBrief(raw => { raw.customer.name = "Acme Health"; });
 }
 
+/**
+ * Acme Health as a planner would issue it: the plan reconciled to its funding. The 39 hours already delivered covered
+ * discovery, so the discovery package carries no further hours, and the waves are cut to CDW's proving waves (the
+ * team runs the rest with the runbook): 39 delivered plus 223 planned equals the 262-hour entitlement.
+ */
+export function acmeHealthReconciled(): EngagementDocument {
+  const document = acmeHealth();
+  const set = (id: string, architect: number, srConsultant: number, projectManager: number) => ({ id, architect, srConsultant, projectManager, placement: "auto" as const, owner: "auto" as const });
+  document.report.workPackageHours = [
+    set("bar-playbook-design-requirements", 0, 0, 0),
+    set("bar-playbook-design-target-state", 20, 2, 2),
+    set("bar-playbook-design-migration-design", 20, 2, 2),
+    set("bar-playbook-execution-migration-waves", 4, 31, 6),
+  ];
+  return document;
+}
+
 /** Corporate, entitlement plus BSAS hours after the entitlement. */
 export function meridianHealth(): EngagementDocument {
   return fromBrief(raw => {

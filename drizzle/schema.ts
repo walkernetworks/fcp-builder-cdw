@@ -26,6 +26,7 @@ import type { SegmentReview } from "../shared/fcpRecord";
 import type { ScopedEffort } from "../shared/effort";
 import type { ChangeSummary } from "../shared/fcpChangeSummary";
 import { SEGMENTS, STAGES } from "../shared/vsaStage";
+import { STORED_REPORT_FORMATS } from "../shared/reportFormat";
 import type { ReportConfig } from "../shared/vsaReports";
 import type { AppSettingValue } from "../shared/appSettings";
 
@@ -298,6 +299,10 @@ export const fcpVersions = mysqlTable(
     /** Who approved it at the customer, as given by the person recording it. */
     customerApproverName: varchar("customerApproverName", { length: 160 }),
     customerApprovalNote: text("customerApprovalNote"),
+    /** The format the customer received (docs/fcp-formats/); null when it was issued as the long report. */
+    reportFormat: mysqlEnum("reportFormat", STORED_REPORT_FORMATS),
+    /** Why it was issued although its hours do not reconcile with the funding; null when they did. */
+    fundingOverrideNote: text("fundingOverrideNote"),
   },
   table => [uniqueIndex("fcp_versions_number_uq").on(table.engagementId, table.versionNumber), uniqueIndex("fcp_versions_issue_uq").on(table.engagementId, table.issueNumber)],
 );
