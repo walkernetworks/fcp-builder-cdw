@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { useBuildLock } from "@/lib/useBuildLock";
 import { exportFilename, type ExportDocumentType } from "@shared/exportFilename";
 import { createDefaultDocument, migrateDocument, refreshDerivedDocument, type EngagementDocument } from "@shared/fcp";
+import type { ReportFormatChoice } from "@shared/reportFormat";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,6 +24,8 @@ export function useFcpEngagement(id: number) {
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [preview, setPreview] = useState<{ html: string; checks: string[] } | null>(null);
   const [activeExport, setActiveExport] = useState<ActiveExport>(null);
+  /** The customer format the preview and the draft export render in; set by the workspace from the tracker segment. */
+  const [reportFormat, setReportFormat] = useState<ReportFormatChoice | undefined>(undefined);
   const hydratedId = useRef<number | null>(null);
   /** The customer name and title this workspace loaded or last saved; sent with saves so the server can tell an FCP edit from a stale copy. */
   const baseCustomerName = useRef<string | null>(null);
@@ -96,9 +99,9 @@ export function useFcpEngagement(id: number) {
   }, [document, title, id, found, dirty, holdsLock]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (hydratedId.current !== id) return;
-    const timer = window.setTimeout(() => previewMutation.mutate({ title, data: document }), 350);
+    const timer = window.setTimeout(() => previewMutation.mutate({ title, data: document, reportFormat }), 350);
     return () => window.clearTimeout(timer);
-  }, [document, title, id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [document, title, id, reportFormat]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mutateDocument = (next: EngagementDocument) => {
     if (readOnly) return void toast.error(`${buildLock.lock.holder ?? "Someone"} is editing this FCP. Take over editing to make changes.`);
@@ -129,7 +132,7 @@ export function useFcpEngagement(id: number) {
     try {
       setSaveState("saving");
       await update.mutateAsync({ id, title, data: document, baseCustomerName: baseCustomerName.current, baseTitle: baseTitle.current });
-      const result = await downloadTicket.mutateAsync({ id, format, documentType });
+      const result = await downloadTicket.mutateAsync({ id, format, documentType, ...(documentType === "condensed-fcp" && reportFormat ? { reportFormat } : {}) });
       const response = await fetch(result.url, { credentials: "same-origin" });
       await downloadServerAttachment(response, format, exportFilename(title, documentType, format));
       toast.success(`${EXPORT_DOCUMENT_LABELS[documentType]} ${format.toUpperCase()} download started`);
@@ -156,6 +159,7 @@ export function useFcpEngagement(id: number) {
     saveState, savedAt, saving: update.isPending, saveNow, saveDocument,
     preview: preview?.html ?? "", previewChecks: preview?.checks ?? [], previewPending: previewMutation.isPending,
     activeExport, startExport,
+    reportFormat, setReportFormat,
     buildPlan, reload,
     lock: buildLock.lock, readOnly, takeOver,
   };

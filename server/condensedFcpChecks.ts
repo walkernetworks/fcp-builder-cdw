@@ -1,4 +1,5 @@
 import { FIXED_GANTT_CATEGORIES } from "../shared/fcp";
+import type { ReportFormat } from "../shared/reportFormat";
 
 /**
  * Content gates for the Condensed FCP, after the fcp-builder skill's check_fcp.py. Every failure blocks
@@ -13,8 +14,12 @@ export const SCRUB = [
 ];
 // Design-led framing: never a readiness exercise.
 export const VOCABULARY = /\b(readiness|workshops?|TRW)\b/i;
-// Sections with no captured content are left out, so only the sections the app always writes are mandatory.
+// Sections with no captured content are left out, so only the sections the app always writes are mandatory: in the
+// long report, and in each format.
 const REQUIRED = ["Executive Summary", "Scoped Effort", "Adoption Plan &amp; Recommendation", ">Summary</h3>"];
+const REQUIRED_BY_FORMAT: Record<ReportFormat, string[]> = {
+  summary: ["Functional Consumption Plan · Summary", ">Work Packages</h3>", ">Timeline</h2>"],
+};
 const INTERNAL_PATHS = ["/Users/", "/home/", "drive_1", "sharepoint", "localhost", "127.0.0.1"];
 
 function visibleText(html: string): string {
@@ -49,8 +54,11 @@ function footingFailures(html: string): string[] {
   return failures;
 }
 
-/** `bsasOnly`: a BSAS-only plan, which carries no dollar figure at all (BSAS is hours and dates only). */
-export function checkCondensedFcp(html: string, context: { customerName: string; entitlementValue: number; bsasOnly?: boolean }): string[] {
+/**
+ * `bsasOnly`: a BSAS-only plan, which carries no dollar figure at all (BSAS is hours and dates only). `format`: the
+ * customer format the HTML was rendered in; absent for the long report.
+ */
+export function checkCondensedFcp(html: string, context: { customerName: string; entitlementValue: number; bsasOnly?: boolean; format?: ReportFormat }): string[] {
   const failures: string[] = [];
   const text = visibleText(html);
 
@@ -74,8 +82,9 @@ export function checkCondensedFcp(html: string, context: { customerName: string;
   for (const category of FIXED_GANTT_CATEGORIES) {
     if (!html.includes(`<div class="timeline-lane timeline-category-lane"><strong>${category.replace(/&/g, "&amp;")}</strong></div>`)) failures.push(`Category missing from the timeline: ${category}.`);
   }
-  for (const heading of REQUIRED) if (!html.includes(heading)) failures.push(`Mandatory section missing: ${heading.replace("&amp;", "&").replace(/<[^>]*>|^>/g, "")}.`);
-  if (!/For customer review · /.test(text)) failures.push("Missing the \"For customer review\" stamp.");
+  for (const heading of context.format ? REQUIRED_BY_FORMAT[context.format] : REQUIRED) if (!html.includes(heading)) failures.push(`Mandatory section missing: ${heading.replace("&amp;", "&").replace(/<[^>]*>|^>/g, "")}.`);
+  // A format carries its version or "Working draft" in the header instead of the review stamp.
+  if (!context.format && !/For customer review · /.test(text)) failures.push("Missing the \"For customer review\" stamp.");
   if ((html.match(/Print \/ Save as PDF/g) || []).length !== 1) failures.push("The document must have exactly one Print / Save as PDF button.");
   if (context.customerName && !text.includes(context.customerName)) failures.push("The customer name does not appear on the page.");
   if (/<(script|link)\b[^>]*\b(src|href)=/i.test(html)) failures.push("The document loads an external script or stylesheet.");

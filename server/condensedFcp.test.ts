@@ -541,7 +541,7 @@ describe("Condensed FCP gates", () => {
   });
 
   it("names the download with the FCP suffix", () => {
-    expect(exportFilename("Acme Health", "condensed-fcp", "pdf")).toBe("Acme Health - Condensed - FCP.pdf");
+    expect(exportFilename("Acme Health", "condensed-fcp", "pdf")).toBe("Acme Health - FCP Draft.pdf");
   });
 });
 

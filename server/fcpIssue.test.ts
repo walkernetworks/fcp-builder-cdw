@@ -18,7 +18,7 @@ import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import * as db from "./db";
 import { registerExportDownloadRoutes } from "./exportDownloadRoutes";
 import { createExportTicket, verifyExportTicket } from "./exportTickets";
-import { acmeHealth, FIXTURE_TODAY } from "./fixtures/fcpFixtures";
+import { acmeHealth, acmeHealthReconciled, FIXTURE_TODAY } from "./fixtures/fcpFixtures";
 import { scopedEffortForDocument } from "./rateCard";
 import { appRouter } from "./routers";
 
@@ -81,7 +81,7 @@ describe("fcpRecord.issue", () => {
   });
 
   it("issues the saved FCP exactly as rendered, without the draft mark, with the change summary", async () => {
-    const document = acmeHealth();
+    const document = acmeHealthReconciled();
     vi.mocked(db.getEngagement).mockResolvedValue(row(document));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
@@ -93,15 +93,66 @@ describe("fcpRecord.issue", () => {
   });
 
   it("refuses when nothing changed since the current issue", async () => {
-    const document = acmeHealth();
+    const document = acmeHealthReconciled();
     vi.mocked(db.getEngagement).mockResolvedValue(row(document));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
     await caller().fcpRecord.issue({ id: 4 });
     const [, , first] = vi.mocked(db.issueFcpVersion).mock.calls[0];
-    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue({ id: 90, issueNumber: 1, status: "issued", data: first.data, effortSnapshot: first.effort, renderedHtml: first.html } as never);
+    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue({ id: 90, issueNumber: 1, status: "issued", data: first.data, effortSnapshot: first.effort, renderedHtml: first.html, issuedAt: new Date(), reportFormat: null } as never);
     await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "Nothing has changed since issue 1." });
     expect(db.issueFcpVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it("issues a Commercial record as the Summary, numbered and dated, and records the format", async () => {
+    vi.mocked(db.getEngagement).mockResolvedValue({ ...(row(acmeHealthReconciled()) as object), segment: "commercial" } as never);
+    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
+    vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
+    await caller().fcpRecord.issue({ id: 4 });
+    const [, , input] = vi.mocked(db.issueFcpVersion).mock.calls[0];
+    expect(input.reportFormat).toBe("summary");
+    expect(input.html).toContain("Functional Consumption Plan · Summary");
+    expect(input.html).toContain("<b>Version 1</b>Issued ");
+    expect(input.html).not.toContain("draft-mark");
+  });
+
+  it("lets an issue override the segment's format, and finds an unchanged Summary unchanged", async () => {
+    vi.mocked(db.getEngagement).mockResolvedValue({ ...(row(acmeHealthReconciled()) as object), segment: "corporate" } as never);
+    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
+    vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
+    await caller().fcpRecord.issue({ id: 4 });
+    expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].reportFormat).toBeNull();
+    await caller().fcpRecord.issue({ id: 4, reportFormat: "summary" });
+    const [, , summary] = vi.mocked(db.issueFcpVersion).mock.calls[1];
+    expect(summary.reportFormat).toBe("summary");
+    const issuedAt = new Date();
+    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue({ id: 90, issueNumber: 1, status: "issued", data: summary.data, effortSnapshot: summary.effort, renderedHtml: summary.html, issuedAt, reportFormat: "summary" } as never);
+    await expect(caller().fcpRecord.issue({ id: 4, reportFormat: "summary" })).rejects.toMatchObject({ message: "Nothing has changed since issue 1." });
+    // The same plan in another format is a change for the customer.
+    vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 91, issueNumber: 2 } });
+    await caller().fcpRecord.issue({ id: 4 });
+    expect(db.issueFcpVersion).toHaveBeenCalledTimes(3);
+  });
+
+  it("refuses an under-funded plan until a reason is given, and logs the reason on the version", async () => {
+    vi.mocked(db.getEngagement).mockResolvedValue(row(acmeHealth()));
+    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
+    vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
+    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Under-funded: 39 hours delivered plus 347 planned is 124 more than the 262-hour entitlement.") });
+    await expect(caller().fcpRecord.issue({ id: 4, fundingOverride: "  " })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect(db.issueFcpVersion).not.toHaveBeenCalled();
+    await caller().fcpRecord.issue({ id: 4, fundingOverride: "Broadcom asked for the plan as scoped; the follow-on purchase is in progress." });
+    expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].fundingOverrideNote).toBe("Broadcom asked for the plan as scoped; the follow-on purchase is in progress.");
+    const preview = await caller().fcpRecord.issuePreview({ id: 4 });
+    expect(preview.fundingProblem).toMatch(/^Under-funded/);
+  });
+
+  it("keeps no override reason on a plan whose hours reconcile", async () => {
+    vi.mocked(db.getEngagement).mockResolvedValue(row(acmeHealthReconciled()));
+    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
+    vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
+    await caller().fcpRecord.issue({ id: 4, fundingOverride: "Not needed" });
+    expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].fundingOverrideNote).toBeNull();
   });
 
   it("refuses an FCP that fails the export checks", async () => {
@@ -115,7 +166,7 @@ describe("fcpRecord.issue", () => {
   });
 
   it("turns a version issued meanwhile into a conflict", async () => {
-    vi.mocked(db.getEngagement).mockResolvedValue(row(acmeHealth()));
+    vi.mocked(db.getEngagement).mockResolvedValue(row(acmeHealthReconciled()));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "conflict" });
     await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "CONFLICT" });

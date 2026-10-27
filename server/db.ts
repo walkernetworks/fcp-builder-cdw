@@ -31,6 +31,7 @@ import { deletableEngagements, editableReports, visibleEngagements, visibleRepor
 import type { ReportConfig } from "../shared/vsaReports";
 import type { ScopedEffort } from "../shared/effort";
 import type { ChangeSummary } from "../shared/fcpChangeSummary";
+import type { STORED_REPORT_FORMATS } from "../shared/reportFormat";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -797,6 +798,8 @@ const issuedSummary = {
   customerApprovedByName: customerApprover.name,
   customerApproverName: fcpVersions.customerApproverName,
   customerApprovalNote: fcpVersions.customerApprovalNote,
+  reportFormat: fcpVersions.reportFormat,
+  fundingOverrideNote: fcpVersions.fundingOverrideNote,
 };
 
 /** Issued and superseded versions, newest first, without their snapshots. */
@@ -837,6 +840,10 @@ export type IssueInput = {
   changeSummary: ChangeSummary;
   /** The issued version the snapshot was compared against; the issue is refused if another was issued meanwhile. */
   basedOnVersionId: number | null;
+  /** The format the customer receives; null for the long report. */
+  reportFormat: (typeof STORED_REPORT_FORMATS)[number] | null;
+  /** Why it is issued although its hours do not reconcile with the funding. */
+  fundingOverrideNote: string | null;
 };
 
 /**
@@ -872,6 +879,8 @@ export async function issueFcpVersion(viewer: Viewer, engagementId: number, inpu
       renderHash: createHash("sha256").update(input.html).digest("hex"),
       revisionNote: input.revisionNote,
       changeSummary: input.changeSummary,
+      reportFormat: input.reportFormat,
+      fundingOverrideNote: input.fundingOverrideNote,
       issuedAt: now,
       issuedByUserId: viewer.id,
     });

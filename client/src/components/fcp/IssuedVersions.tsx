@@ -9,6 +9,8 @@ import { trpc } from "@/lib/trpc";
 import type { ChangeSummary } from "@shared/fcpChangeSummary";
 import { issuedFilename } from "@shared/exportFilename";
 import type { EngagementDocument } from "@shared/fcp";
+import { defaultReportFormat, REPORT_FORMAT_CHOICES, REPORT_FORMAT_LABELS, type ReportFormatChoice } from "@shared/reportFormat";
+import { SEGMENT_NAMES } from "@shared/fcpRecord";
 import { requiresBroadcomApproval, type Segment } from "@shared/vsaStage";
 import { Columns2, Download, FileCheck2, Loader2, RotateCcw, Send } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -30,14 +32,39 @@ type IssueActions = {
   /** Reloads the working FCP from the server after a revise. */
   reload: () => void;
   segment: Segment | null;
+  /** The customer format the issue renders in. */
+  reportFormat: ReportFormatChoice;
 };
+
+const FORMAT_DESCRIPTIONS: Record<ReportFormatChoice, string> = {
+  summary: "Two pages: the plan with work packages and hours, then the timeline, key dates and what the customer owes.",
+  full: "The long report, as before the formats. Corporate and Strategic keep it until the Standard format is built.",
+};
+
+/**
+ * Which customer format the preview, the draft export and the issue use. It follows the tracker segment; a choice
+ * here applies to this session only, and the issued version records the format the customer received.
+ */
+export function ReportFormatPicker({ segment, value, overridden, onChange }: { segment: Segment | null; value: ReportFormatChoice; overridden: boolean; onChange: (choice: ReportFormatChoice) => void }) {
+  const fallback = defaultReportFormat(segment);
+  return (
+    <Panel title="Customer format" sub={`${segment ? `${SEGMENT_NAMES[segment]} segment` : "No tracker segment"}: ${REPORT_FORMAT_LABELS[fallback]} by default. The preview, the draft export and the next issue use the format chosen here.`} bodyClassName="space-y-2 p-4">
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Customer format">
+        {REPORT_FORMAT_CHOICES.map(choice => (
+          <Button key={choice} role="radio" aria-checked={value === choice} variant={value === choice ? "default" : "outline"} size="sm" onClick={() => onChange(choice)}>{REPORT_FORMAT_LABELS[choice]}{choice === fallback ? " (default)" : ""}</Button>
+        ))}
+      </div>
+      <p className="text-xs text-ink-muted">{FORMAT_DESCRIPTIONS[value]}{overridden ? " Changed from the segment default for this session." : ""}</p>
+    </Panel>
+  );
+}
 
 /**
  * Issuing (docs/FCP-WORKSPACE.md section 13): the working FCP is the draft and every export of it carries the draft
  * mark. Issuing stores it as the next numbered version, exactly as rendered, with the change summary against the one
  * before; that version is what the customer receives, and it never changes.
  */
-export function IssuePanel({ engagementId, document, readOnly, saveDocument, reload }: IssueActions) {
+export function IssuePanel({ engagementId, document, readOnly, saveDocument, reload, reportFormat }: IssueActions) {
   const utils = trpc.useUtils();
   const issued = trpc.fcpRecord.issued.useQuery({ id: engagementId });
   const preview = trpc.fcpRecord.issuePreview.useMutation();
@@ -45,6 +72,7 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
   const revise = trpc.fcpRecord.revise.useMutation();
   const [label, setLabel] = useState("");
   const [note, setNote] = useState("");
+  const [override, setOverride] = useState("");
   const versions = issued.data?.versions ?? [];
   const current = versions.find(version => version.status === "issued");
   const next = (versions[0]?.issueNumber ?? 0) + 1;
@@ -53,7 +81,7 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
   const check = async () => {
     try {
       await saveDocument(document);
-      await preview.mutateAsync({ id: engagementId });
+      await preview.mutateAsync({ id: engagementId, reportFormat });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The changes could not be checked");
     }
@@ -61,9 +89,10 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
   const doIssue = async () => {
     try {
       await saveDocument(document);
-      const result = await issue.mutateAsync({ id: engagementId, label: label.trim(), revisionNote: note.trim() || null });
+      const result = await issue.mutateAsync({ id: engagementId, label: label.trim(), revisionNote: note.trim() || null, reportFormat, fundingOverride: override.trim() || null });
       setLabel("");
       setNote("");
+      setOverride("");
       preview.reset();
       await refresh();
       toast.success(`Issue ${result.issueNumber} recorded. Download it from the list below to send it.`);
@@ -82,7 +111,9 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
       toast.error(error instanceof Error ? error.message : "The revision could not be started");
     }
   };
-  const result = preview.data;
+  // A check made in another format no longer describes the issue.
+  const result = preview.data && preview.data.reportFormat === reportFormat ? preview.data : undefined;
+  const needsOverride = Boolean(result?.fundingProblem) && !override.trim();
   const busy = issue.isPending || preview.isPending || revise.isPending;
 
   return (
@@ -99,9 +130,15 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
       </div>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" disabled={readOnly || busy} onClick={() => void check()}>{preview.isPending && <Loader2 className="size-4 animate-spin" />} Check and show the changes</Button>
-        <Button size="sm" disabled={readOnly || busy || !result || result.failures.length > 0 || result.unchanged} onClick={() => void doIssue()}>{issue.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Issue {next}</Button>
+        <Button size="sm" disabled={readOnly || busy || !result || result.failures.length > 0 || result.unchanged || needsOverride} onClick={() => void doIssue()}>{issue.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Issue {next}</Button>
       </div>
-      {!result && <p className="text-xs text-ink-muted">Check first: it saves the FCP, runs the same content checks as an export, and shows what changed since the last issue.</p>}
+      {!result && <p className="text-xs text-ink-muted">Check first: it saves the FCP, runs the same content checks as an export in the {REPORT_FORMAT_LABELS[reportFormat]} format, and shows what changed since the last issue.</p>}
+      {result?.fundingProblem && (
+        <div className="space-y-2 rounded-lg border border-state-warn/30 bg-state-warn-soft p-3 text-xs" role="status">
+          <p className="text-state-warn-text"><strong>The hours do not reconcile.</strong> {result.fundingProblem} The customer document never shows the gap. Fix the plan, or give the reason to issue it as it is; the reason is kept on the issued version.</p>
+          <Textarea aria-label="Reason to issue anyway" maxLength={2000} className="min-h-14 bg-surface text-xs" value={override} placeholder="Why this plan is issued before its hours reconcile (internal)." onChange={event => setOverride(event.target.value)} />
+        </div>
+      )}
       {result && result.failures.length > 0 && (
         <div className="rounded-lg border border-state-blocked/30 bg-state-blocked-soft p-3 text-xs text-state-blocked-text" role="status">
           <p className="font-semibold">Fix these before issuing:</p>
@@ -144,7 +181,8 @@ export function IssuedVersionsList({ engagementId, title, readOnly, segment }: I
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">Issue {version.issueNumber} {version.status === "issued" ? <Pill verdict="ready">Current</Pill> : <Pill verdict="unknown">Superseded</Pill>}{version.label && version.label !== `Issue ${version.issueNumber}` && <Chip>{version.label}</Chip>}</p>
-                  <p className="mt-0.5 text-xs text-ink-muted">Issued {when(version.issuedAt)} by {version.issuedByName ?? "—"}</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">Issued {when(version.issuedAt)} by {version.issuedByName ?? "—"} · {version.reportFormat === "summary" ? "Summary" : version.reportFormat === "standard" ? "Standard" : "Full report"}</p>
+                  {version.fundingOverrideNote && <p className="mt-1 max-w-3xl text-xs leading-5 text-state-warn-text">Issued before its hours reconciled: {version.fundingOverrideNote}</p>}
                   {version.revisionNote && <p className="mt-1 max-w-3xl text-xs leading-5 text-ink">“{version.revisionNote}”</p>}
                 </div>
                 <div className="flex gap-1.5">

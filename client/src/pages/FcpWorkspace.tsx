@@ -20,7 +20,8 @@ import { SegmentReview } from "@/components/fcp/SegmentReview";
 import { FundingSection } from "@/components/fcp/FundingSection";
 import { ScopeSection } from "@/components/fcp/ScopeSection";
 import { PlanEditor } from "@/components/fcp/PlanEditor";
-import { IssuedRailList, IssuedVersionsList, IssuePanel } from "@/components/fcp/IssuedVersions";
+import { IssuedRailList, IssuedVersionsList, IssuePanel, ReportFormatPicker } from "@/components/fcp/IssuedVersions";
+import { defaultReportFormat, type ReportFormatChoice } from "@shared/reportFormat";
 import { fundedFields, getFollowOnReadinessGuidance, type EngagementDocument } from "@shared/fcp";
 import { openSources, STAGE_LABELS } from "@shared/vsaStage";
 import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, PanelRightClose, PanelRightOpen, ShieldCheck, Trash2 } from "lucide-react";
@@ -110,7 +111,12 @@ function Workspace({ id }: { id: number }) {
 
   const sources = record.data?.sources ?? null;
   const tracker = record.data?.record ?? null;
-  const issueActions = { engagementId: id, title: fcp.title, document: fcp.document, readOnly: fcp.readOnly, saveDocument: fcp.saveDocument, reload: fcp.reload, segment: tracker?.segment ?? null };
+  // The customer format follows the tracker segment; a choice here changes it for this session's preview, exports and issue.
+  const [formatChoice, setFormatChoice] = useState<ReportFormatChoice | null>(null);
+  const reportFormat = formatChoice ?? defaultReportFormat(tracker?.segment);
+  const setReportFormat = fcp.setReportFormat;
+  useEffect(() => { if (record.data) setReportFormat(reportFormat); }, [record.data, reportFormat, setReportFormat]);
+  const issueActions = { engagementId: id, title: fcp.title, document: fcp.document, readOnly: fcp.readOnly, saveDocument: fcp.saveDocument, reload: fcp.reload, segment: tracker?.segment ?? null, reportFormat };
   const segmentWarningText = tracker ? segmentWarning(tracker.segment, fcp.document.fields.commercialPlan, tracker.segmentReview ?? null) : null;
   const statuses = useMemo(() => {
     const open = sources ? openSources(sources).length : null;
@@ -218,6 +224,7 @@ function Workspace({ id }: { id: number }) {
                 </div>
               )}
               <DeliveryPackageHeader document={document} />
+              {tracker && <ReportFormatPicker segment={tracker.segment} value={reportFormat} overridden={formatChoice !== null && formatChoice !== defaultReportFormat(tracker.segment)} onChange={next => setFormatChoice(next === defaultReportFormat(tracker.segment) ? null : next)} />}
               <IssuePanel {...issueActions} />
               <IssuedVersionsList {...issueActions} />
               <section className="grid gap-3 rounded-lg border border-s100 bg-surface p-4 lg:grid-cols-2">
