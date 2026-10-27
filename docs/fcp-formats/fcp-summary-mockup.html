@@ -6,7 +6,7 @@
 <title>Acme Health - FCP Summary</title>
 <style>
 :root{--ink:#1d1d1f;--slate:#3c4250;--muted:#6b7280;--line:#e3e6ea;--red:#CC0000;--dark:#242a38;--zebra:#F7F8FA;--hair:#E4E7EC;
---gov:#2e6b4e;--ops:#2f5b8c;--infra:#d9a21b;--mig:#2b7a72;--sec:#b3223a}
+--gov:#2e6b4e;--ops:#2f5b8c;--infra:#d9a21b;--mig:#2b7a72;--sec:#b3223a;--cons:#2f3a4a}
 *{box-sizing:border-box}
 html,body{margin:0;background:#e9ebef;color:var(--ink);font:11.5px/1.45 Helvetica,'Helvetica Neue',Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 @page{size:letter landscape;margin:0}
@@ -68,16 +68,17 @@ table.wp{width:100%;border-collapse:collapse;font-size:10.5px}
 .key{display:flex;gap:5px;flex-wrap:wrap;margin:0 0 7px}
 .key span{display:inline-flex;align-items:center;gap:4px;font-size:8px;font-weight:700;border:1px solid var(--line);border-radius:99px;padding:2px 7px;color:var(--slate)}
 .key i{width:7px;height:7px;border-radius:99px;display:inline-block}
-.gantt{border:1px solid var(--line)}
-.g-row{display:grid;grid-template-columns:1.45in repeat(7,1fr);border-bottom:1px solid var(--line);background-image:linear-gradient(to right,transparent 1.45in,transparent 1.45in);position:relative}
+.gantt{border:1px solid var(--line);--n:7}
+.g-row{display:grid;grid-template-columns:1.45in repeat(var(--n),1fr);border-bottom:1px solid var(--line)}
 .g-row:last-child{border-bottom:0}
 .g-head{background:#eef2f6;font-size:8px;font-weight:800;color:var(--slate)}
 .g-head div{padding:5px 6px;border-right:1px solid var(--line)}
 .g-head div:last-child{border-right:0}
 .g-cat{grid-column:1;font-size:9px;font-weight:800;color:var(--dark);padding:6px 7px;border-right:1px solid var(--line);background:#fafbfc}
-.g-lanes{grid-column:2/-1;display:grid;grid-template-columns:repeat(7,1fr);grid-auto-rows:21px;row-gap:3px;padding:4px 0;background:repeating-linear-gradient(to right,transparent 0,transparent calc(100%/7 - 1px),#eceff3 calc(100%/7 - 1px),#eceff3 calc(100%/7))}
+.g-lanes{grid-column:2/-1;display:grid;grid-template-columns:repeat(var(--n),1fr);grid-auto-rows:21px;row-gap:3px;padding:4px 0;background:repeating-linear-gradient(to right,transparent 0,transparent calc(100%/var(--n) - 1px),#eceff3 calc(100%/var(--n) - 1px),#eceff3 calc(100%/var(--n)))}
 .bar{margin:0 3px;border-radius:3px;font-size:8px;font-weight:700;line-height:1.1;color:#fff;padding:0 6px;display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar.gov{background:var(--gov)}.bar.ops{background:var(--ops)}.bar.infra{background:var(--infra);color:#2a2200}.bar.mig{background:var(--mig)}
+.bar.sec{background:var(--sec)}.bar.cons{background:var(--cons)}
 .bar.cust{background:#fff;color:var(--slate);border:1.5px dashed #9aa1ab}
 .bar.ms{border-radius:99px}
 .none{grid-column:1/-1;font-size:9px;color:var(--muted);font-style:italic;display:flex;align-items:center;padding:0 8px}
@@ -94,6 +95,9 @@ table.wp{width:100%;border-collapse:collapse;font-size:10.5px}
 .open td:last-child{text-align:right;white-space:nowrap}
 .after{background:#f6f7f9;border-left:3px solid var(--dark);padding:9px 12px;font-size:10.5px;color:var(--slate)}
 .after b{color:var(--ink)}
+.fund{background:#f6f7f9;border-left:3px solid var(--red);padding:10px 13px;font-size:10.5px;color:var(--slate)}
+.fund p{margin:0 0 6px}.fund b{color:var(--ink)}
+.bottom3{display:grid;grid-template-columns:1.2fr 1fr;gap:.35in;margin-top:14px}
 .closer{font-weight:900;color:var(--red);font-size:13px;margin-top:10px}
 </style>
 </head>
@@ -179,7 +183,7 @@ table.wp{width:100%;border-collapse:collapse;font-size:10.5px}
     </div>
   </div>
 
-  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 1 of 2</span></div>
+  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 1 of 3</span></div>
 </section>
 
 <!-- ============================== PAGE 2: THE TIMELINE ============================== -->
@@ -268,12 +272,72 @@ table.wp{width:100%;border-collapse:collapse;font-size:10.5px}
 
     <div>
       <h3>After this plan</h3>
-      <div class="after">The first workload domain, health and log monitoring, and the recovery design and build follow from May 2027, about <b>117 hours</b>. They need follow-on funding: a renewal with entitlement attached or a services purchase.</div>
+      <div class="after">About <b>117 hours</b> of follow-on work runs from May 2027: the first workload domain, health and log monitoring, and recovery design and build. The two-year view is on page 3.</div>
+    </div>
+  </div>
+
+  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 2 of 3</span></div>
+</section>
+
+<!-- ============================== PAGE 3: AFTER THE ENTITLEMENT ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg>Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for Acme Health · Version 1 · Issued 30 Sep 2026</span></div>
+
+  <div class="tl-head">
+    <h2>After the Entitlement</h2>
+    <p>May 2027 through April 2028, the second year of the two-year view. This is where Acme Health goes next. None of it is funded by the current entitlement.</p>
+  </div>
+  <div class="key">
+    <span><i style="background:var(--gov)"></i>Governance</span>
+    <span><i style="background:var(--infra)"></i>Infrastructure build</span>
+    <span><i style="background:var(--ops)"></i>Operations</span>
+    <span><i style="background:var(--cons)"></i>Consume and handover</span>
+    <span><i style="background:var(--sec)"></i>Security and resilience</span>
+    <span><i style="background:#fff;border:1px dashed #9aa1ab"></i>Run by Acme Health</span>
+  </div>
+
+  <div class="gantt" style="--n:12">
+    <div class="g-row g-head"><div>Category</div><div>May 27</div><div>Jun 27</div><div>Jul 27</div><div>Aug 27</div><div>Sep 27</div><div>Oct 27</div><div>Nov 27</div><div>Dec 27</div><div>Jan 28</div><div>Feb 28</div><div>Mar 28</div><div>Apr 28</div></div>
+    <div class="g-row"><div class="g-cat">Program management</div><div class="g-lanes"><div class="bar gov" style="grid-column:2/13;grid-row:1">Governance and value reviews</div></div></div>
+    <div class="g-row"><div class="g-cat">Infrastructure</div><div class="g-lanes">
+      <div class="bar cust" style="grid-column:1/3;grid-row:1">Final waves (Acme Health)</div>
+      <div class="bar infra ms" style="grid-column:4/6;grid-row:1">First workload domain</div></div></div>
+    <div class="g-row"><div class="g-cat">Operations</div><div class="g-lanes">
+      <div class="bar ops" style="grid-column:5/7;grid-row:1">Health, logs, diagnostics</div>
+      <div class="bar ops" style="grid-column:7/13;grid-row:1">Operating model and lifecycle</div></div></div>
+    <div class="g-row"><div class="g-cat">Cloud services</div><div class="g-lanes"><div class="bar cons" style="grid-column:11/13;grid-row:1">Service consumption</div></div></div>
+    <div class="g-row"><div class="g-cat">Security and resilience</div><div class="g-lanes">
+      <div class="bar sec" style="grid-column:1/3;grid-row:1">Recovery design</div>
+      <div class="bar sec ms" style="grid-column:5/7;grid-row:1">Recovery services build</div></div></div>
+  </div>
+
+  <div class="bottom3">
+    <div>
+      <h3>Follow-on work</h3>
+      <table class="wp">
+        <thead><tr><th>Package</th><th>Month</th><th class="num">Hours</th></tr></thead>
+        <tbody>
+          <tr><td>Recovery and resilience design</td><td>May 2027</td><td class="num">10</td></tr>
+          <tr><td>First workload domain</td><td>Aug 2027</td><td class="num">46</td></tr>
+          <tr><td>Health, logs and diagnostics</td><td>Sep 2027</td><td class="num">30</td></tr>
+          <tr><td>Recovery services build</td><td>Sep 2027</td><td class="num">31</td></tr>
+          <tr class="total"><td>Total follow-on</td><td></td><td class="num">117</td></tr>
+        </tbody>
+      </table>
+      <div class="wpnote">Estimated CDW hours, planned against a design already completed in year one.</div>
+    </div>
+    <div>
+      <h3>How it's funded</h3>
+      <div class="fund">
+        <p>This work is <b>not drawn from the current entitlement</b>, which ends 28 April 2027.</p>
+        <p>It needs one of: a renewal with a services entitlement attached, a services purchase, or Broadcom Software Adoption Services hours.</p>
+        <p>The sooner it's funded, the sooner recovery protection is in place for the 330 VMs that are recovered by hand today.</p>
+      </div>
       <div class="closer">Make Amazing Happen.</div>
     </div>
   </div>
 
-  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 2 of 2</span></div>
+  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 3 of 3</span></div>
 </section>
 
 </body>
