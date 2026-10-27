@@ -135,11 +135,24 @@ export function planKeyDates(document: EngagementDocument): { implementationStar
 }
 
 /**
- * An open item the account team works from, not the customer: the signed hours behind the burndown. It is a readiness
- * item (Delivery package readiness), so no customer format prints it, even from a document that saved it earlier.
+ * A customer open item is something the customer must do or decide. An item owned only by CDW or Broadcom, about our own
+ * records (the signed hours, an assumed term, a quote), is a readiness check and never prints in a customer format.
+ * "Owned only by us": the owner names CDW or Broadcom (or one of their contacts) and neither the customer, a customer
+ * contact, nor "customer". When in doubt the item prints.
  */
-export const INTERNAL_HOURS_ITEM = "Entitled hours from the signed resource assignments";
-export const customerOpenItems = <T extends { item: string }>(items: T[]): T[] => items.filter(row => row.item.trim() !== INTERNAL_HOURS_ITEM);
+export function ownedOnlyByUs(owner: string, document: EngagementDocument): boolean {
+  const text = owner.toLowerCase();
+  if (!text.trim()) return false;
+  const named = (name: string) => name.trim().length > 2 && text.includes(name.trim().toLowerCase());
+  const { contacts } = document.report;
+  const customerParty = text.includes("customer") || named(document.fields.customerName) || contacts.customer.some(person => named(person.name));
+  const ourParty = /\b(cdw|broadcom)\b/.test(text) || [...contacts.cdw, ...contacts.broadcom].some(person => named(person.name));
+  return ourParty && !customerParty;
+}
+
+/** The open items a customer format prints; `internalOpenItems` are the ones it leaves to readiness. */
+export const customerOpenItems = <T extends { item: string; owner: string }>(items: T[], document: EngagementDocument): T[] => items.filter(row => !ownedOnlyByUs(row.owner, document));
+export const internalOpenItems = <T extends { item: string; owner: string }>(items: T[], document: EngagementDocument): T[] => items.filter(row => ownedOnlyByUs(row.owner, document));
 
 /** The overlay MTU requirement, from the same constants the host findings use. */
 const OVERLAY_MTU_REQUIREMENT = `Workload traffic on distributed switches (${VDS_REQUIREMENT}); NSX TEP traffic needs an MTU of at least ${NSX_TEP_MIN_MTU.toLocaleString("en-US")} end to end, with ${RECOMMENDED_MTU.toLocaleString("en-US")} recommended.`;
@@ -373,7 +386,8 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
 
   // ---- Open items for what is still missing; every item the plan raises has an owner.
   const openItems: Array<Row<"openItems">> = [];
-  const commercialOwner = commercialItemOwner(document);
+  // The customer decides these, with the commercial owner helping.
+  const withCustomer = `${customer} with ${commercialItemOwner(document)}`;
   // vSphere 8 end of general support: one finding drives both the constraint and the open item, so they always agree.
   // Waves that all end in time need neither row.
   const vsphere8 = vsphere8Exposure(document);
@@ -397,14 +411,13 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     const key = canonicalAddOn(purchased);
     const addOn = key ? ADD_ON_OUTCOMES[key] : null;
     const planned = addOn?.priority && addOn.focus ? addOn.focus.some(focus => outcomeKeys.has(`${addOn.priority}:${focus}`)) : false;
-    if (!planned) openItems.push({ item: `${addOn?.label ?? purchased} is purchased but not in this plan`, gates: "Scope: add it or record why it waits", owner: commercialOwner });
+    if (!planned) openItems.push({ item: `${addOn?.label ?? purchased} is purchased but not in this plan`, gates: "Scope: add it or record why it waits", owner: withCustomer });
   }
-  // The brief often asks for the term itself; raise the assumed end date only when nothing covers it.
-  const termItemOnRecord = report.openItems.some(item => /entitlement (term|end)/i.test(`${item.item} ${item.gates}`));
-  if (termEndAssumed(document) && termEnd && !termItemOnRecord) openItems.push({ item: `${bsasOnly ? "BSAS end date" : "Entitlement end date"}: ${shortDate(termEnd)} is assumed as 12 months from the start; confirm the term`, gates: "Timeline end, weekly pace and follow-on scope", owner: commercialOwner });
-  if (renewalPassed) openItems.push({ item: `The subscription renewal date on record (${shortDate(discovery.renewalDate!)}) has passed: confirm the renewal and the new term`, gates: "Licensing activation and core sizing", owner: commercialOwner });
+  // An assumed term is our own record to confirm, so it is a readiness check (Delivery package readiness), not an open
+  // item; the date carries "to be confirmed" wherever the customer sees it.
+  if (renewalPassed) openItems.push({ item: `The subscription renewal date on record (${shortDate(discovery.renewalDate!)}) has passed: confirm the renewal and the new term`, gates: "Licensing activation and core sizing", owner: withCustomer });
   // Licensed cores the imported hosts do not account for usually mean an estate that was not exported.
-  if (required && licensed && licensed > required) openItems.push({ item: `${(licensed - required).toLocaleString("en-US")} licensed cores are not matched to the hosts in these RVTools exports`, gates: "Licensing sizing; confirm whether another vCenter needs an RVTools export", owner: commercialOwner });
+  if (required && licensed && licensed > required) openItems.push({ item: `${(licensed - required).toLocaleString("en-US")} licensed cores are not matched to the hosts in these RVTools exports`, gates: "Licensing sizing; confirm whether another vCenter needs an RVTools export", owner: PLATFORM_OWNER(customer) });
   const exported = document.inventorySources.filter(source => /\.xlsx?$/i.test(source.filename)).length;
   if (discovery.vcenters && exported && exported < discovery.vcenters) openItems.push({ item: `RVTools exports for ${exported} of ${discovery.vcenters} vCenters`, gates: "Sizing, compatibility and licensing for the vCenters not exported", owner: PLATFORM_OWNER(customer) });
 

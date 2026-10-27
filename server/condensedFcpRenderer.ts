@@ -137,8 +137,8 @@ function timelineSheets(document: EngagementDocument, windowStart: string, windo
         index
           ? `${esc(first)} through ${esc(last)}. Lifecycle, adoption and expansion direction that may need future scope or funding.`
           : !includeEntitlement
-            ? `A directional roadmap from ${esc(first)} through ${esc(last)}. Work after the ${w("entitlement", "BSAS term")} ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""} is not funded by the current ${w("entitlement", "BSAS hours")}.${bsasLine}`
-            : `${esc(first)} through ${esc(last)}, after the ${w("entitlement", "BSAS term")} ends${termEnd ? ` on ${esc(longDate(termEnd))}` : ""}. Directional work that is not funded by the current ${w("entitlement", "BSAS hours")} and may need future scope or funding.${bsasLine}`,
+            ? `A directional roadmap from ${esc(first)} through ${esc(last)}. Work after the ${w("entitlement", "BSAS term")} ends${termEnd ? ` on ${esc(longDate(termEnd))}${termEndAssumed(document) ? " (to be confirmed)" : ""}` : ""} is not funded by the current ${w("entitlement", "BSAS hours")}.${bsasLine}`
+            : `${esc(first)} through ${esc(last)}, after the ${w("entitlement", "BSAS term")} ends${termEnd ? ` on ${esc(longDate(termEnd))}${termEndAssumed(document) ? " (to be confirmed)" : ""}` : ""}. Directional work that is not funded by the current ${w("entitlement", "BSAS hours")} and may need future scope or funding.${bsasLine}`,
         part,
         `No notional activities are scheduled from ${esc(first)} to ${esc(last)}.`,
       );
@@ -247,6 +247,8 @@ export type CondensedFcpOptions = {
 export function renderCondensedFcpHtml(title: string, input: EngagementDocument, options: CondensedFcpOptions): string {
   if (options.format === "summary") return renderSummaryFcpHtml(title, input, options);
   const { bsasOnly, w, deferredWork, customerTimelines, document, today, asOf, customer, burndown, termEnd, assumedEnd, termStart, bsas } = prepareReport(input, options);
+  // An end date assumed from the start (not on the record) is marked wherever the customer reads it.
+  const tbc = assumedEnd ? " (to be confirmed)" : "";
   const { fields, report } = document;
   const stamp = `For customer review · ${shortDate(asOf)}`;
   const plan = playbookPlanForFields(fields);
@@ -270,7 +272,7 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
     ? `<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">No entitlement booked yet</div></div>`
     : `<div class="kpi"><div class="v">Not yet booked</div><div class="l">Entitlement</div><div class="sub">Hours and term to be confirmed</div></div>`;
   const kpis = burndown
-    ? `${valueTile}<div class="kpi"><div class="v">${hours(burndown.remainingHours)} hrs</div><div class="l">Hours Remaining</div><div class="sub">${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} hours delivered${report.entitlement.consumedAsOf ? ` (as of ${esc(shortDate(report.entitlement.consumedAsOf))})` : ""}</div></div><div class="kpi"><div class="v">${burndown.daysToExpiry} days</div><div class="l">Days to Expiry</div><div class="sub">Expires ${esc(shortDate(burndown.termEnd))}</div></div><div class="kpi"><div class="v">${burndown.expiryPace} hrs/wk</div><div class="l">Required Weekly Pace</div><div class="sub">To consume by expiry · ~${burndown.expiryPaceFte} FTE from ${esc(shortDate(burndown.asOf))}</div></div>`
+    ? `${valueTile}<div class="kpi"><div class="v">${hours(burndown.remainingHours)} hrs</div><div class="l">Hours Remaining</div><div class="sub">${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} hours delivered${report.entitlement.consumedAsOf ? ` (as of ${esc(shortDate(report.entitlement.consumedAsOf))})` : ""}</div></div><div class="kpi"><div class="v">${burndown.daysToExpiry} days</div><div class="l">Days to Expiry</div><div class="sub">Expires ${esc(shortDate(burndown.termEnd))}${tbc}</div></div><div class="kpi"><div class="v">${burndown.expiryPace} hrs/wk</div><div class="l">Required Weekly Pace</div><div class="sub">To consume by expiry · ~${burndown.expiryPaceFte} FTE from ${esc(shortDate(burndown.asOf))}</div></div>`
     : `${valueTile}<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">${effort.source === "assignments" ? "Signed resource assignments" : "Estimated from the plan"}</div></div><div class="kpi"><div class="v">${esc(termEnd ? shortDate(termEnd) : shortDate(items.at(-1)?.end ?? asOf))}</div><div class="l">${termEnd ? "Delivery Window Ends" : "Planned Completion"}</div><div class="sub">${termEnd && assumedEnd ? "12 months from the start; to be confirmed" : "No consumption data yet"}</div></div><div class="kpi"><div class="v">${esc(platform)}</div><div class="l">Target Platform</div><div class="sub">${esc(plan.label)}</div></div>`;
 
   // ---- Executive summary
@@ -493,7 +495,7 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
     ...(implementationStart ? [[implementationStart, `<div class="ms"><b>${esc(shortDate(implementationStart))}</b><span>${buildLater ? "Implementation services start with design and planning." : "Implementation services start: build, upgrade and migration work begins."}</span></div>`] as [string, string]] : []),
     ...(buildLater ? [[buildStart!, `<div class="ms"><b>${esc(shortDate(buildStart!))}</b><span>Platform build begins.${buildNotes.length ? ` ${esc(buildNotes.join(" "))}` : ""}</span></div>`] as [string, string]] : []),
     ...(fields.targetComplete ? [[fields.targetComplete, `<div class="ms"><b>${esc(shortDate(fields.targetComplete))}</b><span>${esc(customer)}'s target completion.</span></div>`] as [string, string]] : []),
-    ...(termEnd ? [[termEnd, `<div class="ms"><b>By ${esc(shortDate(termEnd))}</b><span>${w("Full entitlement consumption: all hours consumed ahead of expiry.", "Full BSAS consumption: all BSAS hours consumed before the term ends; unused hours are forfeited.")}${assumedEnd ? " The end date is 12 months from the start and is still to be confirmed." : ""}</span></div>`] as [string, string]] : []),
+    ...(termEnd ? [[termEnd, `<div class="ms"><b>By ${esc(shortDate(termEnd))}${tbc}</b><span>${w("Full entitlement consumption: all hours consumed ahead of expiry.", "Full BSAS consumption: all BSAS hours consumed before the term ends; unused hours are forfeited.")}${assumedEnd ? " The end date is 12 months from the start and is still to be confirmed." : ""}</span></div>`] as [string, string]] : []),
     ...(bsas ? [
       [bsas.termStart, `<div class="ms"><b>${esc(shortDate(bsas.termStart))}</b><span>BSAS term starts: ${hours(bsas.hours)} BSAS hours fund follow-on work after the entitlement.${bsas.startAssumed ? " The start is the day after the entitlement ends and is still to be confirmed." : ""}</span></div>`],
       [bsas.termEnd, `<div class="ms"><b>By ${esc(shortDate(bsas.termEnd))}</b><span>BSAS term ends: BSAS hours not used by this date are forfeited.${bsas.endAssumed ? " The end date is 12 months from the BSAS start and is still to be confirmed." : ""}</span></div>`],
@@ -508,7 +510,7 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
     ? `CDW designs and builds the ${esc(platform)} foundation, proves the runbook and hands over, and ${esc(customer)}'s team repeats it`
     : `CDW delivers the ${esc(platform)} architecture and an implementation-ready design that ${esc(customer)}'s team builds from`;
   const shortVersion = burndown
-    ? `${hours(burndown.remainingHours)} hours remain and the ${w("entitlement expires", "BSAS term ends")} on <b>${esc(longDate(burndown.termEnd))}</b>. Unconsumed hours are not refunded. ${w("The entitlement funds", "BSAS funds")} the one-time work: ${funds}. That requires about ${burndown.expiryPace} hours of delivery per week from today.`
+    ? `${hours(burndown.remainingHours)} hours remain and the ${w("entitlement expires", "BSAS term ends")} on <b>${esc(longDate(burndown.termEnd))}</b>${tbc}. Unconsumed hours are not refunded. ${w("The entitlement funds", "BSAS funds")} the one-time work: ${funds}. That requires about ${burndown.expiryPace} hours of delivery per week from today.`
     : `${funds.charAt(0).toUpperCase()}${funds.slice(1)}. ${w("Unconsumed entitlement hours are not refunded once an entitlement is booked.", "Unconsumed BSAS hours are forfeited at the end of the BSAS term.")}`;
   const heard = report.whatWeHeard.length ? `<h3>What we heard, and what we have built to</h3>${table(["Component", `${customer} Position`, "Where It Lands in This Plan"], report.whatWeHeard.map(item => [esc(item.component), esc(item.customerPosition), esc(item.whereItLands)]))}` : "";
   const problems = report.problems.length ? `<h3>Customer Problems</h3><ul>${report.problems.map(item => `<li><b>${esc(item.problem)}</b>${item.addressedBy ? ` — ${esc(item.addressedBy)}` : ""}</li>`).join("")}</ul>` : "";
@@ -518,7 +520,7 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
   const constraints = report.constraints.map(item => ({ ...item, imposedBy: capitalized(item.imposedBy) || "Calendar" }));
   // A leading "Label:" is set in bold, as in the template.
   const asks = report.customerAsks.map(item => esc(item).replace(/^([A-Z][^:]{0,40}):\s/, "<b>$1:</b> "));
-  const shownOpenItems = customerOpenItems(report.openItems);
+  const shownOpenItems = customerOpenItems(report.openItems, document);
   const withOwner = shownOpenItems.some(item => item.owner.trim());
   const openItems = shownOpenItems.length ? `<h3>Open Items</h3>${table(["Item", "What It Gates", ...(withOwner ? ["Owner"] : [])], shownOpenItems.map(item => [esc(item.item), esc(item.gates), ...(withOwner ? [esc(item.owner)] : [])]))}` : "";
   const pulledIn = outcomes.filter(item => item.requiredBy.length);

@@ -366,9 +366,9 @@ describe("Two-site review: text, dedupe and layout", () => {
     const subject = (item: string) => item.toLowerCase().replace(/\(.*?\)/g, "").split(/[^a-z]+/).filter(word => word.length > 4).slice(0, 4).join(" ");
     const subjects = report.openItems.map(item => subject(item.item));
     expect(new Set(subjects).size).toBe(subjects.length);
-    // Platform items fall to the customer's infrastructure team with CDW; commercial items to the brief's commercial owner.
+    // Platform items fall to the customer's infrastructure team with CDW; commercial decisions to the customer with the brief's commercial owner.
     expect(report.openItems.find(item => /after vSphere 8 general support ends/.test(item.item))?.owner).toBe("Riverbend Health infrastructure team with CDW");
-    expect(report.openItems.find(item => /purchased but not in this plan/.test(item.item))?.owner).toBe("Account lead / Partner practice lead");
+    expect(report.openItems.find(item => /purchased but not in this plan/.test(item.item))?.owner).toBe("Riverbend Health with Account lead / Partner practice lead");
     // The reserve is a line of its own with what it is for, not a loose sentence.
     const visible = text(render(document));
     expect(visible).toMatch(/This entitlement: reserve Held back for change requests and estimate variance; reviewed at month 6 and released to follow-on work if unused \d+/);
