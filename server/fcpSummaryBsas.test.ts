@@ -29,7 +29,7 @@ describe("Summary with BSAS", () => {
     const document = meridianHealth();
     const html = summary(document);
     const after = visible(html).split("After This Plan")[1] ?? "";
-    expect(after).toContain("(BSAS) provide 600 hours from 1 May 2027 to 30 Apr 2028. 117 hours are planned; 483 hours are not planned and will be forfeited at term end.");
+    expect(after).toContain("(BSAS) provide 600 hours from 1 May 2027 to 30 Apr 2028. 247 hours are planned; 353 hours are not planned and will be forfeited at term end.");
     expect(after).not.toMatch(/\$\s?\d|rate|tier/i);
     expect(checks(html, document)).toEqual([]);
     await expect(html).toMatchFileSnapshot("./__golden__/summary-meridian-health.html");

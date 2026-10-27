@@ -45,10 +45,18 @@ describe("hours reconciliation", () => {
 
   it("names an under-funded plan and a plan that leaves hours unplanned, for the planner", () => {
     const over = acmeHealth();
-    expect(fundingProblem(over, scopedEffortForDocument(over, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("Under-funded: 39 delivered, 347 planned and 18 held in reserve come to 142 hours more than the 262-hour entitlement. Move work to the follow-on or reduce hours in the Plan section.");
+    expect(fundingProblem(over, scopedEffortForDocument(over, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("Under-funded: 39 delivered, 217 planned and 18 held in reserve come to 12 hours more than the 262-hour entitlement. Move work to the follow-on or reduce hours in the Plan section.");
     const under = acmeHealthReconciled();
     under.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 0, projectManager: 0, placement: "auto", owner: "auto" });
     expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("10 hours are not planned and will be forfeited at term end (39 delivered, 195 planned and 18 held in reserve, against the 262-hour entitlement). Plan them in the Plan section.");
+  });
+
+  it("moves design work that cannot fit to the follow-on, leaving only protected work over the funded hours", () => {
+    const document = acmeHealth();
+    const effort = scopedEffortForDocument(document, FIXTURE_TODAY);
+    const moved = effort.workPackages.filter(row => row.deferred === "over budget" && /^bar-playbook-design-/.test(row.id));
+    expect(moved.length).toBeGreaterThan(0);
+    expect(effort.internal.fit?.underFunded?.gapHours).toBeLessThan(20);
   });
 
   it("allows an hour either way for rounding, and says so on the page instead of claiming the figures are equal", () => {
@@ -112,7 +120,7 @@ describe("Summary FCP", () => {
     const html = summary(document);
     const text = visible(html);
     for (const term of ["Under-funded", "under-funded", "Scope by Bucket", "reserve", "more than it funds", "Moved out of", "gap", "bucket"]) expect(text).not.toContain(term);
-    expect(text).toContain("Total CDW hours 404");
+    expect(text).toContain("Total CDW hours 274");
     expect(text).not.toMatch(/add up to the|use the 262/);
     expect(checks(html, document)).toEqual([]);
   });
