@@ -38,7 +38,8 @@ type IssueActions = {
 
 const FORMAT_DESCRIPTIONS: Record<ReportFormatChoice, string> = {
   summary: "Two pages: the plan with work packages and hours, then the timeline, key dates and what the customer owes.",
-  full: "The long report, as before the formats. Corporate and Strategic keep it until the Standard format is built.",
+  standard: "Seven pages for Corporate and Strategic: cover, summary, scope and architecture, work packages with acceptance, timeline, roadmap and how we work together.",
+  full: "The long report, as before the formats.",
 };
 
 /**

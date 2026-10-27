@@ -85,7 +85,7 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getEngagement).mockResolvedValue(row(document));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
-    expect(await caller().fcpRecord.issue({ id: 4, label: "Initial plan", revisionNote: null })).toEqual({ id: 90, issueNumber: 1 });
+    expect(await caller().fcpRecord.issue({ id: 4, label: "Initial plan", revisionNote: null, reportFormat: "full" })).toEqual({ id: 90, issueNumber: 1 });
     const [, , input] = vi.mocked(db.issueFcpVersion).mock.calls[0];
     expect(input.html).toBe(renderCondensedFcpHtml("Acme Health FCP", input.data, { effort: input.effort }));
     expect(input.html).not.toContain("draft-mark");
@@ -97,10 +97,10 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getEngagement).mockResolvedValue(row(document));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
-    await caller().fcpRecord.issue({ id: 4 });
+    await caller().fcpRecord.issue({ id: 4, reportFormat: "full" });
     const [, , first] = vi.mocked(db.issueFcpVersion).mock.calls[0];
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue({ id: 90, issueNumber: 1, status: "issued", data: first.data, effortSnapshot: first.effort, renderedHtml: first.html, issuedAt: new Date(), reportFormat: null } as never);
-    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "Nothing has changed since issue 1." });
+    await expect(caller().fcpRecord.issue({ id: 4, reportFormat: "full" })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "Nothing has changed since issue 1." });
     expect(db.issueFcpVersion).toHaveBeenCalledTimes(1);
   });
 
@@ -121,7 +121,7 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
     await caller().fcpRecord.issue({ id: 4 });
-    expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].reportFormat).toBeNull();
+    expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].reportFormat).toBe("standard");
     await caller().fcpRecord.issue({ id: 4, reportFormat: "summary" });
     const [, , summary] = vi.mocked(db.issueFcpVersion).mock.calls[1];
     expect(summary.reportFormat).toBe("summary");

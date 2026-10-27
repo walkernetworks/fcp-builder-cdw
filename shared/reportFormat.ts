@@ -9,7 +9,7 @@ import type { Segment } from "./vsaStage";
  * Summary for Commercial customers, the Standard FCP for Corporate and Strategic. A render option, never a document
  * field; the issued version records which one the customer received.
  */
-export const REPORT_FORMATS = ["summary"] as const;
+export const REPORT_FORMATS = ["summary", "standard"] as const;
 export type ReportFormat = (typeof REPORT_FORMATS)[number];
 /** What an issued version can record; null on a version issued as the long report. */
 export const STORED_REPORT_FORMATS = ["summary", "standard"] as const;
@@ -18,17 +18,17 @@ export const STORED_REPORT_FORMATS = ["summary", "standard"] as const;
  * What an export or an issue renders: a format, or "full", the long report as it was before the formats. Corporate
  * and Strategic keep the long report until the Standard format is built.
  */
-export const REPORT_FORMAT_CHOICES = ["summary", "full"] as const;
+export const REPORT_FORMAT_CHOICES = ["summary", "standard", "full"] as const;
 export type ReportFormatChoice = (typeof REPORT_FORMAT_CHOICES)[number];
 
-export const REPORT_FORMAT_LABELS: Record<ReportFormatChoice, string> = { summary: "Summary", full: "Full report" };
+export const REPORT_FORMAT_LABELS: Record<ReportFormatChoice, string> = { summary: "Summary", standard: "Standard", full: "Full report" };
 
 /**
  * The format follows the tracker segment (engagements.segment), not the FCP's Commercial plan setting, which controls
  * plan generation rather than document length. A record with no segment gets the longer document.
  */
 export function defaultReportFormat(segment: Segment | null | undefined): ReportFormatChoice {
-  return segment === "commercial" ? "summary" : "full";
+  return segment === "commercial" ? "summary" : "standard";
 }
 
 /** The renderer option for a choice: undefined renders the long report. */

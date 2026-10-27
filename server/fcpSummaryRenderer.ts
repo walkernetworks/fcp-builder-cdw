@@ -16,7 +16,7 @@ import { renderTimeline } from "./timelineHtml";
  */
 
 /** The issue a render is for: its number and the day it was issued. */
-export type IssueStamp = { issueNumber: number; issuedOn: string };
+export type IssueStamp = { issueNumber: number; issuedOn: string; };
 
 /** Hard caps that keep the Summary at two pages. */
 export const SUMMARY_CAPS = { keyDates: 5, commitments: 3, openItems: 3 } as const;

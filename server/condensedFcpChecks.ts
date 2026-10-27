@@ -19,6 +19,7 @@ export const VOCABULARY = /\b(readiness|workshops?|TRW)\b/i;
 const REQUIRED = ["Executive Summary", "Scoped Effort", "Adoption Plan &amp; Recommendation", ">Summary</h3>"];
 const REQUIRED_BY_FORMAT: Record<ReportFormat, string[]> = {
   summary: ["Functional Consumption Plan · Summary", ">Work Packages</h3>", ">Timeline</h2>"],
+  standard: ["Functional Consumption Plan · Standard", ">Summary</h3>", ">Work Packages and Scoped Effort</h2>", ">Adoption Timeline</h2>"],
 };
 const INTERNAL_PATHS = ["/Users/", "/home/", "drive_1", "sharepoint", "localhost", "127.0.0.1"];
 
