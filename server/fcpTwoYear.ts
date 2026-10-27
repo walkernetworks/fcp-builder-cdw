@@ -29,23 +29,20 @@ export type TwoYearInput = {
 };
 
 export type TwoYearView = {
-  /** True when there is follow-on or notional work to show. */
+  /** True when there are follow-on packages with hours, or a BSAS pool. */
   hasContent: boolean;
   /** The page body: heading, lead, Gantt, follow-on table and the funding box. Empty without content. */
   html: string;
 };
 
-/** Words in a package label too general to tie a customer problem to it. */
-const GENERIC = new Set(["design", "services", "build", "workload", "domain", "migration", "platform", "first", "plan", "and", "the", "with", "operations", "lifecycle"]);
-const words = (text: string) => (text.toLowerCase().match(/[a-z]{5,}/g) ?? []).filter(word => !GENERIC.has(word));
-
 /**
- * The customer problems the follow-on work addresses: a problem counts when what addresses it shares a key word with a
- * follow-on package. Nothing is written for the customer; the problem is quoted as recorded.
+ * The customer problems the follow-on work addresses: a problem counts only when what addresses it names a follow-on
+ * package, by that package's label. A word the two share ("design", "platform") is not a link. There is no stored link
+ * between a problem and a package yet. Nothing is written for the customer; the problem is quoted as recorded.
  */
 export function problemsAddressedByFollowOn(document: EngagementDocument, followOnRows: WorkPackageEffort[]): string[] {
-  const packageWords = new Set(followOnRows.flatMap(row => words(packageLabel(row.label))));
-  return document.report.problems.filter(item => item.problem.trim() && words(item.addressedBy).some(word => packageWords.has(word))).map(item => item.problem.trim().replace(/[.\s]+$/, ""));
+  const labels = followOnRows.map(row => packageLabel(row.label).trim().toLowerCase()).filter(Boolean);
+  return document.report.problems.filter(item => item.problem.trim() && labels.some(label => item.addressedBy.toLowerCase().includes(label))).map(item => item.problem.trim().replace(/[.\s]+$/, ""));
 }
 
 export function twoYearView(input: TwoYearInput): TwoYearView {
@@ -61,7 +58,8 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
   const firstAfter = start && end ? Math.max(1, (Number(end[1]) - Number(start[1])) * 12 + Number(end[2]) - Number(start[2]) + 2) : booked ? 13 : 1;
   const slice: Timeline | null = notional.lanes.length && firstAfter <= notional.columns.length ? sliceTimeline(notional, firstAfter, Math.min(firstAfter + 11, notional.columns.length)) : null;
   const hasBars = Boolean(slice?.lanes.some(lane => lane.bars.length));
-  if (!followOnRows.length && !hasBars) return { hasContent: false, html: "" };
+  // The generic notional lanes (governance reviews, operating model, service consumption) alone do not make a page.
+  if (!followOnRows.length && !bsasPlan) return { hasContent: false, html: "" };
 
   const window = booked ? w("entitlement", "BSAS term") : "planned delivery window";
   const first = slice?.columns[0];
@@ -82,27 +80,30 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
   const table = (() => {
     if (!followOnRows.length) return "";
     const detail = Boolean(input.detail);
-    const headers = detail ? ["Work package", "Planned window", "Lead role", "Architect", "Sr. Consultant", "PM", "Total hours", ...(bsasPlan ? ["BSAS hours"] : [])] : ["Package", "Month", "Hours"];
-    const cell = (value: string, index: number, tag: "td" | "th") => `<${tag}${(detail ? index >= 3 : index === 2) ? ' class="num"' : ""}>${value}</${tag}>`;
+    const headers = detail ? ["Work package", "Planned window", "Lead role", "Architect", "Sr. Consultant", "PM", "Total hours", ...(bsasPlan ? ["BSAS hours"] : [])] : ["Package", "Month", "Hours", ...(bsasPlan ? ["BSAS hours"] : [])];
+    const cell = (value: string, index: number, tag: "td" | "th") => `<${tag}${(detail ? index >= 3 : index >= 2) ? ' class="num"' : ""}>${value}</${tag}>`;
     const rows = followOnRows.map(row => detail
       ? [esc(packageLabel(row.label)), esc(monthOf(row)), esc(row.leadRole), num(row.followOn!.architect), num(row.followOn!.srConsultant), num(row.followOn!.projectManager), num(row.followOn!.total), ...(bsasPlan ? [num(bsasById.get(row.id) ?? 0)] : [])]
-      : [esc(packageLabel(row.label)), esc(monthOf(row)), num(row.followOn!.total)]);
+      : [esc(packageLabel(row.label)), esc(monthOf(row)), num(row.followOn!.total), ...(bsasPlan ? [num(bsasById.get(row.id) ?? 0)] : [])]);
     const total = detail
       ? ["Total follow-on hours", "", "", num(totals.architect), num(totals.srConsultant), num(totals.projectManager), num(totals.total), ...(bsasPlan ? [num(bsasPlan.plannedHours)] : [])]
-      : ["Total follow-on", "", num(totals.total)];
+      : ["Total follow-on", "", num(totals.total), ...(bsasPlan ? [num(bsasPlan.plannedHours)] : [])];
     return `<h3>Follow-on Work</h3><table class="wp std" data-foot="sum"><thead><tr>${headers.map((header, index) => cell(esc(header), index, "th")).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((value, index) => cell(value, index, "td")).join("")}</tr>`).join("")}<tr class="total">${total.map((value, index) => cell(value, index, "td")).join("")}</tr></tbody></table><p class="note">Estimated CDW hours${designInPlan ? ", planned against a design already completed in year one" : ""}.</p>`;
   })();
 
   // ---- How it's funded: hours and dates only, never an amount
   const ends = termEnd ? `, ${bsasOnly ? "whose term ends" : "which ends"} ${longDate(termEnd)}${assumedEnd ? " (to be confirmed)" : ""}` : "";
   const notDrawn = booked ? `This work is not drawn from the current ${esc(w("entitlement", "BSAS hours"))}${ends}.` : `This work is not part of the planned delivery window.`;
-  const options = bsasOnly ? "It needs additional BSAS hours or a services purchase." : "It needs one of: a renewal with a services entitlement attached, a services purchase, or Broadcom Software Adoption Services hours.";
+  // BSAS funding the work is stated directly; only what BSAS does not cover still needs a purchase.
+  const options = bsasPlan
+    ? bsasPlan.unfundedHours > 0 ? `The other ${hours(bsasPlan.unfundedHours)} hours need a renewal with a services entitlement attached or a services purchase.` : ""
+    : bsasOnly ? "It needs additional BSAS hours or a services purchase." : "It needs one of: a renewal with a services entitlement attached, a services purchase, or Broadcom Software Adoption Services hours.";
   const bsasLine = bsasPlan
-    ? `Broadcom Software Adoption Services (BSAS) provide ${hours(bsasPlan.term.hours)} hours from ${shortDate(bsasPlan.term.termStart)} to ${shortDate(bsasPlan.term.termEnd)}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}. ${hours(bsasPlan.plannedHours)} hours are planned${bsasPlan.forfeitedHours > 0 ? `; ${hours(bsasPlan.forfeitedHours)} hours are not planned and will be forfeited at term end` : ""}.`
+    ? `Broadcom Software Adoption Services (BSAS) fund this work: ${hours(bsasPlan.term.hours)} hours from ${shortDate(bsasPlan.term.termStart)} to ${shortDate(bsasPlan.term.termEnd)}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}. ${hours(bsasPlan.plannedHours)} hours are planned${bsasPlan.forfeitedHours > 0 ? `; ${hours(bsasPlan.forfeitedHours)} hours are not planned and will be forfeited at term end` : ""}.`
     : "";
   const problems = problemsAddressedByFollowOn(document, followOnRows);
   const why = problems.length ? `The sooner it is funded, the sooner this is addressed: ${problems.map(item => item.charAt(0).toLowerCase() + item.slice(1)).join("; ")}.` : "";
-  const funding = `<h3>How It's Funded</h3><div class="after">${[notDrawn, options, bsasLine, why].filter(Boolean).map(line => `<p>${esc(line)}</p>`).join("")}</div>`;
+  const funding = `<h3>How It's Funded</h3><div class="after">${[notDrawn, bsasLine, options, why].filter(Boolean).map(line => `<p>${esc(line)}</p>`).join("")}</div>`;
 
   const body = table ? `<div class="two"><div>${table}</div><div>${funding}</div></div>` : funding;
   return { hasContent: true, html: `<h2>After the ${esc(booked ? w("Entitlement", "BSAS Term") : "Plan")}</h2><p class="lead">${lead}</p>${gantt}${body}` };

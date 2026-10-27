@@ -299,8 +299,9 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
   const bsasFunds = bsasPlan
     ? `Broadcom Software Adoption Services (BSAS) provide ${hours(bsasPlan.term.hours)} hours from ${shortDate(bsasPlan.term.termStart)} to ${shortDate(bsasPlan.term.termEnd)}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}. ${hours(bsasPlan.plannedHours)} hours are planned${bsasPlan.forfeitedHours > 0 ? `; ${hours(bsasPlan.forfeitedHours)} hours are not planned and will be forfeited at term end` : ""}.`
     : "";
+  const runsFrom = termEnd ? monthAfter(termEnd) : plannedEnd ? monthAfter(plannedEnd) : null;
   const after = twoYear.hasContent
-    ? `<h3>After This Plan</h3><div class="after">${followOnRows.length ? `${esc(whatFollows)}, about <b>${hours(followOnHours)} hours</b>. ` : ""}The two-year view${followOnRows.length ? " and how it is funded are" : " is"} on page 3.</div>`
+    ? `<h3>After This Plan</h3><div class="after">${followOnRows.length ? `About <b>${hours(followOnHours)} hours</b> of follow-on work runs ${runsFrom ? `from ${esc(runsFrom)}` : `after the ${windowName}`}. ` : ""}The two-year view and how it's funded are on page 3.</div>`
     : bsasFunds ? `<h3>After This Plan</h3><div class="after">No follow-on work is planned yet. ${esc(bsasFunds)}</div>` : "";
 
   const strip = `<div class="strip"><span>${cdwLogoSvg("logo")}Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for ${esc(customer)} · ${esc(issued)}</span></div>`;
