@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { EngagementDocument } from "../shared/fcp";
+import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
+import { bottomRow } from "./fcpSummaryRenderer";
 import { cedarRidgeLogistics, FIXTURE_TODAY } from "./fixtures/fcpFixtures";
 import { scopedEffortForDocument } from "./rateCard";
 
@@ -16,5 +18,72 @@ describe("no entitlement booked: the long report", () => {
     const labels = tiles(render(cedarRidgeLogistics())).map(tile => tile.split(":")[0]);
     expect(labels).toEqual(["Entitlement", "Scoped Effort", "Planned Completion", "Target Platform"]);
     expect(tiles(render(cedarRidgeLogistics()))[0]).toBe("Entitlement: Not yet booked");
+  });
+});
+
+describe("no entitlement booked: the Summary", () => {
+  const summary = (document: EngagementDocument) => render(document, "summary");
+  const check = (html: string, document: EngagementDocument) => checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount, format: "summary" });
+
+  it("renders the Cedar Ridge Logistics Summary byte-identical to the golden copy, and passes the content checks", async () => {
+    const document = cedarRidgeLogistics();
+    const html = summary(document);
+    expect(check(html, document)).toEqual([]);
+    await expect(html).toMatchFileSnapshot("./__golden__/summary-cedar-ridge-logistics.html");
+  });
+
+  it("shows the plan's hours once, its dates, and says the entitlement is not booked", () => {
+    expect(tiles(summary(cedarRidgeLogistics()))).toEqual(["Planned CDW Hours: 348 hrs", "Plan Starts: 2 Nov 2026", "Planned Completion: 31 Jul 2027", "Entitlement: Not yet booked"]);
+  });
+
+  it("calls it the planned delivery window, never the entitlement window", () => {
+    const text = visible(summary(cedarRidgeLogistics()));
+    expect(text).toContain("2 November 2026 through 31 July 2027, the planned delivery window.");
+    expect(text).not.toMatch(/entitlement (window|ends)/i);
+    expect(text).not.toContain("No entitlement booked yet");
+  });
+
+  it("prints key dates from the plan alone, including a plan with no start date set", () => {
+    const text = visible(summary(cedarRidgeLogistics()));
+    expect(text).toContain("Key Dates 2 Nov 2026 Design and planning start 1 Feb 2027 Platform build begins 31 Jul 2027 Planned completion");
+    const undated = cedarRidgeLogistics();
+    undated.fields.plannedProjectStart = "";
+    undated.fields.plannedImplementationStart = "";
+    const dates = visible(summary(undated));
+    expect(dates).toContain("Key Dates");
+    expect(dates).toMatch(/Planned completion/);
+  });
+
+  it("leaves an empty column out and lets the others share its width", () => {
+    const full = summary(cedarRidgeLogistics());
+    expect(full).toContain('<div class="bottom" style="grid-template-columns:1fr 1.15fr 0.9fr">');
+    // Whichever column is empty is left out, and the rest share the row.
+    expect(bottomRow([[1, ""], [1.15, "<p>needs</p>"], [0.9, "<p>after</p>"]])).toBe('<div class="bottom" style="grid-template-columns:1.15fr 0.9fr"><div><p>needs</p></div><div><p>after</p></div></div>');
+    expect(bottomRow([[1, "<p>dates</p>"], [1.15, ""], [0.9, "<p>after</p>"]])).toContain("grid-template-columns:1fr 0.9fr");
+  });
+
+  it("keeps the signed-hours item off the page", () => {
+    expect(visible(summary(cedarRidgeLogistics()))).not.toContain("Entitled hours from the signed resource assignments");
+  });
+
+  it("lists only the workstream types the chart uses, with shorter bar labels than the work package table", () => {
+    const html = summary(cedarRidgeLogistics());
+    const key = html.match(/<div class="timeline-legend">[\s\S]*?<\/div>/)![0];
+    expect(visible(key)).toBe(" Delivery workstream key Governance Operating Model / Platform Infrastructure Build Migration Waves Customer-owned ◆ Checkpoint ");
+    expect(key).not.toContain("Security &amp; Resiliency");
+    const chart = html.split('class="timeline-wrap"')[1];
+    expect(chart).toContain(">Discovery and Funding</div>");
+    expect(chart).not.toContain("Greenfield Discovery Sessions and Funding</div>");
+    expect(visible(html)).toContain("Greenfield Discovery Sessions and Funding Nov 2026");
+  });
+
+  it("keeps the entitlement window wording on a booked entitlement", () => {
+    const booked = cedarRidgeLogistics();
+    booked.fields.entitlementAmount = 90_000;
+    booked.fields.entitlementStart = "2026-11-02";
+    const text = visible(summary(booked));
+    expect(text).toContain("the entitlement window.");
+    expect(text).not.toContain("planned delivery window");
+    expect(tiles(summary(booked))).not.toContain("Entitlement: Not yet booked");
   });
 });

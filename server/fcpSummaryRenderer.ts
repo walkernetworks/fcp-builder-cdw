@@ -1,8 +1,9 @@
 import { formatWindow, type ScopedEffort } from "../shared/effort";
-import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument } from "../shared/fcp";
+import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument, type Timeline } from "../shared/fcp";
 import { reconcileHours } from "../shared/reportFormat";
 import { customerOpenItems, planKeyDates, platformName, selectedScopeSummary } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
+import { barWindow } from "../shared/buildingBlocks";
 import { DRAFT_MARK, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, RESERVE_LINE, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
 import { renderTimeline } from "./timelineHtml";
 
@@ -21,6 +22,42 @@ export const SUMMARY_CAPS = { keyDates: 5, commitments: 3, openItems: 3 } as con
 
 const LEGEND = "CDW · Proprietary and confidential. Copying restricted.";
 const MORE = "See the full list in the Standard FCP.";
+
+/**
+ * Bar labels for the Summary's timeline, where a bar can be a single month wide: the plan's package names, shortened.
+ * The Work Packages table keeps the full names. A label with no short form is only stripped of its planner prefix.
+ */
+const SHORT_BAR_LABELS: Array<[RegExp, string]> = [
+  [/^Greenfield Discovery Sessions and Funding$/, "Discovery and Funding"],
+  [/^Hardware Compatibility Review$/, "Hardware Review"],
+  [/^Hardware Compatibility Sign-Off$/, "Hardware Sign-Off"],
+  [/^Kickoff and Delivery Plan$/, "Kickoff"],
+  [/^Close HCL Evidence Gaps$/, "Close HCL Gaps"],
+  [/^Greenfield Design and Bill of Materials$/, "Design and BOM"],
+  [/^Migration and Cutover Plan$/, "Cutover Plan"],
+  [/^Greenfield (VCF|VVF) Foundation Build$/, "$1 Foundation Build"],
+  [/^Workload Clusters and vLCM Images$/, "Clusters and vLCM"],
+  [/^Workload Migration and Cutover$/, "Migration Waves"],
+  [/^Backup Validated Before Each Wave$/, "Backup Validation"],
+  [/^(VCF|VVF) Operations Design$/, "Operations Design"],
+  [/^Role and Access Mapping$/, "Roles and Access"],
+  [/^Training and Knowledge Transfer$/, "Training"],
+  [/^(VCF|VVF) Operations Licensing$/, "Licensing"],
+  [/^Platform Lifecycle and Service Health$/, "Lifecycle and Health"],
+  [/^Runbook Knowledge Transfer$/, "Runbook Transfer"],
+  [/^Handover and Service Acceptance$/, "Handover"],
+];
+/** The page 2 bottom row. A column with nothing to show is left out and the others take its width (width = relative share). */
+export function bottomRow(columns: Array<[number, string]>): string {
+  const filled = columns.filter(([, html]) => html);
+  return `<div class="bottom" style="grid-template-columns:${filled.map(([width]) => `${width}fr`).join(" ")}">${filled.map(([, html]) => `<div>${html}</div>`).join("")}</div>`;
+}
+const shortBarLabel = (label: string) => {
+  const plain = packageLabel(label);
+  for (const [pattern, short] of SHORT_BAR_LABELS) if (pattern.test(plain)) return plain.replace(pattern, short);
+  return plain;
+};
+const summaryTimeline = (timeline: Timeline): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, label: bar.label.replace(/^((?:← )?)(.*?)((?: →)?)$/, (_all, before: string, name: string, after: string) => `${before}${shortBarLabel(name)}${after}`) })) })) });
 
 /** A CSS string literal: the footer text lives in @page margin boxes, which take only CSS content. */
 const cssString = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3C ").replace(/[\r\n]+/g, " ")}"`;
@@ -151,19 +188,31 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
 
   const kpi = (value: string, label: string, sub: string) => `<div class="kpi"><div class="v">${value}</div><div class="l">${label}</div><div class="s">${sub}</div></div>`;
   const term = termStart && termEnd ? `${esc(shortDate(termStart))} to ${esc(shortDate(termEnd))}` : "";
+  // Nothing booked: no entitlement value, hours or term. The plan's own hours and dates stand in, and one tile says so.
+  const booked = bsasOnly || Boolean(burndown) || fields.entitlementAmount > 0 || Boolean(termEnd);
+  const windowName = bsasOnly ? "BSAS term" : booked ? "entitlement window" : "planned delivery window";
+  const plannedHoursTile = kpi(`${hours(effort.totals.total)} hrs`, "Planned CDW Hours", effort.source === "assignments" ? "Signed resource assignments" : "Estimated from this plan");
   const valueTile = bsasOnly
     ? kpi(`${hours(fields.bsasHours)} hrs`, "Broadcom Software Adoption Services", `BSAS hours${term ? ` · ${term}` : ""}`)
     : fields.entitlementAmount
       ? kpi(esc(money(fields.entitlementAmount)), `${esc(platform.split(" ")[0])} Services Entitlement`, [burndown ? `${hours(burndown.entitledHours)} hours` : "", term].filter(Boolean).join(" · "))
-      : kpi(`${hours(effort.totals.total)} hrs`, "Planned CDW Hours", "No entitlement booked yet");
+      : plannedHoursTile;
   const consumedAsOf = report.entitlement.consumedAsOf;
   const remainingTile = burndown
     ? kpi(`${hours(burndown.remainingHours)} hrs`, "Hours Remaining", `${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} delivered${consumedAsOf ? ` as of ${esc(shortDate(consumedAsOf))}` : ""}`)
-    : kpi(`${hours(effort.totals.total)} hrs`, "Planned CDW Hours", effort.source === "assignments" ? "Signed resource assignments" : "Estimated from this plan");
+    : valueTile === plannedHoursTile ? "" : plannedHoursTile;
   const { implementationStart, buildStart, buildLater } = planKeyDates(document);
-  const startTile = implementationStart ? kpi(esc(shortDate(implementationStart)), "Plan Starts", buildLater && buildStart ? `Design and planning first; build from ${esc(shortDate(buildStart))}` : "Build, upgrade and migration work begins") : "";
-  const endTile = termEnd ? kpi(esc(shortDate(termEnd)), w("Entitlement Ends", "BSAS Term Ends"), `${w("Unused hours are not refunded", "Unused BSAS hours are forfeited")}${assumedEnd ? "; date to be confirmed" : ""}`) : "";
-  const tiles = [valueTile, remainingTile, startTile, endTile].filter(Boolean);
+  // The plan's dates: the start the planner set, else where the timeline starts; the finish the planner set, else where the last bar ends.
+  const timelineStart = document.adoptionTimeline.startDate || "";
+  const timelineEnd = document.adoptionTimeline.lanes.flatMap(lane => lane.bars).map(bar => barWindow(document.adoptionTimeline, bar)?.end ?? "").sort().at(-1) || "";
+  const planStart = implementationStart || fields.targetStart || timelineStart;
+  const plannedEnd = termEnd || fields.targetComplete || timelineEnd || null;
+  const startTile = planStart ? kpi(esc(shortDate(planStart)), "Plan Starts", buildLater && buildStart ? `Design and planning first; build from ${esc(shortDate(buildStart))}` : "Build, upgrade and migration work begins") : "";
+  const endTile = termEnd
+    ? kpi(esc(shortDate(termEnd)), w("Entitlement Ends", "BSAS Term Ends"), `${w("Unused hours are not refunded", "Unused BSAS hours are forfeited")}${assumedEnd ? "; date to be confirmed" : ""}`)
+    : plannedEnd ? kpi(esc(shortDate(plannedEnd)), "Planned Completion", fields.targetComplete ? `${esc(customer)}'s target` : "Estimated from this plan") : "";
+  const bookedTile = booked ? "" : kpi("Not yet booked", "Entitlement", "Hours and term to be confirmed");
+  const tiles = [valueTile, remainingTile, startTile, endTile, bookedTile].filter(Boolean);
   const kpis = `<div class="kpis" style="grid-template-columns:repeat(${tiles.length},1fr)">${tiles.join("")}</div>`;
 
   // ---- What we're doing: the plan in a few sentences; what follows the entitlement is in After This Plan
@@ -181,7 +230,7 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
     const labels = Array.from(new Set(funded.filter(row => row.category === category).map(row => packageLabel(row.label))));
     const later = deferredWork.filter(row => row.category === category).map(row => packageLabel(row.label));
     if (labels.length) inPlan.push(`<li><b>${esc(category)}:</b> ${esc(labels.join(", "))}</li>`);
-    if (later.length) notInPlan.push(`<li><b>${esc(category)}:</b> ${esc(later.join(", "))}, after the ${w("entitlement", "BSAS term")}</li>`);
+    if (later.length) notInPlan.push(`<li><b>${esc(category)}:</b> ${esc(later.join(", "))}, after the ${bsasOnly ? "BSAS term" : booked ? "entitlement" : "planned delivery window"}</li>`);
     else if (!labels.length) notInPlan.push(`<li><b>${esc(category)}:</b> ${report.declined.length ? `not requested (${esc(listJoin(report.declined))})` : "not in this plan"}</li>`);
   }
   if (report.customerOwnedWork.length) notInPlan.push(`<li><b>Run by ${esc(customer)}:</b> ${esc(report.customerOwnedWork.map(work => work.label).join("; "))}</li>`);
@@ -230,21 +279,23 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
     : delivered ? `CDW-delivered hours: ${hours(delivered.delivered)} delivered, ${hours(delivered.planned)} planned and ${hours(delivered.reserve)} held for change requests. ${basis}` : `CDW-delivered hours. ${basis}`;
   const workPackages = `<h3>Work Packages</h3><table class="wp" data-foot="sum"><thead><tr><th>Package</th><th>Month</th><th class="num">Hours</th></tr></thead><tbody>${[...deliveredRows, ...packageRows, ...reserveRows].join("")}<tr class="total"><td>${esc(totalLabel)}</td><td></td><td class="num">${hours(total)}</td></tr></tbody></table><p class="note">${esc(reconcileNote)}</p>`;
 
-  // ---- Page 2: the entitlement window, key dates, what we need, after this plan
-  const windowStart = fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate;
-  const windowEnd = termEnd ? longDate(termEnd) : document.adoptionTimeline.columns.at(-1) || "plan end";
-  const timeline = `<h2>Timeline</h2><p class="lead">${esc(windowStart ? longDate(windowStart) : "Plan start")} through ${esc(windowEnd)}, the ${w("entitlement window", "BSAS term")}. Dashed bars are run by ${esc(customer)}. ◆ marks key delivered functionality.</p>${renderTimeline(entitlementWindowTimeline(document, termEnd), w("No activities are scheduled in the entitlement window.", "No activities are scheduled in the BSAS term."), undefined, { skipEmptyCategories: true })}`;
+  // ---- Page 2: the entitlement window (or the planned delivery window), key dates, what we need, after this plan
+  const windowStart = fields.plannedProjectStart || fields.targetStart || timelineStart;
+  const windowEnd = plannedEnd ? longDate(plannedEnd) : document.adoptionTimeline.columns.at(-1) || "plan end";
+  const timeline = `<h2>Timeline</h2><p class="lead">${esc(windowStart ? longDate(windowStart) : "Plan start")} through ${esc(windowEnd)}, the ${windowName}. Dashed bars are run by ${esc(customer)}. ◆ marks key delivered functionality.</p>${renderTimeline(summaryTimeline(entitlementWindowTimeline(document, termEnd ?? plannedEnd)), `No activities are scheduled in the ${windowName}.`, undefined, { skipEmptyCategories: true, legendFromChart: true })}`;
 
   const upcoming = report.milestonesToDate.filter(item => item.date > today);
   const candidates: Array<{ date: string; text: string; end?: boolean }> = [
     ...upcoming.map(item => ({ date: item.date, text: item.event })),
-    ...(implementationStart ? [{ date: implementationStart, text: buildLater ? "Design and planning start" : "Implementation services start" }] : []),
+    ...(planStart ? [{ date: planStart, text: buildLater ? "Design and planning start" : "Implementation services start" }] : []),
     ...(buildLater && buildStart ? [{ date: buildStart, text: "Platform build begins" }] : []),
     ...(fields.targetComplete ? [{ date: fields.targetComplete, text: `${customer}'s target completion` }] : []),
     ...(bsas && !bsasOnly ? [{ date: bsas.termStart, text: "BSAS term starts for follow-on work" }, { date: bsas.termEnd, text: "BSAS term ends; unused BSAS hours are forfeited" }] : []),
     ...(termEnd ? [{ date: termEnd, text: w("Entitlement ends; unused hours are not refunded", "BSAS term ends; unused BSAS hours are forfeited"), end: true }] : []),
+    // With no term, the plan's own finish closes the list, whether it is the target or where the timeline ends.
+    ...(!termEnd && plannedEnd && plannedEnd !== fields.targetComplete ? [{ date: plannedEnd, text: "Planned completion", end: true }] : []),
   ].sort((left, right) => left.date.localeCompare(right.date));
-  // The end of the entitlement always shows; the cap drops the latest of the others.
+  // The end of the entitlement (or the plan) always shows; the cap drops the latest of the others.
   const ending = candidates.filter(item => item.end);
   const others = candidates.filter(item => !item.end).slice(0, SUMMARY_CAPS.keyDates - ending.length);
   const keyDates = [...others, ...ending].sort((left, right) => left.date.localeCompare(right.date));
@@ -262,7 +313,7 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
   const moved = followOnRows.filter(row => row.deferred || row.total <= 0).map(row => packageLabel(row.label));
   const remainder = followOnRows.filter(row => !row.deferred && row.total > 0).map(row => packageLabel(row.label).toLowerCase());
   const followOnHours = followOnRows.reduce((sum, row) => sum + row.followOn!.total, 0);
-  const when = termEnd ? `from ${monthAfter(termEnd)}` : `after the ${w("entitlement", "BSAS term")}`;
+  const when = termEnd ? `from ${monthAfter(termEnd)}` : `after the ${bsasOnly ? "BSAS term" : booked ? "entitlement" : "planned delivery window"}`;
   const whatFollows = moved.length
     ? `${listJoin(moved)}${remainder.length ? `, with the rest of the ${listJoin(remainder)},` : ""} follow${moved.length === 1 && !remainder.length ? "s" : ""} ${when}`
     : `The rest of the ${listJoin(remainder)} follows ${when}`;
@@ -273,7 +324,8 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
 
   const strip = `<div class="strip"><span>${cdwLogoSvg("logo")}Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for ${esc(customer)} · ${esc(issued)}</span></div>`;
   const page1 = `<section class="p1sheet" ${fitAttribute(PAGE_FIT.first)}>${band}<div class="p1">${pills}${kpis}<div class="cols"><div><h3>What We're Doing</h3><p class="synopsis">${esc(synopsis)}</p>${scope}${architecture}</div><div>${workPackages}</div></div></div></section>`;
-  const page2 = `<section class="p2" ${fitAttribute(PAGE_FIT.rest)}>${strip}${timeline}<div class="bottom"><div>${datesSection}</div><div>${needs}${openItems}</div><div>${after}<div class="closer">Make Amazing Happen.</div></div></div></section>`;
+  const bottom = bottomRow([[1, datesSection], [1.15, needs + openItems], [0.9, `${after}<div class="closer">Make Amazing Happen.</div>`]]);
+  const page2 = `<section class="p2" ${fitAttribute(PAGE_FIT.rest)}>${strip}${timeline}${bottom}</section>`;
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} - FCP</title><style>${CSS}${footerCss(customer, version)}</style></head><body>${options.draft ? DRAFT_MARK : ""}${page1}${page2}<button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button>${FIT_SCRIPT}</body></html>`;
 }
