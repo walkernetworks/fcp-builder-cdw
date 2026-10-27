@@ -36,8 +36,27 @@ export function renderBar(activity: TimelineBar, totalColumns: number, workstrea
   return `<div class="timeline-bar ${activity.deferred ? "deferred" : ""}" style="grid-column:${start}/${end};grid-row:${track + 1};align-self:center;${gate ? "justify-self:end;border-radius:999px;" : ""}${fill}" title="${customer ? "Customer-owned · " : ""}${esc(workstreamType)}: ${esc(activity.label)}&#10;Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[workstreamType])}${activity.outcome ? `&#10;Intended outcome: ${esc(activity.outcome)}` : ""}${activity.dependsOn ? `&#10;${esc(activity.dependsOn)}` : ""}">${activity.milestone ? "◆ " : ""}${esc(activity.label)}</div>`;
 }
 
-export function renderWorkstreamLegend() {
-  return `<div class="timeline-legend"><span>Delivery workstream key</span>${WORKSTREAM_TYPES.map(type => { const color = palette[WORKSTREAM_TYPE_COLORS[type]] || palette.slate; return `<span class="timeline-legend-item" title="Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[type])}" style="border-color:${color.border};background:${color.bg};color:${color.fg}"><i></i>${esc(type)}</span>`; }).join("")}<span class="timeline-legend-item" style="border-color:#64748b;border-style:dashed;background:#fff;color:#334155"><i></i>Customer-owned</span><span class="timeline-legend-item" style="border-color:#64748b;border-radius:999px;background:#fff;color:#334155">◆ Checkpoint</span></div>`;
+/** What a drawn timeline uses, for a key that lists only that. */
+export type LegendUse = { types: Set<string>; customerOwned: boolean; checkpoint: boolean };
+
+export function legendUse(timeline: Timeline): LegendUse {
+  const used: LegendUse = { types: new Set(), customerOwned: false, checkpoint: false };
+  for (const lane of timeline.lanes) {
+    for (const bar of lane.bars) {
+      used.types.add(lane.workstreamType);
+      if (activityOwner(bar) === "customer") used.customerOwned = true;
+      if (isGateActivity(bar) || bar.milestone) used.checkpoint = true;
+    }
+  }
+  return used;
+}
+
+/** The workstream key; with `use`, only the workstream types, ownership and checkpoints that appear on the chart. */
+export function renderWorkstreamLegend(use?: LegendUse) {
+  const item = (type: (typeof WORKSTREAM_TYPES)[number]) => { const color = palette[WORKSTREAM_TYPE_COLORS[type]] || palette.slate; return `<span class="timeline-legend-item" title="Lead role: ${esc(DELIVERY_ROLE_BY_WORKSTREAM[type])}" style="border-color:${color.border};background:${color.bg};color:${color.fg}"><i></i>${esc(type)}</span>`; };
+  const customer = '<span class="timeline-legend-item" style="border-color:#64748b;border-style:dashed;background:#fff;color:#334155"><i></i>Customer-owned</span>';
+  const checkpoint = '<span class="timeline-legend-item" style="border-color:#64748b;border-radius:999px;background:#fff;color:#334155">◆ Checkpoint</span>';
+  return `<div class="timeline-legend"><span>Delivery workstream key</span>${WORKSTREAM_TYPES.filter(type => !use || use.types.has(type)).map(item).join("")}${!use || use.customerOwned ? customer : ""}${!use || use.checkpoint ? checkpoint : ""}</div>`;
 }
 
 export function groupTimelineLanes(lanes: TimelineLane[]) {
@@ -65,13 +84,16 @@ export function layoutCategoryActivities(lanes: TimelineLane[]): CategoryActivit
     });
 }
 
-/** `skipEmptyCategories`: leave out delivery categories with nothing scheduled (the Summary); the long report keeps every row. */
-export function renderTimeline(timeline: Timeline, emptyMessage = "No activities have been scheduled for this portion of the plan.", compactColumnWidth?: number, options: { skipEmptyCategories?: boolean } = {}) {
+/**
+ * `skipEmptyCategories`: leave out delivery categories with nothing scheduled (the Summary); the long report keeps every
+ * row. `legendFromChart`: the key lists only the workstream types the chart uses.
+ */
+export function renderTimeline(timeline: Timeline, emptyMessage = "No activities have been scheduled for this portion of the plan.", compactColumnWidth?: number, options: { skipEmptyCategories?: boolean; legendFromChart?: boolean } = {}) {
   if (!timeline.lanes.length) return `<div class="timeline-empty">${esc(emptyMessage)}</div>`;
   const columnWidth = compactColumnWidth || (timeline.cadence === "week" ? 112 : 92);
   const minimumWidth = 180 + timeline.columns.length * columnWidth;
   const categoryGroups = groupTimelineLanes(timeline.lanes).filter(group => !options.skipEmptyCategories || group.lanes.some(lane => lane.bars.length));
-  return `${renderWorkstreamLegend()}<div class="timeline-wrap"><div class="timeline-grid" style="--timeline-slots:${timeline.columns.length};min-width:${minimumWidth}px;grid-template-columns:180px repeat(${timeline.columns.length},minmax(${columnWidth}px,1fr))"><div class="timeline-corner">Delivery Category</div>${timeline.columns.map(window => `<div class="timeline-head">${esc(window)}</div>`).join("")}${categoryGroups.map(group => {
+  return `${renderWorkstreamLegend(options.legendFromChart ? legendUse(timeline) : undefined)}<div class="timeline-wrap"><div class="timeline-grid" style="--timeline-slots:${timeline.columns.length};min-width:${minimumWidth}px;grid-template-columns:180px repeat(${timeline.columns.length},minmax(${columnWidth}px,1fr))"><div class="timeline-corner">Delivery Category</div>${timeline.columns.map(window => `<div class="timeline-head">${esc(window)}</div>`).join("")}${categoryGroups.map(group => {
     const activities = layoutCategoryActivities(group.lanes);
     const trackCount = Math.max(1, ...activities.map(item => item.track + 1));
     return `<div class="timeline-lane timeline-category-lane"><strong>${esc(group.category)}</strong></div><div class="timeline-row timeline-category-row" style="--months:${timeline.columns.length};grid-column:2/${timeline.columns.length + 2};grid-template-columns:repeat(${timeline.columns.length},1fr);grid-template-rows:repeat(${trackCount},minmax(42px,1fr));min-height:${Math.max(64, trackCount * 50 + 10)}px">${activities.map(({ lane, activity, track }) => renderBar(activity, timeline.columns.length, lane.workstreamType, track)).join("")}</div>`;

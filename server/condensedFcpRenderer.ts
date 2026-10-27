@@ -2,7 +2,7 @@ import { allocateBsas, type BsasTerm } from "../shared/bsas";
 import { barWindow } from "../shared/buildingBlocks";
 import { buildCustomerEffort, formatWindow, type ScopedEffort } from "../shared/effort";
 import { activityOwner, domainHosts, domainPackages, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
-import { minimumTargetRelease, planKeyDates, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
+import { customerOpenItems, minimumTargetRelease, planKeyDates, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
 import type { ReportFormat } from "../shared/reportFormat";
 import { VCF_CORPUS } from "../shared/vcfCorpus";
 import { DOMAIN_BUILD_WEIGHTS } from "../shared/hoursConfig";
@@ -518,8 +518,9 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
   const constraints = report.constraints.map(item => ({ ...item, imposedBy: capitalized(item.imposedBy) || "Calendar" }));
   // A leading "Label:" is set in bold, as in the template.
   const asks = report.customerAsks.map(item => esc(item).replace(/^([A-Z][^:]{0,40}):\s/, "<b>$1:</b> "));
-  const withOwner = report.openItems.some(item => item.owner.trim());
-  const openItems = report.openItems.length ? `<h3>Open Items</h3>${table(["Item", "What It Gates", ...(withOwner ? ["Owner"] : [])], report.openItems.map(item => [esc(item.item), esc(item.gates), ...(withOwner ? [esc(item.owner)] : [])]))}` : "";
+  const shownOpenItems = customerOpenItems(report.openItems);
+  const withOwner = shownOpenItems.some(item => item.owner.trim());
+  const openItems = shownOpenItems.length ? `<h3>Open Items</h3>${table(["Item", "What It Gates", ...(withOwner ? ["Owner"] : [])], shownOpenItems.map(item => [esc(item.item), esc(item.gates), ...(withOwner ? [esc(item.owner)] : [])]))}` : "";
   const pulledIn = outcomes.filter(item => item.requiredBy.length);
 
   const body = `

@@ -1,7 +1,7 @@
 import { formatWindow, type ScopedEffort } from "../shared/effort";
 import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument } from "../shared/fcp";
 import { reconcileHours } from "../shared/reportFormat";
-import { planKeyDates, platformName, selectedScopeSummary } from "../shared/reportView";
+import { customerOpenItems, planKeyDates, platformName, selectedScopeSummary } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { DRAFT_MARK, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, RESERVE_LINE, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
 import { renderTimeline } from "./timelineHtml";
@@ -253,8 +253,9 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
 
   const asks = report.customerAsks.slice(0, SUMMARY_CAPS.commitments).map(item => `<li>${esc(item).replace(/^([A-Z][^:]{0,40}):\s/, "<b>$1:</b> ")}</li>`);
   const needs = asks.length ? `<h3>What We Need from ${esc(customer)}</h3><ul class="asks">${asks.join("")}</ul>${report.customerAsks.length > SUMMARY_CAPS.commitments ? `<p class="note">${MORE}</p>` : ""}` : "";
-  const withOwner = report.openItems.some(item => item.owner.trim());
-  const openItems = report.openItems.length ? `<h3>Open Items</h3><table class="open"><tbody>${report.openItems.slice(0, SUMMARY_CAPS.openItems).map(item => `<tr><td>${esc(item.item)}</td><td>${esc(item.gates)}</td>${withOwner ? `<td>${esc(item.owner)}</td>` : ""}</tr>`).join("")}</tbody></table>${report.openItems.length > SUMMARY_CAPS.openItems ? `<p class="note">${MORE}</p>` : ""}` : "";
+  const customerItems = customerOpenItems(report.openItems);
+  const withOwner = customerItems.some(item => item.owner.trim());
+  const openItems = customerItems.length ? `<h3>Open Items</h3><table class="open"><tbody>${customerItems.slice(0, SUMMARY_CAPS.openItems).map(item => `<tr><td>${esc(item.item)}</td><td>${esc(item.gates)}</td>${withOwner ? `<td>${esc(item.owner)}</td>` : ""}</tr>`).join("")}</tbody></table>${customerItems.length > SUMMARY_CAPS.openItems ? `<p class="note">${MORE}</p>` : ""}` : "";
 
   // Work after the entitlement: packages moved there whole, and the rest of packages this plan only starts.
   const followOnRows = effort.workPackages.filter(row => row.followOn && row.followOn.total > 0);
