@@ -282,7 +282,7 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
 
   // ---- Page 2: the entitlement window (or the planned delivery window), key dates, what we need, after this plan
   const windowStart = fields.plannedProjectStart || fields.targetStart || timelineStart;
-  const windowEnd = plannedEnd ? longDate(plannedEnd) : document.adoptionTimeline.columns.at(-1) || "plan end";
+  const windowEnd = plannedEnd ? `${longDate(plannedEnd)}${termEnd && assumedEnd ? " (to be confirmed)" : ""}` : document.adoptionTimeline.columns.at(-1) || "plan end";
   const timeline = `<h2>Timeline</h2><p class="lead">${esc(windowStart ? longDate(windowStart) : "Plan start")} through ${esc(windowEnd)}, the ${windowName}. Dashed bars are run by ${esc(customer)}. ◆ marks key delivered functionality.</p>${renderTimeline(summaryTimeline(entitlementWindowTimeline(document, termEnd ?? plannedEnd)), `No activities are scheduled in the ${windowName}.`, undefined, { skipEmptyCategories: true, legendFromChart: true })}`;
 
   const upcoming = report.milestonesToDate.filter(item => item.date > today);
@@ -292,7 +292,7 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
     ...(buildLater && buildStart ? [{ date: buildStart, text: "Platform build begins" }] : []),
     ...(fields.targetComplete ? [{ date: fields.targetComplete, text: `${customer}'s target completion` }] : []),
     ...(bsas && !bsasOnly ? [{ date: bsas.termStart, text: "BSAS term starts for follow-on work" }, { date: bsas.termEnd, text: "BSAS term ends; unused BSAS hours are forfeited" }] : []),
-    ...(termEnd ? [{ date: termEnd, text: w("Entitlement ends; unused hours are not refunded", "BSAS term ends; unused BSAS hours are forfeited"), end: true }] : []),
+    ...(termEnd ? [{ date: termEnd, text: `${w("Entitlement ends; unused hours are not refunded", "BSAS term ends; unused BSAS hours are forfeited")}${assumedEnd ? " (to be confirmed)" : ""}`, end: true }] : []),
     // With no term, the plan's own finish closes the list, whether it is the target or where the timeline ends.
     ...(!termEnd && plannedEnd && plannedEnd !== fields.targetComplete ? [{ date: plannedEnd, text: "Planned completion", end: true }] : []),
   ].sort((left, right) => left.date.localeCompare(right.date));
@@ -305,7 +305,7 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
 
   const asks = report.customerAsks.slice(0, SUMMARY_CAPS.commitments).map(item => `<li>${esc(item).replace(/^([A-Z][^:]{0,40}):\s/, "<b>$1:</b> ")}</li>`);
   const needs = asks.length ? `<h3>What We Need from ${esc(customer)}</h3><ul class="asks">${asks.join("")}</ul>${report.customerAsks.length > SUMMARY_CAPS.commitments ? `<p class="note">${MORE}</p>` : ""}` : "";
-  const customerItems = customerOpenItems(report.openItems);
+  const customerItems = customerOpenItems(report.openItems, document);
   const withOwner = customerItems.some(item => item.owner.trim());
   const openItems = customerItems.length ? `<h3>Open Items</h3><table class="open"><tbody>${customerItems.slice(0, SUMMARY_CAPS.openItems).map(item => `<tr><td>${esc(item.item)}</td><td>${esc(item.gates)}</td>${withOwner ? `<td>${esc(item.owner)}</td>` : ""}</tr>`).join("")}</tbody></table>${customerItems.length > SUMMARY_CAPS.openItems ? `<p class="note">${MORE}</p>` : ""}` : "";
 

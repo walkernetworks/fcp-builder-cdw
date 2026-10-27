@@ -9,7 +9,6 @@ import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { renderFcpHtml } from "./fcpRenderer";
 import { scopedEffortForDocument } from "./rateCard";
 import { barWindow } from "../shared/buildingBlocks";
-import { INTERNAL_HOURS_ITEM } from "../shared/reportView";
 
 const brief = () => JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../docs/examples/customer-brief.example.json"), "utf8"));
 
@@ -323,7 +322,9 @@ describe("Condensed FCP review fixes", () => {
     document.report.discovery.jumboFrames = "mixed";
     const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
     expect(visible).toContain("12 months from the start; to be confirmed");
-    expect(visible).toMatch(/Entitlement end date: .* is assumed as 12 months from the start/);
+    // Our own record to confirm: a readiness check, not a customer open item; the date itself carries the caveat.
+    expect(visible).not.toMatch(/is assumed as 12 months from the start/);
+    expect(visible).toMatch(/Expires .* \(to be confirmed\)/);
     expect(visible).toMatch(/Jumbo frames Mixed/);
     // A stated term end carries no caveat.
     document.report.entitlement.termEnd = "2027-09-30";
@@ -494,6 +495,7 @@ describe("Condensed FCP review fixes", () => {
     }
   });
 
+  const INTERNAL_HOURS_ITEM = "Entitled hours from the signed resource assignments";
   it("never prints the signed-hours item, which is the account team's readiness item", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.report.entitlement.hours = null;
