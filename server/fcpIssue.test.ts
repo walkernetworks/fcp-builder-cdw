@@ -138,7 +138,7 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getEngagement).mockResolvedValue(row(acmeHealth()));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
-    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Under-funded: 39 delivered, 347 planned and 18 held in reserve come to 142 hours more than the 262-hour entitlement.") });
+    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Under-funded: 39 delivered, 217 planned and 18 held in reserve come to 12 hours more than the 262-hour entitlement.") });
     await expect(caller().fcpRecord.issue({ id: 4, fundingOverride: "  " })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     expect(db.issueFcpVersion).not.toHaveBeenCalled();
     await caller().fcpRecord.issue({ id: 4, fundingOverride: "Broadcom asked for the plan as scoped; the follow-on purchase is in progress." });
@@ -151,7 +151,7 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getEngagement).mockResolvedValue(row(riverbendHealthOverfunded()));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
-    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Under-funded: 40 delivered, 347 planned and 29 held in reserve come to 16 hours more than the 400-hour BSAS hours.") });
+    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Under-funded: 40 delivered, 201 planned and 9 held in reserve come to 100 hours more than the 150-hour BSAS hours.") });
     expect(db.issueFcpVersion).not.toHaveBeenCalled();
     vi.mocked(db.getEngagement).mockResolvedValue(row(riverbendHealth()));
     expect((await caller().fcpRecord.issuePreview({ id: 4 })).fundingProblem).toBeNull();
@@ -162,8 +162,8 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
     const preview = await caller().fcpRecord.issuePreview({ id: 4 });
-    expect(preview.fundingProblem).toContain("483 hours are not planned and will be forfeited at term end (117 planned against the 600-hour BSAS allocation, 2027-05-01 to 2028-04-30).");
-    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("483 hours are not planned and will be forfeited at term end") });
+    expect(preview.fundingProblem).toContain("412 hours are not planned and will be forfeited at term end (188 planned against the 600-hour BSAS allocation, 2027-05-01 to 2028-04-30).");
+    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("412 hours are not planned and will be forfeited at term end") });
     expect(db.issueFcpVersion).not.toHaveBeenCalled();
   });
 

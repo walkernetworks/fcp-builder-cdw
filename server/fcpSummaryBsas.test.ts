@@ -57,8 +57,8 @@ describe("funding problems, per pool", () => {
 
   it("BSAS hours no planned follow-on work draws on are forfeited, and the Summary says so", () => {
     const document = meridianHealthForfeiting();
-    expect(problem(document)).toMatch(/483 hours are not planned and will be forfeited at term end \(117 planned against the 600-hour BSAS allocation, 2027-05-01 to 2028-04-30\)\./);
-    expect(visible(summary(document))).toContain("117 hours are planned; 483 hours are not planned and will be forfeited at term end.");
+    expect(problem(document)).toMatch(/412 hours are not planned and will be forfeited at term end \(188 planned against the 600-hour BSAS allocation, 2027-05-01 to 2028-04-30\)\./);
+    expect(visible(summary(document))).toContain("188 hours are planned; 412 hours are not planned and will be forfeited at term end.");
   });
 
   it("stays quiet within one hour of rounding either way", () => {
@@ -70,7 +70,7 @@ describe("funding problems, per pool", () => {
   });
 
   it("checks the entitlement and BSAS separately, and a BSAS-only deal against its own hours", () => {
-    expect(problem(riverbendHealthOverfunded())).toMatch(/^Under-funded: 40 delivered, 347 planned and 29 held in reserve come to 16 hours more than the 400-hour BSAS hours/);
+    expect(problem(riverbendHealthOverfunded())).toMatch(/^Under-funded: 40 delivered, 201 planned and 9 held in reserve come to 100 hours more than the 150-hour BSAS hours/);
     expect(problem(riverbendHealthOverfunded())).not.toMatch(/BSAS allocation/);
   });
 });

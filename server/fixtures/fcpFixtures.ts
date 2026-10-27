@@ -73,8 +73,12 @@ export function meridianHealth(): EngagementDocument {
   return document;
 }
 
-/** Meridian Health as calculated: 347 planned hours against a 262-hour entitlement, and only 117 of the 600 BSAS hours planned (483 forfeited). A gate fixture, not a golden. */
-export const meridianHealthForfeiting = () => meridianCalculated();
+/** Meridian Health reconciled on the entitlement, with 600 BSAS hours of which only the 188-hour follow-on is planned (412 forfeited). A gate fixture, not a golden. */
+export function meridianHealthForfeiting(): EngagementDocument {
+  const document = meridianHealth();
+  document.fields.bsasHours = 600;
+  return document;
+}
 
 /** BSAS only: no entitlement value, BSAS hours and term in its place; the plan's hours are as calculated (see riverbendHealth). */
 function riverbendCalculated(): EngagementDocument {
@@ -93,8 +97,12 @@ export function riverbendHealth(): EngagementDocument {
   return document;
 }
 
-/** Riverbend Health as calculated: 40 delivered, 347 planned and 29 reserve is 416 hours against 400 BSAS hours. A gate fixture, not a golden. */
-export const riverbendHealthOverfunded = riverbendCalculated;
+/** Riverbend Health with only 150 BSAS hours: the protected work and the design it builds on alone need more, so the squeeze cannot close the gap. A gate fixture, not a golden. */
+export function riverbendHealthOverfunded(): EngagementDocument {
+  const document = riverbendHealth();
+  document.fields.bsasHours = 150;
+  return document;
+}
 
 /** Built by hand with no brief: Commercial VVF, greenfield, plan estimate as the hours source, no consumption, no operational timeline. */
 export function northwindMfg(): EngagementDocument {

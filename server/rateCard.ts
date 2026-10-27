@@ -51,8 +51,8 @@ type Squeezed = { effort: ScopedEffort; moves: ScopeMove[] };
  * priority first: VCF Edge Evaluation, Capacity and Cost Visibility, the depth bucket, Security Design; then Estate
  * Discovery Sessions merge into the pathway package; then the latest remaining work. Work that depends on a moved package
  * moves with it. Protected packages (handover, the runbook and training, licensing, the management domains, the first
- * wave), work the planner pinned and, past the named steps, design and governance never move; if they alone exceed the
- * entitlement the plan stays over. Moved work then comes back, earliest first, wherever it still fits.
+ * wave) and work the planner pinned never move. Design and governance move last, latest first, and only when no protected
+ * package builds on them; if the protected work alone exceeds the entitlement the plan stays over. Moved work then comes back, earliest first, wherever it still fits.
  */
 function withinBudget(document: EngagementDocument, effort: ScopedEffort, value: number, hoursCap: number | null = document.report.entitlement.hours, evenWithAssignments = false): Squeezed {
   const hours = hoursCap;
@@ -65,7 +65,10 @@ function withinBudget(document: EngagementDocument, effort: ScopedEffort, value:
   const kept = protectedWorkPackages(document.adoptionTimeline);
   const depth = depthWorkPackages(effort);
   const named = (id: string) => id === EDGE_EVALUATION || id === CAPACITY_AND_COST || id === SECURITY_DESIGN || depth(id);
-  const movable = (id: string) => { const row = rows.get(id); return Boolean(row && row.total > 0 && !row.deferred && row.placement === "auto" && row.category && !kept.has(id) && (named(id) || !isDesignWorkPackage(id))); };
+  // Last resort, once nothing else is left to move: design and governance work that no protected package builds on.
+  let designOpen = false;
+  const feedsProtected = (id: string, seen = new Set<string>()): boolean => (dependents.get(id) ?? []).some(next => kept.has(next) || (!seen.has(next) && seen.add(next) && feedsProtected(next, seen)));
+  const movable = (id: string) => { const row = rows.get(id); return Boolean(row && row.total > 0 && !row.deferred && row.placement === "auto" && row.category && !kept.has(id) && (named(id) || !isDesignWorkPackage(id) || (designOpen && !feedsProtected(id)))); };
   const byPriority = (test: (id: string) => boolean) => effort.workPackages.filter(row => test(row.id) && movable(row.id)).sort((left, right) => (right.start ?? "").localeCompare(left.start ?? "") || right.total - left.total);
   const moves = new Map<string, DeferralReason>();
   // The plan's own hours: the work packages, which a signed work plan's totals do not replace.
@@ -108,6 +111,9 @@ function withinBudget(document: EngagementDocument, effort: ScopedEffort, value:
     cost -= costOf(part);
     planned -= part.total;
   }
+  for (const row of byPriority(() => true)) { if (fits()) break; move(row.id); }
+  // Design that cannot fit does not stay on the entitlement timeline: it moves too, latest first.
+  designOpen = true;
   for (const row of byPriority(() => true)) { if (fits()) break; move(row.id); }
   // Fill what is left of the entitlement: bring moved work back, earliest first, where it fits.
   for (const row of effort.workPackages.filter(item => moves.has(item.id)).sort((left, right) => (left.start ?? "").localeCompare(right.start ?? ""))) {
@@ -224,7 +230,7 @@ function fitUnderCap(document: EngagementDocument, effort: ScopedEffort, fit: No
         ...fit,
         // Moved work joins the follow-on; hours saved by merging discovery into the pathway leave the core.
         buckets: { ...fit.buckets, E1: fit.buckets.E1 - freed, F: fit.buckets.F + moved },
-        // Still over only when protected, design and governance work alone exceed what the entitlement funds.
+        // Still over only when protected work, and the design it builds on, alone exceed what the entitlement funds.
         underFunded: stillOver ? { gapHours: planHours(squeezed) - fit.fillableHours } : null,
         movedToFollowOn: { hours: moved, packages: labels },
         scopeMoves: [...(fit.scopeMoves ?? []), ...moves],

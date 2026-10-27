@@ -129,7 +129,10 @@ describe("Condensed FCP", () => {
   });
 
   it("describes each work package once, with its hours, what it delivers and how it is accepted", () => {
+    // An entitlement the whole plan fits, so no design work moves to the follow-on.
     const document = engagement();
+    document.fields.entitlementAmount = 4_000_000;
+    document.report.entitlement.hours = null;
     document.report.resourceAssignments = [];
     const visible = text(render(document));
     expect(visible).toContain("Work Packages and Scoped Effort");
