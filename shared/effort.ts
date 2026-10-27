@@ -887,6 +887,7 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
   const inputs = document.fields.estimateInputs;
   const fit = fitV2(pass1, {
     entitlementHours: envelopeHours,
+    deliveredHours: document.report.entitlement.hoursConsumed ?? 0,
     monthsRemaining: inputs.monthsRemaining ?? monthsLeft(document, options.today ?? new Date().toISOString().slice(0, 10)),
     ranking: inputs.outcomeRanking,
     wantThisYear: inputs.wantThisYear,
@@ -943,7 +944,7 @@ export function unusedEntitlementHours(effort: ScopedEffort): number | null {
   const fit = effort.internal.fit;
   if (!fit) return null;
   const planned = effort.workPackages.reduce((sum, row) => sum + row.total, 0);
-  const limit = Math.min(fit.entitlementHours - fit.reserveHours, effort.internal.valueCapHours ?? Infinity);
+  const limit = Math.min(fit.entitlementHours - fit.deliveredHours - fit.reserveHours, effort.internal.valueCapHours ?? Infinity);
   return Math.max(0, Math.floor(limit - planned));
 }
 

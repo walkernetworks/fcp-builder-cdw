@@ -30,7 +30,8 @@ export function acmeHealth(): EngagementDocument {
 /**
  * Acme Health as a planner would issue it: the plan reconciled to its funding. The 39 hours already delivered covered
  * discovery, so the discovery package carries no further hours, and the waves are cut to CDW's proving waves (the
- * team runs the rest with the runbook): 39 delivered plus 223 planned equals the 262-hour entitlement.
+ * team runs the rest with the runbook): 39 delivered, 205 planned and the 18-hour reserve add up to the 262-hour
+ * entitlement.
  */
 export function acmeHealthReconciled(): EngagementDocument {
   const document = acmeHealth();
@@ -39,7 +40,7 @@ export function acmeHealthReconciled(): EngagementDocument {
     set("bar-playbook-design-requirements", 0, 0, 0),
     set("bar-playbook-design-target-state", 20, 2, 2),
     set("bar-playbook-design-migration-design", 20, 2, 2),
-    set("bar-playbook-execution-migration-waves", 4, 31, 6),
+    set("bar-playbook-execution-migration-waves", 4, 13, 6),
   ];
   return document;
 }

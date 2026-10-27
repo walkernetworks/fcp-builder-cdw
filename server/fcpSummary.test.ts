@@ -37,28 +37,28 @@ describe("report format choice", () => {
 });
 
 describe("hours reconciliation", () => {
-  it("counts delivered plus planned against the entitlement", () => {
+  it("counts delivered, planned and the reserve against the entitlement", () => {
     const reconciled = acmeHealthReconciled();
-    expect(reconcileHours(reconciled, scopedEffortForDocument(reconciled, FIXTURE_TODAY), FIXTURE_TODAY)).toEqual({ delivered: 39, planned: 223, entitled: 262, deliveredAsOf: "2026-09-03", balanced: true, exact: true, difference: 0 });
+    expect(reconcileHours(reconciled, scopedEffortForDocument(reconciled, FIXTURE_TODAY), FIXTURE_TODAY)).toEqual({ delivered: 39, planned: 205, reserve: 18, entitled: 262, deliveredAsOf: "2026-09-03", balanced: true, exact: true, difference: 0 });
     expect(fundingProblem(reconciled, scopedEffortForDocument(reconciled, FIXTURE_TODAY), FIXTURE_TODAY)).toBeNull();
   });
 
   it("names an under-funded plan and a plan that leaves hours unplanned, for the planner", () => {
     const over = acmeHealth();
-    expect(fundingProblem(over, scopedEffortForDocument(over, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("Under-funded: 39 hours delivered plus 347 planned is 124 more than the 262-hour entitlement. Move work to the follow-on or reduce hours in the Plan section.");
+    expect(fundingProblem(over, scopedEffortForDocument(over, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("Under-funded: 39 delivered, 347 planned and 18 held in reserve come to 142 hours more than the 262-hour entitlement. Move work to the follow-on or reduce hours in the Plan section.");
     const under = acmeHealthReconciled();
     under.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 0, projectManager: 0, placement: "auto", owner: "auto" });
-    expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("10 hours are not planned and will be forfeited at term end (39 delivered plus 213 planned, against the 262-hour entitlement). Plan them in the Plan section.");
+    expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("10 hours are not planned and will be forfeited at term end (39 delivered, 195 planned and 18 held in reserve, against the 262-hour entitlement). Plan them in the Plan section.");
   });
 
   it("allows an hour either way for rounding, and says so on the page instead of claiming the figures are equal", () => {
     const document = acmeHealthReconciled();
     document.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 8, projectManager: 1, placement: "auto", owner: "auto" });
     const effort = scopedEffortForDocument(document, FIXTURE_TODAY);
-    expect(reconcileHours(document, effort, FIXTURE_TODAY)).toMatchObject({ planned: 222, balanced: true, exact: false, difference: -1 });
+    expect(reconcileHours(document, effort, FIXTURE_TODAY)).toMatchObject({ planned: 204, balanced: true, exact: false, difference: -1 });
     expect(fundingProblem(document, effort, FIXTURE_TODAY)).toBeNull();
     const text = visible(summary(document));
-    expect(text).toContain("39 delivered plus 222 planned uses the 262-hour entitlement, to within an hour of rounding");
+    expect(text).toContain("39 delivered, 204 planned and 18 held for change requests use the 262-hour entitlement, to within an hour of rounding");
     expect(text).toContain("Total, funded by the entitlement 261");
     document.report.workPackageHours.push({ id: "bar-platform-runbook-transfer", architect: 0, srConsultant: 4, projectManager: 0, placement: "auto", owner: "auto" });
     expect(fundingProblem(document, scopedEffortForDocument(document, FIXTURE_TODAY), FIXTURE_TODAY)).toMatch(/^3 hours are not planned/);
@@ -90,11 +90,12 @@ describe("Summary FCP", () => {
     expect(summary(acmeHealthReconciled())).not.toContain('class="draft-mark"');
   });
 
-  it("prints delivered hours as their own row and reconciles them with the plan", () => {
+  it("prints delivered hours and the reserve as their own rows, so the column adds up to the entitlement", () => {
     const text = visible(summary(acmeHealthReconciled()));
     expect(text).toContain("Delivered to Date Hours delivered to date Apr – Sep 2026 39");
     expect(text).toContain("Total, funded by the entitlement 262");
-    expect(text).toContain("39 delivered plus 223 planned equals the 262-hour entitlement");
+    expect(text).toContain("Held for change requests, released to follow-on work if unused 18 Total, funded by the entitlement 262");
+    expect(text).toContain("39 delivered, 205 planned and 18 held for change requests add up to the 262-hour entitlement");
     // The plan as scheduled: discovery was delivered, so it is not planned again.
     expect(text).not.toContain("Greenfield Discovery Sessions and Funding Oct 2026");
   });
@@ -106,14 +107,20 @@ describe("Summary FCP", () => {
     expect(visible(html)).toContain("Delivered to Date Assessment; Design discovery Apr – Sep 2026 39");
   });
 
-  it("never prints the under-funded gap, the buckets or the reserve, and makes no equality claim it cannot keep", () => {
+  it("never prints the under-funded gap or the buckets, and makes no equality claim it cannot keep", () => {
     const document = acmeHealth();
     const html = summary(document);
     const text = visible(html);
-    for (const term of ["Under-funded", "under-funded", "Scope by Bucket", "reserve", "more than it funds", "Moved out of", "gap"]) expect(text).not.toContain(term);
-    expect(text).toContain("Total CDW hours 386");
-    expect(text).not.toContain("equals the");
+    for (const term of ["Under-funded", "under-funded", "Scope by Bucket", "reserve", "more than it funds", "Moved out of", "gap", "bucket"]) expect(text).not.toContain(term);
+    expect(text).toContain("Total CDW hours 404");
+    expect(text).not.toMatch(/add up to the|use the 262/);
     expect(checks(html, document)).toEqual([]);
+  });
+
+  it("checks that the work packages column foots", () => {
+    const document = acmeHealthReconciled();
+    const html = summary(document).replace('Total, funded by the entitlement</td><td></td><td class="num">262', 'Total, funded by the entitlement</td><td></td><td class="num">270');
+    expect(checks(html, document)).toEqual(["A table column does not foot: column 3 totals 270 but its rows sum to 262."]);
   });
 
   it("caps key dates, commitments and open items, and says where the rest are", () => {
