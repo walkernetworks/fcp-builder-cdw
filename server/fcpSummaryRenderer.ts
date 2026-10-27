@@ -21,8 +21,8 @@ export type IssueStamp = { issueNumber: number; issuedOn: string };
 /** Hard caps that keep the Summary at two pages. */
 export const SUMMARY_CAPS = { keyDates: 5, commitments: 3, openItems: 3 } as const;
 
-const LEGEND = "CDW · Proprietary and confidential. Copying restricted.";
-const MORE = "See the full list in the Standard FCP.";
+export const LEGEND = "CDW · Proprietary and confidential. Copying restricted.";
+export const MORE = "See the full list in the Standard FCP.";
 
 /**
  * Bar labels for the Summary's timeline, where a bar can be a single month wide: the plan's package names, shortened.
@@ -53,19 +53,19 @@ export function bottomRow(columns: Array<[number, string]>): string {
   const filled = columns.filter(([, html]) => html);
   return `<div class="bottom" style="grid-template-columns:${filled.map(([width]) => `${width}fr`).join(" ")}">${filled.map(([, html]) => `<div>${html}</div>`).join("")}</div>`;
 }
-const shortBarLabel = (label: string) => {
+export const shortBarLabel = (label: string) => {
   const plain = packageLabel(label);
   for (const [pattern, short] of SHORT_BAR_LABELS) if (pattern.test(plain)) return plain.replace(pattern, short);
   return plain;
 };
-const summaryTimeline = (timeline: Timeline): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, label: bar.label.replace(/^((?:← )?)(.*?)((?: →)?)$/, (_all, before: string, name: string, after: string) => `${before}${shortBarLabel(name)}${after}`) })) })) });
+export const summaryTimeline = (timeline: Timeline): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, label: bar.label.replace(/^((?:← )?)(.*?)((?: →)?)$/, (_all, before: string, name: string, after: string) => `${before}${shortBarLabel(name)}${after}`) })) })) });
 
 /** A CSS string literal: the footer text lives in @page margin boxes, which take only CSS content. */
-const cssString = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3C ").replace(/[\r\n]+/g, " ")}"`;
+export const cssString = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3C ").replace(/[\r\n]+/g, " ")}"`;
 /** Bar labels without the planner's prefixes ("Month 1: ", "Weeks 1-2: "). */
-const packageLabel = (value: string) => value.replace(UNDECIDED_DEPTH, "").replace(/^(Month \d+|Weeks? [\d–-]+): /, "");
-const listJoin = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0] ?? "");
-const monthAfter = (iso: string) => {
+export const packageLabel = (value: string) => value.replace(UNDECIDED_DEPTH, "").replace(/^(Month \d+|Weeks? [\d–-]+): /, "");
+export const listJoin = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0] ?? "");
+export const monthAfter = (iso: string) => {
   const [year, month] = iso.split("-").map(Number);
   const next = new Date(Date.UTC(year, month, 1));
   return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(next);
@@ -77,11 +77,11 @@ const monthAfter = (iso: string) => {
  * Inline, with no network: exported HTML stays self-contained. `data-fit` is "width height" in inches.
  */
 export const FIT_MIN_ZOOM = 0.72;
-const PAGE_FIT = { first: { width: 11, height: 7.95 }, rest: { width: 10.1, height: 7.65 } } as const;
-const fitAttribute = (page: { width: number; height: number }) => `data-fit="${page.width} ${page.height}"`;
-const FIT_SCRIPT = `<script>(function(){document.querySelectorAll("[data-fit]").forEach(function(page){var size=page.getAttribute("data-fit").split(" "),width=size[0]*96,height=size[1]*96,zoom=1;for(var step=0;step<4;step++){var tall=page.getBoundingClientRect().height;if(tall<=height||zoom<=${FIT_MIN_ZOOM})break;zoom=Math.max(${FIT_MIN_ZOOM},zoom*height/tall*0.995);page.style.zoom=String(zoom);page.style.width=width/zoom+"px";}});})();</script>`;
+export const PAGE_FIT = { first: { width: 11, height: 7.95 }, rest: { width: 10.1, height: 7.65 } } as const;
+export const fitAttribute = (page: { width: number; height: number }) => `data-fit="${page.width} ${page.height}"`;
+export const FIT_SCRIPT = `<script>(function(){document.querySelectorAll("[data-fit]").forEach(function(page){var size=page.getAttribute("data-fit").split(" "),width=size[0]*96,height=size[1]*96,zoom=1;for(var step=0;step<4;step++){var tall=page.getBoundingClientRect().height;if(tall<=height||zoom<=${FIT_MIN_ZOOM})break;zoom=Math.max(${FIT_MIN_ZOOM},zoom*height/tall*0.995);page.style.zoom=String(zoom);page.style.width=width/zoom+"px";}});})();</script>`;
 
-const CSS = `
+export const CSS = `
 :root{--ink:#1d1d1f;--slate:#3c4250;--muted:#6b7280;--line:#e3e6ea;--red:#CC0000;--dark:#242a38;--hair:#E4E7EC;--gray:#898B8E}
 *{box-sizing:border-box}
 html,body{margin:0;background:#fff;color:var(--ink);font:11px/1.45 Helvetica,'Helvetica Neue',Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -166,14 +166,20 @@ tr{break-inside:avoid}
 `;
 
 /** The footer on every page, in @page margin boxes so the page number is the printed page. */
-function footerCss(customer: string, version: IssueStamp | undefined): string {
+export function footerCss(customer: string, version: IssueStamp | undefined): string {
   const right = `Functional Consumption Plan · ${customer} · ${version ? `Version ${version.issueNumber}` : "Working draft"} · Page `;
   const box = "font:8px Helvetica,'Helvetica Neue',Arial,sans-serif;color:#898b8e;border-top:1px solid #e3e6ea;vertical-align:top;padding-top:7px";
   return `@page{@bottom-left{content:${cssString(LEGEND)};${box}}@bottom-right{content:${cssString(right)} counter(page) " of " counter(pages);text-align:right;${box}}}@page :first{@bottom-left{padding-left:.45in}@bottom-right{padding-right:.45in}}`;
 }
 
-export function renderSummaryFcpHtml(title: string, input: EngagementDocument, options: { today?: string; effort: ScopedEffort; draft?: boolean; version?: IssueStamp; deliveredNotes?: string[] }): string {
-  const { bsasOnly, w, deferredWork, document, today, asOf, customer, burndown, termEnd, assumedEnd, termStart, bsas } = prepareReport(input, options);
+export type SummaryOptions = { today?: string; effort: ScopedEffort; draft?: boolean; version?: IssueStamp; deliveredNotes?: string[] };
+
+/**
+ * The Summary's building blocks, which the Standard FCP reuses so both formats draw the same timeline, tiles, key
+ * dates and funding wording. `caps` limits the lists; the Standard passes none.
+ */
+export function summaryParts(title: string, input: EngagementDocument, options: SummaryOptions, caps: { keyDates: number; commitments: number; openItems: number } = SUMMARY_CAPS) {
+  const { bsasOnly, w, deferredWork, document, today, asOf, customer, burndown, termEnd, assumedEnd, termStart, bsas, customerTimelines } = prepareReport(input, options);
   const { fields, report } = document;
   const effort = options.effort;
   const plan = playbookPlanForFields(fields);
@@ -298,16 +304,16 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
   ].sort((left, right) => left.date.localeCompare(right.date));
   // The end of the entitlement (or the plan) always shows; the cap drops the latest of the others.
   const ending = candidates.filter(item => item.end);
-  const others = candidates.filter(item => !item.end).slice(0, SUMMARY_CAPS.keyDates - ending.length);
+  const others = candidates.filter(item => !item.end).slice(0, caps.keyDates - ending.length);
   const keyDates = [...others, ...ending].sort((left, right) => left.date.localeCompare(right.date));
   const datesMore = candidates.length > keyDates.length;
   const datesSection = keyDates.length ? `<h3>Key Dates</h3><div class="dates">${keyDates.map(item => `<div><b>${esc(shortDate(item.date))}</b><span>${esc(item.text)}</span></div>`).join("")}</div>${datesMore ? `<p class="note">${MORE}</p>` : ""}` : "";
 
-  const asks = report.customerAsks.slice(0, SUMMARY_CAPS.commitments).map(item => `<li>${esc(item).replace(/^([A-Z][^:]{0,40}):\s/, "<b>$1:</b> ")}</li>`);
-  const needs = asks.length ? `<h3>What We Need from ${esc(customer)}</h3><ul class="asks">${asks.join("")}</ul>${report.customerAsks.length > SUMMARY_CAPS.commitments ? `<p class="note">${MORE}</p>` : ""}` : "";
+  const asks = report.customerAsks.slice(0, caps.commitments).map(item => `<li>${esc(item).replace(/^([A-Z][^:]{0,40}):\s/, "<b>$1:</b> ")}</li>`);
+  const needs = asks.length ? `<h3>What We Need from ${esc(customer)}</h3><ul class="asks">${asks.join("")}</ul>${report.customerAsks.length > caps.commitments ? `<p class="note">${MORE}</p>` : ""}` : "";
   const customerItems = customerOpenItems(report.openItems, document);
   const withOwner = customerItems.some(item => item.owner.trim());
-  const openItems = customerItems.length ? `<h3>Open Items</h3><table class="open"><tbody>${customerItems.slice(0, SUMMARY_CAPS.openItems).map(item => `<tr><td>${esc(item.item)}</td><td>${esc(item.gates)}</td>${withOwner ? `<td>${esc(item.owner)}</td>` : ""}</tr>`).join("")}</tbody></table>${customerItems.length > SUMMARY_CAPS.openItems ? `<p class="note">${MORE}</p>` : ""}` : "";
+  const openItems = customerItems.length ? `<h3>Open Items</h3><table class="open"><tbody>${customerItems.slice(0, caps.openItems).map(item => `<tr><td>${esc(item.item)}</td><td>${esc(item.gates)}</td>${withOwner ? `<td>${esc(item.owner)}</td>` : ""}</tr>`).join("")}</tbody></table>${customerItems.length > caps.openItems ? `<p class="note">${MORE}</p>` : ""}` : "";
 
   // Work after the entitlement: packages moved there whole, and the rest of packages this plan only starts.
   const followOnRows = effort.workPackages.filter(row => row.followOn && row.followOn.total > 0);
@@ -328,6 +334,15 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
     : bsasFunds ? `<h3>After This Plan</h3><div class="after">No follow-on work is planned yet. ${esc(bsasFunds)}</div>` : "";
 
   const strip = `<div class="strip"><span>${cdwLogoSvg("logo")}Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for ${esc(customer)} · ${esc(issued)}</span></div>`;
+  return { prepared: { bsasOnly, w, deferredWork, document, today, asOf, customer, burndown, termEnd, assumedEnd, termStart, bsas, customerTimelines }, plan, platform, vvf, issued, band, pills, kpis, synopsis, inPlan, notInPlan, scope, architecture, workPackages, timeline, keyDates, candidates, datesSection, asks, needs, customerItems, openItems, followOnRows, followOnHours, whatFollows, bsasPlan, bsasFunds, after, strip, reconciliation, delivered, reserve, balanced, total, totalLabel, basis, reconcileNote, booked, windowName, windowStart, windowEnd, plannedEnd, planStart, buildLater, buildStart, termLabel: term };
+}
+
+export function renderSummaryFcpHtml(title: string, input: EngagementDocument, options: SummaryOptions): string {
+  const parts = summaryParts(title, input, options);
+  const { customer, document } = parts.prepared;
+  const { band, pills, kpis, synopsis, scope, architecture, workPackages, timeline, datesSection, needs, openItems, after, strip } = parts;
+  const version = options.version;
+  void document;
   const page1 = `<section class="p1sheet" ${fitAttribute(PAGE_FIT.first)}>${band}<div class="p1">${pills}${kpis}<div class="cols"><div><h3>What We're Doing</h3><p class="synopsis">${esc(synopsis)}</p>${scope}${architecture}</div><div>${workPackages}</div></div></div></section>`;
   const bottom = bottomRow([[1, datesSection], [1.15, needs + openItems], [0.9, `${after}<div class="closer">Make Amazing Happen.</div>`]]);
   const page2 = `<section class="p2" ${fitAttribute(PAGE_FIT.rest)}>${strip}${timeline}${bottom}</section>`;
