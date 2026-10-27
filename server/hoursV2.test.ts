@@ -378,6 +378,19 @@ describe("v2 Pass 2 fit (spec section 7)", () => {
     expect(wanted.notFunded.find(row => row.code === "X2")!.bucket).toBe("C");
   });
 
+  it("plans only the hours left after delivery, with the reserve a share of those hours", () => {
+    const fit = fitOf(scopeV2(example()), 400, { deliveredHours: 50, monthsRemaining: 10 });
+    expect(fit.deliveredHours).toBe(50);
+    expect(fit.reserveHours).toBe(28);
+    expect(fit.fillableHours).toBe(322);
+    expect(fit.deliveredHours + fit.fillableHours + fit.reserveHours).toBe(fit.entitlementHours);
+    expect(fit.buckets.E1 + fit.buckets.E2).toBeLessThanOrEqual(fit.fillableHours);
+    expect(fit.underFunded).toBeNull();
+    expect(fit.requiredMonthlyBurn).toBe(35);
+    // More delivered than entitled leaves nothing to plan, not a negative plan.
+    expect(fitOf(scopeV2(example()), 400, { deliveredHours: 450 })).toMatchObject({ deliveredHours: 400, reserveHours: 0, fillableHours: 0 });
+  });
+
   it("states the burn rate, reserve release and the follow-on condition", () => {
     const fit = fitOf(scopeV2(example()), 400, { monthsRemaining: 10 });
     expect(fit.requiredMonthlyBurn).toBe(40);
@@ -442,7 +455,7 @@ describe("entitlement ceiling and the reserve field", () => {
 
   it("uses the reserve set on the engagement, and none when it is 0", async () => {
     const { scopedEffortForDocument } = await import("./rateCard");
-    const share = (reservePercent?: number) => { const fit = scopedEffortForDocument(doc({ hosts: 40, entitlement: 400_000, inputs: reservePercent === undefined ? {} : { reservePercent } })).internal.fit!; return fit.reserveHours / fit.entitlementHours; };
+    const share = (reservePercent?: number) => { const fit = scopedEffortForDocument(doc({ hosts: 40, entitlement: 400_000, inputs: reservePercent === undefined ? {} : { reservePercent } })).internal.fit!; return fit.reserveHours / (fit.entitlementHours - fit.deliveredHours); };
     expect(share()).toBeCloseTo(0.08);
     expect(share(12)).toBeCloseTo(0.12);
     expect(share(0)).toBe(0);

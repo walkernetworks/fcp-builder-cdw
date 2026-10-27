@@ -39,7 +39,7 @@ function numberCell(cell: string): number | null {
 /** Tables marked data-foot="sum" must foot: every numeric column of the last row equals the sum above it. */
 function footingFailures(html: string): string[] {
   const failures: string[] = [];
-  for (const match of Array.from(html.matchAll(/<table data-foot="sum">([\s\S]*?)<\/table>/g))) {
+  for (const match of Array.from(html.matchAll(/<table\b[^>]*\bdata-foot="sum"[^>]*>([\s\S]*?)<\/table>/g))) {
     const body = match[1].split("<tbody>")[1] ?? "";
     const rows = Array.from(body.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g), (row: RegExpMatchArray) => Array.from(row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g), (cell: RegExpMatchArray) => cell[1]));
     const total = rows.pop();

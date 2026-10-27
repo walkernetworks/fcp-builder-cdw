@@ -187,7 +187,9 @@ function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEff
   const fitted = built.internal.fit?.underFunded ? fitUnderCap(document, built, built.internal.fit) : built;
   // Signed entitled hours can be worth more than the entitlement value; the fill stops at whichever is lower.
   const reserveShare = document.fields.estimateInputs.reservePercent !== undefined ? document.fields.estimateInputs.reservePercent / 100 : HOURS_V2.fit.reserveShare.value;
-  const valueCapHours = value ? (value / blendedRate) * (1 - reserveShare) : undefined;
+  // Delivered hours were paid from the same value, and the reserve is a share of what is left after them.
+  const delivered = document.report.entitlement.hoursConsumed ?? 0;
+  const valueCapHours = value ? Math.max(0, value / blendedRate - delivered) * (1 - reserveShare) : undefined;
   const effort = withHoursFill(valueCapHours === undefined ? fitted : { ...fitted, internal: { ...fitted.internal, valueCapHours } });
   const fit = effort.internal.fit;
   const dollars = (hours: number) => Math.round(hours * blendedRate);

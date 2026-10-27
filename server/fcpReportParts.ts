@@ -98,3 +98,6 @@ export function prepareReport(input: EngagementDocument, options: { today?: stri
 
 /** Fixed position, so print repeats it on every page. Text and CSS only, no fonts or images. */
 export const DRAFT_MARK = `<style>.draft-mark{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font:800 60px/1 Arial,"Helvetica Neue",sans-serif;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;color:rgba(110,110,110,.24);pointer-events:none;z-index:9999}@media print{.draft-mark{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style><div class="draft-mark" aria-hidden="true">Draft, not for distribution</div>`;
+
+/** The reserve, as every customer format prints it: one line, so delivered + planned + reserve = entitlement. */
+export const RESERVE_LINE = "Held for change requests, released to follow-on work if unused";

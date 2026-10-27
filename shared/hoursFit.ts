@@ -31,8 +31,11 @@ export type Placement = {
 
 export type FitV2 = {
   entitlementHours: number;
+  /** Hours already delivered against the entitlement; the plan schedules only what is left. */
+  deliveredHours: number;
+  /** The reserve share of the hours left after delivery. */
   reserveHours: number;
-  /** entitlement_hours minus the reserve. */
+  /** entitlement_hours minus the hours delivered and the reserve: delivered + fillable + reserve = entitlement. */
   fillableHours: number;
   placements: Placement[];
   buckets: Record<Bucket, number>;
@@ -62,6 +65,8 @@ export type ScopeMove = { label: string; hours: number; reason: "after the entit
 
 export type FitOptions = {
   entitlementHours: number;
+  /** Hours already delivered against the entitlement, none when unset. */
+  deliveredHours?: number;
   monthsRemaining: number;
   /** The customer's outcome ranking; the default order of spec 7.4 step 6 fills in the rest. */
   ranking?: Capability[];
@@ -69,7 +74,7 @@ export type FitOptions = {
   wantThisYear?: Capability[];
   /** Migration waves with a date behind them, filled in E1 (step 4); the rest wait for step 7. */
   datedWaves: number;
-  /** Share of the entitlement held back, 0 to 0.5; the 8% default when unset. */
+  /** Share of the hours left after delivery held back, 0 to 0.5; the 8% default when unset. */
   reserveShare?: number;
   /** The customer's team runs the waves CDW's entitlement does not carry, so they are not CDW follow-on scope. */
   customerRunsLaterWaves?: boolean;
@@ -130,8 +135,11 @@ const ADD_ON = /^(X|EF$)/;
 /** Pass 2: the buckets. Reads Pass 1 and never writes to it. */
 export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   const entitlementHours = options.entitlementHours;
-  const reserveHours = entitlementHours * (options.reserveShare ?? H.fit.reserveShare.value);
-  const fillableHours = entitlementHours - reserveHours;
+  // Delivered hours are spent: the reserve and the plan share only what is left, so delivered + planned + reserve
+  // adds up to the entitlement.
+  const deliveredHours = Math.min(entitlementHours, Math.max(0, options.deliveredHours ?? 0));
+  const reserveHours = (entitlementHours - deliveredHours) * (options.reserveShare ?? H.fit.reserveShare.value);
+  const fillableHours = entitlementHours - deliveredHours - reserveHours;
   const loaded = (line: V2Line, base: number) => loadedOf(pass1, line, base);
   // Lines the brief only considers never draw on the entitlement; they are placed in the follow-on after the fill.
   const items = fillOrder({ ...pass1, lines: pass1.lines.filter(line => !line.followOnOnly) }, options);
@@ -259,10 +267,10 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     "Follow-on (F) work depends on a future purchase of VCF or a renewal with entitlement attached. It is a forecast, not a commitment.",
   ];
   return {
-    entitlementHours, reserveHours, fillableHours, placements, buckets,
+    entitlementHours, deliveredHours, reserveHours, fillableHours, placements, buckets,
     entitlementRemaining: Math.max(0, fillableHours - used),
     coreRequiredHours: coreRequiredHours + (nsxCarved ? nsxCost : 0), coreByLine, underFunded, monthsRemaining,
-    requiredMonthlyBurn: entitlementHours / monthsRemaining,
+    requiredMonthlyBurn: (entitlementHours - deliveredHours) / monthsRemaining,
     designShareFlags, notFunded, customerRun: { hours: customerRunHours, waves: customerRun.length }, warnings, notes,
   };
 }

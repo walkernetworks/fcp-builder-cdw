@@ -39,11 +39,12 @@ export function reportFormatOption(choice: ReportFormatChoice): ReportFormat | u
 export const RECONCILE_TOLERANCE_HOURS = 1;
 
 /**
- * The hours as the customer documents print them: hours already delivered plus the hours the plan schedules, against
- * the entitlement (or the BSAS hours on a BSAS-only deal). Null when no entitled hours are on record. `exact` is true
- * when the printed figures add up to the hour; `balanced` allows the rounding tolerance.
+ * The hours as the customer documents print them: hours already delivered, the hours the plan schedules, and the
+ * reserve held for change requests, against the entitlement (or the BSAS hours on a BSAS-only deal). Null when no
+ * entitled hours are on record. `exact` is true when the printed figures add up to the hour; `balanced` allows the
+ * rounding tolerance. `difference` is positive when the plan asks for more than the entitlement holds.
  */
-export type HoursReconciliation = { delivered: number; planned: number; entitled: number; deliveredAsOf: string | null; balanced: boolean; exact: boolean; difference: number };
+export type HoursReconciliation = { delivered: number; planned: number; reserve: number; entitled: number; deliveredAsOf: string | null; balanced: boolean; exact: boolean; difference: number };
 
 export function reconcileHours(document: EngagementDocument, effort: ScopedEffort, today?: string): HoursReconciliation | null {
   const funded = fundedDocument(document);
@@ -51,9 +52,10 @@ export function reconcileHours(document: EngagementDocument, effort: ScopedEffor
   if (!burndown) return null;
   const delivered = Math.round(burndown.consumedHours);
   const planned = Math.round(effort.totals.total);
+  const reserve = Math.round(effort.internal.fit?.reserveHours ?? 0);
   const entitled = Math.round(burndown.entitledHours);
-  const difference = delivered + planned - entitled;
-  return { delivered, planned, entitled, deliveredAsOf: funded.report.entitlement.consumedAsOf, balanced: Math.abs(difference) <= RECONCILE_TOLERANCE_HOURS, exact: difference === 0, difference };
+  const difference = delivered + planned + reserve - entitled;
+  return { delivered, planned, reserve, entitled, deliveredAsOf: funded.report.entitlement.consumedAsOf, balanced: Math.abs(difference) <= RECONCILE_TOLERANCE_HOURS, exact: difference === 0, difference };
 }
 
 /**
@@ -65,10 +67,11 @@ export function fundingProblem(document: EngagementDocument, effort: ScopedEffor
   const reconciliation = reconcileHours(document, effort, today);
   const unit = document.fields.fundingSource === "bsas" ? "BSAS hours" : "entitlement";
   if (reconciliation) {
-    const { delivered, planned, entitled, difference, balanced } = reconciliation;
+    const { delivered, planned, reserve, entitled, difference, balanced } = reconciliation;
     if (balanced) return null;
-    if (difference > 0) return `Under-funded: ${hours(delivered)} hours delivered plus ${hours(planned)} planned is ${hours(difference)} more than the ${hours(entitled)}-hour ${unit}. Move work to the follow-on or reduce hours in the Plan section.`;
-    return `${hours(-difference)} hours are not planned and will be forfeited at term end (${hours(delivered)} delivered plus ${hours(planned)} planned, against the ${hours(entitled)}-hour ${unit}). Plan them in the Plan section.`;
+    const parts = `${hours(delivered)} delivered, ${hours(planned)} planned and ${hours(reserve)} held in reserve`;
+    if (difference > 0) return `Under-funded: ${parts} come to ${hours(difference)} hours more than the ${hours(entitled)}-hour ${unit}. Move work to the follow-on or reduce hours in the Plan section.`;
+    return `${hours(-difference)} hours are not planned and will be forfeited at term end (${parts}, against the ${hours(entitled)}-hour ${unit}). Plan them in the Plan section.`;
   }
   const gap = effort.internal.fit?.underFunded?.gapHours;
   return gap ? `Under-funded: the plan needs ${hours(gap)} hours more than the ${unit} funds. Move work to the follow-on or reduce hours in the Plan section.` : null;

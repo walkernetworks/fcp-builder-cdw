@@ -92,7 +92,7 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
           <p>
             Entitlement: <b>{hours(fit.entitlementHours)} hours</b>
             {money && <> at <b>{dollars(money.blendedRate)}/hr</b> ({money.rateSource})</>}
-            {effort.internal.envelopeSource === "entitled hours" && " (the signed entitled hours)"}. Fillable after the {Math.round((fit.reserveHours / Math.max(1, fit.entitlementHours)) * 100)}% reserve: {hours(fit.fillableHours)}. Core (E1) needs {hours(fit.coreRequiredHours)} against the fillable {hours(fit.fillableHours)}.
+            {effort.internal.envelopeSource === "entitled hours" && " (the signed entitled hours)"}.{fit.deliveredHours >= 1 && <> Delivered to date: <b>{hours(fit.deliveredHours)} hours</b>.</>} Fillable after {fit.deliveredHours >= 1 ? "delivery and " : ""}the {Math.round((fit.reserveHours / Math.max(1, fit.entitlementHours - fit.deliveredHours)) * 100)}% reserve: {hours(fit.fillableHours)}. Core (E1) needs {hours(fit.coreRequiredHours)} against the fillable {hours(fit.fillableHours)}.
             Required burn: {hours(fit.requiredMonthlyBurn)} hours a month over {fit.monthsRemaining} month{fit.monthsRemaining === 1 ? "" : "s"}.
           </p>
           {fit.warnings.length > 0 && <ul className="list-disc space-y-1 pl-5 text-state-warn-text">{fit.warnings.map(item => <li key={item}>{item}</li>)}</ul>}

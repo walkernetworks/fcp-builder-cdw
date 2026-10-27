@@ -138,7 +138,7 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getEngagement).mockResolvedValue(row(acmeHealth()));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
-    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Under-funded: 39 hours delivered plus 347 planned is 124 more than the 262-hour entitlement.") });
+    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Under-funded: 39 delivered, 347 planned and 18 held in reserve come to 142 hours more than the 262-hour entitlement.") });
     await expect(caller().fcpRecord.issue({ id: 4, fundingOverride: "  " })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     expect(db.issueFcpVersion).not.toHaveBeenCalled();
     await caller().fcpRecord.issue({ id: 4, fundingOverride: "Broadcom asked for the plan as scoped; the follow-on purchase is in progress." });

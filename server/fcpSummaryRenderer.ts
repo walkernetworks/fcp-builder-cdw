@@ -3,7 +3,7 @@ import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument 
 import { reconcileHours } from "../shared/reportFormat";
 import { planKeyDates, platformName, selectedScopeSummary } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
-import { DRAFT_MARK, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
+import { DRAFT_MARK, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, RESERVE_LINE, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
 import { renderTimeline } from "./timelineHtml";
 
 /**
@@ -92,6 +92,7 @@ table{width:100%;border-collapse:collapse}
 .wp tr.cat td{background:#f4f5f7;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);padding:4px 7px}
 .wp tr.total td{border-top:2px solid #1a1d21;border-bottom:0;font-weight:900;color:var(--ink)}
 .wp tr.done td{color:var(--muted);font-weight:400;font-style:italic}
+.wp tr.hold td{color:var(--muted)}
 tr{break-inside:avoid}
 .note{font-size:9px;color:var(--muted);margin-top:6px}
 .bottom{display:grid;grid-template-columns:1fr 1.15fr .9fr;gap:.3in;margin-top:14px;break-inside:avoid}
@@ -216,15 +217,18 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
     });
     packageRows.push(...shown.filter(row => !row.category).map(row => `<tr><td>${esc(packageLabel(row.label))}</td><td></td><td class="num">${hours(row.total)}</td></tr>`));
   }
+  // The reserve is one line, so the column visibly adds up to the entitlement; the buckets behind it stay internal.
+  const reserve = Math.round(effort.internal.fit?.reserveHours ?? 0);
+  const reserveRows = reserve >= 1 ? [`<tr class="hold"><td>${esc(RESERVE_LINE)}</td><td></td><td class="num">${hours(reserve)}</td></tr>`] : [];
   const balanced = Boolean(reconciliation?.balanced);
-  const total = (delivered?.delivered ?? 0) + Math.round(effort.totals.total);
+  const total = (delivered?.delivered ?? 0) + Math.round(effort.totals.total) + (reserve >= 1 ? reserve : 0);
   const totalLabel = balanced ? w("Total, funded by the entitlement", "Total, funded by the BSAS hours") : "Total CDW hours";
   const basis = effort.source === "assignments" ? "From the signed resource assignments." : "The signed resource assignments replace these estimates.";
   // The sentence states only what the printed figures show: "equals" when they add up to the hour.
   const reconcileNote = reconciliation && balanced
-    ? `CDW-delivered hours: ${hours(reconciliation.delivered)} delivered plus ${hours(reconciliation.planned)} planned ${reconciliation.exact ? "equals" : "uses"} the ${hours(reconciliation.entitled)}-hour ${w("entitlement", "BSAS allocation")}${reconciliation.exact ? "" : ", to within an hour of rounding"}. ${basis}`
-    : delivered ? `CDW-delivered hours: ${hours(delivered.delivered)} delivered plus ${hours(delivered.planned)} planned. ${basis}` : `CDW-delivered hours. ${basis}`;
-  const workPackages = `<h3>Work Packages</h3><table class="wp" data-foot="sum"><thead><tr><th>Package</th><th>Month</th><th class="num">Hours</th></tr></thead><tbody>${[...deliveredRows, ...packageRows].join("")}<tr class="total"><td>${esc(totalLabel)}</td><td></td><td class="num">${hours(total)}</td></tr></tbody></table><p class="note">${esc(reconcileNote)}</p>`;
+    ? `CDW-delivered hours: ${hours(reconciliation.delivered)} delivered, ${hours(reconciliation.planned)} planned and ${hours(reconciliation.reserve)} held for change requests ${reconciliation.exact ? "add up to" : "use"} the ${hours(reconciliation.entitled)}-hour ${w("entitlement", "BSAS allocation")}${reconciliation.exact ? "" : ", to within an hour of rounding"}. ${basis}`
+    : delivered ? `CDW-delivered hours: ${hours(delivered.delivered)} delivered, ${hours(delivered.planned)} planned and ${hours(delivered.reserve)} held for change requests. ${basis}` : `CDW-delivered hours. ${basis}`;
+  const workPackages = `<h3>Work Packages</h3><table class="wp" data-foot="sum"><thead><tr><th>Package</th><th>Month</th><th class="num">Hours</th></tr></thead><tbody>${[...deliveredRows, ...packageRows, ...reserveRows].join("")}<tr class="total"><td>${esc(totalLabel)}</td><td></td><td class="num">${hours(total)}</td></tr></tbody></table><p class="note">${esc(reconcileNote)}</p>`;
 
   // ---- Page 2: the entitlement window, key dates, what we need, after this plan
   const windowStart = fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate;
