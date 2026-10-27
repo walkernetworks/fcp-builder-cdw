@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Acme Health - FCP Standard</title>
+<style>
+:root{--ink:#1d1d1f;--slate:#3c4250;--muted:#6b7280;--line:#e3e6ea;--red:#CC0000;--dark:#242a38;--hair:#E4E7EC;
+--gov:#2e6b4e;--ops:#2f5b8c;--infra:#d9a21b;--mig:#2b7a72;--sec:#b3223a;--cons:#2f3a4a}
+*{box-sizing:border-box}
+html,body{margin:0;background:#e9ebef;color:var(--ink);font:11px/1.45 Helvetica,'Helvetica Neue',Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@page{size:letter landscape;margin:0}
+.sheet{width:11in;height:8.5in;background:#fff;margin:.3in auto;position:relative;overflow:hidden;padding:0 .45in;display:flex;flex-direction:column}
+@media print{html,body{background:#fff}.sheet{margin:0;break-after:page}.sheet:last-child{break-after:auto}}
+
+/* cover */
+.cover{background:var(--red);color:#fff;padding:.7in .8in}
+.cover .logo{width:1.15in;color:#fff}
+.cover .orbit{position:absolute;right:-1.3in;top:-1.6in;width:7.5in;color:#fff;opacity:.12}
+.cover .eyebrow{margin-top:1.55in;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.cover h1{font-size:40px;line-height:1.08;font-weight:900;letter-spacing:-.02em;max-width:7.2in;margin:.12in 0 0}
+.cover .sign{font-size:19px;font-weight:900;margin-top:.22in}
+.cover .meta{position:absolute;left:.8in;bottom:.95in;display:flex;gap:.7in;font-size:11px}
+.cover .meta b{display:block;font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:3px}
+.cover .legend{position:absolute;left:.8in;bottom:.4in;font-size:8.5px;opacity:.9}
+
+.strip{display:flex;justify-content:space-between;align-items:center;border-top:4px solid var(--red);margin-top:.3in;padding:6px 0 7px;border-bottom:1px solid var(--line);font-size:8.5px;color:var(--muted)}
+.slogo{width:.45in;height:auto;color:var(--red);vertical-align:middle;margin-right:8px}
+.foot{display:flex;justify-content:space-between;font-size:8px;color:#898b8e;border-top:1px solid var(--line);padding:7px 0 .28in;margin-top:auto}
+
+.title{font-size:21px;font-weight:900;letter-spacing:-.01em;margin:12px 0 2px}
+.lead-in{font-size:11.5px;color:var(--slate);margin:0 0 6px}
+.pills{font-size:10px;color:var(--slate);padding:7px 0;border-bottom:2px solid var(--red)}
+.pills b{color:var(--ink)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-top:0}
+.kpi{padding:8px 12px;border-right:1px solid var(--line)}
+.kpi:last-child{border-right:0}
+.kpi .v{font-size:18px;font-weight:900;color:var(--red);line-height:1.15}
+.kpi .l{font-size:10px;font-weight:800;margin-top:2px}
+.kpi .s{font-size:8.5px;color:var(--muted);margin-top:1px}
+
+h2{font-size:17px;font-weight:900;margin:14px 0 3px;letter-spacing:-.01em}
+.sec-lead{color:var(--muted);font-size:10px;margin:0 0 8px}
+h3{font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--red);margin:12px 0 5px}
+p{margin:0 0 6px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:.3in}
+.two-a{display:grid;grid-template-columns:1.2fr 1fr;gap:.3in}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.25in}
+.synopsis{font-size:12px;line-height:1.5}
+ul.tight{margin:0;padding-left:15px}
+ul.tight li{margin:0 0 4px;color:var(--slate)}
+ul.tight li b{color:var(--ink)}
+
+table{width:100%;border-collapse:collapse;font-size:10px}
+th{background:#eef0f3;color:var(--slate);font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:5px 7px;vertical-align:bottom}
+td{padding:3.5px 7px;border-bottom:1px solid var(--hair);color:var(--slate);vertical-align:top}
+td:first-child{color:var(--ink);font-weight:700}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.cat td{background:#f4f5f7;font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);padding:3px 7px}
+tr.done td,tr.done td:first-child{color:var(--muted);font-weight:400;font-style:italic}
+tr.total td{border-top:2px solid #1a1d21;border-bottom:0;font-weight:900;color:var(--ink)}
+td small{display:block;font-weight:400;color:var(--muted);font-size:8.5px;line-height:1.35;margin-top:1px}
+td small b{color:var(--slate)}
+.out td{color:var(--muted)}
+
+/* document control */
+.doc{display:grid;grid-template-columns:repeat(4,auto) 1fr;gap:0;border:1px solid var(--line);margin-top:10px;font-size:9.5px}
+.doc div{padding:7px 12px;border-right:1px solid var(--line)}
+.doc div:last-child{border-right:0}
+.doc b{display:block;font-size:7.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.pending{color:#a15c00;font-weight:700}
+.note{background:#FFF7E6;border-left:4px solid #d97706;padding:7px 11px;margin:8px 0;font-size:10px;color:#4b3410}
+
+/* gantt */
+.key{display:flex;gap:5px;flex-wrap:wrap;margin:0 0 6px}
+.key span{display:inline-flex;align-items:center;gap:4px;font-size:7.5px;font-weight:700;border:1px solid var(--line);border-radius:99px;padding:2px 7px;color:var(--slate)}
+.key i{width:7px;height:7px;border-radius:99px;display:inline-block}
+.gantt{border:1px solid var(--line);--n:7}
+.g-row{display:grid;grid-template-columns:1.45in repeat(var(--n),1fr);border-bottom:1px solid var(--line)}
+.g-row:last-child{border-bottom:0}
+.g-head{background:#eef2f6;font-size:7.5px;font-weight:800;color:var(--slate)}
+.g-head div{padding:4px 5px;border-right:1px solid var(--line)}
+.g-head div:last-child{border-right:0}
+.g-cat{grid-column:1;font-size:8.5px;font-weight:800;color:var(--dark);padding:5px 7px;border-right:1px solid var(--line);background:#fafbfc}
+.g-lanes{grid-column:2/-1;display:grid;grid-template-columns:repeat(var(--n),1fr);grid-auto-rows:19px;row-gap:3px;padding:4px 0;background:repeating-linear-gradient(to right,transparent 0,transparent calc(100%/var(--n) - 1px),#eceff3 calc(100%/var(--n) - 1px),#eceff3 calc(100%/var(--n)))}
+.bar{margin:0 3px;border-radius:3px;font-size:7.5px;font-weight:700;line-height:1.1;color:#fff;padding:0 6px;display:flex;align-items:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar.gov{background:var(--gov)}.bar.ops{background:var(--ops)}.bar.infra{background:var(--infra);color:#2a2200}.bar.mig{background:var(--mig)}.bar.sec{background:var(--sec)}.bar.cons{background:var(--cons)}
+.bar.cust{background:#fff;color:var(--slate);border:1.5px dashed #9aa1ab}
+.bar.ms{border-radius:99px}
+.none{grid-column:1/-1;font-size:8.5px;color:var(--muted);font-style:italic;display:flex;align-items:center;padding:0 8px}
+
+.dates div{display:grid;grid-template-columns:.9in 1fr;gap:6px;padding:4px 0;border-bottom:1px solid var(--hair);font-size:10px;color:var(--slate)}
+.dates b{color:var(--ink)}
+.closer{font-size:16px;font-weight:900;color:var(--red);border-top:3px solid var(--red);padding-top:6px;margin-top:10px}
+</style>
+</head>
+<body>
+
+<!-- ============================== COVER ============================== -->
+<section class="sheet cover">
+  <svg class="logo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg>
+  <svg class="orbit" viewBox="1.07 -115.32 539.33 288.76" aria-hidden="true"><path fill="currentColor" d="M 245.957031 64.761719 L 292.230469 64.761719 L 308.660156 25.855469 C 313.351562 14.457031 315.367188 8.746094 320.058594 -2.652344 L 320.734375 -2.652344 C 320.734375 11.101562 320.398438 15.792969 320.398438 30.886719 L 320.058594 64.761719 L 365.332031 64.761719 L 416.316406 -52.957031 L 374.394531 -52.957031 L 358.304688 -9.019531 C 354.953125 0.0429688 353.613281 5.394531 350.261719 17.808594 L 349.582031 17.808594 C 350.582031 1.71875 350.917969 -2.992188 350.917969 -12.035156 L 351.597656 -52.957031 L 309 -52.957031 L 293.566406 -12.375 C 290.214844 -3.3125 286.859375 5.730469 283.507812 17.46875 L 282.828125 17.46875 C 283.824219 2.039062 284.164062 -2.3125 284.503906 -11.375 L 285.839844 -52.957031 L 246.59375 -52.957031 Z M 163.789062 35.9375 L 176.527344 -24.769531 L 184.570312 -24.769531 C 192.957031 -24.769531 197.648438 -19.738281 197.648438 -8 C 197.648438 0.722656 195.292969 14.796875 189.601562 24.535156 C 184.570312 33.261719 179.203125 35.9375 169.480469 35.9375 Z M 114.503906 64.761719 L 167.164062 64.761719 C 198.027344 64.761719 213.777344 54.699219 224.515625 40.605469 C 233.898438 28.191406 239.269531 9.425781 239.269531 -6.34375 C 239.269531 -22.773438 233.898438 -35.191406 225.515625 -42.558594 C 216.453125 -50.601562 204.054688 -52.957031 187.625 -52.957031 L 139.316406 -52.957031 Z M 1.136719 13.796875 C -0.203125 49.351562 18.902344 66.777344 51.101562 66.777344 C 67.871094 66.777344 82.285156 63.085938 94.359375 54.359375 C 108.453125 43.621094 114.824219 27.53125 116.160156 17.808594 L 73.917969 17.808594 C 71.5625 27.53125 65.535156 36.59375 57.152344 36.59375 C 49.105469 36.59375 45.074219 28.890625 45.414062 14.796875 C 45.753906 5.730469 47.429688 -3.988281 52.121094 -12.375 C 56.8125 -20.757812 62.179688 -24.113281 67.550781 -24.113281 C 74.9375 -24.113281 79.289062 -16.40625 78.609375 -3.988281 L 78.609375 -3.3125 L 119.195312 -3.3125 C 120.53125 -17.722656 117.519531 -30.140625 110.808594 -38.523438 C 103.105469 -49.265625 88.332031 -54.953125 71.246094 -54.953125 C 49.445312 -54.953125 32.675781 -47.25 20.9375 -35.511719 C 8.523438 -22.433594 1.476562 -4.648438 1.136719 13.796875 M 172.175781 173.4375 C 238.25 173.4375 312.03125 154.992188 376.070312 124.46875 C 459.574219 84.5625 540.402344 23.179688 540.402344 -43.554688 C 540.402344 -95.199219 485.40625 -115.320312 420.347656 -115.320312 C 346.566406 -115.320312 260.707031 -88.492188 223.160156 -64.015625 C 221.484375 -63.019531 222.160156 -62 223.5 -62.679688 C 274.144531 -85.816406 334.851562 -99.910156 383.796875 -99.910156 C 431.746094 -99.910156 487.421875 -85.496094 487.421875 -32.15625 C 487.421875 20.164062 431.089844 69.453125 360.980469 104.347656 C 297.597656 135.867188 227.171875 154.652344 168.480469 154.652344 C 126.222656 154.652344 61.164062 146.269531 61.164062 97.980469 C 61.164062 92.269531 61.503906 84.226562 63.519531 78.195312 C 63.859375 77.519531 63.519531 76.859375 62.519531 77.855469 C 57.828125 83.886719 54.816406 94.964844 54.816406 106.363281 C 54.796875 158.347656 122.207031 173.4375 172.175781 173.4375 M 504.832031 58.175781 L 504.832031 55.636719 L 506.988281 55.636719 C 507.882812 55.636719 508.0625 56.355469 508.0625 56.894531 C 508.0625 57.433594 507.882812 58.152344 506.988281 58.152344 L 504.832031 58.152344 Z M 503.574219 62.683594 L 504.832031 62.683594 L 504.832031 59.25 L 506.089844 59.25 L 508.0625 62.683594 L 509.5 62.683594 L 507.527344 59.25 C 508.421875 59.070312 509.320312 58.355469 509.320312 56.894531 C 509.320312 55.101562 508.0625 54.539062 506.605469 54.539062 L 503.53125 54.539062 L 503.53125 62.683594 Z M 500.5 58.710938 C 500.5 55.636719 503.035156 52.945312 506.269531 52.945312 C 509.34375 52.945312 511.855469 55.660156 511.855469 58.710938 C 511.855469 61.964844 509.320312 64.480469 506.269531 64.480469 C 503.035156 64.480469 500.5 61.964844 500.5 58.710938 M 499.242188 58.710938 C 499.242188 62.503906 502.316406 65.757812 506.289062 65.757812 C 510.082031 65.757812 513.15625 62.503906 513.15625 58.710938 C 513.15625 54.921875 510.082031 51.667969 506.289062 51.667969 C 502.296875 51.6875 499.242188 54.921875 499.242188 58.710938 "/></svg>
+  <div class="eyebrow">Functional Consumption Plan · Acme Health</div>
+  <h1>Amazing happens when Acme Health runs a modern VMware Cloud Foundation private cloud with confidence.</h1>
+  <div class="sign">Make Amazing Happen.</div>
+  <div class="meta"><div><b>Prepared for</b>Acme Health</div><div><b>Version</b>1 · Issued 30 Sep 2026</div><div><b>Prepared by</b>CDW Consulting Solution Architecture</div></div>
+  <div class="legend">CDW · Proprietary and confidential. Copying restricted.</div>
+</section>
+
+<!-- ============================== 2. SUMMARY ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg>Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for Acme Health · Version 1 · Issued 30 Sep 2026</span></div>
+
+  <div class="title">VMware Cloud Foundation Adoption: Acme Health</div>
+  <p class="lead-in">A design-led plan to move Acme Health onto VCF 9.1 on new hardware, consuming the services entitlement before it ends on 28 April 2027.</p>
+  <div class="pills">Platform: <b>VCF 9.1</b> · Path: <b>Greenfield with staging hardware</b> · Delivery: <b>CDW + Broadcom</b> · Segment: <b>Corporate</b> · Location: <b>Reno, NV</b></div>
+  <div class="kpis">
+    <div class="kpi"><div class="v">$79,403</div><div class="l">VCF Services Entitlement</div><div class="s">262 hours · 29 Apr 2026 to 28 Apr 2027</div></div>
+    <div class="kpi"><div class="v">223 hrs</div><div class="l">Hours Remaining</div><div class="s">39 of 262 delivered as of 3 Sep 2026</div></div>
+    <div class="kpi"><div class="v">210 days</div><div class="l">Days to Expiry</div><div class="s">Entitlement ends 28 Apr 2027</div></div>
+    <div class="kpi"><div class="v">7.4 hrs/wk</div><div class="l">Required Weekly Pace</div><div class="s">To consume by expiry · about 0.19 FTE</div></div>
+  </div>
+
+  <div class="doc">
+    <div><b>Version</b>1, issued 30 Sep 2026</div>
+    <div><b>Supersedes</b>None</div>
+    <div><b>Broadcom approval</b><span class="pending">Pending</span></div>
+    <div><b>Customer approval</b><span class="pending">Pending</span></div>
+    <div><b>Revision</b>Initial plan, built from the VCF 9.1 assessment and the scoping questionnaire of 30 Sep 2026.</div>
+  </div>
+
+  <div class="two-a" style="margin-top:4px">
+    <div>
+      <h3>Summary</h3>
+      <p class="synopsis">CDW designs and builds a new VCF 9.1 foundation for Acme Health on new hardware, proves the migration runbook on the first waves, and hands the platform and the runbook to Acme Health's team, who run the remaining waves. VCF Operations becomes the team's daily view of health and capacity. Recovery design and the first workload domain follow after the entitlement.</p>
+      <h3>Situation</h3>
+      <ul class="tight">
+        <li>A DR site is being built: 8 new hosts and a NetApp array fed by SnapMirror. Recovery time objective and orchestration are not yet defined.</li>
+        <li>Recovery of 330 powered-on VMs is manual today.</li>
+        <li>The team wants to "make our lives easier" and use features it has already paid for.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Plan on a page</h3>
+      <ul class="tight">
+        <li><b>Program management:</b> kickoff and delivery plan, hardware compatibility review. Assessment and discovery are already delivered.</li>
+        <li><b>Infrastructure:</b> design and bill of materials, VCF foundation build, migration plan, proving waves.</li>
+        <li><b>Operations:</b> VCF Operations design, role and access mapping, licensing, training, handover, runbook transfer.</li>
+        <li><b>Cloud services:</b> not requested (Kubernetes, Private AI, HCX).</li>
+        <li><b>Security and resilience:</b> recovery design and build, after the entitlement.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 2</span></div>
+</section>
+
+<!-- ============================== 3. SCOPE AND ARCHITECTURE ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg>Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for Acme Health · Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Scope and Architecture</h2>
+  <p class="sec-lead">What this plan delivers, what it doesn't, and the platform it builds.</p>
+
+  <div class="two">
+    <div>
+      <h3>In scope</h3>
+      <table>
+        <tr><td style="width:1.3in">Program management</td><td>Kickoff and delivery plan, hardware compatibility review against VCF 9.1 (assessment and discovery already delivered)</td></tr>
+        <tr><td>Infrastructure</td><td>Greenfield design and bill of materials, VCF foundation build, migration and cutover plan, proving migration waves</td></tr>
+        <tr><td>Operations</td><td>VCF Operations design and licensing, role and access mapping, training, runbook transfer, handover and service acceptance</td></tr>
+      </table>
+      <h3>Out of scope</h3>
+      <table class="out">
+        <tr><td style="width:1.3in">Cloud services</td><td>Kubernetes, Private AI and HCX were not requested.</td></tr>
+        <tr><td>Security and resilience</td><td>Recovery design and recovery services build follow after the entitlement (Roadmap, page 6).</td></tr>
+        <tr><td>Remaining migration waves</td><td>Run by Acme Health with the proven runbook.</td></tr>
+        <tr><td>First workload domain</td><td>Follows after the entitlement.</td></tr>
+      </table>
+      <h3>What we heard, and where it lands</h3>
+      <table>
+        <thead><tr><th>Topic</th><th>Acme Health position</th><th>Where it lands</th></tr></thead>
+        <tr><td>Goal</td><td>"Make our lives easier"; use features already paid for</td><td>VCF Operations enablement and a runbook the team repeats</td></tr>
+        <tr><td>Storage</td><td>Keep the existing array</td><td>Fibre Channel stays principal storage</td></tr>
+        <tr><td>Recovery</td><td>Manual recovery of 330 VMs today</td><td>Recovery design picks orchestration so DR runs under pressure</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>VCF design profile</h3>
+      <table>
+        <tr><td style="width:1.25in">Consumption</td><td>VCF 9.1 with VCF Operations as the daily front door; vCenter consumption unchanged for the team; automation evaluated later.</td></tr>
+        <tr><td>Physical site</td><td>Primary data center and a new DR site.</td></tr>
+        <tr><td>Availability</td><td>Converged management domain on the primary cluster; HA and fully automated DRS retained.</td></tr>
+        <tr><td>Isolation</td><td>NSX deployed with VCF, VLAN-backed at first; no network redesign on day one.</td></tr>
+        <tr><td>Recoverability</td><td>DR site as a separate workload domain in the same fleet; orchestration tool chosen in the recovery design.</td></tr>
+        <tr><td>Expansion</td><td>Evacuated hosts rebuilt into VCF wave by wave; the DR workload domain added once the site is online.</td></tr>
+      </table>
+      <h3>Platform facts</h3>
+      <table>
+        <tr><td style="width:1.25in">Hardware</td><td>Cisco UCS hosts; vLCM images with the Cisco vendor add-on</td></tr>
+        <tr><td>Storage</td><td>VMFS on Fibre Channel, existing NetApp array; no vSAN needed</td></tr>
+        <tr><td>Network</td><td>vDS, VLAN-backed today</td></tr>
+        <tr><td>Today</td><td>vSphere 8.0.3, 1 vCenter, 2 data centers</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 3</span></div>
+</section>
+
+<!-- ============================== 4. WORK PACKAGES ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg>Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for Acme Health · Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Work Packages and Scoped Effort</h2>
+  <p class="sec-lead">Each package with its window, lead role, CDW hours and how it is accepted. 39 hours delivered plus 223 planned equals the 262-hour entitlement. Estimated from this plan; the signed resource assignments replace these figures.</p>
+  <table>
+    <thead><tr><th>Work package</th><th style="width:.8in">Window</th><th style="width:1.5in">Lead role</th><th class="num" style="width:.55in">Architect</th><th class="num" style="width:.6in">Sr. Consultant</th><th class="num" style="width:.5in">PM</th><th class="num" style="width:.5in">Total</th></tr></thead>
+    <tbody>
+      <tr class="cat"><td colspan="7">Delivered to date</td></tr>
+      <tr class="done"><td>Assessment and discovery<small>Environment, DR site and priorities reviewed; VCF 9.1 assessment.</small></td><td>Jul to Sep 2026</td><td>VCF Architect</td><td class="num">30</td><td class="num">3</td><td class="num">6</td><td class="num">39</td></tr>
+      <tr class="cat"><td colspan="7">Program management</td></tr>
+      <tr><td>Hardware compatibility review<small>Every host model, CPU, adapter and ESX build checked against VCF 9.1 with the customer platform lead.</small></td><td>Oct 2026</td><td>VCF Architect</td><td class="num">12</td><td class="num">1</td><td class="num">2</td><td class="num">15</td></tr>
+      <tr><td>Kickoff and delivery plan<small>Confirm design decisions, evidence, dependencies and delivery ownership.</small></td><td>Oct 2026</td><td>Project Manager</td><td class="num">0</td><td class="num">0</td><td class="num">2</td><td class="num">2</td></tr>
+      <tr class="cat"><td colspan="7">Infrastructure</td></tr>
+      <tr><td>Design and bill of materials<small>Host and cluster sizing, storage, network, IP/DNS/NTP and the bill of materials. <b>Accepted when</b> architecture, network, storage and procurement owners approve.</small></td><td>Nov 2026</td><td>VCF Implementation Engineer</td><td class="num">20</td><td class="num">2</td><td class="num">2</td><td class="num">24</td></tr>
+      <tr><td>Migration and cutover plan<small>Waves, dependencies, change windows, rollback and validation. <b>Accepted when</b> application and change owners approve wave assignments.</small></td><td>Dec 2026</td><td>Migration Lead</td><td class="num">20</td><td class="num">2</td><td class="num">2</td><td class="num">24</td></tr>
+      <tr><td>VCF foundation build<small>Deploy the management domain and validate platform health. NSX VLAN-backed; overlay later. <b>Starts after</b> hardware sign-off.</small></td><td>Jan 2027</td><td>VCF Implementation Engineer</td><td class="num">8</td><td class="num">45</td><td class="num">8</td><td class="num">61</td></tr>
+      <tr><td>Proving migration waves<small>CDW runs the first waves with the team shadowing, then reverse-shadowing. <b>Accepted when</b> each wave meets application and platform acceptance.</small></td><td>Mar to Apr 2027</td><td>Migration Lead</td><td class="num">4</td><td class="num">31</td><td class="num">6</td><td class="num">41</td></tr>
+      <tr class="cat"><td colspan="7">Operations</td></tr>
+      <tr><td>VCF Operations design<small>Architecture, data sources, dashboard and alert scope, lifecycle ownership.</small></td><td>Nov 2026</td><td>VCF Architect + Ops Lead</td><td class="num">1</td><td class="num">8</td><td class="num">2</td><td class="num">11</td></tr>
+      <tr><td>Role and access mapping<small>Directory groups to vCenter, VCF Operations and SSO roles; least privilege and break-glass.</small></td><td>Dec 2026</td><td>VCF Architect</td><td class="num">12</td><td class="num">1</td><td class="num">2</td><td class="num">15</td></tr>
+      <tr><td>Training and knowledge transfer<small>The team installs and runs the management domain alongside CDW.</small></td><td>Jan 2027</td><td>VCF Architect + Ops Lead</td><td class="num">0</td><td class="num">5</td><td class="num">1</td><td class="num">6</td></tr>
+      <tr><td>VCF Operations licensing<small>Activate subscription licensing before the evaluation period ends.</small></td><td>Feb 2027</td><td>VCF Architect + Ops Lead</td><td class="num">1</td><td class="num">5</td><td class="num">1</td><td class="num">7</td></tr>
+      <tr><td>Handover and service acceptance<small>Confirm the operating model, evidence, ownership and lifecycle cadence.</small></td><td>Apr 2027</td><td>VCF Architect + Ops Lead</td><td class="num">1</td><td class="num">9</td><td class="num">1</td><td class="num">11</td></tr>
+      <tr><td>Runbook knowledge transfer<small>Hand over the proven migration runbook so the team runs the later waves.</small></td><td>Apr 2027</td><td>VCF Architect + Ops Lead</td><td class="num">0</td><td class="num">5</td><td class="num">1</td><td class="num">6</td></tr>
+      <tr class="total"><td>Total, funded by the entitlement</td><td></td><td></td><td class="num">109</td><td class="num">117</td><td class="num">36</td><td class="num">262</td></tr>
+    </tbody>
+  </table>
+  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 4</span></div>
+</section>
+
+<!-- ============================== 5. TIMELINE ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg>Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for Acme Health · Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Adoption Timeline</h2>
+  <p class="sec-lead">1 October 2026 through 28 April 2027, the entitlement window. Dashed bars are run by Acme Health. Rounded bars mark key delivered functionality.</p>
+  <div class="key">
+    <span><i style="background:var(--gov)"></i>Governance</span><span><i style="background:var(--infra)"></i>Infrastructure build</span><span><i style="background:var(--mig)"></i>Migration</span><span><i style="background:var(--ops)"></i>Operations</span><span><i style="background:#fff;border:1px dashed #9aa1ab"></i>Run by Acme Health</span>
+  </div>
+  <div class="gantt">
+    <div class="g-row g-head"><div>Category</div><div>Oct 26</div><div>Nov 26</div><div>Dec 26</div><div>Jan 27</div><div>Feb 27</div><div>Mar 27</div><div>Apr 27</div></div>
+    <div class="g-row"><div class="g-cat">Program management</div><div class="g-lanes">
+      <div class="bar gov" style="grid-column:1;grid-row:1">Kickoff and delivery plan</div>
+      <div class="bar gov ms" style="grid-column:1;grid-row:2">Hardware sign-off</div></div></div>
+    <div class="g-row"><div class="g-cat">Infrastructure</div><div class="g-lanes">
+      <div class="bar cust" style="grid-column:1;grid-row:1">Close HCL evidence gaps</div>
+      <div class="bar infra" style="grid-column:2;grid-row:1">Design and BOM</div>
+      <div class="bar mig" style="grid-column:3;grid-row:1">Migration plan</div>
+      <div class="bar infra ms" style="grid-column:4;grid-row:1">VCF foundation build</div>
+      <div class="bar cust" style="grid-column:5/8;grid-row:2">Acme Health migration waves and legacy cluster retirement</div>
+      <div class="bar mig ms" style="grid-column:6/8;grid-row:3">Proving migration waves</div></div></div>
+    <div class="g-row"><div class="g-cat">Operations</div><div class="g-lanes">
+      <div class="bar ops" style="grid-column:2;grid-row:1">VCF Ops design</div>
+      <div class="bar ops" style="grid-column:3;grid-row:1">Role and access</div>
+      <div class="bar ops" style="grid-column:4;grid-row:1">Training</div>
+      <div class="bar ops" style="grid-column:5;grid-row:1">Licensing</div>
+      <div class="bar ops ms" style="grid-column:7;grid-row:1">Handover</div>
+      <div class="bar ops" style="grid-column:7;grid-row:2">Runbook transfer</div></div></div>
+    <div class="g-row"><div class="g-cat">Cloud services</div><div class="g-lanes"><div class="none">Not in this plan</div></div></div>
+    <div class="g-row"><div class="g-cat">Security and resilience</div><div class="g-lanes"><div class="none">Recovery design and build follow after the entitlement (Roadmap, page 6)</div></div></div>
+  </div>
+
+  <div class="two" style="margin-top:6px">
+    <div class="dates">
+      <h3>Milestones to date</h3>
+      <div><b>29 Apr 2026</b><span>Entitlement effective; 262-hour services entitlement opened</span></div>
+      <div><b>21 Jul 2026</b><span>Discovery session: environment, DR site and priorities reviewed</span></div>
+      <div><b>30 Sep 2026</b><span>Functional Consumption Plan version 1 issued</span></div>
+    </div>
+    <div class="dates">
+      <h3>Key dates</h3>
+      <div><b>1 Oct 2026</b><span>Design and planning start</span></div>
+      <div><b>30 Nov 2026</b><span>Acme Health decisions due: build hosts, DR direction, wave ownership</span></div>
+      <div><b>1 Jan 2027</b><span>Platform build begins</span></div>
+      <div><b>Mar 2027</b><span>First proving wave</span></div>
+      <div><b>28 Apr 2027</b><span>Entitlement ends; unused hours are not refunded</span></div>
+    </div>
+  </div>
+  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 5</span></div>
+</section>
+
+<!-- ============================== 6. ROADMAP ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg>Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for Acme Health · Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Roadmap: After the Entitlement</h2>
+  <p class="sec-lead">May 2027 through April 2028. Directional work that is not funded by the current entitlement and needs a renewal with entitlement attached or a services purchase.</p>
+  <div class="key">
+    <span><i style="background:var(--gov)"></i>Governance</span><span><i style="background:var(--infra)"></i>Infrastructure build</span><span><i style="background:var(--ops)"></i>Operations</span><span><i style="background:var(--cons)"></i>Consume and handover</span><span><i style="background:var(--sec)"></i>Security and resilience</span><span><i style="background:#fff;border:1px dashed #9aa1ab"></i>Run by Acme Health</span>
+  </div>
+  <div class="gantt" style="--n:12">
+    <div class="g-row g-head"><div>Category</div><div>May 27</div><div>Jun 27</div><div>Jul 27</div><div>Aug 27</div><div>Sep 27</div><div>Oct 27</div><div>Nov 27</div><div>Dec 27</div><div>Jan 28</div><div>Feb 28</div><div>Mar 28</div><div>Apr 28</div></div>
+    <div class="g-row"><div class="g-cat">Program management</div><div class="g-lanes"><div class="bar gov" style="grid-column:2/13;grid-row:1">Governance and value reviews</div></div></div>
+    <div class="g-row"><div class="g-cat">Infrastructure</div><div class="g-lanes">
+      <div class="bar cust" style="grid-column:1/3;grid-row:1">Final waves (Acme Health)</div>
+      <div class="bar infra ms" style="grid-column:4/6;grid-row:1">First workload domain</div></div></div>
+    <div class="g-row"><div class="g-cat">Operations</div><div class="g-lanes">
+      <div class="bar ops" style="grid-column:5/7;grid-row:1">Health, logs, diagnostics</div>
+      <div class="bar ops" style="grid-column:7/13;grid-row:1">Operating model and lifecycle</div></div></div>
+    <div class="g-row"><div class="g-cat">Cloud services</div><div class="g-lanes"><div class="bar cons" style="grid-column:11/13;grid-row:1">Service consumption</div></div></div>
+    <div class="g-row"><div class="g-cat">Security and resilience</div><div class="g-lanes">
+      <div class="bar sec" style="grid-column:1/3;grid-row:1">Recovery design</div>
+      <div class="bar sec ms" style="grid-column:5/7;grid-row:1">Recovery services build</div></div></div>
+  </div>
+
+  <h3>Follow-on scope</h3>
+  <table>
+    <thead><tr><th>Work package</th><th>Planned window</th><th>Lead role</th><th class="num">Architect</th><th class="num">Sr. Consultant</th><th class="num">PM</th><th class="num">Total hours</th></tr></thead>
+    <tr><td>Recovery and resilience design</td><td>May 2027</td><td>Security / Resilience Engineer</td><td class="num">1</td><td class="num">8</td><td class="num">1</td><td class="num">10</td></tr>
+    <tr><td>First workload domain</td><td>Aug 2027</td><td>VCF Implementation Engineer</td><td class="num">4</td><td class="num">36</td><td class="num">6</td><td class="num">46</td></tr>
+    <tr><td>Health, logs and diagnostics</td><td>Sep 2027</td><td>VCF Architect + Ops Lead</td><td class="num">2</td><td class="num">24</td><td class="num">4</td><td class="num">30</td></tr>
+    <tr><td>Recovery services build</td><td>Sep 2027</td><td>Security / Resilience Engineer</td><td class="num">2</td><td class="num">25</td><td class="num">4</td><td class="num">31</td></tr>
+    <tr class="total"><td>Total follow-on hours</td><td></td><td></td><td class="num">9</td><td class="num">93</td><td class="num">15</td><td class="num">117</td></tr>
+  </table>
+  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 6</span></div>
+</section>
+
+<!-- ============================== 7. WORKING TOGETHER ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg>Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for Acme Health · Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Working Together</h2>
+  <p class="sec-lead">What Acme Health's team commits to, what shapes the sequence, and who is involved.</p>
+
+  <div class="two">
+    <div>
+      <h3>Acme Health team effort</h3>
+      <table>
+        <thead><tr><th>Phase</th><th>Window</th><th class="num">Hrs / week</th><th class="num">FTE</th></tr></thead>
+        <tr><td>Design sessions and sign-off</td><td>Oct to Dec 2026</td><td class="num">7</td><td class="num">0.18</td></tr>
+        <tr><td>Platform build</td><td>Oct 2026 to Jan 2027</td><td class="num">8</td><td class="num">0.20</td></tr>
+        <tr><td>Capability enablement</td><td>Feb 2027</td><td class="num">7</td><td class="num">0.18</td></tr>
+        <tr><td>Acme Health migration waves</td><td>Feb to Apr 2027</td><td class="num">30</td><td class="num">0.75</td></tr>
+        <tr><td>Knowledge transfer and handover</td><td>Apr 2027</td><td class="num">6</td><td class="num">0.15</td></tr>
+      </table>
+      <h3>Commitments</h3>
+      <ul class="tight">
+        <li><b>Inventory:</b> a current RVTools export before the first design session.</li>
+        <li><b>People:</b> platform, network and operations leads available for design sessions.</li>
+        <li><b>Migration:</b> Acme Health runs the waves after the proving waves, using the runbook.</li>
+      </ul>
+      <h3>Decisions needed</h3>
+      <table>
+        <thead><tr><th>Decision</th><th>Needed by</th><th>Owner</th></tr></thead>
+        <tr><td>Hosts for the build</td><td>30 Nov 2026</td><td>Pat Rivera</td></tr>
+        <tr><td>DR policy direction</td><td>30 Nov 2026</td><td>Pat Rivera</td></tr>
+        <tr><td>Wave ownership</td><td>30 Nov 2026</td><td>Pat Rivera</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Sequencing constraints</h3>
+      <table>
+        <thead><tr><th>Constraint</th><th>Effect on the sequence</th></tr></thead>
+        <tr><td>Design and a current inventory before the build</td><td>Build starts after design sign-off</td></tr>
+        <tr><td>Management domain before any workload moves</td><td>Proving waves follow the build</td></tr>
+        <tr><td>DR site online before DR build and testing</td><td>Recovery design now; build follows the site</td></tr>
+        <tr><td>Entitlement ends 28 Apr 2027</td><td>Handover completes in April 2027</td></tr>
+      </table>
+      <h3>Open items</h3>
+      <table>
+        <thead><tr><th>Item</th><th>What it gates</th><th>Owner</th></tr></thead>
+        <tr><td>Current RVTools export</td><td>Design sign-off and sizing</td><td>Pat Rivera</td></tr>
+      </table>
+      <h3>Who is involved</h3>
+      <table>
+        <thead><tr><th>Name</th><th>Role</th><th>Organization</th></tr></thead>
+        <tr><td>Pat Rivera</td><td>Platform lead</td><td>Acme Health</td></tr>
+        <tr><td>Sam Lee</td><td>Network</td><td>Acme Health</td></tr>
+        <tr><td>Jordan Blake</td><td>Architect</td><td>CDW</td></tr>
+        <tr><td>Casey Morgan</td><td>Sr. Consultant</td><td>CDW</td></tr>
+        <tr><td>Alex Kim</td><td>Project Manager</td><td>Broadcom</td></tr>
+      </table>
+      <div class="closer">Make Amazing Happen.</div>
+    </div>
+  </div>
+  <div class="foot"><span>CDW · Proprietary and confidential. Copying restricted.</span><span>Functional Consumption Plan · Acme Health · Version 1 · Page 7</span></div>
+</section>
+
+</body>
+</html>

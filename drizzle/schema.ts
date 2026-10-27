@@ -287,10 +287,16 @@ export const fcpVersions = mysqlTable(
     issuedAt: timestamp("issuedAt"),
     issuedByUserId: int("issuedByUserId").references(() => users.id, { onDelete: "set null" }),
     broadcomApprovedOn: day("broadcomApprovedOn"),
+    /** Who recorded the approval in the app. */
     broadcomApprovedByUserId: int("broadcomApprovedByUserId").references(() => users.id, { onDelete: "set null" }),
+    /** Who approved it at Broadcom, as given by the person recording it. */
+    broadcomApproverName: varchar("broadcomApproverName", { length: 160 }),
     broadcomApprovalNote: text("broadcomApprovalNote"),
     customerApprovedOn: day("customerApprovedOn"),
+    /** Who recorded the approval in the app. */
     customerApprovedByUserId: int("customerApprovedByUserId").references(() => users.id, { onDelete: "set null" }),
+    /** Who approved it at the customer, as given by the person recording it. */
+    customerApproverName: varchar("customerApproverName", { length: 160 }),
     customerApprovalNote: text("customerApprovalNote"),
   },
   table => [uniqueIndex("fcp_versions_number_uq").on(table.engagementId, table.versionNumber), uniqueIndex("fcp_versions_issue_uq").on(table.engagementId, table.issueNumber)],
