@@ -1,4 +1,5 @@
 import { fundedDocument } from "./bsas";
+import { planBsasAllocation } from "./planView";
 import { buildBurndown, type ScopedEffort } from "./effort";
 import type { EngagementDocument } from "./fcp";
 import type { Segment } from "./vsaStage";
@@ -59,10 +60,9 @@ export function reconcileHours(document: EngagementDocument, effort: ScopedEffor
 }
 
 /**
- * Why the plan does not fit its funding, for the planner; null when it fits. An issue with a problem needs a logged
- * reason to go ahead. Never printed in a customer document.
+ * Why the plan does not fit the entitlement (or the BSAS hours on a BSAS-only deal); null when it fits.
  */
-export function fundingProblem(document: EngagementDocument, effort: ScopedEffort, today?: string): string | null {
+function entitlementProblem(document: EngagementDocument, effort: ScopedEffort, today?: string): string | null {
   const hours = (value: number) => Math.round(value).toLocaleString("en-US");
   const reconciliation = reconcileHours(document, effort, today);
   const unit = document.fields.fundingSource === "bsas" ? "BSAS hours" : "entitlement";
@@ -75,4 +75,27 @@ export function fundingProblem(document: EngagementDocument, effort: ScopedEffor
   }
   const gap = effort.internal.fit?.underFunded?.gapHours;
   return gap ? `Under-funded: the plan needs ${hours(gap)} hours more than the ${unit} funds. Move work to the follow-on or reduce hours in the Plan section.` : null;
+}
+
+/**
+ * The BSAS pool of an entitlement-plus-BSAS deal, checked against its own term: BSAS hours that no planned follow-on
+ * work draws on before the term ends are forfeited. BSAS never goes over (work past what it covers is just follow-on
+ * that still needs a purchase), so only the forfeited direction is a problem. Within the rounding tolerance it fits.
+ */
+function bsasPoolProblem(document: EngagementDocument, effort: ScopedEffort): string | null {
+  if (document.fields.fundingSource !== "entitlement-bsas") return null;
+  const allocation = planBsasAllocation(document, effort);
+  if (!allocation || allocation.forfeitedHours <= RECONCILE_TOLERANCE_HOURS) return null;
+  const hours = (value: number) => Math.round(value).toLocaleString("en-US");
+  return `${hours(allocation.forfeitedHours)} hours are not planned and will be forfeited at term end (${hours(allocation.plannedHours)} planned against the ${hours(allocation.term.hours)}-hour BSAS allocation, ${allocation.term.termStart} to ${allocation.term.termEnd}). Plan follow-on work inside the BSAS term.`;
+}
+
+/**
+ * Why the plan does not fit its funding, for the planner; null when it fits. Each funding pool is checked on its own:
+ * the entitlement against its plan, and BSAS against its own allocation and term. An issue with a problem needs a
+ * logged reason to go ahead. Never printed in a customer document.
+ */
+export function fundingProblem(document: EngagementDocument, effort: ScopedEffort, today?: string): string | null {
+  const problems = [entitlementProblem(document, effort, today), bsasPoolProblem(document, effort)].filter((problem): problem is string => Boolean(problem));
+  return problems.length ? problems.join(" ") : null;
 }
