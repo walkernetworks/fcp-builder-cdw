@@ -6,7 +6,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import * as db from "./db";
 import { createExportTicket } from "./exportTickets";
-import { compareIssued, prepareIssue } from "./fcpIssue";
+import { compareIssued, prepareIssue, recordDeliveredNotes } from "./fcpIssue";
 import { defaultReportFormat, REPORT_FORMAT_CHOICES, REPORT_FORMAT_LABELS, reportFormatOption, type ReportFormatChoice } from "../shared/reportFormat";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
@@ -36,9 +36,9 @@ function requireRow<T>(row: T | undefined): T {
  * checks it would face on export. Effort is priced here so rates never reach the client. No format renders the long
  * report.
  */
-function draftFcp(title: string, document: EngagementDocument, choice?: ReportFormatChoice) {
+function draftFcp(title: string, document: EngagementDocument, choice?: ReportFormatChoice, deliveredNotes: string[] = []) {
   const format = choice ? reportFormatOption(choice) : undefined;
-  const html = renderCondensedFcpHtml(title, document, { effort: scopedEffortForDocument(document), draft: true, ...(format ? { format } : {}) });
+  const html = renderCondensedFcpHtml(title, document, { effort: scopedEffortForDocument(document), draft: true, ...(format ? { format, deliveredNotes } : {}) });
   const checks = checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount, bsasOnly: document.fields.fundingSource === "bsas", format });
   return { html, checks };
 }
@@ -325,7 +325,11 @@ export const appRouter = router({
     fillOptions: protectedProcedure.input(z.object({ data: engagementDocumentSchema })).mutation(({ input }) => hoursFillOptions(input.data)),
   }),
   document: router({
-    preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema, reportFormat: reportFormatInput })).mutation(({ input }) => draftFcp(input.title, input.data, input.reportFormat)),
+    /** `id`, when given, is the record whose consumption notes label the delivered hours; it must be visible. */
+    preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema, reportFormat: reportFormatInput, id: recordId.optional() })).mutation(async ({ ctx, input }) => {
+      const notes = input.id && input.reportFormat && input.reportFormat !== "full" ? await recordDeliveredNotes(viewerFor(ctx.user), input.id, input.data) : [];
+      return draftFcp(input.title, input.data, input.reportFormat, notes);
+    }),
     downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum([/** @deprecated The full template; no UI sends it. Removed with server/fcpRenderer.ts. */ "fcp", "condensed-fcp", "plan-output", "building-blocks"]).default("condensed-fcp"), reportFormat: reportFormatInput })).mutation(async ({ ctx, input }) => {
       if ((input.format === "xlsx") !== (input.documentType === "building-blocks")) throw new TRPCError({ code: "BAD_REQUEST", message: "The Building Blocks workbook is only available as XLSX." });
       const row = requireRow(await db.getEngagement(viewerFor(ctx.user), input.id));

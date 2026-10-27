@@ -35,11 +35,15 @@ export function reportFormatOption(choice: ReportFormatChoice): ReportFormat | u
   return choice === "full" ? undefined : choice;
 }
 
+/** Hours either way that still count as reconciled: each figure is rounded to the hour on the page. */
+export const RECONCILE_TOLERANCE_HOURS = 1;
+
 /**
  * The hours as the customer documents print them: hours already delivered plus the hours the plan schedules, against
- * the entitlement (or the BSAS hours on a BSAS-only deal). Null when no entitled hours are on record.
+ * the entitlement (or the BSAS hours on a BSAS-only deal). Null when no entitled hours are on record. `exact` is true
+ * when the printed figures add up to the hour; `balanced` allows the rounding tolerance.
  */
-export type HoursReconciliation = { delivered: number; planned: number; entitled: number; deliveredAsOf: string | null; balanced: boolean; difference: number };
+export type HoursReconciliation = { delivered: number; planned: number; entitled: number; deliveredAsOf: string | null; balanced: boolean; exact: boolean; difference: number };
 
 export function reconcileHours(document: EngagementDocument, effort: ScopedEffort, today?: string): HoursReconciliation | null {
   const funded = fundedDocument(document);
@@ -49,7 +53,7 @@ export function reconcileHours(document: EngagementDocument, effort: ScopedEffor
   const planned = Math.round(effort.totals.total);
   const entitled = Math.round(burndown.entitledHours);
   const difference = delivered + planned - entitled;
-  return { delivered, planned, entitled, deliveredAsOf: funded.report.entitlement.consumedAsOf, balanced: difference === 0, difference };
+  return { delivered, planned, entitled, deliveredAsOf: funded.report.entitlement.consumedAsOf, balanced: Math.abs(difference) <= RECONCILE_TOLERANCE_HOURS, exact: difference === 0, difference };
 }
 
 /**
@@ -61,10 +65,10 @@ export function fundingProblem(document: EngagementDocument, effort: ScopedEffor
   const reconciliation = reconcileHours(document, effort, today);
   const unit = document.fields.fundingSource === "bsas" ? "BSAS hours" : "entitlement";
   if (reconciliation) {
-    const { delivered, planned, entitled, difference } = reconciliation;
+    const { delivered, planned, entitled, difference, balanced } = reconciliation;
+    if (balanced) return null;
     if (difference > 0) return `Under-funded: ${hours(delivered)} hours delivered plus ${hours(planned)} planned is ${hours(difference)} more than the ${hours(entitled)}-hour ${unit}. Move work to the follow-on or reduce hours in the Plan section.`;
-    if (difference < 0) return `${hours(delivered)} hours delivered plus ${hours(planned)} planned leaves ${hours(-difference)} of the ${hours(entitled)}-hour ${unit} unplanned. Plan the remaining hours in the Plan section.`;
-    return null;
+    return `${hours(-difference)} hours are not planned and will be forfeited at term end (${hours(delivered)} delivered plus ${hours(planned)} planned, against the ${hours(entitled)}-hour ${unit}). Plan them in the Plan section.`;
   }
   const gap = effort.internal.fit?.underFunded?.gapHours;
   return gap ? `Under-funded: the plan needs ${hours(gap)} hours more than the ${unit} funds. Move work to the follow-on or reduce hours in the Plan section.` : null;

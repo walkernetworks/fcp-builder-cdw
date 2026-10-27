@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 vi.mock("./db", () => {
   class BuildLockedError extends Error {}
-  return { BuildLockedError, getEngagement: vi.fn(), getUserById: vi.fn(), getLatestIssuedVersion: vi.fn(), issueFcpVersion: vi.fn(), getIssuedVersion: vi.fn(), recordApproval: vi.fn() };
+  return { BuildLockedError, getEngagement: vi.fn(), getUserById: vi.fn(), getLatestIssuedVersion: vi.fn(), issueFcpVersion: vi.fn(), getIssuedVersion: vi.fn(), recordApproval: vi.fn(), listConsumptionEntries: vi.fn(async () => []) };
 });
 vi.mock("./pdf", () => ({ renderPdf: vi.fn(async (html: string) => Buffer.from(`%PDF-1.7\n${html.length}\n`, "utf8")) }));
 
@@ -145,6 +145,17 @@ describe("fcpRecord.issue", () => {
     expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].fundingOverrideNote).toBe("Broadcom asked for the plan as scoped; the follow-on purchase is in progress.");
     const preview = await caller().fcpRecord.issuePreview({ id: 4 });
     expect(preview.fundingProblem).toMatch(/^Under-funded/);
+  });
+
+  it("labels the delivered hours with the consumption notes in the issued Summary", async () => {
+    vi.mocked(db.getEngagement).mockResolvedValue({ ...(row(acmeHealthReconciled()) as object), segment: "commercial" } as never);
+    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
+    vi.mocked(db.listConsumptionEntries).mockResolvedValue([{ asOf: "2026-08-01", note: "Assessment and discovery" }, { asOf: "2026-09-03", note: null }, { asOf: "2026-10-15", note: "Kickoff" }] as never);
+    vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
+    await caller().fcpRecord.issue({ id: 4 });
+    const html = vi.mocked(db.issueFcpVersion).mock.calls[0][2].html;
+    expect(html).toContain('<tr class="done"><td>Assessment and discovery</td>');
+    expect(html).not.toContain("Kickoff</td><td>Apr");
   });
 
   it("keeps no override reason on a plan whose hours reconcile", async () => {

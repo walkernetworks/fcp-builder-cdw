@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EngagementDocument } from "../shared/fcp";
+import { deliveredNotes } from "../shared/consumption";
 import { defaultReportFormat, fundingProblem, reconcileHours, reportFormatOption } from "../shared/reportFormat";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
@@ -38,7 +39,7 @@ describe("report format choice", () => {
 describe("hours reconciliation", () => {
   it("counts delivered plus planned against the entitlement", () => {
     const reconciled = acmeHealthReconciled();
-    expect(reconcileHours(reconciled, scopedEffortForDocument(reconciled, FIXTURE_TODAY), FIXTURE_TODAY)).toEqual({ delivered: 39, planned: 223, entitled: 262, deliveredAsOf: "2026-09-03", balanced: true, difference: 0 });
+    expect(reconcileHours(reconciled, scopedEffortForDocument(reconciled, FIXTURE_TODAY), FIXTURE_TODAY)).toEqual({ delivered: 39, planned: 223, entitled: 262, deliveredAsOf: "2026-09-03", balanced: true, exact: true, difference: 0 });
     expect(fundingProblem(reconciled, scopedEffortForDocument(reconciled, FIXTURE_TODAY), FIXTURE_TODAY)).toBeNull();
   });
 
@@ -47,7 +48,20 @@ describe("hours reconciliation", () => {
     expect(fundingProblem(over, scopedEffortForDocument(over, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("Under-funded: 39 hours delivered plus 347 planned is 124 more than the 262-hour entitlement. Move work to the follow-on or reduce hours in the Plan section.");
     const under = acmeHealthReconciled();
     under.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 0, projectManager: 0, placement: "auto", owner: "auto" });
-    expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toMatch(/^39 hours delivered plus 213 planned leaves 10 of the 262-hour entitlement unplanned\./);
+    expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("10 hours are not planned and will be forfeited at term end (39 delivered plus 213 planned, against the 262-hour entitlement). Plan them in the Plan section.");
+  });
+
+  it("allows an hour either way for rounding, and says so on the page instead of claiming the figures are equal", () => {
+    const document = acmeHealthReconciled();
+    document.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 8, projectManager: 1, placement: "auto", owner: "auto" });
+    const effort = scopedEffortForDocument(document, FIXTURE_TODAY);
+    expect(reconcileHours(document, effort, FIXTURE_TODAY)).toMatchObject({ planned: 222, balanced: true, exact: false, difference: -1 });
+    expect(fundingProblem(document, effort, FIXTURE_TODAY)).toBeNull();
+    const text = visible(summary(document));
+    expect(text).toContain("39 delivered plus 222 planned uses the 262-hour entitlement, to within an hour of rounding");
+    expect(text).toContain("Total, funded by the entitlement 261");
+    document.report.workPackageHours.push({ id: "bar-platform-runbook-transfer", architect: 0, srConsultant: 4, projectManager: 0, placement: "auto", owner: "auto" });
+    expect(fundingProblem(document, scopedEffortForDocument(document, FIXTURE_TODAY), FIXTURE_TODAY)).toMatch(/^3 hours are not planned/);
   });
 
   it("has nothing to reconcile without entitled hours, and falls back to the fit's under-funded flag", () => {
@@ -83,6 +97,13 @@ describe("Summary FCP", () => {
     expect(text).toContain("39 delivered plus 223 planned equals the 262-hour entitlement");
     // The plan as scheduled: discovery was delivered, so it is not planned again.
     expect(text).not.toContain("Greenfield Discovery Sessions and Funding Oct 2026");
+  });
+
+  it("labels the delivered row with the consumption notes, oldest first, up to the printed figure", () => {
+    expect(deliveredNotes([{ asOf: "2026-09-03", note: "Design discovery." }, { asOf: "2026-07-21", note: "Assessment" }, { asOf: "2026-08-01", note: " " }, { asOf: "2026-08-15", note: "Assessment" }, { asOf: "2026-12-01", note: "Kickoff" }], "2026-09-03")).toEqual(["Assessment", "Design discovery"]);
+    expect(deliveredNotes([{ asOf: "2026-09-03", note: null }], "2026-09-03")).toEqual([]);
+    const html = renderCondensedFcpHtml("Acme Health", acmeHealthReconciled(), { effort: scopedEffortForDocument(acmeHealthReconciled(), FIXTURE_TODAY), today: FIXTURE_TODAY, format: "summary", version: VERSION, deliveredNotes: ["Assessment", "Design discovery"] });
+    expect(visible(html)).toContain("Delivered to Date Assessment; Design discovery Apr – Sep 2026 39");
   });
 
   it("never prints the under-funded gap, the buckets or the reserve, and makes no equality claim it cannot keep", () => {

@@ -121,7 +121,7 @@ function footerCss(customer: string, version: IssueStamp | undefined): string {
   return `@page{@bottom-left{content:${cssString(LEGEND)};${box}}@bottom-right{content:${cssString(right)} counter(page) " of " counter(pages);text-align:right;${box}}}@page :first{@bottom-left{padding-left:.45in}@bottom-right{padding-right:.45in}}`;
 }
 
-export function renderSummaryFcpHtml(title: string, input: EngagementDocument, options: { today?: string; effort: ScopedEffort; draft?: boolean; version?: IssueStamp }): string {
+export function renderSummaryFcpHtml(title: string, input: EngagementDocument, options: { today?: string; effort: ScopedEffort; draft?: boolean; version?: IssueStamp; deliveredNotes?: string[] }): string {
   const { bsasOnly, w, deferredWork, document, today, asOf, customer, burndown, termEnd, assumedEnd, termStart, bsas } = prepareReport(input, options);
   const { fields, report } = document;
   const effort = options.effort;
@@ -192,7 +192,7 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
   // ---- Work packages: package, month, hours. Delivered hours are their own row; the plan schedules what remains.
   const reconciliation = reconcileHours(input, effort, today);
   const delivered = reconciliation && reconciliation.delivered > 0 ? reconciliation : null;
-  const deliveredRows = delivered ? [`<tr class="cat"><td colspan="3">Delivered to Date</td></tr>`, `<tr class="done"><td>Hours delivered to date</td><td>${esc(termStart && delivered.deliveredAsOf ? formatWindow(termStart, delivered.deliveredAsOf) : delivered.deliveredAsOf ? `To ${shortDate(delivered.deliveredAsOf)}` : "")}</td><td class="num">${hours(delivered.delivered)}</td></tr>`] : [];
+  const deliveredRows = delivered ? [`<tr class="cat"><td colspan="3">Delivered to Date</td></tr>`, `<tr class="done"><td>${esc(options.deliveredNotes?.length ? options.deliveredNotes.join("; ") : "Hours delivered to date")}</td><td>${esc(termStart && delivered.deliveredAsOf ? formatWindow(termStart, delivered.deliveredAsOf) : delivered.deliveredAsOf ? `To ${shortDate(delivered.deliveredAsOf)}` : "")}</td><td class="num">${hours(delivered.delivered)}</td></tr>`] : [];
   let packageRows: string[];
   if (effort.source === "assignments" || !effort.workPackages.some(row => row.total > 0)) {
     packageRows = effort.rows.filter(row => row.total > 0).map(row => `<tr><td>${esc(row.note ? `${row.workstream} (${row.note})` : row.workstream)}</td><td></td><td class="num">${hours(row.total)}</td></tr>`);
@@ -208,8 +208,9 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
   const total = (delivered?.delivered ?? 0) + Math.round(effort.totals.total);
   const totalLabel = balanced ? w("Total, funded by the entitlement", "Total, funded by the BSAS hours") : "Total CDW hours";
   const basis = effort.source === "assignments" ? "From the signed resource assignments." : "The signed resource assignments replace these estimates.";
+  // The sentence states only what the printed figures show: "equals" when they add up to the hour.
   const reconcileNote = reconciliation && balanced
-    ? `CDW-delivered hours: ${hours(reconciliation.delivered)} delivered plus ${hours(reconciliation.planned)} planned equals the ${hours(reconciliation.entitled)}-hour ${w("entitlement", "BSAS allocation")}. ${basis}`
+    ? `CDW-delivered hours: ${hours(reconciliation.delivered)} delivered plus ${hours(reconciliation.planned)} planned ${reconciliation.exact ? "equals" : "uses"} the ${hours(reconciliation.entitled)}-hour ${w("entitlement", "BSAS allocation")}${reconciliation.exact ? "" : ", to within an hour of rounding"}. ${basis}`
     : delivered ? `CDW-delivered hours: ${hours(delivered.delivered)} delivered plus ${hours(delivered.planned)} planned. ${basis}` : `CDW-delivered hours. ${basis}`;
   const workPackages = `<h3>Work Packages</h3><table class="wp" data-foot="sum"><thead><tr><th>Package</th><th>Month</th><th class="num">Hours</th></tr></thead><tbody>${[...deliveredRows, ...packageRows].join("")}<tr class="total"><td>${esc(totalLabel)}</td><td></td><td class="num">${hours(total)}</td></tr></tbody></table><p class="note">${esc(reconcileNote)}</p>`;
 

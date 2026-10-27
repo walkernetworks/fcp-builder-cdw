@@ -20,3 +20,15 @@ export function consumedBetween(before: ConsumptionPoint | null, after: Consumpt
   if (!after) return null;
   return { hours: Math.max(0, Math.round((after.consumedHours - (before?.consumedHours ?? 0)) * 100) / 100), asOf: after.asOf };
 }
+
+/**
+ * What the delivered hours were for, in the planner's words: the notes on the consumption entries up to the figure the
+ * FCP prints, oldest first, each once. Empty when no entry has a note; the FCP then labels the row generically.
+ */
+export function deliveredNotes(entries: Array<{ asOf: string; note: string | null }>, consumedAsOf: string | null): string[] {
+  const notes = entries
+    .filter(entry => entry.note?.trim() && (!consumedAsOf || entry.asOf <= consumedAsOf))
+    .sort((left, right) => left.asOf.localeCompare(right.asOf))
+    .map(entry => entry.note!.trim().replace(/[.\s]+$/, ""));
+  return Array.from(new Set(notes));
+}

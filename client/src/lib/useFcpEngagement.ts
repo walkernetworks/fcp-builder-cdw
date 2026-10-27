@@ -99,7 +99,7 @@ export function useFcpEngagement(id: number) {
   }, [document, title, id, found, dirty, holdsLock]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (hydratedId.current !== id) return;
-    const timer = window.setTimeout(() => previewMutation.mutate({ title, data: document, reportFormat }), 350);
+    const timer = window.setTimeout(() => previewMutation.mutate({ id, title, data: document, reportFormat }), 350);
     return () => window.clearTimeout(timer);
   }, [document, title, id, reportFormat]); // eslint-disable-line react-hooks/exhaustive-deps
 

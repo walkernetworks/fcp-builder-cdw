@@ -239,6 +239,8 @@ export type CondensedFcpOptions = {
   format?: ReportFormat;
   /** The issue this render is for; absent on a working draft. */
   version?: IssueStamp;
+  /** What the delivered hours were for, from the consumption entries' notes (shared/consumption.ts deliveredNotes). */
+  deliveredNotes?: string[];
 };
 
 

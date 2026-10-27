@@ -1,6 +1,7 @@
 import type { ScopedEffort } from "../shared/effort";
 import { computeChangeSummary, isEmptyChange, type ChangeSummary } from "../shared/fcpChangeSummary";
 import { migrateDocument, type EngagementDocument } from "../shared/fcp";
+import { deliveredNotes } from "../shared/consumption";
 import { defaultReportFormat, fundingProblem, reportFormatOption, type ReportFormat, type ReportFormatChoice } from "../shared/reportFormat";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
@@ -50,7 +51,8 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
   const reportFormat = options.reportFormat ?? defaultReportFormat(row.segment);
   const format = reportFormatOption(reportFormat);
   const latest = await db.getLatestIssuedVersion(viewer, engagementId);
-  const render = (version: { issueNumber: number; issuedOn: string }) => renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version } : {}) });
+  const notes = format ? await recordDeliveredNotes(viewer, engagementId, document) : [];
+  const render = (version: { issueNumber: number; issuedOn: string }) => renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version, deliveredNotes: notes } : {}) });
   const html = render({ issueNumber: (latest?.issueNumber ?? 0) + 1, issuedOn });
   const previous = latest && latest.issueNumber !== null && latest.effortSnapshot ? { document: latest.data, effort: latest.effortSnapshot, issueNumber: latest.issueNumber } : null;
   const changeSummary = computeChangeSummary(previous, { document, effort });
@@ -68,6 +70,11 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
     unchanged: Boolean(previous) && isEmptyChange(changeSummary) && asIssued !== null && latest?.renderedHtml === asIssued,
     basedOn: latest && latest.issueNumber !== null ? { id: latest.id, issueNumber: latest.issueNumber } : null,
   };
+}
+
+/** The consumption entries' notes behind the delivered hours the FCP prints, for its "Delivered to date" row. */
+export async function recordDeliveredNotes(viewer: Viewer, engagementId: number, document: EngagementDocument): Promise<string[]> {
+  return deliveredNotes((await db.listConsumptionEntries(viewer, engagementId)) ?? [], document.report.entitlement.consumedAsOf);
 }
 
 export type IssuedComparison = {
