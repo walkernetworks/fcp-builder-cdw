@@ -134,6 +134,13 @@ export function planKeyDates(document: EngagementDocument): { implementationStar
   return { implementationStart, buildStart, buildLater: Boolean(buildStart && implementationStart && buildStart.slice(0, 7) > implementationStart.slice(0, 7)) };
 }
 
+/**
+ * An open item the account team works from, not the customer: the signed hours behind the burndown. It is a readiness
+ * item (Delivery package readiness), so no customer format prints it, even from a document that saved it earlier.
+ */
+export const INTERNAL_HOURS_ITEM = "Entitled hours from the signed resource assignments";
+export const customerOpenItems = <T extends { item: string }>(items: T[]): T[] => items.filter(row => row.item.trim() !== INTERNAL_HOURS_ITEM);
+
 /** The overlay MTU requirement, from the same constants the host findings use. */
 const OVERLAY_MTU_REQUIREMENT = `Workload traffic on distributed switches (${VDS_REQUIREMENT}); NSX TEP traffic needs an MTU of at least ${NSX_TEP_MIN_MTU.toLocaleString("en-US")} end to end, with ${RECOMMENDED_MTU.toLocaleString("en-US")} recommended.`;
 
@@ -392,9 +399,6 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
     const planned = addOn?.priority && addOn.focus ? addOn.focus.some(focus => outcomeKeys.has(`${addOn.priority}:${focus}`)) : false;
     if (!planned) openItems.push({ item: `${addOn?.label ?? purchased} is purchased but not in this plan`, gates: "Scope: add it or record why it waits", owner: commercialOwner });
   }
-  // The brief often carries its own item for the work plan hours; raise this one only when nothing covers it.
-  const hoursItemOnRecord = report.openItems.some(item => /resource assignment|work plan|entitled hours/i.test(`${item.item} ${item.gates}`));
-  if (!bsasOnly && !report.entitlement.hours && !hoursItemOnRecord) openItems.push({ item: "Entitled hours from the signed resource assignments", gates: "Burndown and weekly pace", owner: commercialOwner });
   // The brief often asks for the term itself; raise the assumed end date only when nothing covers it.
   const termItemOnRecord = report.openItems.some(item => /entitlement (term|end)/i.test(`${item.item} ${item.gates}`));
   if (termEndAssumed(document) && termEnd && !termItemOnRecord) openItems.push({ item: `${bsasOnly ? "BSAS end date" : "Entitlement end date"}: ${shortDate(termEnd)} is assumed as 12 months from the start; confirm the term`, gates: "Timeline end, weekly pace and follow-on scope", owner: commercialOwner });

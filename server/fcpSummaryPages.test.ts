@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { EngagementDocument } from "../shared/fcp";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { FIT_MIN_ZOOM } from "./fcpSummaryRenderer";
-import { acmeHealthReconciled, FIXTURE_TODAY, meridianHealth, northwindMfg, riverbendHealth } from "./fixtures/fcpFixtures";
+import { acmeHealthReconciled, cedarRidgeLogistics, FIXTURE_TODAY, meridianHealth, northwindMfg, riverbendHealth } from "./fixtures/fcpFixtures";
 import { renderPdf } from "./pdf";
 import { scopedEffortForDocument } from "./rateCard";
 
@@ -41,7 +41,7 @@ describe("Summary FCP pages", () => {
   });
 
   it.skipIf(!chrome)("prints on two pages, the fixtures and a crowded plan alike", async () => {
-    for (const document of [acmeHealthReconciled(), meridianHealth(), riverbendHealth(), northwindMfg(), crowded()]) {
+    for (const document of [acmeHealthReconciled(), meridianHealth(), riverbendHealth(), northwindMfg(), cedarRidgeLogistics(), crowded()]) {
       expect(pages(await renderPdf(summary(document))), document.fields.customerName).toBe(2);
     }
   }, 60_000);

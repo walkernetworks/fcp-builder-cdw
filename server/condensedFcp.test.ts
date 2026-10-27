@@ -9,6 +9,7 @@ import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { renderFcpHtml } from "./fcpRenderer";
 import { scopedEffortForDocument } from "./rateCard";
 import { barWindow } from "../shared/buildingBlocks";
+import { INTERNAL_HOURS_ITEM } from "../shared/reportView";
 
 const brief = () => JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../docs/examples/customer-brief.example.json"), "utf8"));
 
@@ -493,12 +494,19 @@ describe("Condensed FCP review fixes", () => {
     }
   });
 
-  it("raises the work plan hours item only once", () => {
+  it("never prints the signed-hours item, which is the account team's readiness item", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
-    document.report.openItems = [{ item: "Confirm the 1,445-hour Broadcom work plan", gates: "Hours", owner: "Broadcom" }];
-    const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
-    expect(visible).not.toContain("Entitled hours from the signed resource assignments");
+    document.report.entitlement.hours = null;
+    const refreshed = refreshDerivedDocument(document, { forceRebuild: true });
+    expect(refreshed.report.openItems.map(item => item.item)).not.toContain(INTERNAL_HOURS_ITEM);
+    // Nor from a document that saved it before it became a readiness item.
+    refreshed.report.openItems = [{ item: INTERNAL_HOURS_ITEM, gates: "Burndown and weekly pace", owner: "CDW account team" }, { item: "Current RVTools export", gates: "Design sign-off and sizing", owner: "Pat Rivera" }];
+    const html = render(refreshed);
+    expect(text(html)).not.toContain(INTERNAL_HOURS_ITEM);
+    expect(text(html)).toContain("Current RVTools export");
+    expect(text(renderCondensedFcpHtml("Acme Health", refreshed, { effort: scopedEffortForDocument(refreshed), format: "summary" }))).not.toContain(INTERNAL_HOURS_ITEM);
   });
+
 
   it("shows Senior Architect and Offshore PM hours from a signed work plan", () => {
     const document = engagement(raw => { raw.resourceAssignments = [{ workstream: "Design and build", architect: 180, srConsultant: 900, projectManager: 190, seniorArchitect: 62, offshoreProjectManager: 113 }]; });

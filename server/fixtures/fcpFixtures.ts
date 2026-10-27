@@ -86,9 +86,34 @@ export function northwindMfg(): EngagementDocument {
   return refreshDerivedDocument(document);
 }
 
+/**
+ * Commercial, nothing booked: no entitlement value, hours or term, and a plan with a start date but no target
+ * completion. The plan is the full scope at its estimate, so the customer formats must not lean on an entitlement.
+ */
+export function cedarRidgeLogistics(): EngagementDocument {
+  const document = createDefaultDocument();
+  Object.assign(document.fields, {
+    customerName: "Cedar Ridge Logistics",
+    accountId: "CRL",
+    location: "Duluth, MN",
+    customerSegment: "commercial", commercialPlan: true,
+    entitlementAmount: 0,
+    plannedProjectStart: "2026-11-02",
+    plannedImplementationStart: "",
+    targetComplete: "",
+    hoursModel: "v2",
+    priorities: ["operations"],
+    exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: false },
+  });
+  Object.assign(document.fields.adoptionDetails, { platformEdition: "vvf", upgradePath: "greenfield" });
+  Object.assign(document.inventory, { hosts: 8, clusters: 1, vmCount: 120, datacenters: 1 });
+  return refreshDerivedDocument(document);
+}
+
 export const FCP_FIXTURES = [
   { slug: "acme-health", title: "Acme Health", build: acmeHealth },
   { slug: "meridian-health", title: "Meridian Health", build: meridianHealth },
   { slug: "riverbend-health", title: "Riverbend Health", build: riverbendHealth },
   { slug: "northwind-mfg", title: "Northwind Mfg", build: northwindMfg },
+  { slug: "cedar-ridge-logistics", title: "Cedar Ridge Logistics", build: cedarRidgeLogistics },
 ] as const;
