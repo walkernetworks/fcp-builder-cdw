@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EngagementDocument } from "../shared/fcp";
+import { refreshDerivedDocument } from "../shared/fcp";
+import { customerOpenItems, internalOpenItems, ownedOnlyByUs, termEndAssumed } from "../shared/reportView";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { bottomRow } from "./fcpSummaryRenderer";
@@ -85,5 +87,48 @@ describe("no entitlement booked: the Summary", () => {
     expect(text).toContain("the entitlement window.");
     expect(text).not.toContain("planned delivery window");
     expect(tiles(summary(booked))).not.toContain("Entitlement: Not yet booked");
+  });
+});
+
+describe("customer open items: what the customer must do or decide", () => {
+  const document = () => {
+    const doc = cedarRidgeLogistics();
+    doc.report.contacts = { customer: [{ name: "Pat Rivera", role: "Platform lead" }], cdw: [{ name: "Jordan Blake", role: "Architect" }], broadcom: [{ name: "Alex Kim", role: "PM" }] };
+    return doc;
+  };
+
+  it("keeps an item the customer is named on and drops one owned only by CDW or Broadcom", () => {
+    const doc = document();
+    for (const owner of ["CDW account team", "Broadcom", "CDW pre-sales / Broadcom partner", "Jordan Blake", "Alex Kim (Broadcom PM)"]) expect(ownedOnlyByUs(owner, doc), owner).toBe(true);
+    for (const owner of ["Cedar Ridge Logistics infrastructure team with CDW", "Cedar Ridge Logistics with CDW account team", "Pat Rivera", "Pat Rivera with Jordan Blake", "customer security lead", "", "Someone Else"]) expect(ownedOnlyByUs(owner, doc), owner).toBe(false);
+  });
+
+  it("filters both ways, so readiness can list what the customer formats leave out", () => {
+    const doc = document();
+    const items = [{ item: "Current RVTools export", gates: "Sizing", owner: "Pat Rivera" }, { item: "Confirm the Broadcom work plan", gates: "Hours", owner: "Broadcom" }];
+    expect(customerOpenItems(items, doc).map(row => row.item)).toEqual(["Current RVTools export"]);
+    expect(internalOpenItems(items, doc).map(row => row.item)).toEqual(["Confirm the Broadcom work plan"]);
+  });
+
+  it("leaves an item owned only by CDW or Broadcom off every customer format", () => {
+    const doc = document();
+    doc.report.openItems = [{ item: "Quote reconciled in the CDW system", gates: "Billing", owner: "CDW account team" }, { item: "Current RVTools export", gates: "Design sign-off and sizing", owner: "Pat Rivera" }];
+    for (const html of [render(doc), render(doc, "summary")]) {
+      expect(visible(html)).not.toContain("Quote reconciled in the CDW system");
+      expect(visible(html)).toContain("Current RVTools export");
+    }
+  });
+
+  it("no longer raises an assumed end date as an open item, and marks the date to be confirmed instead", () => {
+    const doc = cedarRidgeLogistics();
+    Object.assign(doc.fields, { entitlementAmount: 90_000, entitlementStart: "2026-11-02" });
+    const refreshed = refreshDerivedDocument(doc, { forceRebuild: true });
+    expect(refreshed.report.openItems.map(row => row.item).join(" ")).not.toMatch(/assumed as 12 months/);
+    expect(termEndAssumed(refreshed)).toBe(true);
+    const summaryText = visible(render(refreshed, "summary"));
+    expect(summaryText).toContain("Entitlement ends; unused hours are not refunded (to be confirmed)");
+    expect(summaryText).toContain("date to be confirmed");
+    expect(summaryText).toMatch(/through 2 November 2027 \(to be confirmed\)/);
+    expect(visible(render(refreshed))).toContain("(12 months from the start; to be confirmed)");
   });
 });
