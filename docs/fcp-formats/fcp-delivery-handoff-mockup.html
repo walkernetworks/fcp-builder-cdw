@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Acme Health - Delivery Handoff (Internal)</title>
+<style>
+:root{--ink:#1d1d1f;--slate:#3c4250;--muted:#6b7280;--line:#e3e6ea;--red:#CC0000;--dark:#242a38;--hair:#E4E7EC;--int:#263042;--amber:#a15c00;--amberbg:#FFF4DC;--green:#1f6b45;--greenbg:#E6F3EC}
+*{box-sizing:border-box}
+html,body{margin:0;background:#e9ebef;color:var(--ink);font:10.5px/1.45 Helvetica,'Helvetica Neue',Arial,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@page{size:letter landscape;margin:0}
+.sheet{width:11in;height:8.5in;background:#fff;margin:.3in auto;position:relative;overflow:hidden;padding:0 .45in;display:flex;flex-direction:column}
+@media print{html,body{background:#fff}.sheet{margin:0;break-after:page}.sheet:last-child{break-after:auto}}
+
+.band{margin:0 -.45in;background:var(--int);color:#fff;padding:.3in .45in .24in;display:flex;justify-content:space-between;align-items:flex-end}
+.band .logo{width:.95in;color:#fff;display:block;margin-bottom:11px}
+.band .eyebrow{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#ffb3b3}
+.band h1{margin:3px 0 0;font-size:24px;line-height:1.1;font-weight:900}
+.band .meta{text-align:right;font-size:10px;line-height:1.5}
+.band .meta b{display:block;font-size:12px;font-weight:900}
+.intflag{display:inline-block;background:var(--red);color:#fff;font-size:8.5px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:3px;margin-bottom:6px}
+
+.strip{display:flex;justify-content:space-between;align-items:center;border-top:4px solid var(--int);margin-top:.3in;padding:6px 0 7px;border-bottom:1px solid var(--line);font-size:8.5px;color:var(--muted)}
+.strip .tag{color:var(--red);font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.slogo{width:.45in;height:auto;color:var(--red);vertical-align:middle;margin-right:8px}
+.foot{display:flex;justify-content:space-between;font-size:8px;color:#898b8e;border-top:1px solid var(--line);padding:7px 0 .28in;margin-top:auto}
+.foot .tag{color:var(--red);font-weight:800}
+
+h2{font-size:17px;font-weight:900;margin:12px 0 3px}
+.sec-lead{color:var(--muted);font-size:10px;margin:0 0 8px}
+h3{font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--int);margin:12px 0 5px;border-left:3px solid var(--red);padding-left:6px}
+p{margin:0 0 6px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:.3in}
+.two-a{display:grid;grid-template-columns:1fr 1.25fr;gap:.3in}
+
+table{width:100%;border-collapse:collapse;font-size:9.5px}
+th{background:#eef0f3;color:var(--slate);font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:4px 6px;vertical-align:bottom}
+td{padding:3.5px 6px;border-bottom:1px solid var(--hair);color:var(--slate);vertical-align:top}
+td:first-child{color:var(--ink);font-weight:700}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.cat td{background:#f4f5f7;font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);padding:3px 6px}
+tr.total td{border-top:2px solid #1a1d21;border-bottom:0;font-weight:900;color:var(--ink)}
+td small{display:block;font-weight:400;color:var(--muted);font-size:8.5px;line-height:1.35;margin-top:1px}
+td small b{color:var(--slate)}
+.kv td:first-child{width:1.35in}
+
+.chip{display:inline-block;font-size:7.5px;font-weight:800;border-radius:99px;padding:1px 6px;white-space:nowrap}
+.chip.a{background:var(--amberbg);color:var(--amber)}
+.chip.c{background:var(--greenbg);color:var(--green)}
+.chip.u{background:#eef0f3;color:var(--muted)}
+.chip.r{background:#FDE7E7;color:var(--red)}
+
+.start{counter-reset:s;margin:0;padding:0;list-style:none}
+.start li{counter-increment:s;position:relative;padding:7px 0 7px 30px;border-bottom:1px solid var(--hair);color:var(--slate)}
+.start li::before{content:counter(s);position:absolute;left:0;top:7px;width:20px;height:20px;border-radius:99px;background:var(--int);color:#fff;font-weight:900;font-size:10px;display:flex;align-items:center;justify-content:center}
+.start li b{color:var(--ink)}
+.facts{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);margin:4px 0 6px}
+.facts div{padding:7px 10px;border-right:1px solid var(--line)}
+.facts div:last-child{border-right:0}
+.facts .v{font-size:16px;font-weight:900;color:var(--int)}
+.facts .v.warn{color:var(--red)}
+.facts .l{font-size:9px;font-weight:800}
+.facts .s{font-size:8px;color:var(--muted)}
+.note{background:var(--amberbg);border-left:4px solid #d97706;padding:6px 10px;margin:6px 0;font-size:9.5px;color:#4b3410}
+.note.r{background:#FDECEC;border-left-color:var(--red);color:#5a1414}
+</style>
+</head>
+<body>
+
+<!-- ============================== 1. START HERE ============================== -->
+<section class="sheet">
+  <div class="band">
+    <div>
+      <svg class="logo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg>
+      <div class="intflag">Internal · Not for customer distribution</div>
+      <div class="eyebrow">Delivery Handoff</div>
+      <h1>Acme Health: VCF 9.1 Greenfield</h1>
+    </div>
+    <div class="meta"><b>Handoff for FCP Version 1</b>Standard format, issued 30 Sep 2026<br>Prepared by CDW Consulting Solution Architecture</div>
+  </div>
+
+  <div class="two-a" style="margin-top:12px">
+    <div>
+      <h3 style="margin-top:0">Engagement</h3>
+      <table class="kv">
+        <tr><td>Customer</td><td>Acme Health, Reno NV</td></tr>
+        <tr><td>Opportunity</td><td>C-OPP-0001234</td></tr>
+        <tr><td>Segment</td><td>Corporate</td></tr>
+        <tr><td>Stage</td><td>Customer Approval</td></tr>
+        <tr><td>Platform and path</td><td>VCF 9.1, greenfield with staging hardware</td></tr>
+        <tr><td>Delivery model</td><td>CDW + Broadcom (Broadcom PS prime, CDW delivers)</td></tr>
+        <tr><td>Customer received</td><td>FCP Version 1, Standard, 30 Sep 2026</td></tr>
+        <tr><td>Approvals</td><td>Broadcom <span class="chip a">Pending</span> &nbsp;Customer <span class="chip a">Pending</span></td></tr>
+      </table>
+      <h3>People</h3>
+      <table>
+        <thead><tr><th>Role</th><th>Name</th><th>Organization</th></tr></thead>
+        <tr><td>Architect</td><td>Jordan Blake</td><td>CDW</td></tr>
+        <tr><td>Sr. Consultant</td><td>Casey Morgan</td><td>CDW</td></tr>
+        <tr><td>Project Manager</td><td>Alex Kim</td><td>Broadcom</td></tr>
+        <tr><td>Platform lead</td><td>Pat Rivera</td><td>Acme Health</td></tr>
+        <tr><td>Network</td><td>Sam Lee</td><td>Acme Health</td></tr>
+      </table>
+    </div>
+
+    <div>
+      <h3 style="margin-top:0">Start here: what delivery needs to know first</h3>
+      <ol class="start">
+        <li><b>The plan uses every remaining hour.</b> 39 hours were delivered in assessment and discovery; the plan schedules the other 223. There is no reserve, so any change request needs a scope trade or more entitlement.</li>
+        <li><b>CDW runs only the proving waves.</b> Migration was cut from 126 to 41 CDW hours to fit the entitlement. Acme Health runs the remaining waves with the runbook, at a peak of 30 hours a week (0.75 FTE), Feb to Apr 2027. Confirm they can staff it.</li>
+        <li><b>Compatibility is not established.</b> No RVTools host rows were imported, so every host model is unverified. The current export is overdue (owner Pat Rivera) and gates design sign-off and the 1 Jan 2027 build start.</li>
+        <li><b>17 of 24 estimating inputs are assumed.</b> Confirm the high-impact ones in the first design session: VM count, migration waves with dates, extended VLANs and protected VMs (page 3).</li>
+        <li><b>Recovery objectives are undefined.</b> The DR site is being built now, but the recovery design is follow-on work after 28 Apr 2027. Don't let DR scope creep into the entitlement.</li>
+      </ol>
+    </div>
+  </div>
+  <div class="foot"><span class="tag">Internal · CDW delivery use only</span><span>Delivery Handoff · Acme Health · FCP Version 1 · Page 1</span></div>
+</section>
+
+<!-- ============================== 2. HOURS AND FUNDING ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg><span class="tag">Internal</span> · Delivery Handoff</span><span>Acme Health · FCP Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Hours and Funding</h2>
+  <p class="sec-lead">The internal view of how the plan fits the entitlement. None of this prints to the customer beyond the entitlement value and hours.</p>
+
+  <div class="facts">
+    <div><div class="v">$79,403</div><div class="l">Entitlement</div><div class="s">262 hours · ends 28 Apr 2027</div></div>
+    <div><div class="v">39</div><div class="l">Delivered</div><div class="s">Assessment and discovery, as of 3 Sep 2026</div></div>
+    <div><div class="v">223</div><div class="l">Planned</div><div class="s">Oct 2026 to Apr 2027</div></div>
+    <div><div class="v warn">0</div><div class="l">Reserve</div><div class="s">No room for change requests</div></div>
+    <div><div class="v">117</div><div class="l">Follow-on</div><div class="s">Needs new funding</div></div>
+  </div>
+
+  <div class="two">
+    <div>
+      <h3>Scope by bucket</h3>
+      <table>
+        <thead><tr><th>Bucket</th><th>What it covers</th><th class="num">Hours</th></tr></thead>
+        <tr><td>Delivered</td><td>Assessment and discovery</td><td class="num">39</td></tr>
+        <tr><td>Entitlement: core</td><td>Design, foundation build, proving waves, VCF Operations at Tier 1, handover</td><td class="num">223</td></tr>
+        <tr><td>Entitlement: depth</td><td>Selected outcomes beyond core</td><td class="num">0</td></tr>
+        <tr><td>Entitlement: reserve</td><td>Change requests and estimate variance</td><td class="num">0</td></tr>
+        <tr><td>Follow-on</td><td>Year two; depends on a renewal or services purchase</td><td class="num">117</td></tr>
+        <tr><td>Customer-funded</td><td>Work wanted this year beyond the entitlement</td><td class="num">0</td></tr>
+        <tr class="total"><td>Total scope</td><td></td><td class="num">379</td></tr>
+      </table>
+      <div class="note"><b>Original plan was under-funded by 106 hours.</b> Resolved by the scope moves listed here before Version 1 was issued.</div>
+
+      <h3>Remaining hours by role</h3>
+      <table>
+        <thead><tr><th>Role</th><th class="num">Remaining</th><th>Busiest window</th><th>Main packages</th></tr></thead>
+        <tr><td>Architect</td><td class="num">79</td><td>Oct to Dec 2026</td><td>Hardware review, design, migration plan, access mapping</td></tr>
+        <tr><td>Sr. Consultant</td><td class="num">114</td><td>Jan 2027; Mar to Apr 2027</td><td>Foundation build (45), proving waves (31)</td></tr>
+        <tr><td>Project Manager</td><td class="num">30</td><td>Throughout</td><td>Kickoff, build and wave coordination</td></tr>
+        <tr class="total"><td>Total</td><td class="num">223</td><td></td><td></td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Scope moves</h3>
+      <table>
+        <thead><tr><th>Package</th><th class="num">Hours</th><th>Moved to</th><th>Why</th></tr></thead>
+        <tr><td>First workload domain</td><td class="num">46</td><td>Follow-on</td><td>Keep protected work inside the entitlement</td></tr>
+        <tr><td>Health, logs and diagnostics</td><td class="num">30</td><td>Follow-on</td><td>Keep protected work inside the entitlement</td></tr>
+        <tr><td>Workload migration and cutover</td><td class="num">85</td><td>Acme Health</td><td>CDW keeps 41 hours of proving waves; the customer runs the rest with the runbook</td></tr>
+        <tr><td>Design and BOM; migration plan</td><td class="num">10</td><td>Removed</td><td>Trimmed 5 hours each to fit the hours left after discovery</td></tr>
+      </table>
+      <h3>Delivery risks from the plan</h3>
+      <table>
+        <thead><tr><th>Risk</th><th>Watch for</th></tr></thead>
+        <tr><td>No reserve</td><td>Any added work, estimate overrun or re-design needs a scope trade or a change to the entitlement</td></tr>
+        <tr><td>Customer-run waves</td><td>If Acme Health can't staff 0.75 FTE in Feb to Apr, waves slip past the entitlement end</td></tr>
+        <tr><td>Build start depends on hardware</td><td>1 Jan 2027 build needs hardware sign-off, which needs the RVTools export</td></tr>
+        <tr><td>Licensing</td><td>VCF Operations licensing must activate before the evaluation period ends (Feb 2027)</td></tr>
+        <tr><td>Pace</td><td>7.4 hours a week required from 30 Sep; slow months in Oct to Dec push hours into Q1</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="foot"><span class="tag">Internal · CDW delivery use only</span><span>Delivery Handoff · Acme Health · FCP Version 1 · Page 2</span></div>
+</section>
+
+<!-- ============================== 3. ESTIMATING BASIS ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg><span class="tag">Internal</span> · Delivery Handoff</span><span>Acme Health · FCP Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Estimating Basis</h2>
+  <p class="sec-lead">Every input the hours were built from, and where it came from. <span class="chip c">Confirmed</span> came from RVTools or the brief. <span class="chip a">Assumed</span> is a planning default to confirm in design. <span class="chip r">High impact</span> moves the hours most if it changes.</p>
+  <div class="two">
+    <table>
+      <thead><tr><th>Driver</th><th class="num">Value</th><th>Basis</th></tr></thead>
+      <tr class="cat"><td colspan="3">Estate</td></tr>
+      <tr><td>ESX hosts</td><td class="num">14</td><td><span class="chip c">Confirmed</span> Brief (RVTools host rows not imported)</td></tr>
+      <tr><td>Clusters</td><td class="num">1</td><td><span class="chip c">Confirmed</span> RVTools or brief</td></tr>
+      <tr><td>VMs</td><td class="num">350</td><td><span class="chip a">Assumed</span> <span class="chip r">High impact</span> Planning default</td></tr>
+      <tr><td>vCenters</td><td class="num">1</td><td><span class="chip c">Confirmed</span> RVTools or brief</td></tr>
+      <tr><td>Sites</td><td class="num">2</td><td><span class="chip c">Confirmed</span> RVTools or brief</td></tr>
+      <tr class="cat"><td colspan="3">Platform</td></tr>
+      <tr><td>VCF instances</td><td class="num">1</td><td><span class="chip c">Confirmed</span> RVTools or brief</td></tr>
+      <tr><td>Workload domains</td><td class="num">0</td><td><span class="chip a">Assumed</span> Consolidated topology</td></tr>
+      <tr><td>Clusters on the new platform</td><td class="num">1</td><td><span class="chip a">Assumed</span> Up to 16 hosts per cluster</td></tr>
+      <tr><td>Stretched clusters</td><td class="num">0</td><td><span class="chip a">Assumed</span> None stated</td></tr>
+      <tr><td>Principal storage types</td><td class="num">1</td><td><span class="chip c">Confirmed</span> Brief: VMFS on Fibre Channel</td></tr>
+      <tr><td>Clusters on FC or NFS storage</td><td class="num">1</td><td><span class="chip a">Assumed</span> Principal storage is VMFS on FC</td></tr>
+      <tr><td>Mixed principal storage</td><td class="num">No</td><td><span class="chip c">Confirmed</span> Brief</td></tr>
+      <tr><td>Domains with dedicated NSX</td><td class="num">0</td><td><span class="chip a">Assumed</span> None stated</td></tr>
+    </table>
+    <table>
+      <thead><tr><th>Driver</th><th class="num">Value</th><th>Basis</th></tr></thead>
+      <tr class="cat"><td colspan="3">Migration</td></tr>
+      <tr><td>Migration site pairs</td><td class="num">1</td><td><span class="chip a">Assumed</span> Planning default</td></tr>
+      <tr><td>Extended VLANs</td><td class="num">10</td><td><span class="chip a">Assumed</span> <span class="chip r">High impact</span> Planning default</td></tr>
+      <tr><td>Waves with a date behind them</td><td class="num">1</td><td><span class="chip a">Assumed</span> <span class="chip r">High impact</span> Only the first wave dated</td></tr>
+      <tr class="cat"><td colspan="3">Operations</td></tr>
+      <tr><td>vCenter data sources</td><td class="num">1</td><td><span class="chip a">Assumed</span> One per vCenter</td></tr>
+      <tr><td>Management packs</td><td class="num">0</td><td><span class="chip a">Assumed</span> Open question; conservative</td></tr>
+      <tr><td>Custom dashboards</td><td class="num">1</td><td><span class="chip a">Assumed</span> One when the module is selected</td></tr>
+      <tr><td>Event integration targets</td><td class="num">1</td><td><span class="chip a">Assumed</span> One when the module is selected</td></tr>
+      <tr class="cat"><td colspan="3">Recovery (follow-on)</td></tr>
+      <tr><td>Recovery site pairs</td><td class="num">1</td><td><span class="chip a">Assumed</span> A recovery design needs one</td></tr>
+      <tr><td>Protection groups or plans</td><td class="num">1</td><td><span class="chip a">Assumed</span> Conservative</td></tr>
+      <tr><td>Protected VMs</td><td class="num">70</td><td><span class="chip a">Assumed</span> <span class="chip r">High impact</span> Planning default</td></tr>
+      <tr><td>Recovery exercises</td><td class="num">1</td><td><span class="chip a">Assumed</span> One when selected</td></tr>
+    </table>
+  </div>
+  <div class="foot"><span class="tag">Internal · CDW delivery use only</span><span>Delivery Handoff · Acme Health · FCP Version 1 · Page 3</span></div>
+</section>
+
+<!-- ============================== 4. ESTATE AND COMPATIBILITY ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg><span class="tag">Internal</span> · Delivery Handoff</span><span>Acme Health · FCP Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Estate and Compatibility</h2>
+  <p class="sec-lead">What discovery established about the current environment, and where the ESXi 9.1 compatibility posture stands.</p>
+  <div class="two">
+    <div>
+      <h3 style="margin-top:0">What we know about the estate</h3>
+      <table>
+        <thead><tr><th>Topic</th><th>Answer</th><th>Why it matters</th></tr></thead>
+        <tr><td>Current platform</td><td>vSphere 8.0.3</td><td>Sets the upgrade and import sequence and day-one tools</td></tr>
+        <tr><td>vCenters</td><td>1</td><td>Each in-scope vCenter needs an RVTools export and a target in the design</td></tr>
+        <tr><td>Enhanced Linked Mode</td><td>No</td><td>Affects identity, licensing views and how vCenters join the fleet</td></tr>
+        <tr><td>Data centers</td><td>2</td><td>Site count for the design; where the management domain lands</td></tr>
+        <tr><td>Server vendor</td><td>Cisco UCS</td><td>vLCM vendor add-on, hardware support manager, firmware baseline</td></tr>
+        <tr><td>Storage</td><td>Fibre Channel</td><td>Principal storage workflow; array support matrix to check</td></tr>
+        <tr><td>Networking</td><td>vDS, VLAN-backed</td><td>Management network, VLANs and IP plan for the build</td></tr>
+        <tr><td>Disaster recovery</td><td>SnapMirror</td><td>Recovery design replaces or integrates it; capture objectives first</td></tr>
+        <tr><td>New hosts</td><td>8 for workloads</td><td>Sized into the design; build waits for delivery, rack and stack</td></tr>
+        <tr><td>VCF licensed</td><td>Yes</td><td>Activate before the evaluation period on the new platform ends</td></tr>
+        <tr><td>Prior assessment</td><td>Yes</td><td>Discovery confirms and extends it rather than repeating it</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3 style="margin-top:0">ESXi 9.1 compatibility</h3>
+      <div class="note r"><b>Not established.</b> No RVTools host rows are imported, so no host model, CPU, adapter or build has been checked. The 14 hosts in the estimating basis came from the brief. Treat every host as unverified until a current export is imported.</div>
+      <table>
+        <thead><tr><th>Check</th><th>Status</th></tr></thead>
+        <tr><td>RVTools inventory coverage</td><td><span class="chip u">No data</span> No host and VM inventory imported</td></tr>
+        <tr><td>ESXi software baseline</td><td><span class="chip u">No data</span> ESXi versions not available</td></tr>
+        <tr><td>Hardware platform evidence</td><td><span class="chip u">No data</span> Host vendor and model missing</td></tr>
+        <tr><td>Offline server HCL snapshot</td><td><span class="chip u">No data</span> No vHost server models to check</td></tr>
+        <tr><td>Management-domain uniformity</td><td><span class="chip u">No data</span> Cluster membership missing; can't check uniform-hardware rule</td></tr>
+        <tr><td>Topology and N-1 sizing</td><td><span class="chip u">No data</span> Capture in the VCF Planning and Preparation Workbook</td></tr>
+        <tr><td>HCL 2.0 estate checks</td><td><span class="chip u">No data</span> Import the available RVTools tabs</td></tr>
+        <tr><td>Point-in-time capacity</td><td><span class="chip c">Clear</span> No threshold exceptions</td></tr>
+      </table>
+      <h3>Action</h3>
+      <table>
+        <tr><td>Import a current RVTools export</td><td>Owner Pat Rivera · gates design sign-off, hardware sign-off and the 1 Jan 2027 build</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="foot"><span class="tag">Internal · CDW delivery use only</span><span>Delivery Handoff · Acme Health · FCP Version 1 · Page 4</span></div>
+</section>
+
+<!-- ============================== 5. DESIGN AND TECHNICAL ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg><span class="tag">Internal</span> · Delivery Handoff</span><span>Acme Health · FCP Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Design and Technical Detail</h2>
+  <p class="sec-lead">The decisions already made, the gates that hold the build, and the technical items to confirm early.</p>
+  <h3 style="margin-top:0">Design elements and gates</h3>
+  <table>
+    <thead><tr><th style="width:1.1in">Component</th><th style="width:2.6in">Requirement</th><th>Recommendation</th><th style="width:2.1in">Gate</th></tr></thead>
+    <tr><td>Inventory</td><td>Sizing needs the current estate</td><td>RVTools export of every in-scope vCenter</td><td>A current RVTools export</td></tr>
+    <tr><td>Networking</td><td>NSX deployed with VCF; workloads can stay VLAN-backed</td><td>Start VLAN-backed; overlay networking in a later phase</td><td></td></tr>
+    <tr><td>Hardware lifecycle</td><td>Cisco UCS; vLCM images manage firmware and drivers with the ESX image</td><td>Build cluster images with the Cisco UCS add-on and hardware support manager once host models are confirmed</td><td>Compatibility check on a current RVTools export</td></tr>
+    <tr><td>Principal storage</td><td>VMFS on Fibre Channel is supported for the management domain</td><td>Keep the existing array over Fibre Channel; no vSAN needed</td><td></td></tr>
+    <tr><td>Disaster recovery</td><td>Recovery runs on SnapMirror today</td><td>Recovery design decides whether VMware Live Recovery replaces or runs alongside it, and sets objectives</td><td></td></tr>
+    <tr><td>DR orchestration</td><td>Orchestration and a defined recovery time objective</td><td>Choose the tool in the recovery design; test DR capacity on the new site</td><td>DR recovery time objective set</td></tr>
+  </table>
+
+  <div class="two">
+    <div>
+      <h3>Technical items to confirm early</h3>
+      <table>
+        <thead><tr><th>Item</th><th>Reference</th></tr></thead>
+        <tr><td>NSX TEP MTU of at least 1700 end to end, 9000 recommended; hosts on a distributed switch (vDS 8.0+ to converge, 7.0+ to import)</td><td>VCF 9.1 Planning and Preparation Guide, VCF-NET-REQD-MTU-006</td></tr>
+        <tr><td>The VCF Installer deploys vCenter, NSX and VCF Operations with the management domain</td><td>VCF 9.1 documentation, VCF Installer Overview</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Sequencing constraints</h3>
+      <table>
+        <thead><tr><th>Constraint</th><th>Imposed by</th><th>Effect</th></tr></thead>
+        <tr><td>Design and current inventory before the build</td><td>Sizing</td><td>Build starts after design sign-off</td></tr>
+        <tr><td>Management domain before any workload moves</td><td>Platform</td><td>Proving waves follow the build</td></tr>
+        <tr><td>Services start 1 Oct 2026; build 1 Jan 2027</td><td>Acme Health</td><td>Design and planning run first</td></tr>
+        <tr><td>Entitlement ends 28 Apr 2027</td><td>Entitlement</td><td>Handover completes in April</td></tr>
+        <tr><td>DR site online before DR build and testing</td><td>Calendar</td><td>Recovery design now; build follows the site</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="foot"><span class="tag">Internal · CDW delivery use only</span><span>Delivery Handoff · Acme Health · FCP Version 1 · Page 5</span></div>
+</section>
+
+<!-- ============================== 6. WORK PACKAGE DETAIL ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg><span class="tag">Internal</span> · Delivery Handoff</span><span>Acme Health · FCP Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Work Package Detail</h2>
+  <p class="sec-lead">Full scope, acceptance and dependencies for each package. This is what was committed to the customer in Version 1.</p>
+  <table>
+    <thead><tr><th>Work package</th><th style="width:.75in">Window</th><th style="width:1.35in">Lead role</th><th style="width:1.6in">Starts after</th><th class="num" style="width:.4in">Hours</th></tr></thead>
+    <tr class="cat"><td colspan="5">Program management</td></tr>
+    <tr><td>Hardware compatibility review<small>Review every host model, CPU, adapter and ESX build against the target release with the customer platform lead, and record each as listed, to confirm, or replace.</small></td><td>Oct 2026</td><td>VCF Architect with the customer platform lead</td><td>RVTools export</td><td class="num">15</td></tr>
+    <tr><td>Kickoff and delivery plan<small>Confirm design decisions, evidence, dependencies and delivery ownership; implementation services begin only in the selected implementation window.</small></td><td>Oct 2026</td><td>Project Manager</td><td></td><td class="num">2</td></tr>
+    <tr class="cat"><td colspan="5">Infrastructure</td></tr>
+    <tr><td>Design and bill of materials<small>Host and cluster sizing, storage, network, IP/DNS/NTP and the bill of materials. <b>Accepted when</b> architecture, infrastructure, network, storage and procurement owners approve the design.</small></td><td>Nov 2026</td><td>VCF Implementation Engineer</td><td>Hardware compatibility review</td><td class="num">24</td></tr>
+    <tr><td>Migration and cutover plan<small>Group applications into waves; plan dependencies, change windows, rollback, validation and legacy decommissioning. <b>Accepted when</b> application and change owners approve wave assignments and acceptance criteria.</small></td><td>Dec 2026</td><td>Migration Lead + Application Owners</td><td>Design and bill of materials</td><td class="num">24</td></tr>
+    <tr><td>VCF foundation build<small>Deploy the approved management domain and validate core platform health. NSX with VLAN-backed transport zones; overlay design follows after the entitlement.</small></td><td>Jan 2027</td><td>VCF Implementation Engineer</td><td>Hardware compatibility sign-off</td><td class="num">61</td></tr>
+    <tr><td>Proving migration waves<small>CDW runs the first waves with the team shadowing, then reverse-shadowing. Backup validated before each wave. <b>Accepted when</b> each wave meets application, platform and operational acceptance.</small></td><td>Mar to Apr 2027</td><td>Migration Lead + Application Owners</td><td>Foundation build; migration plan</td><td class="num">41</td></tr>
+    <tr class="cat"><td colspan="5">Operations</td></tr>
+    <tr><td>VCF Operations design<small>Operations architecture, data sources, dashboard and alert scope, lifecycle ownership and operating acceptance criteria.</small></td><td>Nov 2026</td><td>VCF Architect + Operations Lead</td><td></td><td class="num">11</td></tr>
+    <tr><td>Role and access mapping<small>Map directory groups to vCenter, VCF Operations and SSO roles, with least-privilege service accounts and break-glass access.</small></td><td>Dec 2026</td><td>VCF Architect with the customer identity owner</td><td></td><td class="num">15</td></tr>
+    <tr><td>Training and knowledge transfer<small>The platform team installs and operates the management domain alongside CDW, covering deployment, lifecycle and VCF Operations.</small></td><td>Jan 2027</td><td>VCF Architect + Operations Lead</td><td>Hardware compatibility sign-off</td><td class="num">6</td></tr>
+    <tr><td>VCF Operations licensing<small>Activate subscription licensing for the platform and add-ons before the evaluation period ends.</small></td><td>Feb 2027</td><td>VCF Architect + Operations Lead</td><td>Foundation build</td><td class="num">7</td></tr>
+    <tr><td>Handover and service acceptance<small>Confirm the operating model, evidence, ownership and the continuing lifecycle cadence.</small></td><td>Apr 2027</td><td>VCF Architect + Operations Lead</td><td></td><td class="num">11</td></tr>
+    <tr><td>Runbook knowledge transfer<small>Hand over the proven migration runbook with shadowed then reverse-shadowed waves, so the team runs the later waves.</small></td><td>Apr 2027</td><td>VCF Architect + Operations Lead</td><td>Proving waves</td><td class="num">6</td></tr>
+    <tr class="total"><td>Total planned</td><td></td><td></td><td></td><td class="num">223</td></tr>
+  </table>
+  <div class="foot"><span class="tag">Internal · CDW delivery use only</span><span>Delivery Handoff · Acme Health · FCP Version 1 · Page 6</span></div>
+</section>
+
+<!-- ============================== 7. CUSTOMER AND OPEN ITEMS ============================== -->
+<section class="sheet">
+  <div class="strip"><span><svg class="slogo" viewBox="57.3 49.8 83.7 45.3" aria-label="CDW"><path fill="currentColor" d="M 95.34375 77.886719 L 102.441406 77.886719 L 104.957031 71.921875 C 105.675781 70.171875 105.988281 69.296875 106.707031 67.550781 L 106.808594 67.550781 C 106.808594 69.660156 106.757812 70.378906 106.757812 72.691406 L 106.707031 77.886719 L 113.648438 77.886719 L 121.464844 59.839844 L 115.035156 59.839844 L 112.570312 66.574219 C 112.054688 67.964844 111.851562 68.785156 111.335938 70.6875 L 111.230469 70.6875 C 111.386719 68.222656 111.4375 67.5 111.4375 66.113281 L 111.542969 59.839844 L 105.011719 59.839844 L 102.644531 66.058594 C 102.128906 67.449219 101.617188 68.835938 101.101562 70.636719 L 101 70.636719 C 101.152344 68.269531 101.203125 67.601562 101.253906 66.214844 L 101.460938 59.839844 L 95.441406 59.839844 Z M 82.75 73.464844 L 84.703125 64.160156 L 85.933594 64.160156 C 87.21875 64.160156 87.9375 64.929688 87.9375 66.730469 C 87.9375 68.066406 87.578125 70.226562 86.707031 71.71875 C 85.933594 73.054688 85.109375 73.464844 83.621094 73.464844 Z M 75.191406 77.886719 L 83.265625 77.886719 C 87.996094 77.886719 90.410156 76.34375 92.058594 74.183594 C 93.496094 72.277344 94.320312 69.402344 94.320312 66.984375 C 94.320312 64.464844 93.496094 62.5625 92.210938 61.433594 C 90.820312 60.199219 88.921875 59.839844 86.402344 59.839844 L 78.996094 59.839844 Z M 57.8125 70.074219 C 57.605469 75.523438 60.535156 78.195312 65.472656 78.195312 C 68.042969 78.195312 70.253906 77.628906 72.105469 76.292969 C 74.265625 74.644531 75.242188 72.179688 75.445312 70.6875 L 68.96875 70.6875 C 68.609375 72.179688 67.683594 73.566406 66.398438 73.566406 C 65.167969 73.566406 64.546875 72.386719 64.601562 70.226562 C 64.652344 68.835938 64.910156 67.34375 65.628906 66.058594 C 66.347656 64.773438 67.171875 64.261719 67.996094 64.261719 C 69.125 64.261719 69.792969 65.441406 69.691406 67.34375 L 69.691406 67.449219 L 75.910156 67.449219 C 76.117188 65.238281 75.65625 63.335938 74.625 62.050781 C 73.445312 60.40625 71.179688 59.53125 68.558594 59.53125 C 65.21875 59.53125 62.648438 60.714844 60.847656 62.511719 C 58.945312 64.519531 57.863281 67.246094 57.8125 70.074219 M 84.035156 94.546875 C 94.164062 94.546875 105.476562 91.71875 115.292969 87.039062 C 128.09375 80.921875 140.488281 71.511719 140.488281 61.28125 C 140.488281 53.363281 132.054688 50.277344 122.082031 50.277344 C 110.769531 50.277344 97.605469 54.390625 91.851562 58.144531 C 91.59375 58.296875 91.699219 58.453125 91.902344 58.347656 C 99.667969 54.800781 108.972656 52.640625 116.476562 52.640625 C 123.828125 52.640625 132.363281 54.851562 132.363281 63.027344 C 132.363281 71.046875 123.726562 78.605469 112.980469 83.953125 C 103.261719 88.789062 92.464844 91.667969 83.46875 91.667969 C 76.988281 91.667969 67.015625 90.382812 67.015625 82.976562 C 67.015625 82.101562 67.066406 80.871094 67.375 79.945312 C 67.429688 79.839844 67.375 79.742188 67.222656 79.894531 C 66.503906 80.816406 66.042969 82.515625 66.042969 84.265625 C 66.039062 92.234375 76.375 94.546875 84.035156 94.546875 M 135.035156 76.875 L 135.035156 76.488281 L 135.363281 76.488281 C 135.5 76.488281 135.527344 76.597656 135.527344 76.679688 C 135.527344 76.761719 135.5 76.871094 135.363281 76.871094 L 135.035156 76.871094 Z M 134.839844 77.566406 L 135.035156 77.566406 L 135.035156 77.042969 L 135.226562 77.042969 L 135.527344 77.566406 L 135.75 77.566406 L 135.445312 77.042969 C 135.585938 77.011719 135.722656 76.902344 135.722656 76.679688 C 135.722656 76.40625 135.527344 76.320312 135.304688 76.320312 L 134.835938 76.320312 L 134.835938 77.566406 Z M 134.367188 76.957031 C 134.367188 76.488281 134.757812 76.074219 135.253906 76.074219 C 135.726562 76.074219 136.109375 76.492188 136.109375 76.957031 C 136.109375 77.457031 135.722656 77.84375 135.253906 77.84375 C 134.757812 77.84375 134.367188 77.457031 134.367188 76.957031 M 134.175781 76.957031 C 134.175781 77.539062 134.648438 78.039062 135.257812 78.039062 C 135.839844 78.039062 136.308594 77.539062 136.308594 76.957031 C 136.308594 76.378906 135.839844 75.878906 135.257812 75.878906 C 134.644531 75.882812 134.175781 76.378906 134.175781 76.957031 "/></svg><span class="tag">Internal</span> · Delivery Handoff</span><span>Acme Health · FCP Version 1 · Issued 30 Sep 2026</span></div>
+  <h2>Customer Commitments and Open Items</h2>
+  <p class="sec-lead">What Acme Health owes the plan, what is still undecided, and what to raise in the first session.</p>
+  <div class="two">
+    <div>
+      <h3 style="margin-top:0">Acme Health team effort</h3>
+      <table>
+        <thead><tr><th>Phase</th><th>Window</th><th class="num">Platform</th><th class="num">Ops</th><th class="num">Network</th><th class="num">Total / wk</th><th class="num">FTE</th></tr></thead>
+        <tr><td>Design sessions and sign-off</td><td>Oct to Dec 2026</td><td class="num">3</td><td class="num">2</td><td class="num">2</td><td class="num">7</td><td class="num">0.18</td></tr>
+        <tr><td>Platform build</td><td>Oct 2026 to Jan 2027</td><td class="num">4</td><td class="num">2</td><td class="num">2</td><td class="num">8</td><td class="num">0.20</td></tr>
+        <tr><td>Capability enablement</td><td>Feb 2027</td><td class="num">3</td><td class="num">3</td><td class="num">1</td><td class="num">7</td><td class="num">0.18</td></tr>
+        <tr><td>Acme Health migration waves</td><td>Feb to Apr 2027</td><td class="num">16</td><td class="num">10</td><td class="num">4</td><td class="num">30</td><td class="num">0.75</td></tr>
+        <tr><td>Proving waves (with CDW)</td><td>Mar to Apr 2027</td><td class="num">8</td><td class="num">6</td><td class="num">1</td><td class="num">15</td><td class="num">0.38</td></tr>
+        <tr><td>Knowledge transfer and handover</td><td>Apr 2027</td><td class="num">2</td><td class="num">3</td><td class="num">1</td><td class="num">6</td><td class="num">0.15</td></tr>
+      </table>
+      <h3>Work run by Acme Health</h3>
+      <table>
+        <tr><td>Site prerequisites and hardware evidence</td><td>Oct 2026</td></tr>
+        <tr><td>Remaining migration waves and legacy cluster retirement</td><td>Feb to Apr 2027</td></tr>
+      </table>
+      <h3>Commitments in the FCP</h3>
+      <table>
+        <tr><td>Inventory</td><td>A current RVTools export before the first design session</td></tr>
+        <tr><td>People</td><td>Platform, network and operations leads available for design sessions</td></tr>
+        <tr><td>Decisions</td><td>Build hosts, DR policy direction and wave ownership by 30 Nov 2026</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Open items</h3>
+      <table>
+        <thead><tr><th>Item</th><th>What it gates</th><th>Owner</th></tr></thead>
+        <tr><td>Current RVTools export</td><td>Design sign-off and sizing</td><td>Pat Rivera</td></tr>
+      </table>
+      <h3>Open questions</h3>
+      <table>
+        <thead><tr><th>Question</th><th>Why we're asking now</th></tr></thead>
+        <tr><td>Can a current RVTools export be sent before the first design session?</td><td>The export on record predates the hardware refresh</td></tr>
+        <tr><td>Who runs the migration waves after the proving waves?</td><td>The plan assumes Acme Health; confirm staffing for 0.75 FTE</td></tr>
+        <tr><td>What is the recovery time objective?</td><td>The DR site is being built now; the recovery design needs it</td></tr>
+      </table>
+      <h3>Raise in the first session</h3>
+      <table>
+        <tr><td>Confirm assumed drivers</td><td>VM count, dated waves, extended VLANs, protected VMs (page 3)</td></tr>
+        <tr><td>Hardware timing</td><td>Delivery, rack and stack for the 8 new hosts against the 1 Jan build</td></tr>
+        <tr><td>Change control</td><td>How change requests are handled with no reserve left</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="foot"><span class="tag">Internal · CDW delivery use only</span><span>Delivery Handoff · Acme Health · FCP Version 1 · Page 7</span></div>
+</section>
+
+</body>
+</html>

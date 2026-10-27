@@ -791,9 +791,11 @@ const issuedSummary = {
   issuedByName: issuer.name,
   broadcomApprovedOn: fcpVersions.broadcomApprovedOn,
   broadcomApprovedByName: broadcomApprover.name,
+  broadcomApproverName: fcpVersions.broadcomApproverName,
   broadcomApprovalNote: fcpVersions.broadcomApprovalNote,
   customerApprovedOn: fcpVersions.customerApprovedOn,
   customerApprovedByName: customerApprover.name,
+  customerApproverName: fcpVersions.customerApproverName,
   customerApprovalNote: fcpVersions.customerApprovalNote,
 };
 
@@ -898,11 +900,11 @@ export async function reviseFromIssued(viewer: Viewer, engagementId: number): Pr
 export type ApprovalParty = "broadcom" | "customer";
 
 /**
- * Records an approval of the current issued version: the date, who recorded it and an optional note. Recorded once
+ * Records an approval of the current issued version: the date, who approved it, who recorded it and an optional note. Recorded once
  * per party. Fills the tracker's matching acceptance date when it is empty, so the stage gates read it; a date already
  * on the tracker is never overwritten.
  */
-export async function recordApproval(viewer: Viewer, engagementId: number, versionId: number, party: ApprovalParty, approval: { on: string; note: string | null }): Promise<WriteResult<null>> {
+export async function recordApproval(viewer: Viewer, engagementId: number, versionId: number, party: ApprovalParty, approval: { on: string; approverName: string; note: string | null }): Promise<WriteResult<null>> {
   const db = await requireDb();
   if (approval.on > today()) return { status: "blocked", reason: "An approval cannot be dated in the future." };
   return db.transaction(async tx => {
@@ -913,8 +915,8 @@ export async function recordApproval(viewer: Viewer, engagementId: number, versi
     if (version.status !== "issued") return { status: "blocked", reason: "Approvals are recorded on the current issued version." } as const;
     if ((party === "broadcom" ? version.broadcomApprovedOn : version.customerApprovedOn) !== null) return { status: "blocked", reason: "This approval is already recorded." } as const;
     await tx.update(fcpVersions).set(party === "broadcom"
-      ? { broadcomApprovedOn: approval.on, broadcomApprovedByUserId: viewer.id, broadcomApprovalNote: approval.note }
-      : { customerApprovedOn: approval.on, customerApprovedByUserId: viewer.id, customerApprovalNote: approval.note }).where(and(eq(fcpVersions.id, versionId), eq(fcpVersions.engagementId, engagementId)));
+      ? { broadcomApprovedOn: approval.on, broadcomApproverName: approval.approverName, broadcomApprovedByUserId: viewer.id, broadcomApprovalNote: approval.note }
+      : { customerApprovedOn: approval.on, customerApproverName: approval.approverName, customerApprovedByUserId: viewer.id, customerApprovalNote: approval.note }).where(and(eq(fcpVersions.id, versionId), eq(fcpVersions.engagementId, engagementId)));
     const gate = party === "broadcom" ? engagements.fcpBroadcomAcceptedOn : engagements.fcpCustomerAcceptedOn;
     if ((party === "broadcom" ? record.fcpBroadcomAcceptedOn : record.fcpCustomerAcceptedOn) === null) {
       await tx.update(engagements).set({ [party === "broadcom" ? "fcpBroadcomAcceptedOn" : "fcpCustomerAcceptedOn"]: approval.on, rowVersion: sql`${engagements.rowVersion} + 1`, updatedByUserId: viewer.id }).where(and(visibleEngagements(viewer), eq(engagements.id, engagementId), isNull(gate)));

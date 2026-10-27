@@ -121,11 +121,16 @@ describe("fcpRecord.issue", () => {
     await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "CONFLICT" });
   });
 
-  it("records approvals with a date and a note, and refuses a future date at the input", async () => {
+  it("records approvals with a date, who approved and a note, and refuses a bad party at the input", async () => {
     vi.mocked(db.recordApproval).mockResolvedValue({ status: "ok", value: null });
-    await caller().fcpRecord.recordApproval({ id: 4, versionId: 90, party: "customer", on: "2026-10-20", note: " " });
-    expect(db.recordApproval).toHaveBeenCalledWith({ id: 7, workspaceId: 1, role: "user" }, 4, 90, "customer", { on: "2026-10-20", note: null });
-    await expect(caller().fcpRecord.recordApproval({ id: 4, versionId: 90, party: "nobody" as never, on: "2026-10-20" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await caller().fcpRecord.recordApproval({ id: 4, versionId: 90, party: "customer", on: "2026-10-20", approverName: " Pat Rivera, CIO ", note: " " });
+    expect(db.recordApproval).toHaveBeenCalledWith({ id: 7, workspaceId: 1, role: "user" }, 4, 90, "customer", { on: "2026-10-20", approverName: "Pat Rivera, CIO", note: null });
+    await expect(caller().fcpRecord.recordApproval({ id: 4, versionId: 90, party: "nobody" as never, on: "2026-10-20", approverName: "Pat Rivera" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("requires who approved, separate from who recorded it", async () => {
+    await expect(caller().fcpRecord.recordApproval({ id: 4, versionId: 90, party: "broadcom", on: "2026-10-20", approverName: "  " })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller().fcpRecord.recordApproval({ id: 4, versionId: 90, party: "broadcom", on: "2026-10-20" } as never)).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 });
 
@@ -174,6 +179,11 @@ describe("version storage rules", () => {
   it("never rewrites what was issued", () => {
     expect(source).not.toMatch(/\.set\(\{[^}]*\b(renderedHtml|effortSnapshot|renderHash|issueNumber)\b/);
     expect(issue).toMatch(/\.set\(\{ status: "superseded" \}\)\.where\(and\(eq\(fcpVersions\.id, current\.id\)/);
+  });
+
+  it("stores the approver's name next to the recording user", () => {
+    expect(approval).toMatch(/broadcomApproverName: approval\.approverName, broadcomApprovedByUserId: viewer\.id/);
+    expect(approval).toMatch(/customerApproverName: approval\.approverName, customerApprovedByUserId: viewer\.id/);
   });
 
   it("fills the tracker gate dates only when they are empty", () => {

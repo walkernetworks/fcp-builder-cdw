@@ -209,8 +209,8 @@ export const appRouter = router({
     /** Replaces the working FCP with the current issued version (saved to History first), to start the next revision. */
     revise: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => unwrap(await lockAware(() => db.reviseFromIssued(viewerFor(ctx.user), input.id)))),
     recordApproval: protectedProcedure
-      .input(z.object({ id: recordId, versionId: recordId, party: z.enum(["broadcom", "customer"]), on: isoDay, note: z.string().trim().max(2000).nullable().default(null) }))
-      .mutation(async ({ ctx, input }) => unwrap(await db.recordApproval(viewerFor(ctx.user), input.id, input.versionId, input.party, { on: input.on, note: input.note || null }))),
+      .input(z.object({ id: recordId, versionId: recordId, party: z.enum(["broadcom", "customer"]), on: isoDay, approverName: z.string().trim().min(1, "Enter who approved it").max(160), note: z.string().trim().max(2000).nullable().default(null) }))
+      .mutation(async ({ ctx, input }) => unwrap(await db.recordApproval(viewerFor(ctx.user), input.id, input.versionId, input.party, { on: input.on, approverName: input.approverName, note: input.note || null }))),
     /** Two issued versions compared: the change summary from the earlier to the later, and both as issued. */
     compareIssued: protectedProcedure
       .input(z.object({ id: recordId, versionIds: z.tuple([recordId, recordId]).refine(([a, b]) => a !== b, "Pick two different issued versions") }))

@@ -195,7 +195,14 @@ Where the build differs from 5.1 to 5.6, this is what shipped:
 
 - **Phase 2:** `shared/fcpReadiness.ts`: pure checks over `(document, effort, record)` per design section 6, using `checkCondensedFcp` for the scrub check, `validateTimeline`, `effort.internal.fit.underFunded`, `allocateBsas` forfeiture, and `resolveInputs().assumptions` for "assumed". Provenance chips; internal panels in Funding and Plan; an editable entitlement end with a confirmation flag (C-10); the segment mismatch warning (C-8); preview anchors.
 - **Phase 3:** the `fcpVersions` extension (C-3) and `fcpConsumptionEntries`; issue, revise and supersede; approvals; change summary; `stageEvents` entries (C-1); gates; watermark on draft exports (C-6). Needs the answers to design section 14 first.
-- **Phase 4:** report changes (document control, naming, order, Out of Scope, assumptions, table of contents, footer), with new goldens and deliberate updates to existing ones.
+- **Phase 4: replaced by the report formats in [`docs/fcp-formats/`](fcp-formats/FCP-REPORT-FORMATS.md)** (decided 2026-10-27). Phase 4 as first written improved the 15-page report: a table of contents, a reordered long single report, and a customer-facing assumptions appendix. The 15-page report is itself being replaced, because it tries to serve the customer, Broadcom and CDW delivery at once. It is split by reader into a two-page **Summary FCP** (Commercial), a six-to-seven-page **Standard FCP** (Corporate and Strategic, the version Broadcom approves) and an internal **Delivery Handoff**, all rendered from the same document and effort. So the table of contents, the reordering and the customer assumptions appendix are **not built**. The rest of Phase 4 is built inside the new formats:
+  - **Document control** (version, issue date, approvals, revision note) is on Standard page 2. Summary shows the version and issue date in its header band.
+  - **Naming:** "Condensed" is dropped from every customer-facing string.
+  - **Footer:** every page carries a version-aware footer.
+  - **Out of Scope** is its own section in Standard, and "Not in this plan" in Summary.
+  - **Assumptions** move to the Delivery Handoff (Estimating Basis), not the customer documents.
+
+  The mockups (`fcp-summary-mockup`, `fcp-standard-mockup`, `fcp-delivery-handoff-mockup`, as HTML and PDF) are visual targets with illustrative Acme Health data, not templates. Build order is one PR each: the approver-name field on approvals, then Summary, Standard and the Handoff.
 - **Phase 5:** intake (C-9, C-12).
 - **Phase 6:** delete `renderFcpHtml`, the deprecated `"fcp"` export, `Home`'s step body and the `/fcp` editor. Keep `compatibilityHandoffRenderer.ts` (C-7).
 
@@ -368,7 +375,7 @@ The live preview column can be hidden with **Hide** in its header, and brought b
 ### 13.1 Decisions (design §14, 2026-10-23)
 
 - **Numbering (14.1):** only issued versions are numbered, as `issueNumber` 1, 2, 3 per engagement (C-3). The existing `versionNumber` stays the save counter behind History. The working document is the draft and has no number.
-- **Approvals (14.2):** a recorded date, actor and optional note, per party (Broadcom, customer), on the issued version. No request flow or notifications.
+- **Approvals (14.2):** a recorded date, approver name, recording user and optional note, per party (Broadcom, customer), on the issued version. No request flow or notifications.
 - **Consumption (14.3):**
   - Entered by hand for now, by anyone in the workspace, and logged with who entered it.
   - Each entry has a `source` (`manual` now; `salesforce` reserved) and an optional `externalId`. The future Salesforce read connector (north-star Phase 7, gated on IT) can then upsert on (`engagementId`, `source`, `externalId`) without duplicating manual rows. No schema change is needed when it lands.
@@ -386,6 +393,7 @@ The live preview column can be hidden with **Hide** in its header, and brought b
   - `revisionNote` and `changeSummary`;
   - `issuedAt` and `issuedByUserId`;
   - `broadcomApprovedOn` (a date, like the tracker gates), `broadcomApprovedByUserId` and `broadcomApprovalNote`, with the same three for the customer.
+  - `broadcomApproverName` and `customerApproverName` (migration 0012, added before the report formats): who approved, as distinct from `…ApprovedByUserId`, the user who recorded it. Required when an approval is recorded; null on approvals recorded before 0012.
 - **`reason`** gains `issued`. An issued version is the row written at issue: its `data` is the document snapshot.
 - **`fcpConsumptionEntries`:** `engagementId`, `asOf`, `consumedHours`, `source`, `externalId`, `note`, `enteredByUserId`, `createdAt`. It is append-only: a correction is a new entry.
 - **Tags:** every new column is tagged in `shared/vsaFields.ts`. `renderedHtml` and `revisionNote` are customer-facing; everything else is internal.

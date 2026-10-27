@@ -159,9 +159,11 @@ export const FCP_VERSION_COLUMN_VISIBILITY = {
   issuedByUserId: "internal",
   broadcomApprovedOn: "internal",
   broadcomApprovedByUserId: "internal",
+  broadcomApproverName: "internal",
   broadcomApprovalNote: "internal",
   customerApprovedOn: "internal",
   customerApprovedByUserId: "internal",
+  customerApproverName: "internal",
   customerApprovalNote: "internal",
 } as const satisfies Record<keyof FcpVersion, "customer" | "internal">;
 

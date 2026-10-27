@@ -152,8 +152,8 @@ export function IssuedVersionsList({ engagementId, title, readOnly, segment }: I
                 </div>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
-                <Approval engagementId={engagementId} versionId={version.id} party="broadcom" title="Broadcom approval" on={version.broadcomApprovedOn} by={version.broadcomApprovedByName} note={version.broadcomApprovalNote} canRecord={version.status === "issued" && !readOnly} notNeeded={!requiresBroadcomApproval(segment)} />
-                <Approval engagementId={engagementId} versionId={version.id} party="customer" title="Customer approval" on={version.customerApprovedOn} by={version.customerApprovedByName} note={version.customerApprovalNote} canRecord={version.status === "issued" && !readOnly} notNeeded={false} />
+                <Approval engagementId={engagementId} versionId={version.id} party="broadcom" title="Broadcom approval" on={version.broadcomApprovedOn} approver={version.broadcomApproverName} by={version.broadcomApprovedByName} note={version.broadcomApprovalNote} canRecord={version.status === "issued" && !readOnly} notNeeded={!requiresBroadcomApproval(segment)} />
+                <Approval engagementId={engagementId} versionId={version.id} party="customer" title="Customer approval" on={version.customerApprovedOn} approver={version.customerApproverName} by={version.customerApprovedByName} note={version.customerApprovalNote} canRecord={version.status === "issued" && !readOnly} notNeeded={false} />
               </div>
               {version.changeSummary && version.changeSummary.basedOnIssue !== null && (
                 <details className="rounded-lg border border-s100">
@@ -215,13 +215,13 @@ function CompareIssued({ engagementId, versions, onClose }: { engagementId: numb
   );
 }
 
-function Approval({ engagementId, versionId, party, title, on, by, note, canRecord, notNeeded }: { engagementId: number; versionId: number; party: "broadcom" | "customer"; title: string; on: string | null; by: string | null; note: string | null; canRecord: boolean; notNeeded: boolean }) {
+function Approval({ engagementId, versionId, party, title, on, approver, by, note, canRecord, notNeeded }: { engagementId: number; versionId: number; party: "broadcom" | "customer"; title: string; on: string | null; approver: string | null; by: string | null; note: string | null; canRecord: boolean; notNeeded: boolean }) {
   const utils = trpc.useUtils();
   const record = trpc.fcpRecord.recordApproval.useMutation();
-  const [draft, setDraft] = useState({ on: today(), note: "" });
+  const [draft, setDraft] = useState({ on: today(), approverName: "", note: "" });
   const save = async () => {
     try {
-      await record.mutateAsync({ id: engagementId, versionId, party, on: draft.on, note: draft.note.trim() || null });
+      await record.mutateAsync({ id: engagementId, versionId, party, on: draft.on, approverName: draft.approverName.trim(), note: draft.note.trim() || null });
       await Promise.all([utils.fcpRecord.issued.invalidate({ id: engagementId }), utils.tracker.get.invalidate({ id: engagementId })]);
       toast.success(`${title} recorded`);
     } catch (error) {
@@ -229,14 +229,15 @@ function Approval({ engagementId, versionId, party, title, on, by, note, canReco
     }
   };
   let body: ReactNode;
-  if (on) body = <p className="text-xs text-ink"><Pill verdict="ready">Approved</Pill> <span className="ml-1">{on} · recorded by {by ?? "—"}</span>{note && <span className="mt-1 block text-ink-muted">{note}</span>}</p>;
+  if (on) body = <p className="text-xs text-ink"><Pill verdict="ready">Approved</Pill> <span className="ml-1">{on}{approver && <> · approved by {approver}</>} · recorded by {by ?? "—"}</span>{note && <span className="mt-1 block text-ink-muted">{note}</span>}</p>;
   else if (notNeeded) body = <p className="text-xs text-ink-muted">Not needed for a Commercial engagement.</p>;
   else if (!canRecord) body = <p className="text-xs text-ink-muted">Not recorded.</p>;
   else body = (
     <div className="flex flex-wrap items-end gap-2">
       <div className="space-y-1"><Label htmlFor={`approval-${party}-${versionId}`} className="text-[11px]">Approved on</Label><Input id={`approval-${party}-${versionId}`} type="date" max={today()} className="h-8 w-40" value={draft.on} onChange={event => setDraft({ ...draft, on: event.target.value })} /></div>
-      <Input aria-label={`${title} note`} className="h-8 min-w-0 flex-1" maxLength={2000} placeholder="Note (optional): who approved, how" value={draft.note} onChange={event => setDraft({ ...draft, note: event.target.value })} />
-      <Button size="sm" className="h-8" disabled={record.isPending || !/^\d{4}-\d{2}-\d{2}$/.test(draft.on)} onClick={() => void save()}>{record.isPending && <Loader2 className="size-4 animate-spin" />} Record</Button>
+      <div className="space-y-1"><Label htmlFor={`approver-${party}-${versionId}`} className="text-[11px]">Approved by</Label><Input id={`approver-${party}-${versionId}`} className="h-8 w-48" maxLength={160} placeholder="Name and role" value={draft.approverName} onChange={event => setDraft({ ...draft, approverName: event.target.value })} /></div>
+      <Input aria-label={`${title} note`} className="h-8 min-w-0 flex-1" maxLength={2000} placeholder="Note (optional): how it was given" value={draft.note} onChange={event => setDraft({ ...draft, note: event.target.value })} />
+      <Button size="sm" className="h-8" disabled={record.isPending || !/^\d{4}-\d{2}-\d{2}$/.test(draft.on) || !draft.approverName.trim()} onClick={() => void save()}>{record.isPending && <Loader2 className="size-4 animate-spin" />} Record</Button>
     </div>
   );
   return <div className="rounded-lg border border-s100 p-3"><p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-muted">{title}</p>{body}</div>;
