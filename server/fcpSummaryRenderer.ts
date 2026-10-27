@@ -1,5 +1,6 @@
 import { formatWindow, type ScopedEffort } from "../shared/effort";
 import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument, type Timeline } from "../shared/fcp";
+import { planBsasAllocation } from "../shared/planView";
 import { reconcileHours } from "../shared/reportFormat";
 import { customerOpenItems, planKeyDates, platformName, selectedScopeSummary } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
@@ -317,10 +318,14 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
   const whatFollows = moved.length
     ? `${listJoin(moved)}${remainder.length ? `, with the rest of the ${listJoin(remainder)},` : ""} follow${moved.length === 1 && !remainder.length ? "s" : ""} ${when}`
     : `The rest of the ${listJoin(remainder)} follows ${when}`;
-  const bsasFunds = bsas && !bsasOnly ? ` Broadcom Software Adoption Services (BSAS) fund up to ${hours(bsas.hours)} hours of it from ${shortDate(bsas.termStart)} to ${shortDate(bsas.termEnd)}.` : "";
-  const after = followOnRows.length
-    ? `<h3>After This Plan</h3><div class="after">${esc(whatFollows)}, about <b>${hours(followOnHours)} hours</b>.${esc(bsasFunds)} It needs follow-on funding: ${w("a renewal with entitlement attached or a services purchase", "additional BSAS hours or a services purchase")}.</div>`
+  // Entitlement plus BSAS: the BSAS pool is stated on its own, in hours and dates, with what is not planned in the term.
+  const bsasPlan = bsas && !bsasOnly ? planBsasAllocation(input, effort) : null;
+  const bsasFunds = bsasPlan
+    ? `Broadcom Software Adoption Services (BSAS) provide ${hours(bsasPlan.term.hours)} hours from ${shortDate(bsasPlan.term.termStart)} to ${shortDate(bsasPlan.term.termEnd)}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}. ${hours(bsasPlan.plannedHours)} hours are planned${bsasPlan.forfeitedHours > 0 ? `; ${hours(bsasPlan.forfeitedHours)} hours are not planned and will be forfeited at term end` : ""}.`
     : "";
+  const after = followOnRows.length
+    ? `<h3>After This Plan</h3><div class="after">${esc(whatFollows)}, about <b>${hours(followOnHours)} hours</b>.${bsasFunds ? ` ${esc(bsasFunds)}` : ""} It needs follow-on funding: ${w("a renewal with entitlement attached or a services purchase", "additional BSAS hours or a services purchase")}.</div>`
+    : bsasFunds ? `<h3>After This Plan</h3><div class="after">No follow-on work is planned yet. ${esc(bsasFunds)}</div>` : "";
 
   const strip = `<div class="strip"><span>${cdwLogoSvg("logo")}Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for ${esc(customer)} · ${esc(issued)}</span></div>`;
   const page1 = `<section class="p1sheet" ${fitAttribute(PAGE_FIT.first)}>${band}<div class="p1">${pills}${kpis}<div class="cols"><div><h3>What We're Doing</h3><p class="synopsis">${esc(synopsis)}</p>${scope}${architecture}</div><div>${workPackages}</div></div></div></section>`;
