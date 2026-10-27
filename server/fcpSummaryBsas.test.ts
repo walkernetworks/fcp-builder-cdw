@@ -3,7 +3,7 @@ import type { EngagementDocument } from "../shared/fcp";
 import { fundingProblem } from "../shared/reportFormat";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
-import { FIXTURE_TODAY, meridianHealth, riverbendHealth } from "./fixtures/fcpFixtures";
+import { FIXTURE_TODAY, meridianHealth, meridianHealthForfeiting, riverbendHealth, riverbendHealthOverfunded } from "./fixtures/fcpFixtures";
 import { scopedEffortForDocument } from "./rateCard";
 
 const VERSION = { issueNumber: 1, issuedOn: FIXTURE_TODAY };
@@ -29,8 +29,8 @@ describe("Summary with BSAS", () => {
     const document = meridianHealth();
     const html = summary(document);
     const after = visible(html).split("After This Plan")[1] ?? "";
-    expect(after).toContain("(BSAS) provide 600 hours from 1 May 2027 to 30 Apr 2028. 247 hours are planned; 353 hours are not planned and will be forfeited at term end.");
-    expect(after).not.toMatch(/\$\s?\d|rate|tier/i);
+    expect(after).toContain("(BSAS) provide 188 hours from 1 May 2027 to 30 Apr 2028. 188 hours are planned.");
+    expect(after).not.toMatch(/\$\s?\d|rate|tier|forfeit/i);
     expect(checks(html, document)).toEqual([]);
     await expect(html).toMatchFileSnapshot("./__golden__/summary-meridian-health.html");
   });
@@ -50,22 +50,27 @@ describe("compatibility setting", () => {
 describe("funding problems, per pool", () => {
   const problem = (document: EngagementDocument) => fundingProblem(document, scopedEffortForDocument(document, FIXTURE_TODAY), FIXTURE_TODAY);
 
-  it("BSAS hours no planned follow-on work draws on are forfeited, and need a reason", () => {
-    const message = problem(meridianHealth());
-    expect(message).toMatch(/\d+ hours are not planned and will be forfeited at term end \(\d+ planned against the 600-hour BSAS allocation, 2027-05-01 to 2028-04-30\)\./);
+  it("plans issued as the goldens show need no reason", () => {
+    expect(problem(riverbendHealth())).toBeNull();
+    expect(problem(meridianHealth())).toBeNull();
+  });
+
+  it("BSAS hours no planned follow-on work draws on are forfeited, and the Summary says so", () => {
+    const document = meridianHealthForfeiting();
+    expect(problem(document)).toMatch(/412 hours are not planned and will be forfeited at term end \(188 planned against the 600-hour BSAS allocation, 2027-05-01 to 2028-04-30\)\./);
+    expect(visible(summary(document))).toContain("188 hours are planned; 412 hours are not planned and will be forfeited at term end.");
   });
 
   it("stays quiet within one hour of rounding either way", () => {
     const document = meridianHealth();
-    const effort = scopedEffortForDocument(document, FIXTURE_TODAY);
-    const planned = Math.round(effort.workPackages.reduce((sum, row) => sum + (row.followOn?.total ?? 0), 0));
-    document.fields.bsasHours = planned + 1;
-    expect(problem(document) ?? "").not.toMatch(/BSAS allocation/);
-    document.fields.bsasHours = planned + 2;
-    expect(problem(document)).toMatch(/2 hours are not planned and will be forfeited at term end \(\d+ planned against the \d+-hour BSAS allocation/);
+    document.fields.bsasHours = 189;
+    expect(problem(document)).toBeNull();
+    document.fields.bsasHours = 190;
+    expect(problem(document)).toMatch(/2 hours are not planned and will be forfeited at term end \(188 planned against the 190-hour BSAS allocation/);
   });
 
   it("checks the entitlement and BSAS separately, and a BSAS-only deal against its own hours", () => {
-    expect(problem(riverbendHealth())).not.toMatch(/BSAS allocation/);
+    expect(problem(riverbendHealthOverfunded())).toMatch(/^Under-funded: 40 delivered, 201 planned and 9 held in reserve come to 100 hours more than the 150-hour BSAS hours/);
+    expect(problem(riverbendHealthOverfunded())).not.toMatch(/BSAS allocation/);
   });
 });

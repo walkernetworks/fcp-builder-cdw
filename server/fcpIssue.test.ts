@@ -18,7 +18,7 @@ import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import * as db from "./db";
 import { registerExportDownloadRoutes } from "./exportDownloadRoutes";
 import { createExportTicket, verifyExportTicket } from "./exportTickets";
-import { acmeHealth, acmeHealthReconciled, FIXTURE_TODAY } from "./fixtures/fcpFixtures";
+import { acmeHealth, acmeHealthReconciled, FIXTURE_TODAY, meridianHealthForfeiting, riverbendHealth, riverbendHealthOverfunded } from "./fixtures/fcpFixtures";
 import { scopedEffortForDocument } from "./rateCard";
 import { appRouter } from "./routers";
 
@@ -145,6 +145,26 @@ describe("fcpRecord.issue", () => {
     expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].fundingOverrideNote).toBe("Broadcom asked for the plan as scoped; the follow-on purchase is in progress.");
     const preview = await caller().fcpRecord.issuePreview({ id: 4 });
     expect(preview.fundingProblem).toMatch(/^Under-funded/);
+  });
+
+  it("requires a reason when the hours exceed the BSAS pool, and none when they reconcile", async () => {
+    vi.mocked(db.getEngagement).mockResolvedValue(row(riverbendHealthOverfunded()));
+    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
+    vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
+    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Under-funded: 40 delivered, 201 planned and 9 held in reserve come to 100 hours more than the 150-hour BSAS hours.") });
+    expect(db.issueFcpVersion).not.toHaveBeenCalled();
+    vi.mocked(db.getEngagement).mockResolvedValue(row(riverbendHealth()));
+    expect((await caller().fcpRecord.issuePreview({ id: 4 })).fundingProblem).toBeNull();
+  });
+
+  it("requires a reason, in the forfeiture wording, when BSAS hours go unplanned", async () => {
+    vi.mocked(db.getEngagement).mockResolvedValue(row(meridianHealthForfeiting()));
+    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
+    vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
+    const preview = await caller().fcpRecord.issuePreview({ id: 4 });
+    expect(preview.fundingProblem).toContain("412 hours are not planned and will be forfeited at term end (188 planned against the 600-hour BSAS allocation, 2027-05-01 to 2028-04-30).");
+    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("412 hours are not planned and will be forfeited at term end") });
+    expect(db.issueFcpVersion).not.toHaveBeenCalled();
   });
 
   it("labels the delivered hours with the consumption notes in the issued Summary", async () => {

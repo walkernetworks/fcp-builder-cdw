@@ -45,23 +45,63 @@ export function acmeHealthReconciled(): EngagementDocument {
   return document;
 }
 
-/** Corporate, entitlement plus BSAS hours after the entitlement. */
-export function meridianHealth(): EngagementDocument {
+const packageHours = (id: string, architect: number, srConsultant: number, projectManager: number) => ({ id, architect, srConsultant, projectManager, placement: "auto" as const, owner: "auto" as const });
+
+/** Corporate, entitlement plus BSAS hours after the entitlement; the plan's hours are as calculated (see meridianHealth). */
+function meridianCalculated(bsasHours = 600): EngagementDocument {
   return fromBrief(raw => {
     raw.customer.name = "Meridian Health";
     raw.customer.segment = "Corporate";
-    raw.bsas = { hours: 600, termStart: "2027-05-01", termEnd: "2028-04-30" };
+    raw.bsas = { hours: bsasHours, termStart: "2027-05-01", termEnd: "2028-04-30" };
   });
 }
 
-/** BSAS only: no entitlement value, BSAS hours and term in its place. */
-export function riverbendHealth(): EngagementDocument {
+/**
+ * Meridian Health as a planner would issue it: the entitlement plan reconciled (39 delivered, 205 planned and the
+ * 18-hour reserve add up to 262, the same cuts as Acme Health), so the work the entitlement cannot carry becomes the
+ * follow-on scope that the BSAS hours fund inside the term. The follow-on scope is 188 hours, so that is the BSAS
+ * allocation: every hour is planned inside the term and none is forfeited.
+ */
+export function meridianHealth(): EngagementDocument {
+  const document = meridianCalculated(188);
+  document.report.workPackageHours = [
+    packageHours("bar-playbook-design-requirements", 0, 0, 0),
+    packageHours("bar-playbook-design-target-state", 20, 2, 2),
+    packageHours("bar-playbook-design-migration-design", 20, 2, 2),
+    packageHours("bar-playbook-execution-migration-waves", 4, 13, 6),
+  ];
+  return document;
+}
+
+/** Meridian Health reconciled on the entitlement, with 600 BSAS hours of which only the 188-hour follow-on is planned (412 forfeited). A gate fixture, not a golden. */
+export function meridianHealthForfeiting(): EngagementDocument {
+  const document = meridianHealth();
+  document.fields.bsasHours = 600;
+  return document;
+}
+
+/** BSAS only: no entitlement value, BSAS hours and term in its place; the plan's hours are as calculated (see riverbendHealth). */
+function riverbendCalculated(): EngagementDocument {
   return fromBrief(raw => {
     raw.customer.name = "Riverbend Health";
     raw.entitlement = { hoursConsumed: 40, consumedAsOf: "2026-09-03" };
     raw.milestonesToDate = [];
     raw.bsas = { hours: 400, termStart: "2026-10-01", termEnd: "2027-09-30" };
   });
+}
+
+/** Riverbend Health as a planner would issue it: 40 delivered, 331 planned and the 29-hour reserve add up to the 400 BSAS hours. */
+export function riverbendHealth(): EngagementDocument {
+  const document = riverbendCalculated();
+  document.report.workPackageHours = [packageHours("bar-playbook-execution-migration-waves", 10, 84, 16)];
+  return document;
+}
+
+/** Riverbend Health with only 150 BSAS hours: the protected work and the design it builds on alone need more, so the squeeze cannot close the gap. A gate fixture, not a golden. */
+export function riverbendHealthOverfunded(): EngagementDocument {
+  const document = riverbendHealth();
+  document.fields.bsasHours = 150;
+  return document;
 }
 
 /** Built by hand with no brief: Commercial VVF, greenfield, plan estimate as the hours source, no consumption, no operational timeline. */
