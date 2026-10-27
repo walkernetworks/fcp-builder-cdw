@@ -79,7 +79,8 @@ export function checkCondensedFcp(html: string, context: { customerName: string;
     if (!dollars.has(expected)) failures.push(`The only dollar figure must be the entitlement value (${expected}).`);
   }
 
-  for (const category of FIXED_GANTT_CATEGORIES) {
+  // The long report shows every delivery category; a format leaves out the ones with nothing scheduled.
+  if (!context.format) for (const category of FIXED_GANTT_CATEGORIES) {
     if (!html.includes(`<div class="timeline-lane timeline-category-lane"><strong>${category.replace(/&/g, "&amp;")}</strong></div>`)) failures.push(`Category missing from the timeline: ${category}.`);
   }
   for (const heading of context.format ? REQUIRED_BY_FORMAT[context.format] : REQUIRED) if (!html.includes(heading)) failures.push(`Mandatory section missing: ${heading.replace("&amp;", "&").replace(/<[^>]*>|^>/g, "")}.`);

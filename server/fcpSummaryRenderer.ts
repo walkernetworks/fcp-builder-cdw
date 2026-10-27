@@ -33,6 +33,16 @@ const monthAfter = (iso: string) => {
   return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(next);
 };
 
+/**
+ * Each page is laid out at its printed width, so the browser measures it as it will print. A page taller than its sheet
+ * is scaled down to fit (never below FIT_MIN_ZOOM), and the Summary keeps to two pages however much the plan holds.
+ * Inline, with no network: exported HTML stays self-contained. `data-fit` is "width height" in inches.
+ */
+export const FIT_MIN_ZOOM = 0.72;
+const PAGE_FIT = { first: { width: 11, height: 7.95 }, rest: { width: 10.1, height: 7.65 } } as const;
+const fitAttribute = (page: { width: number; height: number }) => `data-fit="${page.width} ${page.height}"`;
+const FIT_SCRIPT = `<script>(function(){document.querySelectorAll("[data-fit]").forEach(function(page){var size=page.getAttribute("data-fit").split(" "),width=size[0]*96,height=size[1]*96,zoom=1;for(var step=0;step<4;step++){var tall=page.getBoundingClientRect().height;if(tall<=height||zoom<=${FIT_MIN_ZOOM})break;zoom=Math.max(${FIT_MIN_ZOOM},zoom*height/tall*0.995);page.style.zoom=String(zoom);page.style.width=width/zoom+"px";}});})();</script>`;
+
 const CSS = `
 :root{--ink:#1d1d1f;--slate:#3c4250;--muted:#6b7280;--line:#e3e6ea;--red:#CC0000;--dark:#242a38;--hair:#E4E7EC;--gray:#898B8E}
 *{box-sizing:border-box}
@@ -48,7 +58,9 @@ html,body{margin:0;background:#fff;color:var(--ink);font:11px/1.45 Helvetica,'He
 .p1{padding:0 .45in}
 .strip{display:flex;justify-content:space-between;align-items:center;border-top:4px solid var(--red);padding:6px 0 7px;border-bottom:1px solid var(--line);font-size:8.5px;color:var(--muted)}
 .strip .logo{width:.45in;color:var(--red);vertical-align:middle;margin-right:8px}
-.p2{break-before:page}
+.p1sheet{width:11in}
+.p2{break-before:page;width:10.1in}
+@media screen{.p2{margin:0 auto}}
 .pills{font-size:10px;color:var(--slate);padding:9px 0;border-bottom:2px solid var(--red)}
 .pills b{color:var(--ink)}
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-top:0}
@@ -221,7 +233,7 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
   // ---- Page 2: the entitlement window, key dates, what we need, after this plan
   const windowStart = fields.plannedProjectStart || fields.targetStart || document.adoptionTimeline.startDate;
   const windowEnd = termEnd ? longDate(termEnd) : document.adoptionTimeline.columns.at(-1) || "plan end";
-  const timeline = `<h2>Timeline</h2><p class="lead">${esc(windowStart ? longDate(windowStart) : "Plan start")} through ${esc(windowEnd)}, the ${w("entitlement window", "BSAS term")}. Dashed bars are run by ${esc(customer)}. ◆ marks key delivered functionality.</p>${renderTimeline(entitlementWindowTimeline(document, termEnd), w("No activities are scheduled in the entitlement window.", "No activities are scheduled in the BSAS term."))}`;
+  const timeline = `<h2>Timeline</h2><p class="lead">${esc(windowStart ? longDate(windowStart) : "Plan start")} through ${esc(windowEnd)}, the ${w("entitlement window", "BSAS term")}. Dashed bars are run by ${esc(customer)}. ◆ marks key delivered functionality.</p>${renderTimeline(entitlementWindowTimeline(document, termEnd), w("No activities are scheduled in the entitlement window.", "No activities are scheduled in the BSAS term."), undefined, { skipEmptyCategories: true })}`;
 
   const upcoming = report.milestonesToDate.filter(item => item.date > today);
   const candidates: Array<{ date: string; text: string; end?: boolean }> = [
@@ -259,8 +271,8 @@ export function renderSummaryFcpHtml(title: string, input: EngagementDocument, o
     : "";
 
   const strip = `<div class="strip"><span>${cdwLogoSvg("logo")}Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for ${esc(customer)} · ${esc(issued)}</span></div>`;
-  const page1 = `<section>${band}<div class="p1">${pills}${kpis}<div class="cols"><div><h3>What We're Doing</h3><p class="synopsis">${esc(synopsis)}</p>${scope}${architecture}</div><div>${workPackages}</div></div></div></section>`;
-  const page2 = `<section class="p2">${strip}${timeline}<div class="bottom"><div>${datesSection}</div><div>${needs}${openItems}</div><div>${after}<div class="closer">Make Amazing Happen.</div></div></div></section>`;
+  const page1 = `<section class="p1sheet" ${fitAttribute(PAGE_FIT.first)}>${band}<div class="p1">${pills}${kpis}<div class="cols"><div><h3>What We're Doing</h3><p class="synopsis">${esc(synopsis)}</p>${scope}${architecture}</div><div>${workPackages}</div></div></div></section>`;
+  const page2 = `<section class="p2" ${fitAttribute(PAGE_FIT.rest)}>${strip}${timeline}<div class="bottom"><div>${datesSection}</div><div>${needs}${openItems}</div><div>${after}<div class="closer">Make Amazing Happen.</div></div></div></section>`;
 
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} - FCP</title><style>${CSS}${footerCss(customer, version)}</style></head><body>${options.draft ? DRAFT_MARK : ""}${page1}${page2}<button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} - FCP</title><style>${CSS}${footerCss(customer, version)}</style></head><body>${options.draft ? DRAFT_MARK : ""}${page1}${page2}<button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button>${FIT_SCRIPT}</body></html>`;
 }

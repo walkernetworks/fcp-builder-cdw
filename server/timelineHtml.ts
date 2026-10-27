@@ -65,11 +65,12 @@ export function layoutCategoryActivities(lanes: TimelineLane[]): CategoryActivit
     });
 }
 
-export function renderTimeline(timeline: Timeline, emptyMessage = "No activities have been scheduled for this portion of the plan.", compactColumnWidth?: number) {
+/** `skipEmptyCategories`: leave out delivery categories with nothing scheduled (the Summary); the long report keeps every row. */
+export function renderTimeline(timeline: Timeline, emptyMessage = "No activities have been scheduled for this portion of the plan.", compactColumnWidth?: number, options: { skipEmptyCategories?: boolean } = {}) {
   if (!timeline.lanes.length) return `<div class="timeline-empty">${esc(emptyMessage)}</div>`;
   const columnWidth = compactColumnWidth || (timeline.cadence === "week" ? 112 : 92);
   const minimumWidth = 180 + timeline.columns.length * columnWidth;
-  const categoryGroups = groupTimelineLanes(timeline.lanes);
+  const categoryGroups = groupTimelineLanes(timeline.lanes).filter(group => !options.skipEmptyCategories || group.lanes.some(lane => lane.bars.length));
   return `${renderWorkstreamLegend()}<div class="timeline-wrap"><div class="timeline-grid" style="--timeline-slots:${timeline.columns.length};min-width:${minimumWidth}px;grid-template-columns:180px repeat(${timeline.columns.length},minmax(${columnWidth}px,1fr))"><div class="timeline-corner">Delivery Category</div>${timeline.columns.map(window => `<div class="timeline-head">${esc(window)}</div>`).join("")}${categoryGroups.map(group => {
     const activities = layoutCategoryActivities(group.lanes);
     const trackCount = Math.max(1, ...activities.map(item => item.track + 1));
