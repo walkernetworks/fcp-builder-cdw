@@ -508,7 +508,7 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
   const builds = plan.implementationPackages.length > 0;
   const funds = builds
     ? `CDW designs and builds the ${esc(platform)} foundation, proves the runbook and hands over, and ${esc(customer)}'s team repeats it`
-    : `CDW delivers the ${esc(platform)} architecture and an implementation-ready design that ${esc(customer)}'s team builds from`;
+    : `CDW delivers the ${esc(platform)} architecture and an implementation-ready design. Who carries out the build is a separate decision and is not part of this plan`;
   const shortVersion = burndown
     ? `${hours(burndown.remainingHours)} hours remain and the ${w("entitlement expires", "BSAS term ends")} on <b>${esc(longDate(burndown.termEnd))}</b>${tbc}. Unconsumed hours are not refunded. ${w("The entitlement funds", "BSAS funds")} the one-time work: ${funds}. That requires about ${burndown.expiryPace} hours of delivery per week from today.`
     : `${funds.charAt(0).toUpperCase()}${funds.slice(1)}. ${w("Unconsumed entitlement hours are not refunded once an entitlement is booked.", "Unconsumed BSAS hours are forfeited at the end of the BSAS term.")}`;
