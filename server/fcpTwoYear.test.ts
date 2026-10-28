@@ -12,7 +12,7 @@ const followOn = () => {
 describe("the problem the follow-on work addresses", () => {
   it("quotes a problem only when what addresses it names a follow-on package", () => {
     const { document, rows } = followOn();
-    document.report.problems = [{ problem: "Manual recovery of 330 powered-on VMs.", addressedBy: "Recovery and Resilience Design picks the orchestration so DR is executable under pressure" }];
+    document.report.problems = [{ problem: "Manual recovery of 330 powered-on VMs.", addressedBy: "Recovery Services Build picks the orchestration so DR is executable under pressure" }];
     expect(problemsAddressedByFollowOn(document, rows)).toEqual(["Manual recovery of 330 powered-on VMs"]);
   });
 

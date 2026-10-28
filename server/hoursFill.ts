@@ -1,5 +1,5 @@
 import { unusedEntitlementHours, type ScopedEffort } from "../shared/effort";
-import { buildAdoptionPlans, capabilitySchema, effectivePlatformEdition, isPlanOutcomeAvailable, withHoursFillLane, type AdoptionDetails, type Capability, type EngagementDocument, type MinimalFields } from "../shared/fcp";
+import { buildAdoptionPlans, planContextFor, capabilitySchema, effectivePlatformEdition, isPlanOutcomeAvailable, withHoursFillLane, type AdoptionDetails, type Capability, type EngagementDocument, type MinimalFields } from "../shared/fcp";
 import { scopedEffortForDocument } from "./rateCard";
 
 /** Scope the planner can add to use entitlement hours the plan leaves unused, with the hours each one adds. */
@@ -45,7 +45,7 @@ const TIER_LABEL = { "tier-1": "Tier 1", "tier-2": "Tier 2", "tier-3": "Tier 3" 
 function withFields(document: EngagementDocument, fields: MinimalFields): EngagementDocument {
   const next = { ...document, fields };
   if (document.planAuthority === "manual") return { ...next, adoptionTimeline: withHoursFillLane(document.adoptionTimeline, fields) };
-  const plans = buildAdoptionPlans(fields, document.inventory, document.readiness.hclSchedulePath, { edgeSites: document.report.discovery.edgeSites });
+  const plans = buildAdoptionPlans(fields, document.inventory, document.readiness.hclSchedulePath, planContextFor({ ...document, fields }));
   return { ...next, adoptionTimeline: plans.adoptionTimeline, twoYearPlan: plans.twoYearPlan, rationale: plans.rationale };
 }
 
