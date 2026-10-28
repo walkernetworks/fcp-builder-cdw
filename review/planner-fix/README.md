@@ -1,9 +1,27 @@
-# Review: planner fix, Standard FCP, Summary page 3
+# Review: planner fix, Standard FCP, Summary page 3 (second round)
 
-Rendered from `local-preview` (b587b53): planner small-estate fix + Summary page 3 (#60) + Standard FCP (#59).
+Rendered from `local-preview` (613ad9f): planner (fcp-planner-small-estate ce4b501) + Summary page 3 (#60) + Standard FCP (#59, 5fa4194).
 Fake fixture data only (Acme Health, Meridian Health, Cedar Ridge Logistics). This branch is never merged.
 
-- `planner-acme-summary-before/after`: Acme Summary on main vs with the planner fix
-- `standard-acme`, `standard-cedar`, `standard-meridian`: Standard FCP
-- `standard-meridian-v2-approvals-example`: Version 2 showing the superseded version's approvals line
-- `summary3-acme`: Summary with page 3
+Files re-rendered this round: `standard-acme`, `standard-cedar`, `standard-meridian`, `summary3-acme`.
+`planner-acme-summary-before/after` and `standard-meridian-v2-approvals-example` are from the first round.
+
+## Acme Health, funded in fill order (262-hour entitlement, 39 delivered, 18 held, 205 planned)
+
+| Step | Package | Hours |
+|---|---|---|
+| a | Kickoff and Delivery Plan | 2 |
+| a | Hardware Compatibility Review | 13 |
+| a | Reference Architecture Design | 40 |
+| b | Greenfield VCF Foundation Build (management domain, storage, NSX design) | 63 |
+| c | VCF Operations Design | 10 |
+| c | Role and Access Mapping | 13 |
+| c | Training and Knowledge Transfer | 6 |
+| c | VCF Operations Licensing | 7 |
+| c | Handover and Service Acceptance | 11 |
+| d | Migration and Cutover Plan | 24 |
+| e | Recovery and Resilience Design (design share) | 10 |
+| f | Optimization and Advisory Services | 6 |
+
+Follow-on, whole: First Workload Domain (about 42), Workload Migration and Cutover (about 215), Runbook Knowledge Transfer, Health, Logs and Diagnostics, Recovery Services Build.
+The proving wave (126) does not fit after step d; the First Workload Domain (42) does not fit in the 15 hours left after step d. Nothing later in the order was funded while an earlier package that fitted was left out (`never funds a package while an earlier one in the order is left out though it would have fit`).
