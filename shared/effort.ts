@@ -114,6 +114,8 @@ export type WorkPackageEffort = RoleHours & {
   adjusted: boolean;
   /** Customer-facing notes on what the package also covers. */
   notes?: string[];
+  /** The outcome and acceptance of a package that is not a bar on the timeline: a later design phase or a remaining-scope package. */
+  detail?: { outcome: string; acceptance: string };
 };
 
 export type DeferralReason = "not funded" | "after the entitlement window" | "over budget" | "planned for later";
@@ -518,7 +520,7 @@ function footedColumn(values: number[], target: number): number[] {
  * add-on's build when only its design fits, anything starting after the entitlement ends, and anything
  * the planner places there. The planner's hours replace the baseline wherever the work is planned.
  */
-export function workPackageEffort(source: EngagementDocument, lines: EffortLine[], totals: RoleHours): WorkPackageEffort[] {
+export function workPackageEffort(source: EngagementDocument, lines: EffortLine[], totals: RoleHours, options: { ignoreHourOverrides?: boolean } = {}): WorkPackageEffort[] {
   const document = withOwnership(source);
   const timeline = document.adoptionTimeline;
   const termEnd = entitlementTermEnd(document);
@@ -681,7 +683,8 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     const owner = placed ? activityOwner(placed.bar) : "cdw";
     const note: WorkPackageEffort["note"] = owner === "checkpoint" ? "checkpoint" : owner === "customer" ? "customer-owned" : undefined;
     const override = overrides.get(id);
-    const editable = !note && override;
+    // Planner hours belong to the work the entitlement funds: a calculation of displaced scope ignores them.
+    const editable = !note && !options.ignoreHourOverrides && override;
     const roles = editable
       ? { architect: override.architect ?? baseline.architect, srConsultant: override.srConsultant ?? baseline.srConsultant, projectManager: override.projectManager ?? baseline.projectManager }
       : note ? { architect: 0, srConsultant: 0, projectManager: 0 } : baseline;
@@ -985,21 +988,57 @@ export function withHoursFill(effort: ScopedEffort): ScopedEffort {
   };
 }
 
-/** Displaced hours sit on their stages as follow-on scope; a stage with nothing left in the entitlement moves to the Two-Year Notional. */
+/** The design the entitlement cannot carry, delivered as a phase of its own: workload domain, DR and NSX overlay design. */
+export const LATER_DESIGN_PHASE = {
+  id: "bar-playbook-design-phase-2",
+  label: "Workload Domain, DR and NSX Overlay Design",
+  outcome: "In design sessions, design each workload domain, the disaster recovery approach and the NSX overlay network, building on the accepted foundation design.",
+  acceptance: "Architecture, infrastructure, network and recovery owners approve the workload domain, DR and NSX overlay design.",
+} as const;
+
+const remainingLabel = (row: Pick<WorkPackageEffort, "id" | "label">) => (/^bar-playbook-execution-/.test(row.id) ? `${row.label}, Later Waves` : `${row.label}, Remaining Scope`);
+
+/**
+ * Displaced hours become follow-on scope. A package is wholly in the entitlement or wholly follow-on, never both: a
+ * stage with nothing left in the entitlement moves to the Two-Year Notional with its hours, and displaced hours that
+ * land on a stage the entitlement does fund (later migration waves, say) become a package of their own, entirely follow-on.
+ * Design the entitlement cannot carry is a design phase by deliverable, also its own package.
+ */
 function withDisplacedLines(document: EngagementDocument, effort: ScopedEffort, displacedLines: EffortLine[]): ScopedEffort {
-  const displacedRows = workPackageEffort(document, displacedLines, totalsOf(rowsFromLines(displacedLines)));
+  const designPhase = displacedLines.find(line => line.code === "A");
+  const rest = displacedLines.filter(line => line.code !== "A");
+  const displacedRows = workPackageEffort(document, rest, totalsOf(rowsFromLines(rest)), { ignoreHourOverrides: true });
   const later = new Map(displacedRows.map(row => [row.id, row.total > 0 ? row : row.followOn ? { ...row, ...row.followOn } : row]));
+  const alongside: WorkPackageEffort[] = [];
   const merged = effort.workPackages.map((row): WorkPackageEffort => {
     const moved = later.get(row.id);
     later.delete(row.id);
     if (!moved || moved.total <= 0 || row.note === "checkpoint" || row.note === "customer-owned") return row;
-    const followOn = { architect: (row.followOn?.architect ?? 0) + moved.architect, srConsultant: (row.followOn?.srConsultant ?? 0) + moved.srConsultant, projectManager: (row.followOn?.projectManager ?? 0) + moved.projectManager, total: (row.followOn?.total ?? 0) + moved.total };
-    if (row.total > 0 || row.deferred) return { ...row, followOn };
+    const roles = { architect: moved.architect, srConsultant: moved.srConsultant, projectManager: moved.projectManager, total: moved.total };
+    if (row.total > 0 && !row.deferred) {
+      const { note: _note, ...rest } = row;
+      alongside.push({ ...rest, id: `${row.id}:later`, label: remainingLabel(row), start: null, end: null, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: "not funded", followOn: roles, placement: "auto", adjusted: false, baseline: { architect: 0, srConsultant: 0, projectManager: 0 }, notes: undefined });
+      return row;
+    }
+    const followOn = { architect: (row.followOn?.architect ?? 0) + roles.architect, srConsultant: (row.followOn?.srConsultant ?? 0) + roles.srConsultant, projectManager: (row.followOn?.projectManager ?? 0) + roles.projectManager, total: (row.followOn?.total ?? 0) + roles.total };
+    if (row.deferred) return { ...row, followOn };
     const { note: _note, ...rest } = row;
     return { ...rest, deferred: "not funded", followOn };
   });
   for (const row of Array.from(later.values())) if (row.total > 0) merged.push({ ...row, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: "not funded", followOn: { architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager, total: row.total } });
-  return { ...effort, workPackages: merged };
+  if (designPhase) {
+    const lead = merged.find(row => /^bar-playbook-design-/.test(row.id) && row.category && row.total > 0) ?? merged.find(row => row.category === "Modernize Infrastructure");
+    const planned = designPhase.roles ?? rolesOf(designPhase);
+    const roles = { architect: Math.round(planned.architect), srConsultant: Math.round(planned.srConsultant), projectManager: Math.round(planned.projectManager) };
+    const total = roles.architect + roles.srConsultant + roles.projectManager;
+    if (total > 0) merged.push({
+      id: LATER_DESIGN_PHASE.id, label: LATER_DESIGN_PHASE.label, category: lead?.category ?? null, workstreamType: lead?.workstreamType ?? null, leadRole: lead?.leadRole ?? "Architect",
+      start: null, end: null, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: "not funded", followOn: { ...roles, total },
+      placement: "auto", owner: "cdw", baseline: { architect: 0, srConsultant: 0, projectManager: 0 }, adjusted: false,
+      detail: { outcome: LATER_DESIGN_PHASE.outcome, acceptance: LATER_DESIGN_PHASE.acceptance },
+    });
+  }
+  return { ...effort, workPackages: [...merged, ...alongside] };
 }
 
 /** The v1 bracket model. */

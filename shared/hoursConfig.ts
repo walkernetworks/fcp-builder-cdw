@@ -58,6 +58,22 @@ export const HOURS_V2 = {
     hostThreshold: c(32, "Low", JUDGMENT),
     perHostAboveThreshold: c(0.25, "Low", JUDGMENT),
     hostTermCap: c(40, "Low", JUDGMENT),
+    /** The Reference Architecture Design tier: a small estate gets this flat design instead of the formula above. */
+    referenceFlat: c(40, "Practice decision", "Product owner: small estates take a flat 40-hour Reference Architecture Design"),
+    /**
+     * When the entitlement cannot carry the full design, it is phased by deliverable. Foundation design (management domain,
+     * platform, network and storage) is this many hours of the base; workload domain design, and DR and NSX overlay design
+     * (the rest of the base, plus extra sites and stretched clusters), follow.
+     */
+    foundationBase: c(40, "Practice decision", "Product owner: foundation design is the management domain, platform, network and storage; the rest of the base is DR and NSX overlay design"),
+  },
+  /** The small-estate test for the Reference Architecture Design tier: all of these must hold, at most. */
+  smallEstate: {
+    hosts: c(16, "Practice decision", "Product owner: at most 16 hosts"),
+    clusters: c(2, "Practice decision", "Product owner: at most 2 clusters"),
+    vcenters: c(1, "Practice decision", "Product owner: at most 1 vCenter"),
+    instances: c(1, "Practice decision", "Product owner: at most 1 VCF instance"),
+    sites: c(1, "Practice decision", "Product owner: at most 1 site"),
   },
   deploy: {
     managementDomain: c(64, "Medium-Low", PRESIDIO_VCF),
@@ -272,6 +288,7 @@ export const HOURS_V2 = {
     reviewMonth: c(6, "Practice decision", "Spec 7.7: review burn at month 3 and month 6"),
     burnCheckpointShare: c(0.4, "Practice decision", "Spec 7.7: re-scope if burn at month 6 is below 40%"),
     termMonths: c(12, "Practice decision", "VCF Services Entitlement SPD: used within the initial 12 months"),
+    designFirstThreshold: c(300, "Practice decision", "Product owner: under 300 hours after delivered hours and the reserve, year one is discovery, full design and the foundation build if it fits"),
   },
 } as const;
 

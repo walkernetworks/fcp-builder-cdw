@@ -1,4 +1,5 @@
 import { HOURS_V2 as H, type Coefficient } from "./hoursConfig";
+import { ESTATE_SIZE_UNKNOWN_FLAG, resolveEstateSize, type EstateSize } from "./estateSize";
 import { effectiveDeliveryPath, effectivePlatformEdition, resolvePlanOutcomes, type AdoptionDetails, type Capability, type EngagementDocument, type VcfDeliveryPath } from "./fcp";
 
 /**
@@ -42,6 +43,9 @@ export type UnitTag =
   | "zone"
   | "app"
   | "ops-core" // Operations Tier 1: the X4 platform term and the lifecycle and health modules
+  | "design-foundation" // design of the management domain, platform, network and storage
+  | "design-workload" // workload domain design
+  | "design-dr-nsx" // DR and NSX overlay design
   | "uplift";
 
 export type V2Line = {
@@ -82,6 +86,8 @@ export type Pass1 = {
   pmRatio: number;
   assumptions: Assumption[];
   inputs: ResolvedInputs;
+  /** The estate-size test behind the design hours: the Reference Architecture Design tier, or the full design. */
+  estate: EstateSize;
   /**
    * The VCF Installer deploys NSX with a new management domain, so the build needs at least a VLAN-backed NSX design
    * (transport zones, TEP and MTU, IP pools). When no NSX design is funded, Pass 2 carves this much out of the
@@ -369,10 +375,22 @@ export function scopeV2(document: EngagementDocument): Pass1 {
   }
 
   // ---- Design
-  const hostTerm = Math.min(v(H.design.hostTermCap), v(H.design.perHostAboveThreshold) * Math.max(0, x.hosts - v(H.design.hostThreshold)));
-  const design = v(H.design.base) + v(H.design.perWorkloadDomain) * x.workloadDomains + v(H.design.perExtraInstance) * (x.instances - 1) + v(H.design.perExtraSite) * (x.sites - 1)
-    + v(H.design.perStretchedCluster) * x.stretchedClusters + v(H.design.perExtraStorageType) * (x.storageTypes - 1) + hostTerm;
-  add("A", "Architecture and design", "architect", [unit("A", "Architecture and design", design)], { workloadDomains: x.workloadDomains, instances: x.instances, sites: x.sites, stretchedClusters: x.stretchedClusters, storageTypes: x.storageTypes, hosts: x.hosts });
+  // A small estate takes the Reference Architecture Design: a flat number of hours, no formula. Every other estate, and
+  // any whose size is unknown, gets the full design, phased by deliverable when the entitlement cannot carry it.
+  const estate = resolveEstateSize(document);
+  if (estate.small) {
+    add("A", "Reference Architecture Design", "architect", [unit("A", "Reference Architecture Design", v(H.design.referenceFlat))], { tier: "reference architecture", hosts: x.hosts, clusters: estate.clusters, sites: x.sites });
+  } else {
+    const hostTerm = Math.min(v(H.design.hostTermCap), v(H.design.perHostAboveThreshold) * Math.max(0, x.hosts - v(H.design.hostThreshold)));
+    const foundation = Math.min(v(H.design.base), v(H.design.foundationBase));
+    // By deliverable: the foundation (management domain, platform, network and storage); each workload domain; and DR and the NSX overlay.
+    const parts: Array<[string, string, number, UnitTag]> = [
+      ["A:foundation", "Foundation design: management domain, platform, network and storage", foundation + hostTerm + v(H.design.perExtraInstance) * (x.instances - 1) + v(H.design.perExtraStorageType) * (x.storageTypes - 1), "design-foundation"],
+      ["A:workload", "Workload domain design", v(H.design.perWorkloadDomain) * x.workloadDomains, "design-workload"],
+      ["A:dr-nsx", "DR and NSX overlay design", v(H.design.base) - foundation + v(H.design.perExtraSite) * (x.sites - 1) + v(H.design.perStretchedCluster) * x.stretchedClusters, "design-dr-nsx"],
+    ];
+    add("A", "Architecture and design", "architect", parts.map(([id, label, base, tag]) => unit(id, label, base, tag)), { tier: "full design", workloadDomains: x.workloadDomains, instances: x.instances, sites: x.sites, stretchedClusters: x.stretchedClusters, storageTypes: x.storageTypes, hosts: x.hosts });
+  }
 
   // ---- Pathway spine
   const remediation = v(H.remediation.perClusterOnVum) * x.clustersOnVum + v(H.remediation.perVcenterWithIwa) * x.vcentersWithIwa + v(H.remediation.perClusterOnVss) * x.clustersOnVss + v(H.remediation.legacyLogs) * Number(x.legacyLogs);
@@ -614,17 +632,24 @@ export function scopeV2(document: EngagementDocument): Pass1 {
   const share = v(H.roles.pmShare) * technical;
   const pm = Math.max(floor, share);
   const present = new Set(lines.map(line => line.code));
+  assumptions.push({
+    key: "smallEstate", label: "Small estate (Reference Architecture Design)", value: estate.small ? "yes" : "no",
+    source: estate.choice !== "auto" ? "Set by the planner"
+      : !estate.known ? `${ESTATE_SIZE_UNKNOWN_FLAG}; no host count in RVTools or the brief`
+      : estate.small ? `Within the limits: ${estate.hosts} hosts, ${estate.clusters} cluster${estate.clusters === 1 ? "" : "s"}, ${estate.vcenters} vCenter, ${estate.instances} VCF instance, ${estate.sites} site${estate.sites === 1 ? "" : "s"}`
+      : `Over the limits: ${estate.exceeds.join(", ")}`,
+  });
   const relevant = assumptions.filter(item => {
     const users = ASSUMPTION_USERS[item.key];
     return !users || users.some(code => present.has(code));
   });
-  return { path, edition, lines, technical, pm, pmFloorApplied: floor > share, pmRatio: technical ? pm / technical : 0, assumptions: relevant, inputs: x, nsxMinimalDesign };
+  return { path, edition, lines, technical, pm, pmFloorApplied: floor > share, pmRatio: technical ? pm / technical : 0, assumptions: relevant, inputs: x, estate, nsxMinimalDesign };
 }
 
 /** The lines each defaulted input feeds; an assumption is listed only when one of them is in the plan. Inputs not listed here feed every plan. */
 const ASSUMPTION_USERS: Record<string, V2Code[]> = {
   targetClusters: ["D", "D_VVF", "S_storage", "X5", "X7"],
-  stretchedClusters: ["A", "D"], storageTypes: ["A"], clustersOnFcOrNfs: ["S_storage", "D", "D_VVF"], mixedStorage: ["S_storage", "D", "D_VVF"],
+  smallEstate: ["A"], stretchedClusters: ["A", "D"], storageTypes: ["A"], clustersOnFcOrNfs: ["S_storage", "D", "D_VVF"], mixedStorage: ["S_storage", "D", "D_VVF"],
   dedicatedNsxWorkloadDomains: ["D"], noExistingNsx: ["C1", "X1"], enhancedLinkedMode: ["X1"], source8x: ["X1"], sourceIsVcf: ["C1"],
   clustersOnVum: ["C1", "U_VVF"], vcentersWithIwa: ["C1", "U_VVF"], clustersOnVss: ["C1", "U_VVF"], legacyLogs: ["C1", "U_VVF"],
   upgradeVcfAutomation: ["U3"], upgradeLogs: ["U3"], upgradeVidmToIdentityBroker: ["U3"], upgradeHcx: ["U3"], upgradeAvi: ["U3"], upgradeSrm: ["U3"], upgradeSupervisors: ["U3"], upgradeNsxFederation: ["U3"],

@@ -78,6 +78,19 @@ function entitlementProblem(document: EngagementDocument, effort: ScopedEffort, 
 }
 
 /**
+ * The fit could not place its minimum (discovery and the foundation design, or the core) in the funded hours. Nothing is split
+ * further and nothing prints for the customer: the planner sees how many more hours the full scope needs and records the
+ * decision. Carried to the internal Delivery Handoff through `fit.underFunded`.
+ */
+export function underFundedScope(document: EngagementDocument, effort: ScopedEffort): string | null {
+  const gap = effort.internal.fit?.underFunded;
+  if (!gap) return null;
+  const hours = (value: number) => Math.round(value).toLocaleString("en-US");
+  const unit = document.fields.fundingSource === "bsas" ? "BSAS hours" : "entitlement";
+  return `The full scope needs ${hours(gap.fullScopeGapHours)} more hours than the ${unit} funds after the reserve (${hours(gap.gapHours)} more for the minimum that can be delivered). Record the decision to proceed, with the funding or scope change it rests on.`;
+}
+
+/**
  * The BSAS pool of an entitlement-plus-BSAS deal, checked against its own term: BSAS hours that no planned follow-on
  * work draws on before the term ends are forfeited. BSAS never goes over (work past what it covers is just follow-on
  * that still needs a purchase), so only the forfeited direction is a problem. Within the rounding tolerance it fits.
@@ -96,6 +109,6 @@ function bsasPoolProblem(document: EngagementDocument, effort: ScopedEffort): st
  * logged reason to go ahead. Never printed in a customer document.
  */
 export function fundingProblem(document: EngagementDocument, effort: ScopedEffort, today?: string): string | null {
-  const problems = [entitlementProblem(document, effort, today), bsasPoolProblem(document, effort)].filter((problem): problem is string => Boolean(problem));
+  const problems = [entitlementProblem(document, effort, today), underFundedScope(document, effort), bsasPoolProblem(document, effort)].filter((problem): problem is string => Boolean(problem));
   return problems.length ? problems.join(" ") : null;
 }

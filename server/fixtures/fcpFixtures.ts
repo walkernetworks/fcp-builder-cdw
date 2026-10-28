@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { applyCustomerBrief } from "../../shared/briefImport";
-import { createDefaultDocument, refreshDerivedDocument, type EngagementDocument } from "../../shared/fcp";
+import { createDefaultDocument, HOURS_FILL_DEFAULT_LABEL, refreshDerivedDocument, type EngagementDocument } from "../../shared/fcp";
 
 /**
  * The four fake customers the FCP golden files are rendered from. Each covers a different funding case, so a
@@ -22,55 +22,72 @@ function fromBrief(patch: (raw: any) => void): EngagementDocument {
   return { ...document, report: { ...document.report, importedAt: "2026-09-01T00:00:00.000Z" } };
 }
 
-/** Commercial, entitlement only, imported from the example brief (signed resource assignments, consumption to date). */
-export function acmeHealth(): EngagementDocument {
-  return fromBrief(raw => { raw.customer.name = "Acme Health"; });
-}
-
 /**
- * Acme Health as a planner would issue it: the plan reconciled to its funding. The 39 hours already delivered covered
- * discovery, so the discovery package carries no further hours, and the waves are cut to CDW's proving waves (the
- * team runs the rest with the runbook): 39 delivered, 205 planned and the 18-hour reserve add up to the 262-hour
- * entitlement.
+ * A small estate for the Reference Architecture Design tier: 14 hosts in 1 cluster, one site in scope. The example brief
+ * names two data centers, but the second is a new DR site that is follow-on scope, so the planner puts one site in scope.
  */
-export function acmeHealthReconciled(): EngagementDocument {
-  const document = acmeHealth();
-  const set = (id: string, architect: number, srConsultant: number, projectManager: number) => ({ id, architect, srConsultant, projectManager, placement: "auto" as const, owner: "auto" as const });
-  document.report.workPackageHours = [
-    set("bar-playbook-design-requirements", 0, 0, 0),
-    set("bar-playbook-design-target-state", 20, 2, 2),
-    set("bar-playbook-design-migration-design", 20, 2, 2),
-    set("bar-playbook-execution-migration-waves", 4, 13, 6),
-  ];
+function smallEstate(document: EngagementDocument): EngagementDocument {
+  document.inventory.hosts = 14;
+  document.inventory.clusters = 1;
+  document.fields.estimateInputs.sites = 1;
   return document;
 }
 
-const packageHours = (id: string, architect: number, srConsultant: number, projectManager: number) => ({ id, architect, srConsultant, projectManager, placement: "auto" as const, owner: "auto" as const });
+/** Commercial, entitlement only, imported from the example brief (signed resource assignments, consumption to date). */
+export function acmeHealth(): EngagementDocument {
+  return smallEstate(fromBrief(raw => { raw.customer.name = "Acme Health"; }));
+}
+
+/**
+ * The plan as a planner would issue it: the model's own hours, with whatever the entitlement leaves unused going to the
+ * Optimization and Advisory Services package so the hours reconcile exactly. No hand-set package hours.
+ */
+function issuedAsPlanned(document: EngagementDocument): EngagementDocument {
+  document.fields.hoursFill = { enabled: true, label: HOURS_FILL_DEFAULT_LABEL };
+  return refreshDerivedDocument(document);
+}
+
+/**
+ * Acme Health as a planner would issue it. A small estate (14 hosts, 1 cluster), so design is the 40-hour Reference
+ * Architecture Design. 39 hours are delivered and the 18-hour reserve is held, which leaves 205 hours: under 300, so year one
+ * is design first. Discovery was delivered, the design and the foundation build fit, and the migration is the customer's with
+ * the runbook. The 19 hours left over go to Optimization and Advisory Services: 39 delivered, 205 planned and 18 in reserve
+ * add up to the 262-hour entitlement.
+ */
+export function acmeHealthReconciled(): EngagementDocument {
+  return issuedAsPlanned(acmeHealth());
+}
+
+
+/**
+ * Acme Health with an entitlement too small for the design: a full design (the planner says it is not a small estate),
+ * 90 entitled hours of which 39 are delivered, so 47 hours remain after the reserve. Discovery was delivered; the foundation
+ * design alone needs 51 hours. A gate fixture, not a golden.
+ */
+export function acmeHealthUnderFunded(): EngagementDocument {
+  const document = acmeHealth();
+  document.fields.estimateInputs.smallEstate = "no";
+  document.report.entitlement.hours = 90;
+  return document;
+}
 
 /** Corporate, entitlement plus BSAS hours after the entitlement; the plan's hours are as calculated (see meridianHealth). */
 function meridianCalculated(bsasHours = 600): EngagementDocument {
-  return fromBrief(raw => {
+  return smallEstate(fromBrief(raw => {
     raw.customer.name = "Meridian Health";
     raw.customer.segment = "Corporate";
     raw.bsas = { hours: bsasHours, termStart: "2027-05-01", termEnd: "2028-04-30" };
-  });
+  }));
 }
 
 /**
- * Meridian Health as a planner would issue it: the entitlement plan reconciled (39 delivered, 205 planned and the
- * 18-hour reserve add up to 262, the same cuts as Acme Health), so the work the entitlement cannot carry becomes the
- * follow-on scope that the BSAS hours fund inside the term. The follow-on scope is 188 hours, so that is the BSAS
- * allocation: every hour is planned inside the term and none is forfeited.
+ * Meridian Health as a planner would issue it: the entitlement plan as Acme Health's (39 delivered, 205 planned and the
+ * 18-hour reserve add up to 262), so the work the entitlement cannot carry becomes the follow-on scope that the BSAS hours
+ * fund inside the term. The follow-on scope is 81 hours, so that is the BSAS allocation: every hour is planned inside the
+ * term and none is forfeited.
  */
 export function meridianHealth(): EngagementDocument {
-  const document = meridianCalculated(188);
-  document.report.workPackageHours = [
-    packageHours("bar-playbook-design-requirements", 0, 0, 0),
-    packageHours("bar-playbook-design-target-state", 20, 2, 2),
-    packageHours("bar-playbook-design-migration-design", 20, 2, 2),
-    packageHours("bar-playbook-execution-migration-waves", 4, 13, 6),
-  ];
-  return document;
+  return issuedAsPlanned(meridianCalculated(81));
 }
 
 /** Meridian Health reconciled on the entitlement, with 600 BSAS hours of which only the 188-hour follow-on is planned (412 forfeited). A gate fixture, not a golden. */
@@ -82,19 +99,17 @@ export function meridianHealthForfeiting(): EngagementDocument {
 
 /** BSAS only: no entitlement value, BSAS hours and term in its place; the plan's hours are as calculated (see riverbendHealth). */
 function riverbendCalculated(): EngagementDocument {
-  return fromBrief(raw => {
+  return smallEstate(fromBrief(raw => {
     raw.customer.name = "Riverbend Health";
     raw.entitlement = { hoursConsumed: 40, consumedAsOf: "2026-09-03" };
     raw.milestonesToDate = [];
     raw.bsas = { hours: 400, termStart: "2026-10-01", termEnd: "2027-09-30" };
-  });
+  }));
 }
 
 /** Riverbend Health as a planner would issue it: 40 delivered, 331 planned and the 29-hour reserve add up to the 400 BSAS hours. */
 export function riverbendHealth(): EngagementDocument {
-  const document = riverbendCalculated();
-  document.report.workPackageHours = [packageHours("bar-playbook-execution-migration-waves", 10, 84, 16)];
-  return document;
+  return issuedAsPlanned(riverbendCalculated());
 }
 
 /** Riverbend Health with only 150 BSAS hours: the protected work and the design it builds on alone need more, so the squeeze cannot close the gap. A gate fixture, not a golden. */

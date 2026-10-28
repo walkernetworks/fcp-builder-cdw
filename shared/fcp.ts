@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getIndustryDiscoveryTemplate, industryDiscoveryPromptBlock } from "./industryDiscovery";
 import { emptyReport, reportSchema } from "./report";
 import { DOMAIN_BUILD_WEIGHTS } from "./hoursConfig";
+import { resolveEstateSize } from "./estateSize";
 import { assessHclEstate, assessHclPlatform, emptyHclInventoryEvidence, hclAssessmentSchema, hclFindingSchedulePath, hclInventoryEvidenceSchema, hclSchedulePath, HCL_CATALOG_METADATA, HCL_CATALOG_RELEASES, HCL_ESTATE_LIMITATION, HCL_EVALUATION_VERSION, HCL_OFFLINE_LIMITATION, HCL_SNAPSHOT, HCL_TARGET_RELEASE, type HclCatalogRelease, type HclSchedulePath } from "./hcl";
 
 export const TIMELINE_COLORS = ["slate", "blue", "teal", "amber", "red", "green", "gate", "deferred"] as const;
@@ -722,6 +723,11 @@ const estimateFlag = z.boolean().optional();
  */
 export const estimateInputsSchema = z.object({
   // Topology
+  /**
+   * The Reference Architecture Design tier for small estates (shared/estateSize.ts): "auto" tests the counts against the
+   * limits in hoursConfig, "yes" and "no" are the planner's decision. Unset is "auto". Changes are logged in `plannerLog`.
+   */
+  smallEstate: z.enum(["auto", "yes", "no"]).optional(),
   /** Physical sites in scope. RVTools datacenter objects are inventory folders, so they are not used as sites. */
   sites: z.number().int().min(1).max(1_000).optional(),
   /** Clusters on the platform CDW builds (greenfield, hybrid, design); the existing RVTools clusters size converge, import and upgrade work. */
@@ -807,6 +813,15 @@ export const estimateInputsSchema = z.object({
 });
 export type EstimateInputs = z.infer<typeof estimateInputsSchema>;
 
+/** A planner decision on an estimate input that changes the plan's hours, kept so the change can be traced. Internal. */
+export const plannerLogEntrySchema = z.object({
+  at: z.string(),
+  input: z.string(),
+  from: z.string(),
+  to: z.string(),
+});
+export type PlannerLogEntry = z.infer<typeof plannerLogEntrySchema>;
+
 export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   adoptionCadence: timelineCadenceSchema,
   adoptionDetails: adoptionDetailsSchema,
@@ -824,6 +839,8 @@ export const minimalFieldsSchema = minimalFieldsV5Schema.extend({
   commercialPlan: z.boolean().default(false),
   hoursModel: hoursModelSchema.default("v2"),
   estimateInputs: estimateInputsSchema.default({}),
+  /** Changes to the planner inputs that move the hours (the Small estate choice), newest last. Never printed. */
+  plannerLog: z.array(plannerLogEntrySchema).max(200).optional(),
   hoursFill: hoursFillSchema,
   /**
    * How the services are funded. "entitlement-bsas" adds Broadcom Software Adoption Services (BSAS) after the
@@ -2437,16 +2454,17 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     const duration = index === 0 ? scheduleUnits(cadence, 2, 1) : scheduleUnits(cadence, 3, 1);
     const [taskStart, taskEnd] = range(pathwayDesignCursor, duration);
     const ownership = getVcfPlaybookWorkPackageOwnership(playbookPlan.path, workPackage);
+    const reference = context.referenceDesign && REFERENCE_DESIGN_PACKAGE[playbookPlan.path as VcfDeliveryPath] === workPackage.id ? REFERENCE_DESIGN : null;
     designBars[designLaneKey(ownership)].push(bar(
       `bar-playbook-design-${workPackage.id}`,
       taskStart,
       taskEnd,
       colorForWorkstreamType(ownership.workstreamType),
-      workPackage.title,
+      reference?.title ?? workPackage.title,
       false,
       false,
       appendDeliveryContext(workPackage.dependsOn),
-      `${workPackage.outcome} Acceptance: ${workPackage.acceptance}`,
+      `${reference?.outcome ?? workPackage.outcome} Acceptance: ${reference?.acceptance ?? workPackage.acceptance}`,
     ));
     pathwayDesignCursor = taskEnd;
     firstDesignPackageEnd ??= taskEnd;
@@ -3192,8 +3210,23 @@ function buildTwoYearPlan(fields: MinimalFields, _inventory: InventorySummary, s
   return applyWorkstreamPresentation({ cadence: "month", startDate, columns, lanes });
 }
 
-/** Plan context that lives outside the fields: the edge sites from the discovery answers. */
-export type PlanContext = { edgeSites?: number | null };
+/** Plan context that lives outside the fields: the edge sites from the discovery answers, and whether the estate takes the Reference Architecture Design tier. */
+export type PlanContext = { edgeSites?: number | null; referenceDesign?: boolean };
+
+/** The design package that carries the architecture, per pathway: the one the Reference Architecture Design tier replaces. */
+const REFERENCE_DESIGN_PACKAGE: Partial<Record<VcfDeliveryPath, string>> = { greenfield: "target-state", converge: "target-state", "import-workload-domain": "domain-design", "in-place": "platform-design" };
+
+/** The Reference Architecture Design package's wording: the completed workbook, the bill of materials and the deviations, approved by the customer. */
+export const REFERENCE_DESIGN = {
+  title: "Reference Architecture Design",
+  outcome: "In design sessions, adopt the VCF reference architecture for this estate. Complete the VCF Planning and Preparation Workbook and the bill of materials, and list the deviations from the reference architecture.",
+  acceptance: "The completed VCF Planning and Preparation Workbook, the bill of materials, and a short list of deviations from the reference architecture are approved by the customer.",
+} as const;
+
+/** The plan context for a document: what the generator needs from outside the fields. */
+export function planContextFor(document: Pick<EngagementDocument, "fields" | "inventory" | "report">): PlanContext {
+  return { edgeSites: document.report.discovery.edgeSites, referenceDesign: resolveEstateSize(document).small };
+}
 
 export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary, providedHclPath?: HclSchedulePath, context: PlanContext = {}): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
   const hclPath = providedHclPath ?? getHclSchedulePath(inventory);
@@ -3935,6 +3968,18 @@ const LEGACY_GENERATED_LABELS: Array<[RegExp, string]> = [
  * renamed labels, and added or removed activities stay as they are. Only the start conditions, outcomes, and
  * prerequisite links of activities the generator still produces are refreshed, plus older generated stage names.
  */
+/** The generated titles a design package can carry: its pathway title, and the Reference Architecture Design title where that tier replaces it. */
+function playbookDesignTitles(barId: string): Set<string> {
+  const titles = new Set<string>();
+  const match = /^bar-playbook-design-(.+)$/.exec(barId);
+  if (!match) return titles;
+  for (const path of Object.keys(PLAYBOOK_PATHS) as VcfDeliveryPath[]) {
+    for (const item of PLAYBOOK_PATHS[path].designPackages) if (item.id === match[1]) titles.add(item.title);
+    if (REFERENCE_DESIGN_PACKAGE[path] === match[1]) titles.add(REFERENCE_DESIGN.title);
+  }
+  return titles;
+}
+
 function withRefreshedActivityDetails(timeline: Timeline, sources: Timeline[], withinEntitlement: boolean): Timeline {
   const details = new Map<string, TimelineBar>();
   for (const source of sources) for (const activity of source.lanes.flatMap(lane => lane.bars)) if (!details.has(activity.id)) details.set(activity.id, activity);
@@ -3948,8 +3993,12 @@ function withRefreshedActivityDetails(timeline: Timeline, sources: Timeline[], w
       ...lane,
       bars: lane.bars.map(activity => {
         const legacy = LEGACY_GENERATED_LABELS.find(([pattern]) => pattern.test(activity.label));
-        const label = legacy ? activity.label.replace(legacy[0], legacy[1]) : activity.label;
         const source = details.get(activity.id);
+        // The architecture design package is named "Reference Architecture Design" while the estate is small and its
+        // pathway title otherwise. Only an untouched generated title moves between the two; a typed label stays.
+        const designTitles = playbookDesignTitles(activity.id);
+        const swapped = source && designTitles.has(activity.label) && designTitles.has(source.label) ? source.label : null;
+        const label = swapped ?? (legacy ? activity.label.replace(legacy[0], legacy[1]) : activity.label);
         if (!source) return label === activity.label ? activity : { ...activity, label };
         const dependsOn = text(source.dependsOn);
         const outcome = text(source.outcome);
@@ -3990,7 +4039,7 @@ export function migrateDocument(value: unknown): EngagementDocument {
   const current = engagementDocumentV11Schema.safeParse(normalizedValue);
   if (current.success) {
     const fields = normalizePlanningDates(current.data.fields);
-    const generated = buildAdoptionPlans(fields, current.data.inventory, undefined, { edgeSites: current.data.report?.discovery?.edgeSites ?? null });
+    const generated = buildAdoptionPlans(fields, current.data.inventory, undefined, planContextFor({ ...current.data, fields }));
     const planAuthority = inferredPlanAuthority(normalizedValue, current.data, generated);
     if ((needsImplementationTimelineRebaseline(current.data.adoptionTimeline) || needsPlaybookCategoryRebaseline(current.data.adoptionTimeline, fields)) && planAuthority !== "manual") {
       return {
@@ -4247,7 +4296,7 @@ export function refreshDerivedDocument(document: EngagementDocument, options: { 
   const warnings = document.inventorySources.flatMap(source => source.warnings);
   // Assessment can be expensive for large RVTools estates. Calculate it once and share its path with timeline generation.
   const readiness = assessReadiness(document.fields, document.inventory, warnings);
-  const plans = buildAdoptionPlans(document.fields, document.inventory, readiness.hclSchedulePath, { edgeSites: document.report.discovery.edgeSites });
+  const plans = buildAdoptionPlans(document.fields, document.inventory, readiness.hclSchedulePath, planContextFor(document));
   if (document.planAuthority === "manual" && !options.forceRebuild) {
     return { ...document, readiness, rationale: plans.rationale, adoptionTimeline: withHoursFillLane(document.adoptionTimeline, document.fields) };
   }

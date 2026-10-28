@@ -270,12 +270,12 @@ describe("v2 Pass 2 fit (spec section 7)", () => {
     focus: { operations: ["lifecycle", "observability"], security: ["segmentation"], automation: ["vm-self-service"] },
     depth: { operations: "tier-2", automation: "tier-2", networkingSecurity: "tier-2" },
   });
-  const fitOf = (pass1: Pass1, entitlementHours: number, extra: Partial<Parameters<typeof fitV2>[1]> = {}) => fitV2(pass1, { entitlementHours, monthsRemaining: 12, datedWaves: 1, ...extra });
+  const fitOf = (pass1: Pass1, entitlementHours: number, extra: Partial<Parameters<typeof fitV2>[1]> = {}) => fitV2(pass1, { entitlementHours, monthsRemaining: 12, datedWaves: 1, designFirstThreshold: 0, ...extra });
 
   it("reproduces the 7.8 worked example under the section 6 and 7 rules", () => {
     const fit = fitOf(scopeV2(example()), 100_000 / 250);
     const e1 = fit.placements.filter(item => item.bucket === "E1");
-    expect(e1.map(item => item.unitId)).toEqual(["DD", "DX:Operations and automation", "DX:Security", "A", "C1", "X4:platform", "X4:lifecycle", "X4:observability"]);
+    expect(e1.map(item => item.unitId)).toEqual(["DD", "DX:Operations and automation", "DX:Security", "A:foundation", "A:workload", "A:dr-nsx", "C1", "X4:platform", "X4:lifecycle", "X4:observability"]);
     expect(fit.buckets.E1).toBeCloseTo(45.54 + 23 + 103.73 + 88.55 + 50.6, 1);
     expect(fit.placements.filter(item => item.bucket === "E2").map(item => item.unitId)).toEqual(["X11:stages-1-2", "X11:stage-3", "X11:zone-1", "X11:zone-2"]);
     expect(fit.buckets.E1 + fit.buckets.E2).toBeCloseTo(366.62, 1);
@@ -411,7 +411,12 @@ describe("v2 in the plan", () => {
     expect(automation.followOn!.total).toBeGreaterThan(0);
     const segmentation = effort.workPackages.find(row => row.id === "bar-security-segmentation")!;
     expect(segmentation.total).toBeGreaterThan(0);
-    expect(segmentation.followOn!.total).toBeGreaterThan(0);
+    // A package is wholly in the entitlement or wholly follow-on: the stages the fit displaced are a package of their own.
+    expect(segmentation.followOn).toBeUndefined();
+    const later = effort.workPackages.find(row => row.id === "bar-security-segmentation:later")!;
+    expect(later.total).toBe(0);
+    expect(later.deferred).toBe("not funded");
+    expect(later.followOn!.total).toBeGreaterThan(0);
     expect(effort.workPackages.some(row => row.id.startsWith("line:"))).toBe(false);
   });
 
