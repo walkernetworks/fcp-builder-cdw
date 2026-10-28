@@ -187,7 +187,7 @@ describe("the fill order: whole packages, in order, never shaved", () => {
     const effort = effortOf(acmeHealth());
     const fit = effort.internal.fit!;
     expect(fit.underFunded).toBeNull();
-    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A", "AH", "AK", "AP", "AR", "D", "NX", "S_storage", "X10:design-share", "X4:design-share"]);
+    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A", "AH", "AK", "AP", "AR", "D", "NX", "S_storage", "X4:platform"]);
     const total = (id: string) => effort.workPackages.find(row => row.id === id)?.total ?? 0;
     for (const id of ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-playbook-design-migration-design"]) expect(total(id), id).toBeGreaterThan(0);
     // The first workload domain is whole or follow-on, and it is not in the build package's hours.
@@ -213,10 +213,10 @@ describe("the fill order: whole packages, in order, never shaved", () => {
 
   it("lists Acme's funded packages in fill order, with their hours", () => {
     const effort = effortOf(acmeHealth());
-    const order = ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-design-migration-design", "bar-playbook-component-design-resilience"];
+    const order = ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-design-migration-design", "bar-operations-observability"];
     expect(order.map(id => [id, effort.workPackages.find(row => row.id === id)!.total])).toEqual([
-      ["bar-platform-plan", 2], ["bar-hcl-review", 13], ["bar-playbook-design-target-state", 40], ["bar-management-domain", 67], ["bar-playbook-component-design-operations", 10], ["bar-design-access-mapping", 13],
-      ["bar-platform-licensing", 7], ["bar-platform-enablement", 7], ["bar-platform-handover", 12], ["bar-playbook-design-migration-design", 24], ["bar-playbook-component-design-resilience", 10],
+      ["bar-platform-plan", 2], ["bar-hcl-review", 13], ["bar-playbook-design-target-state", 40], ["bar-management-domain", 63], ["bar-playbook-component-design-operations", 7], ["bar-design-access-mapping", 13],
+      ["bar-platform-licensing", 7], ["bar-platform-enablement", 6], ["bar-platform-handover", 11], ["bar-playbook-design-migration-design", 24], ["bar-operations-observability", 19],
     ]);
   });
 
@@ -224,7 +224,7 @@ describe("the fill order: whole packages, in order, never shaved", () => {
     const effort = effortOf(acmeHealth());
     const fit = effort.internal.fit!;
     expect(fit.customerRun).toEqual({ hours: 0, waves: 0 });
-    for (const id of ["bar-playbook-execution-migration-waves", "bar-operations-observability", "bar-resilience-recovery-architecture", "bar-workload-domain"]) {
+    for (const id of ["bar-playbook-execution-migration-waves", "bar-resilience-recovery-architecture", "bar-workload-domain"]) {
       const row = effort.workPackages.find(item => item.id === id)!;
       expect(row, id).toMatchObject({ total: 0, deferred: "not funded" });
       expect(row.followOn!.total, id).toBeGreaterThan(0);
@@ -415,7 +415,7 @@ describe("every CDW bar on the entitlement timeline is a funded package", () => 
     const { adoption, notional } = timelinesWithDeferrals(withOwnership(document), effort.workPackages.filter(row => row.deferred).map(row => row.id), unscopedWorkPackageIds(effort));
     const year1 = new Set(adoption.lanes.flatMap(lane => lane.bars).map(bar => bar.id));
     const later = new Set(notional.lanes.flatMap(lane => lane.bars).map(bar => bar.id));
-    for (const id of ["bar-playbook-execution-migration-waves", "bar-operations-observability", "bar-resilience-recovery-architecture"]) {
+    for (const id of ["bar-playbook-execution-migration-waves", "bar-resilience-recovery-architecture"]) {
       expect(year1.has(id), `${id} is not in year one`).toBe(false);
       expect(later.has(id), `${id} is in the notional`).toBe(true);
     }

@@ -179,3 +179,10 @@ A per-engagement setting, "Migration waves" (Plan section, assumptions; changes 
 | Customer runs all waves (customer request) | None: no CDW waves, no follow-on for them | None | "... hands over, and the customer's team runs the migration waves." The customer-run row has no "proven runbook" |
 
 The mockups in this folder show the second row; the default has no runbook transfer bar and no customer-run row. A customer-owned row for waves that a report carries by hand counts as the customer's migration phase only under the second and third settings.
+
+A customer-owned row in a brief that names waves sets the setting on import, and the change is logged: a row for the "remaining" or "later" waves sets the second option, any other row for waves sets the third. A planner's earlier choice stands. If a row naming waves and the setting disagree afterwards (the default setting, a row typed in by hand), the Review section raises a "Needs a decision" warning and the row does not print in any format.
+
+## Draft and issued
+
+A draft export carries the watermark and its header band says "Draft" (Summary: "Version N Draft"; Standard document control: "N, draft"). Only an issued version shows "Issued <date>".
+

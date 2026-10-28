@@ -573,3 +573,8 @@ The priority order in 7.4 places Operations Tier 1 in the core bucket ahead of a
 - Digital Thought Disruption, VCF 9.1 VPC distributed vs centralized TGW: https://digitalthoughtdisruption.com/2026/07/20/vcf-9-1-vpc-distributed-vs-centralized-transit-gateway/
 
 - curioustechies, vDefend Security Intelligence: https://curioustechies.in/2024/09/22/unlocking-micro-segmentation-potential-with-vdefend-security-intelligence/
+
+### Package estimates are independent
+
+Each package's hours come from its own drivers, so adding or removing one package never changes another's (`server/packageIndependence.test.ts` removes each package in turn and compares the rest, to the hour). A pooled line is split across the packages the plan would carry, with a fixed denominator: a package that is not on the plan has its share dropped (the hours go with it) and never handed to the others. The deploy line (D) is the spec formula less the runbook transfer's share of the build, because the transfer is a package only when the customer runs the remaining waves; its share is the transfer's weight over the weights of the packages the build is split across. The Reference Architecture Design, hardware review, access mapping and migration plan have their own estimates and fall back to no other package.
+

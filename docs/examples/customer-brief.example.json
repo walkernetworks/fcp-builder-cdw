@@ -57,7 +57,7 @@
     { "component": "DR", "requirement": "Recovery orchestration and a defined recovery time objective.", "recommendation": "Choose the orchestration tool in the recovery design; test DR capacity on the new site.", "gate": "DR recovery time objective set" }
   ],
   "whatWeHeard": [
-    { "component": "Goal", "customerPosition": "\"Make our lives easier\"; use features already paid for", "whereItLands": "Operations and logs enablement; a runbook the team repeats" },
+    { "component": "Goal", "customerPosition": "\"Make our lives easier\"; use features already paid for", "whereItLands": "Operations and logs enablement" },
     { "component": "Storage", "customerPosition": "Keep the existing array", "whereItLands": "Fibre Channel stays principal storage" }
   ],
   "problems": [{ "problem": "Manual recovery of 330 powered-on VMs", "addressedBy": "the recovery design picks orchestration so DR is executable under pressure" }],
@@ -65,7 +65,7 @@
   "technicalItems": [{ "item": "The VCF Installer deploys vCenter, NSX and VCF Operations with the management domain", "reference": "VCF 9.1 documentation > Overview > VCF Installer Overview" }],
   "constraints": [{ "constraint": "DR site online before DR build and testing", "imposedBy": "calendar", "effect": "Recovery design now; DR build follows the site" }],
   "customerAsks": ["Decisions by November: hosts for the build, DR policy direction, wave ownership"],
-  "customerOwnedWork": [{ "label": "Customer migration waves and legacy cluster retirement", "start": "2027-02", "end": "2027-04" }],
+  "customerOwnedWork": [{ "label": "Legacy cluster retirement", "start": "2027-02", "end": "2027-04" }],
   "openItems": [{ "item": "Current RVTools export", "gates": "Design sign-off and sizing", "owner": "Pat Rivera" }],
   "personnel": [{ "workstream": "Design discovery, architecture and design", "cdw": ["Jordan Blake (Architect)"], "broadcom": [], "customer": ["Pat Rivera", "Sam Lee"] }],
   "milestonesToDate": [

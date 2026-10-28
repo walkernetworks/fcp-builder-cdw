@@ -357,7 +357,7 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   const handoverWindow = handover ? barWindow(timeline, handover) : null;
   const termEnd = reportTermEnd(document);
   const constraints: Array<Row<"constraints">> = [{ constraint: "Design and a current inventory before the build", imposedBy: "Sizing", effect: "Build starts after design sign-off" }];
-  if (path === "greenfield" || path === "hybrid") constraints.push({ constraint: "Management domain before any workload moves", imposedBy: "Platform", effect: "Proving wave follows the build" });
+  if (path === "greenfield" || path === "hybrid") constraints.push({ constraint: "Management domain before any workload moves", imposedBy: "Platform", effect: "First migration wave follows the build" });
   if (inventory.hclEvidence.vmInfo.length) constraints.push({ constraint: "Guest OS and VM hardware remediation before each wave", imposedBy: "Platform", effect: `${customer} remediates ahead of its waves` });
   for (const outcome of outcomes.filter(item => item.requiredBy.length).slice(0, 3)) {
     constraints.push({ constraint: `${planOutcomeLabel(outcome.key)} before ${outcome.requiredBy.map(key => planOutcomeLabel(key)).join(" and ")}`, imposedBy: "Platform", effect: "Sequenced as a prerequisite" });

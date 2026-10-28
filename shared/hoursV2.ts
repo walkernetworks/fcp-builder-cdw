@@ -423,12 +423,19 @@ export function scopeV2(document: EngagementDocument): Pass1 {
       add("D_VVF", "VVF foundation build", "srConsultant", [unit("D_VVF", "VVF foundation build", d, "platform")], { clusters: x.platformClusters, hosts: x.hosts });
     } else {
       const wld = x.workloadDomains * v(H.deploy.perWorkloadDomain) + x.dedicatedNsxWorkloadDomains * v(H.deploy.perDedicatedNsx);
-      const d = v(H.deploy.managementDomain) + v(H.deploy.handover) + v(H.deploy.managementServices) + v(H.deploy.perExtraInstance) * (x.instances - 1) + wld
+      const dFull = v(H.deploy.managementDomain) + v(H.deploy.handover) + v(H.deploy.managementServices) + v(H.deploy.perExtraInstance) * (x.instances - 1) + wld
         + v(H.deploy.perExtraCluster) * Math.max(0, x.platformClusters - 1 - x.workloadDomains) + v(H.deploy.perStretchedCluster) * x.stretchedClusters
         + v(H.deploy.perHostFirst) * Math.min(x.hosts, v(H.deploy.firstHostBand)) + v(H.deploy.perHostAbove) * Math.max(0, x.hosts - v(H.deploy.firstHostBand));
       // A small estate funds the first workload domain after the migration plan and the proving waves, so its share of
       // the build (the same weights the packages split the build by) is a line of its own.
       const weights = BUILD_STAGE_WEIGHTS;
+      // The build is split across its packages by weight. The runbook transfer is one of them only when the customer runs the
+      // remaining waves, so the deploy line carries its share only then: leaving the package out removes its hours
+      // and never raises another package's.
+      const transferWeight = weights.handover.value / 2;
+      const packageWeights = weights.managementDomain.value + weights.handover.value + weights.handover.value / 2 + weights.licensing.value + transferWeight
+        + (estate.small && path === "greenfield" ? 0 : x.workloadDomains * weights.workloadDomain.value);
+      const d = dFull * (fields.estimateInputs.migrationWaves === "customer-remaining" ? 1 : 1 - transferWeight / packageWeights);
       const workloadShare = estate.small && path === "greenfield"
         ? weights.workloadDomain.value / (weights.managementDomain.value + weights.workloadDomain.value + 2 * weights.handover.value + weights.licensing.value) : 0;
       add("D", path === "hybrid" ? "Shared foundation build" : "Management and workload domain build", "srConsultant", [unit("D", "Platform deploy", d * (1 - workloadShare), "platform")], { instances: x.instances, workloadDomains: x.workloadDomains, dedicatedNsx: x.dedicatedNsxWorkloadDomains, clusters: x.platformClusters, stretchedClusters: x.stretchedClusters, hosts: x.hosts });

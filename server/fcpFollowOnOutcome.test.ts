@@ -36,7 +36,7 @@ describe("the follow-on table prints each package's outcome", () => {
   it("prints the outcome of the other follow-on packages too", () => {
     const document = meridianHealth();
     const effort = scopedEffortForDocument(document, FIXTURE_TODAY);
-    const rows = effort.workPackages.filter(row => (row.followOn?.total ?? 0) > 0 && row.detail?.outcome);
+    const rows = effort.workPackages.filter(row => !row.id.includes(":") && (row.followOn?.total ?? 0) > 0 && row.detail?.outcome);
     expect(rows.length).toBeGreaterThan(0);
     const text = visible(render(document, "summary"));
     for (const row of rows) expect(text, row.id).toContain(row.detail!.outcome.split(/(?<=\.)\s/)[0].replace(/\.$/, ""));

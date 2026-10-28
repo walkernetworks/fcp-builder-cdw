@@ -222,6 +222,7 @@ describe("customer effort", () => {
   it("builds phases from the plan, with customer-run waves as the peak", () => {
     const asked = engagement();
     asked.fields.estimateInputs.migrationWaves = "customer-remaining";
+    asked.report.customerOwnedWork = [{ label: "Customer migration waves and legacy cluster retirement", start: "2027-02", end: "2027-04" }];
     const { phases, peak } = buildCustomerEffort(asked);
     expect(phases.map(phase => phase.phase)).toEqual(expect.arrayContaining(["Design sessions and design sign-off", "Platform build", "Migration waves"]));
     expect(phases.map(phase => phase.startDate)).toEqual([...phases.map(phase => phase.startDate)].sort());

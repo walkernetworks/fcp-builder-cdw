@@ -168,10 +168,11 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   const vvf = platform.startsWith("VVF");
   const deliveryModel = report.deliveryModel || "CDW";
   const version = options.version;
-  const issued = version ? `Version ${version.issueNumber} · Issued ${shortDate(version.issuedOn)}` : `Working draft · ${shortDate(asOf)}`;
+  // Only an issued version says "Issued"; a draft export says "Draft", beside the watermark.
+  const issued = version ? `Version ${version.issueNumber} · ${options.draft ? "Draft" : `Issued ${shortDate(version.issuedOn)}`}` : `Working draft · ${shortDate(asOf)}`;
 
   // ---- Header band and fact strip
-  const band = `<header class="band"><div>${cdwLogoSvg("logo")}<div class="eyebrow">Functional Consumption Plan · Summary</div><h1>${vvf ? "VMware vSphere Foundation" : "VMware Cloud Foundation"} Adoption: ${esc(customer)}</h1></div><div class="meta">${version ? `<b>Version ${version.issueNumber}</b>Issued ${esc(shortDate(version.issuedOn))}` : `<b>Working draft</b>Prepared ${esc(shortDate(asOf))}`}<br>Prepared by CDW Consulting Solution Architecture</div></header>`;
+  const band = `<header class="band"><div>${cdwLogoSvg("logo")}<div class="eyebrow">Functional Consumption Plan · Summary</div><h1>${vvf ? "VMware vSphere Foundation" : "VMware Cloud Foundation"} Adoption: ${esc(customer)}</h1></div><div class="meta">${version ? `<b>Version ${version.issueNumber}</b>${options.draft ? "Draft" : `Issued ${esc(shortDate(version.issuedOn))}`}` : `<b>Working draft</b>Prepared ${esc(shortDate(asOf))}`}<br>Prepared by CDW Consulting Solution Architecture</div></header>`;
   const pills = `<div class="pills">Platform: <b>${esc(platform)}</b> · Path: <b>${esc(plan.label)}</b> · Delivery: <b>${esc(deliveryModel)}</b>${fields.location ? ` · Location: <b>${esc(fields.location)}</b>` : ""}</div>`;
 
   const kpi = (value: string, label: string, sub: string) => `<div class="kpi"><div class="v">${value}</div><div class="l">${label}</div><div class="s">${sub}</div></div>`;

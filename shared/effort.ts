@@ -588,9 +588,10 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   // Weighted by length, capped so a long-running oversight package does not take most of a line's hours.
   const cap = timeline.cadence === "week" ? 8 : 2;
   const lengthWeight = (bar: TimelineBar) => Math.min(cap, Math.max(1, bar.endCol - bar.startCol));
-  const spread = (matches: typeof bars, roles: RoleHours, keep: (id: string) => boolean, target: Map<string, Accumulated>, weightOf: (bar: TimelineBar) => number = lengthWeight) => {
+  const spread = (matches: typeof bars, roles: RoleHours, keep: (id: string) => boolean, target: Map<string, Accumulated>, weightOf: (bar: TimelineBar) => number = lengthWeight, absentWeight = 0) => {
     const weights = matches.map(({ bar }) => weightOf(bar));
-    const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+    // A package the plan would carry but does not has its share dropped, never handed to the others (see `absentBuildWeight`).
+    const weightTotal = weights.reduce((sum, value) => sum + value, 0) + absentWeight;
     matches.forEach(({ bar }, index) => { if (keep(bar.id)) add(target, bar.id, bar.label, roles, weights[index] / weightTotal); });
   };
   const scale = (roles: RoleHours, share: number): RoleHours => ({ architect: roles.architect * share, srConsultant: roles.srConsultant * share, projectManager: roles.projectManager * share });
@@ -604,6 +605,20 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   const discoveryInScope = lines.some(item => DISCOVERY_CODES.test(item.code));
   // Domain packages from the brief take their build share from their pathway and host count.
   const domainWeights = new Map(domainPackages(document.fields).map(({ id, domain }) => [id, domainBuildWeight(domain, domainHosts(domain, document.inventory).hosts)]));
+  // The packages a deploy line is split across, whether or not the plan has them: removing one drops its share (the hours go
+  // with it) and never raises another package's hours. Only a line that already shares with the handover family is split this way.
+  const POOLED_KINDS: Array<[RegExp, number]> = [
+    [BUILD_WEIGHTS[0][0], BUILD_STAGE_WEIGHTS.managementDomain.value],
+    [/^bar-platform-handover$/, BUILD_STAGE_WEIGHTS.handover.value],
+    [/^bar-platform-enablement$/, BUILD_STAGE_WEIGHTS.handover.value / 2],
+    [/^bar-platform-licensing$/, BUILD_STAGE_WEIGHTS.licensing.value],
+    // The deploy line carries the runbook transfer's share only when the customer runs the remaining waves (see hoursV2).
+    ...(migrationWavesChoice(document) === "customer-remaining" ? [[/^bar-platform-runbook-transfer$/, BUILD_STAGE_WEIGHTS.handover.value / 2] as [RegExp, number]] : []),
+  ];
+  const absentBuildWeight = (ids: string[]) => {
+    if (!ids.some(id => POOLED_KINDS.slice(1).some(([pattern]) => pattern.test(id)))) return 0;
+    return POOLED_KINDS.filter(([pattern]) => !ids.some(id => pattern.test(id))).reduce((sum, [, weight]) => sum + weight, 0);
+  };
   for (const item of lines) {
     let roles = rolesOf(item);
     // The Reference Architecture Design states its hours all-in, so its project management stays on the package.
@@ -629,10 +644,10 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     // mapping and the migration plan are packages of their own, with their own estimates.
     if (item.workstream === REFERENCE_DESIGN.title) {
       const referenceId = referenceDesignBarId(playbookPlanForFields(document.fields).path);
-      if (referenceId && matches.some(({ bar }) => bar.id === referenceId)) matches = matches.filter(({ bar }) => bar.id === referenceId);
+      if (referenceId) matches = matches.filter(({ bar }) => bar.id === referenceId);
     }
     // Architecture and discovery fall back to the other design packages, then to any design package, when theirs are not on the plan.
-    if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && !matches.some(({ bar }) => inEntitlement(bar.id))) {
+    if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && item.workstream !== REFERENCE_DESIGN.title && !matches.some(({ bar }) => inEntitlement(bar.id))) {
       const core = live(id => CORE_DESIGN_BARS.test(id));
       matches = core.length ? core : live(id => COMPONENT_DESIGN_BARS.test(id));
     }
@@ -644,8 +659,10 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     const addOnDesign = addOnBars(item.code);
     if (addOnDesign && item.reduction !== "design only" && !item.skipDesignShare) {
       const design = live(componentDesign(addOnDesign));
-      if (design.length && sharing.length) {
-        spread(design, scale(roles, ADD_ON_DESIGN_SHARE), () => true, inWindow);
+      if (sharing.length || (design.length && !matches.length)) {
+        // Each side keeps its share whether or not the other is on the plan; a missing design package takes its hours with it.
+        if (design.length) spread(design, scale(roles, ADD_ON_DESIGN_SHARE), () => true, inWindow);
+        else { const dropped = scale(roles, ADD_ON_DESIGN_SHARE); freed.architect += dropped.architect; freed.srConsultant += dropped.srConsultant; freed.projectManager += dropped.projectManager; }
         roles = scale(roles, 1 - ADD_ON_DESIGN_SHARE);
       }
     }
@@ -654,18 +671,20 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     // The deploy line is split by how much work each build package is, not by how long its window is.
     // The hardware review and the access mapping are focused pieces of design: half a design package's share.
     const weightOf = BUILD_CODES.test(item.code) ? (bar: TimelineBar) => domainWeights.get(bar.id) ?? buildWeight(bar.id) : (bar: TimelineBar) => lengthWeight(bar) * (/^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(bar.id) ? 0.5 : 1);
-    if (current.length) spread(sharing, roles, id => !late(id), inWindow, weightOf);
+    const absentWeight = BUILD_CODES.test(item.code) ? absentBuildWeight(sharing.map(({ bar }) => bar.id)) : 0;
+    if (absentWeight) { const share = absentWeight / (absentWeight + sharing.reduce((sum, { bar }) => sum + weightOf(bar), 0)); freed.architect += roles.architect * share; freed.srConsultant += roles.srConsultant * share; freed.projectManager += roles.projectManager * share; }
+    if (current.length) spread(sharing, roles, id => !late(id), inWindow, weightOf, absentWeight);
     else if (!sharing.length) add(inWindow, `line:${item.workstream}`, item.reduction ? `${item.workstream} (${item.reduction})` : item.workstream, roles, 1);
     if (sharing.some(({ bar }) => late(bar.id))) {
       const moved = new Map<string, Accumulated>();
-      spread(sharing, roles, late, moved, weightOf);
+      spread(sharing, roles, late, moved, weightOf, absentWeight);
       for (const [key, row] of Array.from(moved.entries())) {
         add(followOn, key, row.label, row, 1);
         freed.architect += row.architect; freed.srConsultant += row.srConsultant; freed.projectManager += row.projectManager;
       }
     }
     // Other deferred packages of the line get their share as a follow-on estimate.
-    spread(matches, roles, id => deferred.has(id) && deferred.get(id) !== "planned for later" && !late(id), followOn, weightOf);
+    spread(matches, roles, id => deferred.has(id) && deferred.get(id) !== "planned for later" && !late(id), followOn, weightOf, absentWeight);
     // An add-on cut to its design keeps the rest of its hours on its build packages, as follow-on scope.
     const addOn = addOnBars(item.code);
     if (addOn && item.reduction === "design only" && item.fullBase > item.base) {
@@ -1266,6 +1285,17 @@ export function customerRunsRemainingWaves(document: EngagementDocument): boolea
   return migrationWavesChoice(document) !== "cdw";
 }
 
+/** Customer-owned work rows that name migration or upgrade waves while the Migration waves setting says CDW runs them all. */
+export function disagreeingWaveRows(document: EngagementDocument) {
+  return migrationWavesChoice(document) === "cdw" ? completedReport(document.report).customerOwnedWork.filter(row => WAVES_LABEL.test(row.label)) : [];
+}
+
+/** The readiness warning when customer-owned work names waves the Migration waves setting gives to CDW, or null. Such a row never prints. */
+export function wavesSettingWarning(document: EngagementDocument): string | null {
+  const rows = disagreeingWaveRows(document);
+  return rows.length ? `Customer-owned work names migration waves ("${rows[0].label}"), but Migration waves is set to "CDW runs all waves". The row does not print. Set Migration waves to the customer's request, or remove the row.` : null;
+}
+
 /** Customer effort per phase from the plan's windows and the default hours per week. */
 export function buildCustomerEffort(document: EngagementDocument): { phases: CustomerEffortPhase[]; peak: CustomerEffortPhase | null } {
   const timeline = document.adoptionTimeline;
@@ -1281,7 +1311,8 @@ export function buildCustomerEffort(document: EngagementDocument): { phases: Cus
   for (const work of completedReport(document.report).customerOwnedWork) {
     const start = work.start.length === 7 ? `${work.start}-01` : work.start;
     const end = work.end.length === 7 ? `${work.end}-28` : work.end;
-    add(WAVES_LABEL.test(work.label) && customerRunsRemainingWaves(document) ? "customerWaves" : "build", { label: work.label, start, end });
+    if (WAVES_LABEL.test(work.label) && !customerRunsRemainingWaves(document)) continue;
+    add(WAVES_LABEL.test(work.label) ? "customerWaves" : "build", { label: work.label, start, end });
   }
   const phases = Array.from(sources.entries()).map(([key, items]) => {
     const defaults = CUSTOMER_EFFORT_DEFAULTS[key];

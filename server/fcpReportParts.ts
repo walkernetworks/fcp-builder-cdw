@@ -1,5 +1,5 @@
 import { bsasTerm, fundedDocument, isBsasOnly } from "../shared/bsas";
-import { buildBurndown, unscopedWorkPackageIds, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
+import { buildBurndown, disagreeingWaveRows, unscopedWorkPackageIds, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
 import { calculateEntitlementEndDate, type EngagementDocument, type Timeline } from "../shared/fcp";
 import { effectiveReport, termEndAssumed } from "../shared/reportView";
 import { projectOperationalTimelineToMonths, sliceTimeline } from "./timelineHtml";
@@ -83,7 +83,10 @@ export function prepareReport(input: EngagementDocument, options: { today?: stri
   // Every bar carries who owns it (the planner's choice or the default) for drawing and sequencing.
   const customerTimelines = timelinesWithDeferrals(withOwnership(source), deferredWork.map(row => row.id), unscopedWorkPackageIds(options.effort));
   const planned: EngagementDocument = { ...source, adoptionTimeline: customerTimelines.adoption, twoYearPlan: customerTimelines.notional };
-  const document: EngagementDocument = { ...planned, report: effectiveReport(planned) };
+  // Customer-owned work that names waves the Migration waves setting gives to CDW does not print (it is a readiness warning).
+  const effective = effectiveReport(planned);
+  const disagreeing = new Set(disagreeingWaveRows(planned));
+  const document: EngagementDocument = { ...planned, report: disagreeing.size ? { ...effective, customerOwnedWork: effective.customerOwnedWork.filter(row => !Array.from(disagreeing).some(other => other.label === row.label)) } : effective };
   const { fields, report } = document;
   const today = options.today ?? new Date().toISOString().slice(0, 10);
   const asOf = report.asOf || today;

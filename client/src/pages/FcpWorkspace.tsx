@@ -15,6 +15,7 @@ import { trpc } from "@/lib/trpc";
 import { sectionFromSearch, type WorkspaceSection } from "@/lib/fcpWorkspaceRoutes";
 import { useFcpEngagement } from "@/lib/useFcpEngagement";
 import { isCommercialPlan } from "@shared/buildingBlocks";
+import { wavesSettingWarning } from "@shared/effort";
 import { HISTORY_REASON_LABEL, segmentWarning } from "@shared/fcpRecord";
 import { SegmentReview } from "@/components/fcp/SegmentReview";
 import { FundingSection } from "@/components/fcp/FundingSection";
@@ -118,6 +119,7 @@ function Workspace({ id }: { id: number }) {
   useEffect(() => { if (record.data) setReportFormat(reportFormat); }, [record.data, reportFormat, setReportFormat]);
   const issueActions = { engagementId: id, title: fcp.title, document: fcp.document, readOnly: fcp.readOnly, saveDocument: fcp.saveDocument, reload: fcp.reload, segment: tracker?.segment ?? null, reportFormat };
   const segmentWarningText = tracker ? segmentWarning(tracker.segment, fcp.document.fields.commercialPlan, tracker.segmentReview ?? null) : null;
+  const wavesWarning = wavesSettingWarning(fcp.document);
   const statuses = useMemo(() => {
     const open = sources ? openSources(sources).length : null;
     return Object.fromEntries(WORKSPACE_SECTIONS.map(item => [item.id, sectionStatus(item.id, fcp.document, open, sources ? sources.length : null, Boolean(segmentWarningText))])) as Record<WorkspaceSection, SectionStatus | null>;
@@ -221,6 +223,12 @@ function Workspace({ id }: { id: number }) {
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-state-warn/30 bg-state-warn-soft p-4 text-sm" role="status">
                   <span className="text-state-warn-text"><strong>Needs a decision:</strong> {segmentWarningText}</span>
                   <Button variant="outline" size="sm" className="bg-surface" onClick={() => setSection("engagement")}>Decide in Engagement</Button>
+                </div>
+              )}
+              {wavesWarning && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-state-warn/30 bg-state-warn-soft p-4 text-sm" role="status">
+                  <span className="text-state-warn-text"><strong>Needs a decision:</strong> {wavesWarning}</span>
+                  <Button variant="outline" size="sm" className="bg-surface" onClick={() => setSection("plan")}>Decide in Plan</Button>
                 </div>
               )}
               <DeliveryPackageHeader document={document} />

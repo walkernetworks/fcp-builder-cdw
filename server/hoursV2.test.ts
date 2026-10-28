@@ -84,11 +84,21 @@ describe("v2 Pass 1 formulas (spec section 6)", () => {
     expect(scopeV2(doc({ path: "design-only", hosts: 72, rvtoolsDatacenters: 24, inputs: { sites: 3 } })).inputs.sites).toBe(3);
   });
 
+  /**
+   * The deploy line is the spec formula less the runbook transfer's share of the build, which is a package only when the customer runs
+   * the remaining waves. The share is the transfer's weight over the weights of the packages the build is split across.
+   */
+  const lessTransfer = (document: Parameters<typeof scopeV2>[0], formula: number) => {
+    const pass1 = scopeV2(document);
+    const workload = pass1.estate.small && document.fields.adoptionDetails.upgradePath === "greenfield" ? 0 : pass1.inputs.workloadDomains * 0.8;
+    return formula * (1 - 0.1 / (1 + 0.2 + 0.1 + 0.1 + 0.1 + workload));
+  };
+
   it("sizes a build by the new platform's clusters, and converge or import by the existing ones", () => {
     const build = scopeV2(doc({ path: "greenfield", hosts: 144, clusters: 36, storage: "vmfs-fc" }));
     expect(build.inputs.platformClusters).toBe(9);
     expect(lineOf(build, "S_storage")!.computedBase).toBe(72);
-    expect(lineOf(build, "D")!.computedBase).toBeCloseTo(84 + 24 + 8 * 7 + 48 + 0.5 * 80);
+    expect(lineOf(build, "D")!.computedBase).toBeCloseTo(lessTransfer(doc({ path: "greenfield", hosts: 144, clusters: 36, storage: "vmfs-fc" }), 84 + 24 + 8 * 7 + 48 + 0.5 * 80));
     expect(scopeV2(doc({ path: "greenfield", hosts: 144, clusters: 36, inputs: { targetClusters: 12 } })).inputs.platformClusters).toBe(12);
     const converge = scopeV2(doc({ path: "converge", hosts: 144, clusters: 36 }));
     expect(converge.inputs.platformClusters).toBe(36);
@@ -97,13 +107,16 @@ describe("v2 Pass 1 formulas (spec section 6)", () => {
 
   it("prices the VCF deploy continuously", () => {
     // 64 + 16 + 4 + (24 + 8 dedicated NSX) + 8 x (7 - 1 - 1) + 0.75 x 64 + 0.5 x 36
-    expect(base(doc({ hosts: 100, clusters: 7, inputs: { dedicatedNsxWorkloadDomains: 1 } }), "D")).toBeCloseTo(222);
+    const dedicated = doc({ hosts: 100, clusters: 7, inputs: { dedicatedNsxWorkloadDomains: 1 } });
+    expect(base(dedicated, "D")).toBeCloseTo(lessTransfer(dedicated, 222));
     // Consolidated: no workload domain, every extra cluster counts.
     // (A small estate funds the first workload domain as a line of its own, DW; the two together are the build.)
     const consolidated = doc({ hosts: 8, clusters: 1, topology: "consolidated" });
-    expect(base(consolidated, "D") + base(consolidated, "DW")).toBeCloseTo(84 + 6);
-    expect(base(doc({ hosts: 24, clusters: 2 }), "D")).toBeCloseTo(84 + 24 + 0.75 * 24);
-    expect(base(doc({ hosts: 25, clusters: 2 }), "D")).toBeCloseTo(84 + 24 + 0.75 * 25);
+    expect(base(consolidated, "D") + base(consolidated, "DW")).toBeCloseTo(lessTransfer(consolidated, 84 + 6));
+    const two = doc({ hosts: 24, clusters: 2 });
+    expect(base(two, "D")).toBeCloseTo(lessTransfer(two, 84 + 24 + 0.75 * 24));
+    const twentyFive = doc({ hosts: 25, clusters: 2 });
+    expect(base(twentyFive, "D")).toBeCloseTo(lessTransfer(twentyFive, 84 + 24 + 0.75 * 25));
   });
 
   it("prices the VVF build and the storage adder", () => {
