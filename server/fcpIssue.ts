@@ -39,8 +39,10 @@ export type PreparedIssue = {
   /** The format the customer receives, from the tracker segment unless the issue overrides it. */
   reportFormat: ReportFormatChoice;
   changeSummary: ChangeSummary;
-  /** Nothing changed since the current issued version. */
+  /** The document has not changed since the current issued version (the hours model and the renderer do not count). */
   unchanged: boolean;
+  /** The same document now plans different hours than the current issue held; informational, never a change. */
+  hoursNote: string | null;
   basedOn: { id: number; issueNumber: number } | null;
   /** What the Standard's document control and acceptance block were rendered with; stored on the version at issue. */
   issueContext: IssueContext | null;
@@ -70,9 +72,15 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
   const html = renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version: { issueNumber: (latest?.issueNumber ?? 0) + 1, issuedOn }, deliveredNotes: notes, ...(format === "standard" && issueContext ? { ...(issueContext.supersedes ? { supersedes: issueContext.supersedes } : {}), broadcomSignature: issueContext.broadcomSignature } : {}) } : {}) });
   const previous = latest && latest.issueNumber !== null && latest.effortSnapshot ? { document: latest.data, effort: latest.effortSnapshot, issueNumber: latest.issueNumber } : null;
   const changeSummary = computeChangeSummary(previous, { document, effort });
-  // Unchanged means the data is the same as the current issue's stored snapshots, in the same format. Not the rendered
-  // pages: a renderer change, or an approval recorded since, never makes an issued version look changed.
-  const unchanged = Boolean(previous) && (latest!.reportFormat ?? null) === (format ?? null) && sameData(migrateDocument(latest!.data), document) && sameData(latest!.effortSnapshot, effort);
+  // Unchanged means the working document is the same as the current issue's stored snapshot, in the same format. Not the
+  // rendered pages, and not the effort: a renderer change, an approval recorded since, or a changed hours model never
+  // makes an issued version look changed.
+  const unchanged = Boolean(previous) && (latest!.reportFormat ?? null) === (format ?? null) && sameData(migrateDocument(latest!.data), document);
+  // A changed hours model has its own note: same document, different hours than the issue held.
+  const heldHours = latest?.effortSnapshot?.totals.total;
+  const hoursNote = latest && latest.issueNumber !== null && latest.effortSnapshot && !sameData(latest.effortSnapshot, effort)
+    ? `The hours model has changed since issue ${latest.issueNumber}: the plan now carries ${Math.round(effort.totals.total)} hours${heldHours !== undefined ? ` where the issue held ${Math.round(heldHours)}` : ""}.`
+    : null;
   return {
     title: row.title,
     document,
@@ -83,6 +91,7 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
     reportFormat,
     changeSummary,
     unchanged,
+    hoursNote,
     basedOn: latest && latest.issueNumber !== null ? { id: latest.id, issueNumber: latest.issueNumber } : null,
     issueContext,
   };

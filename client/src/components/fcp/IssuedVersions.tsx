@@ -147,6 +147,7 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
         </div>
       )}
       {result && result.unchanged && <p className="text-xs text-ink-muted">Nothing has changed since issue {result.basedOnIssue}, so there is nothing to issue.</p>}
+      {result?.hoursNote && <p className="text-xs text-ink-muted">{result.hoursNote}</p>}
       {result && result.failures.length === 0 && !result.unchanged && <ChangeSummaryView summary={result.changeSummary} />}
     </Panel>
   );

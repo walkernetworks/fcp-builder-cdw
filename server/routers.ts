@@ -198,7 +198,7 @@ export const appRouter = router({
     /** What issuing now would produce: the checks and the change summary. Writes nothing. */
     issuePreview: protectedProcedure.input(z.object({ id: recordId, reportFormat: reportFormatInput })).mutation(async ({ ctx, input }) => {
       const prepared = requireRow(await prepareIssue(viewerFor(ctx.user), input.id, { reportFormat: input.reportFormat }));
-      return { failures: prepared.failures, fundingProblem: prepared.fundingProblem, reportFormat: prepared.reportFormat, changeSummary: prepared.changeSummary, unchanged: prepared.unchanged, basedOnIssue: prepared.basedOn?.issueNumber ?? null };
+      return { failures: prepared.failures, fundingProblem: prepared.fundingProblem, reportFormat: prepared.reportFormat, changeSummary: prepared.changeSummary, unchanged: prepared.unchanged, hoursNote: prepared.hoursNote, basedOnIssue: prepared.basedOn?.issueNumber ?? null };
     }),
     /** Issues the saved FCP as the next numbered version, exactly as rendered now, without the draft mark. */
     issue: protectedProcedure

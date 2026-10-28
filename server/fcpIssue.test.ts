@@ -144,6 +144,21 @@ describe("fcpRecord.issue", () => {
       expect((await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" })).unchanged).toBe(true);
     });
 
+    it("compares the document only: a changed hours model gets its own note and is not a change", async () => {
+      const { document, stored } = await issuedVersionTwo();
+      // The issue was made when the plan carried other hours: same document, different effort snapshot.
+      const held = structuredClone(stored.effort);
+      held.totals.total += 40;
+      vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(asLatest(stored, { effortSnapshot: held }));
+      vi.mocked(db.getEngagement).mockResolvedValue(standardRow(document));
+      const preview = await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" });
+      expect(preview.unchanged).toBe(true);
+      expect(preview.hoursNote).toBe(`The hours model has changed since issue 2: the plan now carries ${Math.round(stored.effort.totals.total)} hours where the issue held ${Math.round(held.totals.total)}.`);
+      // Nothing to note when the hours are the same.
+      vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(asLatest(stored));
+      expect((await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" })).hoursNote).toBeNull();
+    });
+
     it("still sees a change in the data, and a different format", async () => {
       const { document, stored } = await issuedVersionTwo();
       vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(asLatest(stored));
