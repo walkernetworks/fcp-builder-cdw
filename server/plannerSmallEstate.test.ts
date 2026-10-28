@@ -1,3 +1,4 @@
+import { withMigrationWavesChoice } from "../shared/estateSize";
 import { describe, expect, it } from "vitest";
 import { ESTATE_SIZE_UNKNOWN_FLAG, estateSizeFlag, resolveEstateSize, withSmallEstateChoice } from "../shared/estateSize";
 import { LATER_DESIGN_PHASE, RUNBOOK_TRANSFER_BAR, timelinesWithDeferrals, unscopedWorkPackageIds, withOwnership } from "../shared/effort";
@@ -186,7 +187,7 @@ describe("the fill order: whole packages, in order, never shaved", () => {
     const effort = effortOf(acmeHealth());
     const fit = effort.internal.fit!;
     expect(fit.underFunded).toBeNull();
-    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A", "AH", "AK", "AP", "AR", "D", "NX", "S_storage", "X10:design-share", "X4:design-share"]);
+    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A", "AH", "AK", "AP", "AR", "D", "NX", "S_storage", "X4:platform"]);
     const total = (id: string) => effort.workPackages.find(row => row.id === id)?.total ?? 0;
     for (const id of ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-playbook-design-migration-design"]) expect(total(id), id).toBeGreaterThan(0);
     // The first workload domain is whole or follow-on, and it is not in the build package's hours.
@@ -201,7 +202,9 @@ describe("the fill order: whole packages, in order, never shaved", () => {
       const left = fit.placements.filter(item => (item.bucket === "F" || item.bucket === "C") && item.reason === "ran out");
       for (const out of left) {
         const spentBefore = funded.filter(item => item.step <= out.step && !item.designShare).reduce((sum, item) => sum + item.loaded, 0) + funded.filter(item => item.designShare && item.code === "X4").reduce((sum, item) => sum + item.loaded, 0);
-        const fits = out.loaded <= fit.fillableHours - spentBefore + 1e-6;
+        // CDW's waves are one package, funded whole or not at all.
+        const size = out.code === "FILL_mig" && out.step === 4 ? left.filter(item => item.code === "FILL_mig" && item.step === 4).reduce((sum, item) => sum + item.loaded, 0) : out.loaded;
+        const fits = size <= fit.fillableHours - spentBefore + 1e-6;
         const laterFunded = funded.filter(item => item.step > out.step && !item.designShare);
         expect(fits && laterFunded.length > 0, `${document.fields.customerName}: ${out.label} fits but ${laterFunded.map(item => item.label).join(", ")} was funded after it`).toBe(false);
       }
@@ -210,36 +213,76 @@ describe("the fill order: whole packages, in order, never shaved", () => {
 
   it("lists Acme's funded packages in fill order, with their hours", () => {
     const effort = effortOf(acmeHealth());
-    const order = ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-design-migration-design", "bar-playbook-component-design-resilience"];
+    const order = ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-design-migration-design", "bar-operations-observability"];
     expect(order.map(id => [id, effort.workPackages.find(row => row.id === id)!.total])).toEqual([
-      ["bar-platform-plan", 2], ["bar-hcl-review", 13], ["bar-playbook-design-target-state", 40], ["bar-management-domain", 63], ["bar-playbook-component-design-operations", 10], ["bar-design-access-mapping", 13],
-      ["bar-platform-licensing", 7], ["bar-platform-enablement", 6], ["bar-platform-handover", 11], ["bar-playbook-design-migration-design", 24], ["bar-playbook-component-design-resilience", 10],
+      ["bar-platform-plan", 2], ["bar-hcl-review", 13], ["bar-playbook-design-target-state", 40], ["bar-management-domain", 63], ["bar-playbook-component-design-operations", 7], ["bar-design-access-mapping", 13],
+      ["bar-platform-licensing", 7], ["bar-platform-enablement", 6], ["bar-platform-handover", 11], ["bar-playbook-design-migration-design", 24], ["bar-operations-observability", 19],
     ]);
   });
 
-  it("puts the migration plan, proving waves, runbook transfer, health and logs and recovery in the follow-on, whole, when they do not fit", () => {
+  it("puts the migration waves, health and logs and recovery in the follow-on, whole, when they do not fit", () => {
     const effort = effortOf(acmeHealth());
     const fit = effort.internal.fit!;
     expect(fit.customerRun).toEqual({ hours: 0, waves: 0 });
-    for (const id of ["bar-playbook-execution-migration-waves", RUNBOOK_TRANSFER_BAR, "bar-operations-observability", "bar-resilience-recovery-architecture", "bar-workload-domain"]) {
+    for (const id of ["bar-playbook-execution-migration-waves", "bar-resilience-recovery-architecture", "bar-workload-domain"]) {
       const row = effort.workPackages.find(item => item.id === id)!;
       expect(row, id).toMatchObject({ total: 0, deferred: "not funded" });
       expect(row.followOn!.total, id).toBeGreaterThan(0);
     }
+    // CDW runs every wave by default, so the runbook knowledge transfer is not in the plan at all.
+    expect(effort.workPackages.some(row => row.id === RUNBOOK_TRANSFER_BAR)).toBe(false);
     // The leftover goes to Optimization and Advisory Services.
-    expect(effortOf(acmeHealthReconciled()).workPackages.find(row => row.id === "bar-hours-fill")!.total).toBeGreaterThan(0);
+    const roomy = acmeHealthReconciled();
+    roomy.report.entitlement.hours = 290;
+    roomy.fields.entitlementAmount = 290 * 330;
+    expect(effortOf(refreshDerivedDocument(roomy, { forceRebuild: true })).workPackages.find(row => row.id === "bar-hours-fill")!.total).toBeGreaterThan(0);
   });
 
-  it("runs the runbook transfer only when the proving waves are in, and then the customer runs the remaining waves", () => {
+  it("runs the runbook transfer only when the customer asked to run the remaining waves and CDW's first waves are in", () => {
+    const withWaves = acmeHealth();
+    withWaves.report.entitlement.hours = 900;
+    withWaves.fields.entitlementAmount = 900 * 330;
+    withWaves.fields.estimateInputs.migrationWaves = "customer-remaining";
+    const effort = effortOf(refreshDerivedDocument(withWaves, { forceRebuild: true }));
+    const fit = effort.internal.fit!;
+    expect(fit.placements.find(item => item.unitId === "FILL_mig:wave-1")!.bucket).toBe("E1");
+    expect(effort.workPackages.find(row => row.id === RUNBOOK_TRANSFER_BAR)!.total).toBeGreaterThan(0);
+    // The first waves do not fit: the customer is handed nothing, so the transfer is held with them.
+    const without = acmeHealth();
+    without.fields.estimateInputs.migrationWaves = "customer-remaining";
+    expect(effortOf(refreshDerivedDocument(without, { forceRebuild: true })).workPackages.find(row => row.id === RUNBOOK_TRANSFER_BAR)).toMatchObject({ total: 0, deferred: "not funded" });
+  });
+
+  it("by default CDW runs every wave: the whole waves package, no runbook transfer and nothing handed to the customer", () => {
     const withWaves = acmeHealth();
     withWaves.report.entitlement.hours = 900;
     withWaves.fields.entitlementAmount = 900 * 330;
     const effort = effortOf(refreshDerivedDocument(withWaves, { forceRebuild: true }));
     const fit = effort.internal.fit!;
-    expect(fit.placements.find(item => item.unitId === "FILL_mig:wave-1")!.bucket).toBe("E1");
-    expect(effort.workPackages.find(row => row.id === RUNBOOK_TRANSFER_BAR)!.total).toBeGreaterThan(0);
-    const without = effortOf(acmeHealth());
-    expect(without.workPackages.find(row => row.id === RUNBOOK_TRANSFER_BAR)).toMatchObject({ total: 0, deferred: "not funded" });
+    expect(fit.customerRun).toEqual({ hours: 0, waves: 0 });
+    expect(fit.placements.filter(item => item.code === "FILL_mig" && item.step === 4).every(item => item.bucket === "E1")).toBe(true);
+    expect(fit.placements.some(item => item.code === "FILL_mig" && item.step === 7)).toBe(false);
+    expect(effort.workPackages.some(row => row.id === RUNBOOK_TRANSFER_BAR)).toBe(false);
+    // The customer runs all waves on request: the waves package is not CDW's at all.
+    const theirs = acmeHealth();
+    theirs.report.entitlement.hours = 900;
+    theirs.fields.entitlementAmount = 900 * 330;
+    theirs.fields.estimateInputs.migrationWaves = "customer-all";
+    const all = effortOf(refreshDerivedDocument(theirs, { forceRebuild: true }));
+    expect(all.internal.fit!.customerRun.waves).toBeGreaterThan(0);
+    expect(all.internal.fit!.placements.some(item => item.code === "FILL_mig")).toBe(false);
+    expect(all.workPackages.find(row => row.id === "bar-playbook-execution-migration-waves")?.followOn?.total ?? 0).toBe(0);
+  });
+
+  it("logs a change to the Migration waves setting, and nothing when it is chosen again", () => {
+    const document = acmeHealth();
+    const changed = withMigrationWavesChoice(document, "customer-remaining", "2026-10-28T10:00:00.000Z");
+    expect(changed.fields.estimateInputs.migrationWaves).toBe("customer-remaining");
+    expect(changed.fields.plannerLog!.at(-1)).toEqual({ at: "2026-10-28T10:00:00.000Z", input: "Migration waves", from: "cdw", to: "customer-remaining" });
+    expect(withMigrationWavesChoice(changed, "customer-remaining")).toBe(changed);
+    const back = withMigrationWavesChoice(changed, "cdw", "2026-10-28T11:00:00.000Z");
+    expect(back.fields.estimateInputs.migrationWaves).toBeUndefined();
+    expect(back.fields.plannerLog!.at(-1)).toMatchObject({ from: "customer-remaining", to: "cdw" });
   });
 
   it("makes the remaining waves a whole follow-on package, not customer-run, when the proving waves are not in", () => {
@@ -372,7 +415,7 @@ describe("every CDW bar on the entitlement timeline is a funded package", () => 
     const { adoption, notional } = timelinesWithDeferrals(withOwnership(document), effort.workPackages.filter(row => row.deferred).map(row => row.id), unscopedWorkPackageIds(effort));
     const year1 = new Set(adoption.lanes.flatMap(lane => lane.bars).map(bar => bar.id));
     const later = new Set(notional.lanes.flatMap(lane => lane.bars).map(bar => bar.id));
-    for (const id of ["bar-playbook-execution-migration-waves", RUNBOOK_TRANSFER_BAR, "bar-operations-observability", "bar-resilience-recovery-architecture"]) {
+    for (const id of ["bar-playbook-execution-migration-waves", "bar-resilience-recovery-architecture"]) {
       expect(year1.has(id), `${id} is not in year one`).toBe(false);
       expect(later.has(id), `${id} is in the notional`).toBe(true);
     }
@@ -476,10 +519,27 @@ describe("the customer's asks follow the plan", () => {
     }
   });
 
-  it("prints the customer-run waves when the proving waves are in", () => {
-    const withWaves = acmeHealth();
-    withWaves.report.entitlement.hours = 900;
-    withWaves.fields.entitlementAmount = 900 * 330;
-    expect(text(refreshDerivedDocument(withWaves, { forceRebuild: true }), "summary")).toMatch(/customer-run migration waves/i);
+  it("prints the customer-run waves only when the customer asked to run them, and the proven runbook only with the transfer funded", () => {
+    const withWaves = () => {
+      const document = acmeHealth();
+      document.report.entitlement.hours = 900;
+      document.fields.entitlementAmount = 900 * 330;
+      document.report.customerOwnedWork = [];
+      return document;
+    };
+    for (const format of ["summary", "standard"] as const) {
+      const byDefault = text(refreshDerivedDocument(withWaves(), { forceRebuild: true }), format);
+      expect(byDefault, format).not.toMatch(/customer-run|proven runbook|proves the runbook|repeats it/i);
+    }
+    const remaining = withWaves();
+    remaining.fields.estimateInputs.migrationWaves = "customer-remaining";
+    const asked = text(refreshDerivedDocument(remaining, { forceRebuild: true }), "summary");
+    expect(asked).toMatch(/customer-run migration waves/i);
+    expect(asked).toContain("proves the runbook");
+    const all = withWaves();
+    all.fields.estimateInputs.migrationWaves = "customer-all";
+    const theirs = text(refreshDerivedDocument(all, { forceRebuild: true }), "summary");
+    expect(theirs).toMatch(/customer-run migration waves/i);
+    expect(theirs).not.toMatch(/proven runbook|proves the runbook/i);
   });
 });

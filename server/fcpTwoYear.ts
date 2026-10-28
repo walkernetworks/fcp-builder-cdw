@@ -88,7 +88,8 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
     const named = (row: WorkPackageEffort) => {
       const outcome = row.detail?.outcome ? sentence(firstSentence(row.detail.outcome, 220)) : "";
       const accepted = row.detail?.acceptance ? sentence(`Accepted when: ${firstSentence(row.detail.acceptance, 260)}`) : "";
-      const text = [outcome, accepted].filter(Boolean);
+      // The rest of a package that is partly in the entitlement repeats what its first part already states.
+      const text = row.id.includes(":") ? [] : [outcome, accepted].filter(Boolean);
       return `${esc(packageLabel(row.label))}${text.length ? `<div class="wp-detail">${text.map(item => esc(item)).join(" ")}</div>` : ""}`;
     };
     const rows = followOnRows.map(row => detail

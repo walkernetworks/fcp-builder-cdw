@@ -728,6 +728,12 @@ export const estimateInputsSchema = z.object({
    * limits in hoursConfig, "yes" and "no" are the planner's decision. Unset is "auto". Changes are logged in `plannerLog`.
    */
   smallEstate: z.enum(["auto", "yes", "no"]).optional(),
+  /**
+   * Who runs the migration and upgrade waves. Unset is "cdw": CDW runs every wave and the waves package is sized for the whole
+   * estate. The customer runs waves only when they ask to: "customer-remaining" after CDW's first waves and the runbook transfer,
+   * or "customer-all". Changes are logged in `plannerLog`.
+   */
+  migrationWaves: z.enum(["cdw", "customer-remaining", "customer-all"]).optional(),
   /** Physical sites in scope. RVTools datacenter objects are inventory folders, so they are not used as sites. */
   sites: z.number().int().min(1).max(1_000).optional(),
   /** Clusters on the platform CDW builds (greenfield, hybrid, design); the existing RVTools clusters size converge, import and upgrade work. */
@@ -2898,7 +2904,8 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     const [trainingStart, trainingEnd] = range(foundationStart, scheduleUnits(cadence, 2, 1));
     operationsBars.push({ ...bar("bar-platform-enablement", trainingStart, trainingEnd, colorForWorkstreamType("Operating Model / Platform"), "Training and Knowledge Transfer", false, false, "Starts with the first management domain build.", "Hands-on enablement: the platform team installs and operates the management domain alongside CDW, covering deployment, lifecycle and VCF Operations, so it learns by doing from the first build."), prerequisites: buildPrerequisites });
     const [runbookStart, runbookEnd] = range(migrationRange ? Math.max(migrationRange[0], migrationRange[1] - scheduleUnits(cadence, 2, 1)) : platformReadyEnd, scheduleUnits(cadence, 2, 1));
-    operationsBars.push({ ...bar("bar-platform-runbook-transfer", runbookStart, runbookEnd, colorForWorkstreamType("Operating Model / Platform"), "Runbook Knowledge Transfer", false, false, "Runs in CDW's last wave month, before the customer's team runs the remaining waves.", "Hand over the proven migration runbook with shadowed then reverse-shadowed waves, so the team runs the later waves itself."), prerequisites: [lastBuildId] });
+    // The runbook is handed over only when the customer asked to run the remaining waves; otherwise CDW runs every wave.
+    if (fields.estimateInputs.migrationWaves === "customer-remaining") operationsBars.push({ ...bar("bar-platform-runbook-transfer", runbookStart, runbookEnd, colorForWorkstreamType("Operating Model / Platform"), "Runbook Knowledge Transfer", false, false, "Runs in CDW's last wave month, before the customer's team runs the remaining waves.", "Hand over the proven migration runbook with shadowed then reverse-shadowed waves, so the team runs the later waves itself."), prerequisites: [lastBuildId] });
     operationsBars.push({ ...bar("bar-platform-handover", handoverStart, handoverEnd, colorForWorkstreamType("Operating Model / Platform"), "Handover and Service Acceptance", false, false, "Begin after the final migration or implementation wave is accepted.", "Confirm the operating model, evidence, ownership, and the continuing lifecycle cadence."), prerequisites: [deliveryCompleteId] });
   }
 

@@ -70,7 +70,7 @@ The customer reads this in two minutes and knows what's happening, when, and wha
 **Page 1: The plan**
 - Header line: customer, platform (VCF 9.1), path (greenfield), delivery model, version and issue date.
 - Fact strip: entitlement value (the one dollar figure), hours, term dates, plan start.
-- **What we're doing:** 3 to 4 sentences. "CDW designs and builds a new VCF 9.1 foundation on new hardware, moves your workloads over in waves, and hands the platform to your team with a runbook. Disaster recovery design follows in year two."
+- **What we're doing:** 3 to 4 sentences. "CDW designs and builds a new VCF 9.1 foundation on new hardware, runs the migration waves, and hands the platform to your team. Disaster recovery design follows in year two."
 - **In this plan / Not in this plan:** one line each by category, from the existing plan-on-a-page data.
 - **Architecture at a glance:** 3 lines (platform and topology; storage and network; recovery approach). This covers Broadcom's architecture item.
 - **Work packages:** compact table, three columns: package, month, hours. One total. No role split, no descriptions. This covers scope and effort.
@@ -167,3 +167,22 @@ These showed up reading the Acme Health PDF and should be fixed whichever direct
 - [Set Your Implementation Up for Success with VCF Jumpstart Workshops (VMware Cloud Foundation blog)](https://blogs.vmware.com/cloud-foundation/2025/09/30/set-your-implementation-up-for-success-with-vcf-jumpstart-workshops/)
 - [Make the Most of Your VMware Broadcom Professional Services Entitlement (Entelligence)](https://entelligence.com/blog/vmware-broadcom-professional-services-entitlement)
 - [Driving VMware Cloud Foundation Adoption with Expert Advantage (Broadcom)](https://www.broadcom.com/company/news/articles/partner-spotlight/driving-vmware-cloud-foundation-vcf-adoption-expert-advantage-ecosystem)
+
+## Who runs the migration waves
+
+A per-engagement setting, "Migration waves" (Plan section, assumptions; changes are logged in the planner log), decides it. CDW runs every migration and upgrade wave unless the customer asks otherwise.
+
+| Setting | Waves package | Runbook transfer | What the documents say |
+|---|---|---|---|
+| CDW runs all waves (default) | One whole package, sized for the whole estate: funded in the entitlement, or all of it follow-on | None | "CDW designs and builds the foundation, runs the migration waves and hands over." No customer-run waves; the customer's effort shows their support time during CDW's waves ("Migration waves") |
+| Customer runs the remaining waves after CDW's first waves (customer request) | CDW's first waves only (the dated waves), the rest handed over | Funded with the first waves; held with them if they do not fit | "... proves the runbook and hands over, and the customer's team repeats it." "Remaining migration waves, run by the customer with the proven runbook" only when the first waves and the transfer are funded; customer effort shows "Customer-run migration waves" |
+| Customer runs all waves (customer request) | None: no CDW waves, no follow-on for them | None | "... hands over, and the customer's team runs the migration waves." The customer-run row has no "proven runbook" |
+
+The mockups in this folder show the second row; the default has no runbook transfer bar and no customer-run row. A customer-owned row for waves that a report carries by hand counts as the customer's migration phase only under the second and third settings.
+
+A customer-owned row in a brief that names waves sets the setting on import, and the change is logged: a row for the "remaining" or "later" waves sets the second option, any other row for waves sets the third. A planner's earlier choice stands. If a row naming waves and the setting disagree afterwards (the default setting, a row typed in by hand), the Review section raises a "Needs a decision" warning and the row does not print in any format.
+
+## Draft and issued
+
+A draft export carries the watermark and its header band says "Draft" (Summary: "Version N Draft"; Standard document control: "N, draft"). Only an issued version shows "Issued <date>".
+

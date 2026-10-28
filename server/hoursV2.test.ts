@@ -84,11 +84,21 @@ describe("v2 Pass 1 formulas (spec section 6)", () => {
     expect(scopeV2(doc({ path: "design-only", hosts: 72, rvtoolsDatacenters: 24, inputs: { sites: 3 } })).inputs.sites).toBe(3);
   });
 
+  /**
+   * The deploy line is the spec formula less the runbook transfer's share of the build, which is a package only when the customer runs
+   * the remaining waves. The share is the transfer's weight over the weights of the packages the build is split across.
+   */
+  const lessTransfer = (document: Parameters<typeof scopeV2>[0], formula: number) => {
+    const pass1 = scopeV2(document);
+    const workload = pass1.estate.small && document.fields.adoptionDetails.upgradePath === "greenfield" ? 0 : pass1.inputs.workloadDomains * 0.8;
+    return formula * (1 - 0.1 / (1 + 0.2 + 0.1 + 0.1 + 0.1 + workload));
+  };
+
   it("sizes a build by the new platform's clusters, and converge or import by the existing ones", () => {
     const build = scopeV2(doc({ path: "greenfield", hosts: 144, clusters: 36, storage: "vmfs-fc" }));
     expect(build.inputs.platformClusters).toBe(9);
     expect(lineOf(build, "S_storage")!.computedBase).toBe(72);
-    expect(lineOf(build, "D")!.computedBase).toBeCloseTo(84 + 24 + 8 * 7 + 48 + 0.5 * 80);
+    expect(lineOf(build, "D")!.computedBase).toBeCloseTo(lessTransfer(doc({ path: "greenfield", hosts: 144, clusters: 36, storage: "vmfs-fc" }), 84 + 24 + 8 * 7 + 48 + 0.5 * 80));
     expect(scopeV2(doc({ path: "greenfield", hosts: 144, clusters: 36, inputs: { targetClusters: 12 } })).inputs.platformClusters).toBe(12);
     const converge = scopeV2(doc({ path: "converge", hosts: 144, clusters: 36 }));
     expect(converge.inputs.platformClusters).toBe(36);
@@ -97,13 +107,16 @@ describe("v2 Pass 1 formulas (spec section 6)", () => {
 
   it("prices the VCF deploy continuously", () => {
     // 64 + 16 + 4 + (24 + 8 dedicated NSX) + 8 x (7 - 1 - 1) + 0.75 x 64 + 0.5 x 36
-    expect(base(doc({ hosts: 100, clusters: 7, inputs: { dedicatedNsxWorkloadDomains: 1 } }), "D")).toBeCloseTo(222);
+    const dedicated = doc({ hosts: 100, clusters: 7, inputs: { dedicatedNsxWorkloadDomains: 1 } });
+    expect(base(dedicated, "D")).toBeCloseTo(lessTransfer(dedicated, 222));
     // Consolidated: no workload domain, every extra cluster counts.
     // (A small estate funds the first workload domain as a line of its own, DW; the two together are the build.)
     const consolidated = doc({ hosts: 8, clusters: 1, topology: "consolidated" });
-    expect(base(consolidated, "D") + base(consolidated, "DW")).toBeCloseTo(84 + 6);
-    expect(base(doc({ hosts: 24, clusters: 2 }), "D")).toBeCloseTo(84 + 24 + 0.75 * 24);
-    expect(base(doc({ hosts: 25, clusters: 2 }), "D")).toBeCloseTo(84 + 24 + 0.75 * 25);
+    expect(base(consolidated, "D") + base(consolidated, "DW")).toBeCloseTo(lessTransfer(consolidated, 84 + 6));
+    const two = doc({ hosts: 24, clusters: 2 });
+    expect(base(two, "D")).toBeCloseTo(lessTransfer(two, 84 + 24 + 0.75 * 24));
+    const twentyFive = doc({ hosts: 25, clusters: 2 });
+    expect(base(twentyFive, "D")).toBeCloseTo(lessTransfer(twentyFive, 84 + 24 + 0.75 * 25));
   });
 
   it("prices the VVF build and the storage adder", () => {
@@ -343,19 +356,40 @@ describe("v2 Pass 2 fit (spec section 7)", () => {
     expect(fit.designShareFlags).toEqual(expect.arrayContaining([expect.stringContaining("VCF Automation platform")]));
   });
 
-  it("splits migration waves by wave and keeps HCX setup and the pilot with the first", () => {
+  it("splits migration waves by wave and keeps HCX setup and the pilot with the first, when the customer runs the remaining waves", () => {
     const pass1 = scopeV2(doc({ hosts: 40, vms: 800 }));
     const waves = pass1.lines.find(line => line.code === "FILL_mig")!;
-    const everything = fitOf(pass1, 100_000);
+    const remaining = { wavesMode: "customer-remaining" as const };
+    const everything = fitOf(pass1, 100_000, remaining);
     // Everything ahead of the second wave in the fill order, then the second wave and one hour.
     const ahead = everything.placements.filter(item => item.step < 7 && !item.designShare).reduce((sum, item) => sum + item.loaded, 0);
-    const fit = fitOf(pass1, (ahead + loadedOf(pass1, waves, waves.units[1].base) + 1) / 0.92);
+    const fit = fitOf(pass1, (ahead + loadedOf(pass1, waves, waves.units[1].base) + 1) / 0.92, remaining);
     const placed = (id: string) => fit.placements.find(item => item.unitId === id)!;
     expect(placed("FILL_mig:wave-1")).toMatchObject({ bucket: "E1", step: 4 });
     expect(placed("FILL_mig:wave-2")).toMatchObject({ bucket: "E2", step: 7 });
-    expect(placed("FILL_mig:wave-3").bucket).toBe("F");
-    // More dated waves pull more into E1.
-    expect(fitOf(pass1, 100_000, { datedWaves: 3 }).placements.filter(item => item.code === "FILL_mig" && item.step === 4)).toHaveLength(3);
+    // The waves past the funded ones are the customer's, not follow-on.
+    expect(fit.placements.some(item => item.unitId === "FILL_mig:wave-3")).toBe(false);
+    expect(fit.customerRun.waves).toBeGreaterThan(0);
+    expect(fitOf(pass1, 100_000, { datedWaves: 3, ...remaining }).placements.filter(item => item.code === "FILL_mig" && item.step === 4)).toHaveLength(3);
+  });
+
+  it("sizes and funds CDW's waves as one whole package by default, and leaves them out when the customer runs all", () => {
+    const pass1 = scopeV2(doc({ hosts: 40, vms: 800 }));
+    const waves = pass1.lines.find(line => line.code === "FILL_mig")!;
+    const all = waves.units.filter(unit => unit.tier === 1).map(unit => unit.id);
+    expect(all.length).toBeGreaterThan(1);
+    const funded = fitOf(pass1, 100_000);
+    expect(funded.placements.filter(item => item.code === "FILL_mig").map(item => [item.unitId, item.step])).toEqual(all.map(id => [id, 4]));
+    expect(funded.customerRun).toEqual({ hours: 0, waves: 0 });
+    // Whole or follow-on: when the package does not fit, none of it is funded and none is the customer's.
+    const ahead = funded.placements.filter(item => item.step < 4 && !item.designShare).reduce((sum, item) => sum + item.loaded, 0);
+    const short = fitOf(pass1, (ahead + 1) / 0.92);
+    expect(short.placements.filter(item => item.code === "FILL_mig" && item.bucket !== "F")).toEqual([]);
+    expect(short.customerRun.waves).toBe(0);
+    // The customer runs all waves on request: none is CDW's, funded or follow-on.
+    const theirs = fitOf(pass1, 100_000, { wavesMode: "customer-all" });
+    expect(theirs.placements.filter(item => item.code === "FILL_mig")).toEqual([]);
+    expect(theirs.customerRun.waves).toBe(all.length);
   });
 
   it("splits in-place windows, imports by vCenter, recovery by site pair and exercise, and vDefend by stage", () => {

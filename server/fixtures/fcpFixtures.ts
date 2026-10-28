@@ -99,12 +99,15 @@ export function meridianHealthForfeiting(): EngagementDocument {
 
 /** BSAS only: no entitlement value, BSAS hours and term in its place; the plan's hours are as calculated (see riverbendHealth). */
 function riverbendCalculated(): EngagementDocument {
-  return smallEstate(fromBrief(raw => {
+  const document = smallEstate(fromBrief(raw => {
     raw.customer.name = "Riverbend Health";
     raw.entitlement = { hoursConsumed: 40, consumedAsOf: "2026-09-03" };
     raw.milestonesToDate = [];
     raw.bsas = { hours: 400, termStart: "2026-10-01", termEnd: "2027-09-30" };
   }));
+  // The one fixture on the customer running the remaining waves after CDW's first waves (a customer request); every other fixture uses the default, CDW runs all waves.
+  document.fields.estimateInputs.migrationWaves = "customer-remaining";
+  return document;
 }
 
 /** Riverbend Health as a planner would issue it: 40 delivered, 331 planned and the 29-hour reserve add up to the 400 BSAS hours. */

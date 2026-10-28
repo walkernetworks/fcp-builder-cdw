@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { capabilitySchema, migrateDocument, minimalFieldsSchema, refreshDerivedDocument, vcfDomainSchema, type Capability, type EngagementDocument, type MinimalFields } from "./fcp";
 import { createFieldCoercer, deepMerge, isPlainObject, type Json, type JsonObject } from "./fieldCoercion";
+import { WAVES_LABEL } from "./effort";
+import { withMigrationWavesChoice } from "./estateSize";
 import { ADD_ON_OUTCOMES, canonicalAddOn, discoveryAnswersSchema, reportSchema, VSPHERE8_STRATEGIES, type ReportContent } from "./report";
 
 export const CUSTOMER_BRIEF_VERSION = 1;
@@ -393,7 +395,14 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   if (!report.personnel.length) missing.push("Target personnel");
 
   // Fields changed, so a generated plan is rebuilt; a hand-edited plan keeps its timelines.
-  const merged = migrateDocument({ ...document, fields, report });
+  // A customer-owned row the brief gives for waves sets the Migration waves setting to the matching customer request, and the change is logged.
+  // "Remaining" or "later" waves are the second option; a row for the waves in general is the third. A planner's earlier choice stands.
+  const waveRow = parseRows(brief.customerOwnedWork, element(reportShape.customerOwnedWork), "customerOwnedWork", []).find(row => WAVES_LABEL.test(row.label));
+  const stated: EngagementDocument = { ...document, fields, report };
+  const withWaves = waveRow && !fields.estimateInputs.migrationWaves
+    ? withMigrationWavesChoice(stated, /\b(remaining|later|rest of)\b/i.test(waveRow.label) ? "customer-remaining" : "customer-all")
+    : stated;
+  const merged = migrateDocument(withWaves);
   const next = refreshDerivedDocument(merged);
   return { ok: true, document: next, changes, coerced: coercer.coerced, warnings, missing };
 }

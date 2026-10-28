@@ -78,6 +78,8 @@ function twoSite(patch: (raw: any) => void = () => {}): EngagementDocument {
     ],
   });
   base.fields.plannedProjectStart = "2026-10-16";
+  // This estate is the fixture for the customer running the remaining waves after CDW's first waves (a customer request); every other fixture uses the default, CDW runs all waves.
+  base.fields.estimateInputs.migrationWaves = "customer-remaining";
   const imported = applyCustomerBrief(base, raw);
   if (!imported.ok) throw new Error(imported.error);
   return imported.document;
@@ -241,10 +243,10 @@ describe("Two-site review: scope and sequencing", () => {
     expect(waves(twoSite())).toEqual({ followOn: 0, customerRuns: true, customerEffort: true });
     // The brief's own row for them does the same.
     expect(waves(twoSite(raw => { raw.customerOwnedWork = [{ label: "Remaining waves (customer team)", start: "2027-10", end: "2028-09" }]; }))).toMatchObject({ followOn: 0, customerRuns: true });
-    // With the generated row hidden, CDW carries them as follow-on scope and the customer runs none.
-    const hidden = twoSite();
-    hidden.report.hiddenGenerated = [`customerOwnedWork:${customerRemainingWaves(hidden)!.label.toLowerCase()}`];
-    const cdw = waves(hidden);
+    // By default CDW runs every wave: they are CDW's whole package (funded or follow-on scope) and the customer runs none.
+    const byDefault = twoSite();
+    delete byDefault.fields.estimateInputs.migrationWaves;
+    const cdw = waves(refreshDerivedDocument(byDefault, { forceRebuild: true }));
     expect(cdw.followOn).toBeGreaterThan(0);
     expect(cdw.customerRuns).toBe(false);
   });

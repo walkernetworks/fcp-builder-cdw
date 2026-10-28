@@ -3,7 +3,7 @@ import { formatWindow, type ScopedEffort } from "../shared/effort";
 import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument, type Timeline } from "../shared/fcp";
 import { planBsasAllocation } from "../shared/planView";
 import { reconcileHours } from "../shared/reportFormat";
-import { customerOpenItems, planKeyDates, platformName, selectedScopeSummary } from "../shared/reportView";
+import { customerOpenItems, deliveryClause, planKeyDates, platformName, selectedScopeSummary } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { barWindow } from "../shared/buildingBlocks";
 import { DRAFT_MARK, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, RESERVE_LINE, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
@@ -168,10 +168,11 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   const vvf = platform.startsWith("VVF");
   const deliveryModel = report.deliveryModel || "CDW";
   const version = options.version;
-  const issued = version ? `Version ${version.issueNumber} · Issued ${shortDate(version.issuedOn)}` : `Working draft · ${shortDate(asOf)}`;
+  // Only an issued version says "Issued"; a draft export says "Draft", beside the watermark.
+  const issued = version ? `Version ${version.issueNumber} · ${options.draft ? "Draft" : `Issued ${shortDate(version.issuedOn)}`}` : `Working draft · ${shortDate(asOf)}`;
 
   // ---- Header band and fact strip
-  const band = `<header class="band"><div>${cdwLogoSvg("logo")}<div class="eyebrow">Functional Consumption Plan · Summary</div><h1>${vvf ? "VMware vSphere Foundation" : "VMware Cloud Foundation"} Adoption: ${esc(customer)}</h1></div><div class="meta">${version ? `<b>Version ${version.issueNumber}</b>Issued ${esc(shortDate(version.issuedOn))}` : `<b>Working draft</b>Prepared ${esc(shortDate(asOf))}`}<br>Prepared by CDW Consulting Solution Architecture</div></header>`;
+  const band = `<header class="band"><div>${cdwLogoSvg("logo")}<div class="eyebrow">Functional Consumption Plan · Summary</div><h1>${vvf ? "VMware vSphere Foundation" : "VMware Cloud Foundation"} Adoption: ${esc(customer)}</h1></div><div class="meta">${version ? `<b>Version ${version.issueNumber}</b>${options.draft ? "Draft" : `Issued ${esc(shortDate(version.issuedOn))}`}` : `<b>Working draft</b>Prepared ${esc(shortDate(asOf))}`}<br>Prepared by CDW Consulting Solution Architecture</div></header>`;
   const pills = `<div class="pills">Platform: <b>${esc(platform)}</b> · Path: <b>${esc(plan.label)}</b> · Delivery: <b>${esc(deliveryModel)}</b>${fields.location ? ` · Location: <b>${esc(fields.location)}</b>` : ""}</div>`;
 
   const kpi = (value: string, label: string, sub: string) => `<div class="kpi"><div class="v">${value}</div><div class="l">${label}</div><div class="s">${sub}</div></div>`;
@@ -206,7 +207,7 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   // ---- What we're doing: the plan in a few sentences; what follows the entitlement is in After This Plan
   const builds = plan.implementationPackages.length > 0;
   const synopsis = [
-    builds ? `CDW designs and builds the ${platform} foundation for ${customer}, proves the runbook and hands the platform over, and ${customer}'s team repeats it.` : `CDW delivers the ${platform} architecture and an implementation-ready design that ${customer}'s team builds from.`,
+    builds ? `CDW designs and builds the ${platform} foundation for ${customer}, ${deliveryClause(document, customer, "hands the platform over")}.` : `CDW delivers the ${platform} architecture and an implementation-ready design that ${customer}'s team builds from.`,
     selectedScopeSummary(document),
   ].join(" ");
 

@@ -1,5 +1,5 @@
 import { barWindow } from "./buildingBlocks";
-import { buildCustomerEffort, buildScopedEffort, customerRemainingWaves, WAVES_LABEL, withOwnership } from "./effort";
+import { buildCustomerEffort, buildScopedEffort, customerRemainingWaves, migrationWavesChoice, WAVES_LABEL, withOwnership } from "./effort";
 import { activityOwner, calculateEntitlementEndDate, effectiveDeliveryPath, effectivePlatformEdition, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, serverLabel, summarizeVcfCompatibility, usesVdefend, type EngagementDocument } from "./fcp";
 import { renewalStartsCurrentTerm } from "./deliveryBriefing";
 import { backInTime } from "./hclCorpus";
@@ -47,6 +47,20 @@ const monthYear = (value: string) => {
   return date ? new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" }).format(date) : value;
 };
 const keyOf = (section: GeneratedSection, value: string) => `${section}:${value.trim().toLowerCase()}`;
+
+/**
+ * What CDW does for a plan that builds the platform, as a clause after "CDW designs and builds the <platform> foundation".
+ * CDW runs every wave unless the customer asked otherwise; the runbook is "proved" and "repeated" only when the planner chose
+ * the customer running the remaining waves, and the customer runs every wave only when they asked for that.
+ */
+export function deliveryClause(document: EngagementDocument, customer: string, handover = "hands over"): string {
+  const choice = migrationWavesChoice(document);
+  const hasWaves = [document.adoptionTimeline, document.twoYearPlan].some(timeline => timeline.lanes.some(lane => lane.bars.some(bar => /^bar-playbook-execution-/.test(bar.id))));
+  const waves = effectiveDeliveryPath(document.fields) === "in-place" ? "upgrade waves" : "migration waves";
+  if (choice === "customer-remaining") return `proves the runbook and ${handover}, and ${customer}'s team repeats it`;
+  if (choice === "customer-all") return `${handover}, and ${customer}'s team runs the ${waves}`;
+  return hasWaves ? `runs the ${waves} and ${handover}` : handover;
+}
 
 export function platformName(document: EngagementDocument): string {
   const release = minimumTargetRelease(document)?.minimum ?? document.fields.compatibilityTargetRelease.replace(/^ESXi\s*/, "");
@@ -187,7 +201,7 @@ export function vsphere8Exposure(document: EngagementDocument): { hosts: number;
   const clusters = Array.from(new Set(inventory.hclEvidence.hosts.filter(host => /\b8\.\d/.test(host.esxiVersion)).map(host => host.cluster).filter(Boolean)));
   const where = clusters.length ? ` (${clusters.slice(0, 3).join(", ")}${clusters.length > 3 ? ` and ${clusters.length - 3} more clusters` : ""})` : "";
   // The customer's waves: its own rows, or the plan's generated row unless the planner hid it.
-  const own = completedReport(report).customerOwnedWork.filter(row => WAVES_LABEL.test(row.label));
+  const own = migrationWavesChoice(document) === "cdw" ? [] : completedReport(report).customerOwnedWork.filter(row => WAVES_LABEL.test(row.label));
   const generated = customerRemainingWaves(document);
   const customerWaves = own.length ? own : generated && !report.hiddenGenerated.includes(`customerOwnedWork:${generated.label.trim().toLowerCase()}`) ? [generated] : [];
   // CDW's waves in the entitlement; its waves in the Two-Year Notional only when the customer's team runs none, since
@@ -343,7 +357,7 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   const handoverWindow = handover ? barWindow(timeline, handover) : null;
   const termEnd = reportTermEnd(document);
   const constraints: Array<Row<"constraints">> = [{ constraint: "Design and a current inventory before the build", imposedBy: "Sizing", effect: "Build starts after design sign-off" }];
-  if (path === "greenfield" || path === "hybrid") constraints.push({ constraint: "Management domain before any workload moves", imposedBy: "Platform", effect: "Proving wave follows the build" });
+  if (path === "greenfield" || path === "hybrid") constraints.push({ constraint: "Management domain before any workload moves", imposedBy: "Platform", effect: "First migration wave follows the build" });
   if (inventory.hclEvidence.vmInfo.length) constraints.push({ constraint: "Guest OS and VM hardware remediation before each wave", imposedBy: "Platform", effect: `${customer} remediates ahead of its waves` });
   for (const outcome of outcomes.filter(item => item.requiredBy.length).slice(0, 3)) {
     constraints.push({ constraint: `${planOutcomeLabel(outcome.key)} before ${outcome.requiredBy.map(key => planOutcomeLabel(key)).join(" and ")}`, imposedBy: "Platform", effect: "Sequenced as a prerequisite" });

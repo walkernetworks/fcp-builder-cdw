@@ -220,13 +220,21 @@ describe("scoped effort table", () => {
 
 describe("customer effort", () => {
   it("builds phases from the plan, with customer-run waves as the peak", () => {
-    const { phases, peak } = buildCustomerEffort(engagement());
+    const asked = engagement();
+    asked.fields.estimateInputs.migrationWaves = "customer-remaining";
+    asked.report.customerOwnedWork = [{ label: "Customer migration waves and legacy cluster retirement", start: "2027-02", end: "2027-04" }];
+    const { phases, peak } = buildCustomerEffort(asked);
     expect(phases.map(phase => phase.phase)).toEqual(expect.arrayContaining(["Design sessions and design sign-off", "Platform build", "Migration waves"]));
     expect(phases.map(phase => phase.startDate)).toEqual([...phases.map(phase => phase.startDate)].sort());
     // The brief's customer-owned waves are the customer's own heavier phase, and its peak.
     expect(phases.find(phase => phase.phase === "Migration waves")).toMatchObject({ total: 15, fte: 0.38 });
     expect(peak).toMatchObject({ phase: "Customer-run migration waves", total: 30, fte: 0.75 });
     for (const phase of phases) expect(phase.platformLead + phase.operations + phase.network).toBe(phase.total);
+    // CDW runs every wave by default: the customer supports CDW's waves, and has no phase of running them.
+    const byDefault = buildCustomerEffort(engagement());
+    expect(byDefault.phases.map(phase => phase.phase)).not.toContain("Customer-run migration waves");
+    expect(byDefault.peak?.phase).not.toBe("Customer-run migration waves");
+    expect(byDefault.phases.map(phase => phase.phase)).toContain("Migration waves");
   });
 });
 

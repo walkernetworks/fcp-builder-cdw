@@ -381,8 +381,9 @@ describe("Condensed FCP review fixes", () => {
     for (const label of ["Hardware Compatibility Review", "Role and Access Mapping", "Training and Knowledge Transfer", "Backup Validated Before Each Wave"]) expect(visible).toContain(label);
   });
 
-  it("gives the customer's team the remaining waves, with dates and their effort", () => {
+  it("gives the customer's team the remaining waves, with dates and their effort, when the customer asked to run them", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.estimateInputs.migrationWaves = "customer-remaining";
     document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid" } as never;
     document.report.customerOwnedWork = [];
     document.inventory.vmCount = 1_100;
@@ -393,6 +394,11 @@ describe("Condensed FCP review fixes", () => {
     expect(visible).toContain("Remaining migration waves, run by Acme Health with the proven runbook");
     // 1,100 VMs at about 250 a month is five months of customer-run waves.
     expect(visible).toMatch(/Customer-run migration waves \w{3}( \d{4})? – \w{3} \d{4} 16 10 4 30 0\.75/);
+    // CDW runs every wave by default: nothing is handed to the customer and no runbook is proved for them.
+    const byDefault = structuredClone(document);
+    delete byDefault.fields.estimateInputs.migrationWaves;
+    const defaultText = text(render(refreshDerivedDocument(byDefault, { forceRebuild: true })));
+    expect(defaultText).not.toMatch(/Customer-run migration waves|proven runbook|proves the runbook|repeats it/);
     // A wave row the planner wrote replaces the generated one.
     document.report.customerOwnedWork = [{ label: "Remaining waves (Acme Health team)", start: "2027-09", end: "2028-03" }];
     expect(text(render(refreshDerivedDocument(document, { forceRebuild: true })))).not.toContain("with the proven runbook");
@@ -400,6 +406,7 @@ describe("Condensed FCP review fixes", () => {
 
   it("holds hosts on vSphere 8 to its end of support, and raises waves that run past it", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
+    document.fields.estimateInputs.migrationWaves = "customer-remaining";
     document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid" } as never;
     document.report.customerOwnedWork = [{ label: "Remaining migration waves", start: "2027-06", end: "2028-02" }];
     const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
@@ -655,7 +662,8 @@ describe("work the entitlement cannot carry", () => {
     const { timelinesWithDeferrals } = await import("../shared/effort");
     const document = migrateDocument(engagement(raw => { raw.resourceAssignments = []; }));
     const effort = scopedEffortForDocument(document);
-    const deferred = effort.workPackages.filter(row => row.deferred);
+    // A package split between the entitlement and the follow-on has a ":later" row for the rest; it is not a bar of its own.
+    const deferred = effort.workPackages.filter(row => row.deferred && !row.id.includes(":"));
     expect(deferred.length).toBeGreaterThan(0);
     expect(deferred.every(row => row.total === 0)).toBe(true);
 

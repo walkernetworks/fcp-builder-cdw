@@ -24,6 +24,7 @@ const EXTRA_CSS = `
 .cover .who{font-size:12px;line-height:1.7}
 .cover .who b{font-size:15px}
 .pg{break-before:page;width:10.1in}
+.paged .wp.std td{padding:2px 7px}
 .paged{width:100%;border-collapse:collapse}.paged>thead>tr>td,.paged>tbody>tr>td{padding:0;border:0;background:none}.paged>thead{display:table-header-group}
 @media screen{.pg{margin:0 auto}}
 .ctrl{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--line);margin-top:10px;font-size:10px}
@@ -86,7 +87,7 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
     const approvals = [prior?.broadcomApprovedOn ? `by Broadcom ${shortDate(prior.broadcomApprovedOn)}` : "", prior?.customerApprovedOn ? `by ${customer} ${shortDate(prior.customerApprovedOn)}` : ""].filter(Boolean);
     return `Version ${version.issueNumber - 1}${approvals.length ? `, approved ${approvals.join(" and ")}` : ""}`;
   })();
-  const control = `<div class="ctrl"><div><b>Version</b>${version ? `${version.issueNumber}, issued ${esc(shortDate(version.issuedOn))}` : "Working draft"}</div><div style="grid-column:span 2"><b>Supersedes</b>${esc(supersededText)}</div><div><b>Revision</b>${esc(report.revision || (version && version.issueNumber === 1 ? "Initial plan" : "Working draft"))}</div><div style="grid-column:1/-1"><b>Approval</b>To approve this plan, reply to the email it was sent with.</div></div>`;
+  const control = `<div class="ctrl"><div><b>Version</b>${version ? (options.draft ? `${version.issueNumber}, draft` : `${version.issueNumber}, issued ${esc(shortDate(version.issuedOn))}`) : "Working draft"}</div><div style="grid-column:span 2"><b>Supersedes</b>${esc(supersededText)}</div><div><b>Revision</b>${esc(report.revision || (version && version.issueNumber === 1 ? "Initial plan" : "Working draft"))}</div><div style="grid-column:1/-1"><b>Approval</b>To approve this plan, reply to the email it was sent with.</div></div>`;
   const situation = report.situation.length ? `<h3>Situation</h3><ul class="asks">${report.situation.map(item => `<li>${esc(item)}</li>`).join("")}</ul>` : "";
   const summaryPage = page(`<h2>${vvf ? "VMware vSphere Foundation" : "VMware Cloud Foundation"} Adoption: ${esc(customer)}</h2>${pills}${kpis}${control}<div class="two"><div><h3>Summary</h3><p class="synopsis">${esc(synopsis)}</p>${situation}</div><div><h3>Plan on a Page</h3>${scope}</div></div>`);
   void plan;

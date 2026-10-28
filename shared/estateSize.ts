@@ -91,3 +91,20 @@ export function withSmallEstateChoice<T extends { fields: { estimateInputs: { sm
     },
   };
 }
+
+export type MigrationWavesChoice = "cdw" | "customer-remaining" | "customer-all";
+
+/** Sets who runs the migration waves and logs the change. "cdw" is the default and clears the input; choosing what is already chosen logs nothing. */
+export function withMigrationWavesChoice<T extends { fields: { estimateInputs: { migrationWaves?: MigrationWavesChoice }; plannerLog?: Array<{ at: string; input: string; from: string; to: string }> } }>(document: T, choice: MigrationWavesChoice, at: string = new Date().toISOString()): T {
+  const from = document.fields.estimateInputs.migrationWaves ?? "cdw";
+  if (from === choice) return document;
+  const { migrationWaves: _previous, ...rest } = document.fields.estimateInputs;
+  return {
+    ...document,
+    fields: {
+      ...document.fields,
+      estimateInputs: choice === "cdw" ? rest : { ...rest, migrationWaves: choice },
+      plannerLog: [...(document.fields.plannerLog ?? []), { at, input: "Migration waves", from, to: choice }].slice(-200),
+    },
+  };
+}
