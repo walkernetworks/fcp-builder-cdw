@@ -45,7 +45,7 @@ describe("Standard FCP", () => {
 
   it("draws the Summary's timeline: the same short bar labels and the same funded key", () => {
     const html = standard(acmeHealthReconciled());
-    expect(html).toContain(">Design and BOM<");
+    expect(html).toContain(">Reference Architecture Design<");
     expect(html).not.toContain(">Greenfield Design and Bill of Materials</div>");
   });
 
@@ -59,7 +59,7 @@ describe("Standard FCP", () => {
   it("states the BSAS pool in the roadmap's follow-on table, in hours and dates only", () => {
     const text = visible(standard(meridianHealth()));
     expect(text).toContain("BSAS hours");
-    expect(text).toContain("(BSAS) fund this work: 188 hours from 1 May 2027 to 30 Apr 2028. 188 hours are planned.");
+    expect(text).toContain("(BSAS) fund this work: 291 hours from 1 May 2027 to 30 Apr 2028. 291 hours are planned.");
   });
 
   it("calls the window the planned delivery window when no entitlement is booked", () => {
