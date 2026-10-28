@@ -1,6 +1,6 @@
 # Review: planner fix, Standard FCP, Summary page 3 (second round)
 
-Rendered from `local-preview` (613ad9f): planner (fcp-planner-small-estate ce4b501) + Summary page 3 (#60) + Standard FCP (#59, 5fa4194).
+Rendered from `local-preview` (Standard f0d2e22: no signature lines, full-width follow-on table, repeating strip; Acme and Meridian are 7 pages).
 Fake fixture data only (Acme Health, Meridian Health, Cedar Ridge Logistics). This branch is never merged.
 
 Files re-rendered this round: `standard-acme`, `standard-cedar`, `standard-meridian`, `summary3-acme`.
