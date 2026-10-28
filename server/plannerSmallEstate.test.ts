@@ -468,8 +468,11 @@ describe("the customer's asks follow the plan", () => {
     for (const format of ["summary", "standard"] as const) {
       const html = text(document, format);
       expect(html, format).not.toMatch(/customer-run/i);
-      expect(html, format).not.toContain("Backup Validation");
-      expect(html, format).not.toContain("Discovery and Funding");
+      // The entitlement timeline (not the follow-on roadmap, where the backup checkpoint travels with its waves).
+      const year1 = html.slice(html.indexOf("Delivery workstream key"), html.indexOf("Key Dates"));
+      expect(year1.length, format).toBeGreaterThan(100);
+      expect(year1, format).not.toContain("Backup Validation");
+      expect(year1, format).not.toContain("Discovery and Funding");
     }
   });
 

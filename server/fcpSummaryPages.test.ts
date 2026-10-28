@@ -36,13 +36,20 @@ describe("Summary FCP pages", () => {
 
   it("leaves delivery categories with nothing scheduled off the timeline", () => {
     const html = summary(acmeHealthReconciled());
-    expect(html).not.toContain("<strong>Modernize Cloud</strong>");
-    expect(html).toContain("<strong>Operations</strong>");
+    const yearOne = html.split('<section class="p2"')[1];
+    expect(yearOne).not.toContain("<strong>Modernize Cloud</strong>");
+    expect(yearOne).toContain("<strong>Operations</strong>");
   });
 
-  it.skipIf(!chrome)("prints on two pages, the fixtures and a crowded plan alike", async () => {
-    for (const document of [acmeHealthReconciled(), meridianHealth(), riverbendHealth(), northwindMfg(), cedarRidgeLogistics(), crowded()]) {
+  it.skipIf(!chrome)("prints on three pages with follow-on packages or BSAS, and on two without, the fixtures and a crowded plan alike", async () => {
+    for (const document of [acmeHealthReconciled(), meridianHealth(), riverbendHealth(), crowded()]) {
+      expect(summary(document)).toContain("<h2>After the ");
+      expect(pages(await renderPdf(summary(document))), document.fields.customerName).toBe(3);
+    }
+    // Generic notional lanes (governance reviews, operating model, service consumption) alone do not make a page.
+    for (const document of [northwindMfg(), cedarRidgeLogistics()]) {
+      expect(summary(document)).not.toContain("<h2>After the ");
       expect(pages(await renderPdf(summary(document))), document.fields.customerName).toBe(2);
     }
-  }, 60_000);
+  }, 90_000);
 });
