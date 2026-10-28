@@ -17,7 +17,12 @@ export type EstateSize = {
   clusters: number;
   vcenters: number;
   instances: number;
+  /** Sites in year-one scope: the sites stated, less a recovery site (see `recoverySites`). */
   sites: number;
+  /** Sites stated by the planner or the brief. */
+  statedSites: number;
+  /** Stated sites that are recovery sites and so are not counted against the limit. */
+  recoverySites: number;
   /** True when a host count is known from RVTools or the brief. */
   known: boolean;
   choice: SmallEstateChoice;
@@ -40,7 +45,15 @@ export function resolveEstateSize(document: Source): EstateSize {
   const managementDomains = domains.filter(domain => domain.kind === "management").length;
   const instances = Math.max(report.discovery.vcfInstances ?? 0, managementDomains) || 1;
   const vcenters = report.discovery.vcenters || 1;
-  const sites = given.sites ?? (report.discovery.datacenters || 1);
+  const statedSites = given.sites ?? (report.discovery.datacenters || 1);
+  // A site that exists for disaster recovery is covered by the recovery design (the Recovery and Resilience Design package,
+  // funded or follow-on), not by the Reference Architecture Design, so it does not count against the one-site limit. It is a
+  // recovery site when the plan wants recovery services (a resilience outcome, or resilience as a priority); one per recovery
+  // site pair, at most all the sites but the first. This reads the brief and the plan, not the fit, so the design tier never
+  // depends on what the entitlement ends up funding.
+  const wantsRecovery = fields.adoptionDetails.resilience.length > 0 || fields.priorities.includes("resilience");
+  const recoverySites = wantsRecovery ? Math.min(Math.max(0, statedSites - 1), Math.max(1, given.drSitePairs ?? 1)) : 0;
+  const sites = Math.max(1, statedSites - recoverySites);
   const assumedClusters = Math.max(1, Math.ceil(hosts / H.defaults.hostsPerCluster.value));
   const clusters = Math.max(inventory.clusters || assumedClusters, given.targetClusters ?? 0);
   const known = hosts > 0;
@@ -52,7 +65,7 @@ export function resolveEstateSize(document: Source): EstateSize {
   if (instances > H.smallEstate.instances.value) exceeds.push(`${instances} VCF instances (limit ${H.smallEstate.instances.value})`);
   if (sites > H.smallEstate.sites.value) exceeds.push(`${sites} sites (limit ${H.smallEstate.sites.value})`);
   const small = choice === "yes" ? true : choice === "no" ? false : known && exceeds.length === 0;
-  return { hosts, clusters, vcenters, instances, sites, known, choice, small, exceeds };
+  return { hosts, clusters, vcenters, instances, sites, statedSites, recoverySites, known, choice, small, exceeds };
 }
 
 /** The flag text when the estate size is unknown and the planner has not decided, else null. */

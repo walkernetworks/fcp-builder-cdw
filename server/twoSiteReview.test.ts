@@ -135,7 +135,9 @@ describe("Two-site review: scope and sequencing", () => {
     // A small entitlement may carry no management domain at all; the rule applies to every plan that does.
     expect(checked).toBeGreaterThanOrEqual(3);
     // The note reaches the customer document with the build date.
-    expect(text(render(plans[1]))).toContain(`Platform build begins. ${NSX_VLAN_NOTE}`);
+    const carrying = plans.find(plan => scopedEffortForDocument(plan).internal.lines.some(line => line.code === "NX"));
+    expect(carrying).toBeDefined();
+    expect(text(render(carrying!))).toContain(`Platform build begins. ${NSX_VLAN_NOTE}`);
   });
 
   it("3. states one vSphere 8 finding in the constraint and the open item, for waves after and before its end of support", () => {

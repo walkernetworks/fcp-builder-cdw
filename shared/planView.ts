@@ -1,6 +1,6 @@
 import { allocateBsas, bsasTerm, fundedDocument, isBsasOnly, type BsasAllocation, type BsasTerm } from "./bsas";
 import { barWindow } from "./buildingBlocks";
-import { timelinesWithDeferrals, withOwnership, type ScopedEffort, type WorkPackageEffort } from "./effort";
+import { unscopedWorkPackageIds, timelinesWithDeferrals, withOwnership, type ScopedEffort, type WorkPackageEffort } from "./effort";
 import type { EngagementDocument } from "./fcp";
 import type { Provenance } from "./provenance";
 import { reportTermEnd } from "./reportView";
@@ -17,7 +17,7 @@ const whole = (value: number) => Math.round(value);
 /** Follow-on work: packages with hours after the entitlement, with their notional window when it falls after the term. */
 function followOnWork(document: EngagementDocument, effort: ScopedEffort, termEnd: string | null) {
   const source = fundedDocument(document);
-  const notional = timelinesWithDeferrals(withOwnership(source), effort.workPackages.filter(row => row.deferred).map(row => row.id)).notional;
+  const notional = timelinesWithDeferrals(withOwnership(source), effort.workPackages.filter(row => row.deferred).map(row => row.id), unscopedWorkPackageIds(effort)).notional;
   const bars = new Map(notional.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
   return effort.workPackages.filter(row => row.followOn && row.followOn.total > 0).map(row => {
     const bar = bars.get(row.id);

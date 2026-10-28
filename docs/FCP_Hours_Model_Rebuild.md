@@ -167,20 +167,32 @@ All values are base (lead-role) hours. ceil = round up. Booleans are 0 or 1.
 
 ### Reference Architecture Design tier (small estates)
 
-- Trigger: at most 16 hosts, 2 clusters, 1 vCenter, 1 VCF instance and 1 site. Every limit is a setting (`HOURS_V2.smallEstate` in `shared/hoursConfig.ts`). Then A is a flat 40 hours (`design.referenceFlat`), with no per-domain, per-site or per-host terms.
+- Trigger: at most 16 hosts, 2 clusters, 1 vCenter, 1 VCF instance and 1 site. Every limit is a setting (`HOURS_V2.smallEstate` in `shared/hoursConfig.ts`). Sites are the sites in year-one scope: a site that exists for disaster recovery (the plan wants recovery services; one site per recovery site pair, at most all sites but the first) is covered by the Recovery and Resilience Design package, funded or follow-on, so it does not count against the one-site limit (`shared/estateSize.ts`, `recoverySites`). The full design still prices every stated site. Then A is a flat 40 hours (`design.referenceFlat`), with no per-domain, per-site or per-host terms.
 - The package is named Reference Architecture Design. It is accepted when the completed VCF Planning and Preparation Workbook, the bill of materials and a short list of deviations from the reference architecture are approved by the customer. The hours sit on that package and on the hardware compatibility and access mapping reviews.
 - Counts come from RVTools when it is loaded, else from the brief (the brief has no cluster count, so clusters are the assumed ceil(hosts / 16)). No host count anywhere means the estate is not small: the full design applies and the planner sees the flag "Estate size unknown; design hours assume a full design".
 - The planner input Small estate (auto, yes, no) overrides the test either way. A change is logged in the document's planner log (`fields.plannerLog`), which is internal and never printed.
 
-### Design first (fillable hours under 300)
+### The fill order (whole packages, never shaved)
 
-- When the hours left after delivered hours and the reserve are under 300 (`fit.designFirstThreshold`), year one is discovery, the full design, and the foundation build if the whole build then fits. Migration waves become customer-run with the runbook. Everything else (Operations Tier 1, outcomes, depth) is follow-on, wholly.
-- If discovery and the full design do not fit, the design is phased by deliverable, never by hours. Foundation design (management domain, platform, network and storage; `design.foundationBase` plus the host, extra instance and extra storage terms) stays in the entitlement. Workload domain design, and DR and NSX overlay design (the rest of the base, extra sites and stretched clusters), move to the follow-on as a package of their own, "Workload Domain, DR and NSX Overlay Design", with its own outcome and acceptance.
-- Whatever still does not fit is under-funded: nothing is split further. `fit.underFunded` carries `gapHours` (the minimum less the fillable hours) and `fullScopeGapHours` (how many more hours the full scope needs). The issue gate (`fundingProblem`) states both and needs a logged decision; no customer document prints either.
+Packages fill in this order. Each is wholly in the entitlement or wholly follow-on; nothing is cut by hours, scaled, or trimmed to fit.
+
+1. Kickoff, the hardware compatibility review and the design (discovery, then the Reference Architecture Design or the full design).
+2. The foundation build (management domain, first workload domain, storage, the NSX design for the management domain), which carries licensing, training and handover.
+3. The VCF Operations design (the component design package: the design share of the X4 line).
+4. The migration plan, the proving waves (the first `datedWaves`) and the runbook transfer. The runbook transfer is in only when the proving waves are in; otherwise it is a follow-on package of its own.
+5. VCF Operations at Tier 1 (health and logs), the first workload domain's neighbours, the selected outcomes in the customer's ranking (recovery among them), then the remaining waves, depth and efficiency.
+6. Leftover hours: Optimization and Advisory Services.
+
+- Steps 1 to 3 are the minimum. If the minimum does not fit, the design is first phased by deliverable (never by hours): the foundation design (management domain, platform, network and storage; `design.foundationBase` plus the host, extra instance and extra storage terms) stays in the entitlement, and workload domain design plus DR and NSX overlay design (the rest of the base, extra sites and stretched clusters) become a follow-on package of their own, "Workload Domain, DR and NSX Overlay Design", with its own outcome and acceptance (`row.detail`).
+- If it still does not fit, the plan is under-funded and nothing is split further: `fit.underFunded` carries `gapHours` (the minimum less the fillable hours) and `fullScopeGapHours` (how many more hours the full scope needs). The issue gate (`fundingProblem`) states both and needs a logged decision; no customer document prints either. The squeeze that used to move packages to the follow-on for the v2 model is gone.
+- Steps 4 and 5 fill in order and stop at the first unit that does not fit (no leapfrogging), so priority order holds. The migration waves after the proving waves are the customer's, with the runbook, only when the proving waves and the runbook transfer are in the plan (and the plan has not hidden the customer-run row); otherwise they are a whole follow-on package.
+- Every CDW bar on the entitlement timeline is a funded package. A bar with no funded hours is a follow-on bar (drawn in the Two-Year Notional) or, when the plan has no hours for it at all, drawn on neither timeline (`unscopedWorkPackageIds`). The discovery package stays on the timeline: its hours may already be delivered. Customer-run bars stay, drawn as the customer's.
+
+What remains proportional, and why: a line's hours are spread over the packages that deliver it by fixed weights (`BUILD_STAGE_WEIGHTS`, package length, the focused reviews at half weight) and rounded so the columns foot, so a package's hours move by an hour or two when its neighbours on the line change. That is an allocation of a priced line, not a cut to fit. A displaced add-on whose design share is funded carries the other 75% in its build packages, and the NSX design for the management domain is taken out of the networking line's follow-on once: both avoid counting the same hours twice. The hours-fill package takes what is left in the plan's own role mix.
 
 ### No package is split by hours
 
-- A package is wholly in the entitlement or wholly follow-on. Displaced scope that lands on a package the entitlement does fund (later migration waves, say) is a package of its own, `<id>:later`, entirely follow-on. Planner hours on a package never feed the displaced-scope calculation. Waves are customer-run (design first) or whole-package follow-on; the squeeze no longer trims later waves by share.
+- A package is wholly in the entitlement or wholly follow-on. Displaced scope that lands on a package the entitlement does fund (later migration waves, say) is a package of its own, `<id>:later`, entirely follow-on. Planner hours on a package never feed the displaced-scope calculation. The squeeze no longer trims later waves by share.
 
 ## Deploy
 

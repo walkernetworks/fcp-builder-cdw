@@ -23,13 +23,12 @@ function fromBrief(patch: (raw: any) => void): EngagementDocument {
 }
 
 /**
- * A small estate for the Reference Architecture Design tier: 14 hosts in 1 cluster, one site in scope. The example brief
- * names two data centers, but the second is a new DR site that is follow-on scope, so the planner puts one site in scope.
+ * A small estate for the Reference Architecture Design tier: 14 hosts in 1 cluster. The example brief names two data
+ * centers and leaves the sites unset: the second is the new DR site, which the estate-size test does not count.
  */
 function smallEstate(document: EngagementDocument): EngagementDocument {
   document.inventory.hosts = 14;
   document.inventory.clusters = 1;
-  document.fields.estimateInputs.sites = 1;
   // The generated plan names the architecture package for the estate's size.
   return refreshDerivedDocument(document);
 }
@@ -84,11 +83,11 @@ function meridianCalculated(bsasHours = 600): EngagementDocument {
 /**
  * Meridian Health as a planner would issue it: the entitlement plan as Acme Health's (39 delivered, 205 planned and the
  * 18-hour reserve add up to 262), so the work the entitlement cannot carry becomes the follow-on scope that the BSAS hours
- * fund inside the term. The follow-on scope is 81 hours, so that is the BSAS allocation: every hour is planned inside the
+ * fund inside the term. The follow-on scope is 291 hours, so that is the BSAS allocation: every hour is planned inside the
  * term and none is forfeited.
  */
 export function meridianHealth(): EngagementDocument {
-  return issuedAsPlanned(meridianCalculated(81));
+  return issuedAsPlanned(meridianCalculated(291));
 }
 
 /** Meridian Health reconciled on the entitlement, with 600 BSAS hours of which only the 188-hour follow-on is planned (412 forfeited). A gate fixture, not a golden. */

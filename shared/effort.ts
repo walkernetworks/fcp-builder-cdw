@@ -490,7 +490,17 @@ export function barsForLine(item: Pick<EffortLine, "code" | "reduction">, discov
   return id => addOn.bars.test(id);
 }
 
+/** A package's outcome and acceptance, split from the timeline bar's text, for the follow-on table. Null when the bar has no outcome. */
+function followOnOutcome(bar: Pick<TimelineBar, "outcome">): { outcome: string; acceptance: string } | null {
+  const text = bar.outcome?.trim();
+  if (!text) return null;
+  const at = text.indexOf("Acceptance:");
+  return at < 0 ? { outcome: text, acceptance: "" } : { outcome: text.slice(0, at).trim(), acceptance: text.slice(at + "Acceptance:".length).trim() };
+}
+
 /** The first management domain package: the one the VCF Installer deploys NSX with. */
+/** The runbook knowledge transfer package, which follows CDW's proving waves. */
+export const RUNBOOK_TRANSFER_BAR = "bar-platform-runbook-transfer";
 const FIRST_MANAGEMENT_DOMAIN = /^bar-(management-domain|converge-management-domain)$/;
 /** Shown with the first management domain when it carries the NSX design because the full NSX design is not funded. */
 export const NSX_VLAN_NOTE = "NSX is deployed with VLAN-backed transport zones; overlay design follows after the entitlement.";
@@ -520,7 +530,7 @@ function footedColumn(values: number[], target: number): number[] {
  * add-on's build when only its design fits, anything starting after the entitlement ends, and anything
  * the planner places there. The planner's hours replace the baseline wherever the work is planned.
  */
-export function workPackageEffort(source: EngagementDocument, lines: EffortLine[], totals: RoleHours, options: { ignoreHourOverrides?: boolean } = {}): WorkPackageEffort[] {
+export function workPackageEffort(source: EngagementDocument, lines: EffortLine[], totals: RoleHours, options: { ignoreHourOverrides?: boolean; holdRunbook?: boolean } = {}): WorkPackageEffort[] {
   const document = withOwnership(source);
   const timeline = document.adoptionTimeline;
   const termEnd = entitlementTermEnd(document);
@@ -548,6 +558,11 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     // Hours cannot be consumed after the entitlement ends, whatever the placement.
     if (termEnd && window && window.start > termEnd) deferred.set(bar.id, "after the entitlement window");
   }
+
+  // The runbook transfer is the proving waves' runbook: without CDW's proving waves in the entitlement there is nothing to
+  // transfer, so it is a follow-on package of its own at its full estimate (its share of the build line leaves the plan).
+  const held = new Set<string>();
+  if (options.holdRunbook) for (const { bar } of bars) if (bar.id === RUNBOOK_TRANSFER_BAR && cdw(bar.id) && !deferred.has(bar.id)) { deferred.set(bar.id, "not funded"); held.add(bar.id); }
 
   type Accumulated = RoleHours & { label: string };
   // The entitlement baseline (footed to the catalog totals) and the follow-on estimate are kept apart.
@@ -613,7 +628,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       matches = core.length ? core : live(id => COMPONENT_DESIGN_BARS.test(id));
     }
     // Work after the entitlement window keeps its own share as follow-on; the packages left in the window keep only theirs.
-    const late = (id: string) => deferred.get(id) === "after the entitlement window";
+    const late = (id: string) => deferred.get(id) === "after the entitlement window" || held.has(id);
     const sharing = matches.filter(({ bar }) => inEntitlement(bar.id) || late(bar.id));
     // A fully scoped add-on designs its component on the component design package and builds on the rest, even when
     // the build falls after the entitlement window.
@@ -672,13 +687,20 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     return entries.map(([id, row], index) => [id, { row, roles: { architect: columns[0][index], srConsultant: columns[1][index], projectManager: columns[2][index] } }] as const);
   };
   const baselines = new Map([
-    ...footed(inWindow, key => totals[key] - freed[key]),
+    // The target is a whole number of hours: what the late and held packages take with them is not.
+    ...footed(inWindow, key => Math.round(totals[key] - freed[key])),
     ...footed(followOn, (_key, values) => Math.round(values.reduce((sum, value) => sum + value, 0))),
     ...footed(pinned, (_key, values) => Math.round(values.reduce((sum, value) => sum + value, 0))),
   ]);
   const entries = Array.from(baselines.entries());
   const lanes = new Map(bars.map(({ lane, bar, timeline: owner }) => [bar.id, { lane, bar, timeline: owner }]));
   const carriesNsxDesign = lines.some(item => item.code === "NX");
+  // What each package delivers and how it is accepted, for the follow-on table: the playbook's wording where it has one.
+  const plan = playbookPlanForFields(document.fields);
+  const playbookDetail = new Map<string, { outcome: string; acceptance: string }>([
+    ...plan.designPackages.map(item => [`bar-playbook-design-${item.id}`, { outcome: item.outcome, acceptance: item.acceptance }] as const),
+    ...plan.implementationPackages.map(item => [`bar-playbook-execution-${item.id}`, { outcome: item.outcome, acceptance: item.acceptance }] as const),
+  ]);
   const ids = [...bars.map(({ bar }) => bar.id), ...entries.map(([id]) => id).filter(id => !lanes.has(id))];
 
   return ids.map((id): WorkPackageEffort => {
@@ -711,6 +733,7 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       placement: override?.placement ?? "auto",
       owner,
       ...(carriesNsxDesign && FIRST_MANAGEMENT_DOMAIN.test(id) ? { notes: [document.fields.fundingSource === "bsas" ? NSX_VLAN_NOTE_BSAS : NSX_VLAN_NOTE] } : {}),
+      ...(placed && (playbookDetail.get(id) ?? followOnOutcome(placed.bar)) ? { detail: (playbookDetail.get(id) ?? followOnOutcome(placed.bar))! } : {}),
       ...(note ? { note } : !reason && sum === 0 ? { note: "not in the scoped hours" as const } : {}),
     };
   }).sort((left, right) => categoryIndex(left.category) - categoryIndex(right.category) || (left.start ?? "9999").localeCompare(right.start ?? "9999") || left.label.localeCompare(right.label));
@@ -749,7 +772,26 @@ export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, Defer
  * The timelines as the customer sees them: deferred work leaves the entitlement timeline and starts in the
  * Two-Year Notional the month after the entitlement ends, keeping its order and length.
  */
-export function timelinesWithDeferrals(document: EngagementDocument, deferredIds: string[]): { adoption: Timeline; notional: Timeline } {
+export function timelinesWithDeferrals(document: EngagementDocument, deferredIds: string[], unscopedIds: string[] = []): { adoption: Timeline; notional: Timeline } {
+  const result = movedTimelines(document, deferredIds);
+  if (!unscopedIds.length) return result;
+  // Packages with no hours at all (neither funded nor follow-on scope) are drawn on neither timeline.
+  const gone = new Set(unscopedIds);
+  const clean = (timeline: Timeline): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !gone.has(bar.id)).map(bar => (bar.prerequisites?.some(id => gone.has(id)) ? { ...bar, prerequisites: bar.prerequisites.filter(id => !gone.has(id)) } : bar)) })) });
+  return { adoption: clean(result.adoption), notional: clean(result.notional) };
+}
+
+/**
+ * Packages the plan carries no hours for: CDW-owned, not funded and not follow-on scope either (a migration plan the
+ * reference design does not include, say). Under v2 they leave the timelines, so every CDW bar on the entitlement
+ * timeline is a funded package. The estate discovery package stays: its hours may already be delivered.
+ */
+export function unscopedWorkPackageIds(effort: Pick<ScopedEffort, "workPackages" | "internal">): string[] {
+  if (!effort.internal.pass1) return [];
+  return effort.workPackages.filter(row => row.owner === "cdw" && !row.deferred && row.total === 0 && row.note === "not in the scoped hours" && !DISCOVERY_BARS.test(row.id) && !(row.followOn && row.followOn.total > 0)).map(row => row.id);
+}
+
+function movedTimelines(document: EngagementDocument, deferredIds: string[]): { adoption: Timeline; notional: Timeline } {
   const ids = new Set(deferredIds);
   // Work that stays no longer waits for work that moved out: it goes ahead without it (for example VLAN-backed
   // workload domains when the NSX build-out moves to the follow-on).
@@ -927,7 +969,7 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
  */
 function withLateWorkReleased(effort: ScopedEffort): ScopedEffort {
   const fit = effort.internal.fit;
-  const late = effort.workPackages.filter(row => row.deferred === "after the entitlement window" && (row.followOn?.total ?? 0) > 0);
+  const late = effort.workPackages.filter(row => (row.deferred === "after the entitlement window" || (row.id === RUNBOOK_TRANSFER_BAR && row.deferred === "not funded" && !row.id.includes(":"))) && (row.followOn?.total ?? 0) > 0);
   if (!fit || !late.length) return effort;
   const hours = late.reduce((sum, row) => sum + row.followOn!.total, 0);
   const fromDepth = Math.min(fit.buckets.E2, hours);
@@ -938,7 +980,8 @@ function withLateWorkReleased(effort: ScopedEffort): ScopedEffort {
       fit: {
         ...fit,
         buckets: { ...fit.buckets, E2: fit.buckets.E2 - fromDepth, E1: fit.buckets.E1 - (hours - fromDepth), F: fit.buckets.F + hours },
-        reserveHours: fit.reserveHours + hours,
+        // Hours that fall after the window go to the reserve; the runbook's hours, held for want of proving waves, stay unused for the fill.
+        reserveHours: fit.reserveHours + late.filter(row => row.deferred === "after the entitlement window").reduce((sum, row) => sum + row.followOn!.total, 0),
         scopeMoves: [...(fit.scopeMoves ?? []), ...late.map(row => ({ label: row.label, hours: row.followOn!.total, reason: "after the entitlement window" as const }))],
       },
     },
@@ -1080,7 +1123,9 @@ function assembleScopedEffort(
     ...(item.offshoreProjectManager ? { offshoreProjectManager: item.offshoreProjectManager } : {}),
     total: item.architect + item.srConsultant + item.projectManager + (item.seniorArchitect ?? 0) + (item.offshoreProjectManager ?? 0),
   }));
-  const workPackages = workPackageEffort(document, lines, totalsOf(calculatedRows));
+  // v2: the runbook needs CDW's proving waves; a plan with waves in scope but none funded holds it back.
+  const holdRunbook = Boolean(extra.pass1?.lines.some(item => item.code === "FILL_mig")) && !lines.some(item => item.code === "FILL_mig");
+  const workPackages = workPackageEffort(document, lines, totalsOf(calculatedRows), { holdRunbook });
   const planned = workPackages.filter(row => row.total > 0);
   const rows = assignments.length ? assignments : calculatedRows;
   // The calculated plan is the work packages as adjusted by the planner; it falls back to the catalog lines with no timeline.

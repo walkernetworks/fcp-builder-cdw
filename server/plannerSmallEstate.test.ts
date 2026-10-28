@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ESTATE_SIZE_UNKNOWN_FLAG, estateSizeFlag, resolveEstateSize, withSmallEstateChoice } from "../shared/estateSize";
-import { LATER_DESIGN_PHASE } from "../shared/effort";
-import { migrateDocument, REFERENCE_DESIGN, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
+import { LATER_DESIGN_PHASE, RUNBOOK_TRANSFER_BAR, timelinesWithDeferrals, unscopedWorkPackageIds, withOwnership } from "../shared/effort";
+import { activityOwner, migrateDocument, REFERENCE_DESIGN, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { HOURS_V2 } from "../shared/hoursConfig";
 import { scopeV2 } from "../shared/hoursV2";
 import { fundingProblem } from "../shared/reportFormat";
@@ -20,6 +20,9 @@ function sized(counts: { hosts?: number; clusters?: number; vcenters?: number; i
   document.report.discovery.vcenters = counts.vcenters ?? 1;
   document.report.discovery.vcfInstances = counts.instances ?? 1;
   document.fields.estimateInputs.sites = counts.sites ?? 1;
+  // No recovery services: every stated site is in scope (the recovery site rule has its own tests).
+  document.fields.adoptionDetails.resilience = [];
+  document.fields.priorities = document.fields.priorities.filter(item => item !== "resilience");
   return document;
 }
 
@@ -146,106 +149,145 @@ describe("rule 2: unknown inventory, the Small estate input and the brief's coun
   });
 });
 
-describe("rule 3: design first below 300 hours", () => {
-  it("plans discovery, the full design and the foundation build, and hands the migration to the customer", () => {
-    const effort = effortOf(acmeHealth());
-    const fit = effort.internal.fit!;
-    expect(fit.fillableHours).toBeLessThan(HOURS_V2.fit.designFirstThreshold.value);
-    expect(fit.designFirst).toBe(true);
-    expect(fit.placements.filter(item => item.bucket === "E1").map(item => item.code).sort()).toEqual(["A", "D", "NX", "S_storage"]);
-    expect(fit.placements.some(item => item.bucket === "E2")).toBe(false);
-    expect(fit.placements.some(item => item.code === "FILL_mig")).toBe(false);
-    expect(fit.customerRun.hours).toBeGreaterThan(0);
-    expect(fit.customerRun.waves).toBeGreaterThan(0);
-    // The later work is follow-on.
-    expect(fit.placements.filter(item => item.bucket === "F").map(item => item.code)).toEqual(expect.arrayContaining(["X4", "X10"]));
-    const waves = effort.workPackages.find(row => row.id === "bar-playbook-execution-migration-waves");
-    expect(waves?.total ?? 0).toBe(0);
-    expect(waves?.followOn).toBeUndefined();
+describe("sites in year-one scope", () => {
+  it("does not count a recovery site against the one-site limit, and says which sites it counted", () => {
+    const acme = acmeHealth();
+    // The example brief names two data centers and wants recovery services: the second is the DR site.
+    expect(acme.report.discovery.datacenters).toBe(2);
+    expect(acme.fields.estimateInputs.sites).toBeUndefined();
+    expect(resolveEstateSize(acme)).toMatchObject({ statedSites: 2, recoverySites: 1, sites: 1, small: true, exceeds: [] });
   });
 
-  it("puts the foundation build in the follow-on when it does not fit after the full design", () => {
+  it("counts both sites when the second is not a recovery site", () => {
     const document = acmeHealth();
-    document.fields.estimateInputs.smallEstate = "no";
-    const fit = effortOf(document).internal.fit!;
-    expect(fit.designFirst).toBe(true);
-    expect(fit.designPhased).toBe(false);
-    expect(fit.underFunded).toBeNull();
-    expect(fit.placements.filter(item => item.bucket === "E1").map(item => item.code)).toEqual(["A", "A"]);
-    expect(fit.placements.filter(item => item.bucket === "F").map(item => item.code)).toContain("D");
-    expect(fit.warnings.join(" ")).toMatch(/the foundation build does not fit and goes to the follow-on/);
+    document.fields.adoptionDetails.resilience = [];
+    document.fields.priorities = document.fields.priorities.filter(item => item !== "resilience");
+    expect(resolveEstateSize(document)).toMatchObject({ statedSites: 2, recoverySites: 0, sites: 2, small: false });
+    expect(resolveEstateSize(document).exceeds.join(" ")).toContain("2 sites");
   });
 
-  it("does not apply at 300 fillable hours or more", () => {
-    const fit = effortOf(riverbendHealth()).internal.fit!;
-    expect(fit.fillableHours).toBeGreaterThanOrEqual(300);
-    expect(fit.designFirst).toBe(false);
-    expect(fit.placements.some(item => item.code === "FILL_mig" && item.bucket === "E1")).toBe(true);
-    const threshold = acmeHealth();
-    threshold.report.entitlement.hours = Math.ceil(300 / 0.92) + 39; // 300 or more after delivery and the 8% reserve
-    expect(effortOf(threshold).internal.fit!.designFirst).toBe(false);
-    threshold.report.entitlement.hours = Math.floor(299 / 0.92) + 39;
-    expect(effortOf(threshold).internal.fit!.designFirst).toBe(true);
+  it("counts every site beyond the recovery site pairs", () => {
+    const document = acmeHealth();
+    document.fields.estimateInputs.sites = 3;
+    expect(resolveEstateSize(document)).toMatchObject({ statedSites: 3, recoverySites: 1, sites: 2, small: false });
+    document.fields.estimateInputs.drSitePairs = 2;
+    expect(resolveEstateSize(document)).toMatchObject({ recoverySites: 2, sites: 1, small: true });
   });
 });
 
-describe("rule 4: design phased by deliverable", () => {
-  /** A full design on 120 entitled hours: the foundation design fits, the rest of the design does not. */
-  const phased = () => {
-    const document = acmeHealth();
-    document.fields.estimateInputs.smallEstate = "no";
-    document.fields.estimateInputs.workloadDomains = 1;
-    document.report.entitlement.hours = 120;
-    return document;
-  };
+describe("the fill order: whole packages, in order, never shaved", () => {
+  const E = (effort: ReturnType<typeof effortOf>) => effort.internal.fit!.placements.filter(item => item.bucket === "E1" || item.bucket === "E2");
 
-  it("keeps the foundation design in the entitlement and moves workload domain, DR and NSX overlay design to the follow-on", () => {
-    const effort = effortOf(phased());
+  it("funds discovery, hardware review and design, the foundation build and the Operations design first (Acme)", () => {
+    const effort = effortOf(acmeHealth());
     const fit = effort.internal.fit!;
-    expect(fit.designPhased).toBe(true);
     expect(fit.underFunded).toBeNull();
+    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A", "D", "NX", "S_storage", "X4:design-share"]);
+    const total = (id: string) => effort.workPackages.find(row => row.id === id)?.total ?? 0;
+    for (const id of ["bar-hcl-review", "bar-playbook-design-target-state", "bar-design-access-mapping", "bar-management-domain", "bar-workload-domain", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-component-design-operations"]) expect(total(id), id).toBeGreaterThan(0);
+  });
+
+  it("puts the migration plan, proving waves, runbook transfer, health and logs and recovery in the follow-on, whole, when they do not fit", () => {
+    const effort = effortOf(acmeHealth());
+    const fit = effort.internal.fit!;
+    expect(fit.customerRun).toEqual({ hours: 0, waves: 0 });
+    for (const id of ["bar-playbook-execution-migration-waves", RUNBOOK_TRANSFER_BAR, "bar-operations-observability", "bar-resilience-recovery-architecture", "bar-playbook-component-design-resilience"]) {
+      const row = effort.workPackages.find(item => item.id === id)!;
+      expect(row, id).toMatchObject({ total: 0, deferred: "not funded" });
+      expect(row.followOn!.total, id).toBeGreaterThan(0);
+    }
+    // The leftover goes to Optimization and Advisory Services.
+    expect(effortOf(acmeHealthReconciled()).workPackages.find(row => row.id === "bar-hours-fill")!.total).toBeGreaterThan(0);
+  });
+
+  it("runs the runbook transfer only when the proving waves are in, and then the customer runs the remaining waves", () => {
+    const withWaves = acmeHealth();
+    withWaves.report.entitlement.hours = 900;
+    withWaves.fields.entitlementAmount = 900 * 330;
+    const effort = effortOf(refreshDerivedDocument(withWaves, { forceRebuild: true }));
+    const fit = effort.internal.fit!;
+    expect(fit.placements.find(item => item.unitId === "FILL_mig:wave-1")!.bucket).toBe("E1");
+    expect(effort.workPackages.find(row => row.id === RUNBOOK_TRANSFER_BAR)!.total).toBeGreaterThan(0);
+    const without = effortOf(acmeHealth());
+    expect(without.workPackages.find(row => row.id === RUNBOOK_TRANSFER_BAR)).toMatchObject({ total: 0, deferred: "not funded" });
+  });
+
+  it("makes the remaining waves a whole follow-on package, not customer-run, when the proving waves are not in", () => {
+    const effort = effortOf(acmeHealth());
+    const waves = effort.workPackages.find(row => row.id === "bar-playbook-execution-migration-waves")!;
+    expect(waves).toMatchObject({ total: 0, deferred: "not funded" });
+    expect(effort.internal.fit!.placements.filter(item => item.code === "FILL_mig").every(item => item.bucket === "F")).toBe(true);
+    // A customer-run row is not drawn for waves the customer was never handed.
+    expect(effort.workPackages.some(row => row.id.endsWith(":later") && /waves/i.test(row.id))).toBe(false);
+  });
+
+  it("carries each follow-on package's outcome and acceptance on its row, for the follow-on table", () => {
+    const rows = effortOf(acmeHealth()).workPackages.filter(row => row.deferred);
+    expect(rows.length).toBeGreaterThan(3);
+    for (const row of rows) {
+      // Every follow-on package has an outcome; acceptance is split off where the package states one (the design phases always do).
+      expect(row.detail?.outcome, row.id).toBeTruthy();
+      expect(row.detail!.outcome, row.id).not.toContain("Acceptance:");
+      expect(typeof row.detail!.acceptance, row.id).toBe("string");
+    }
+  });
+
+  it("phases the design by deliverable before it calls a plan under-funded", () => {
+    const base = () => {
+      const document = acmeHealth();
+      document.fields.estimateInputs.smallEstate = "no";
+      document.fields.estimateInputs.workloadDomains = 1;
+      return document;
+    };
+    let found: ReturnType<typeof effortOf> | null = null;
+    for (let hours = 120; hours <= 600 && !found; hours += 5) {
+      const document = base();
+      document.report.entitlement.hours = hours;
+      const effort = effortOf(document);
+      if (effort.internal.fit!.designPhased && !effort.internal.fit!.underFunded) found = effort;
+    }
+    expect(found, "some entitlement fits the phased design but not the full one").not.toBeNull();
+    const fit = found!.internal.fit!;
     const byUnit = (id: string) => fit.placements.find(item => item.unitId === id)!;
     expect(byUnit("A:foundation").bucket).toBe("E1");
     expect(byUnit("A:workload")).toMatchObject({ bucket: "F", reason: "design phased" });
     expect(byUnit("A:dr-nsx")).toMatchObject({ bucket: "F", reason: "design phased" });
-    // Deliverables, not hours: foundation design is the management domain, platform, network and storage.
     expect(byUnit("A:foundation").label).toMatch(/management domain, platform, network and storage/);
-    expect(fit.placements.filter(item => item.bucket === "E1" || item.bucket === "E2").every(item => ["A"].includes(item.code))).toBe(true);
     // The later phase is a package of its own with its own outcome and acceptance, wholly follow-on.
-    const later = effort.workPackages.find(row => row.id === LATER_DESIGN_PHASE.id)!;
+    const later = found!.workPackages.find(row => row.id === LATER_DESIGN_PHASE.id)!;
     expect(later).toMatchObject({ label: "Workload Domain, DR and NSX Overlay Design", total: 0, deferred: "not funded" });
     expect(later.followOn!.total).toBeGreaterThan(0);
     expect(later.detail!.outcome).toMatch(/workload domain/);
     expect(later.detail!.acceptance).toMatch(/approve/);
-    // No design package carries both entitlement hours and follow-on hours.
-    expect(effort.workPackages.filter(row => /design/.test(row.id) && row.total > 0).every(row => !row.followOn)).toBe(true);
-    // The follow-on design hours are the later phases' hours, as planned.
     const laterBase = byUnit("A:workload").loaded + byUnit("A:dr-nsx").loaded;
-    expect(later.followOn!.total).toBeGreaterThan(laterBase - 3);
-    expect(later.followOn!.total).toBeLessThan(laterBase + 3);
+    expect(Math.abs(later.followOn!.total - laterBase)).toBeLessThan(3);
+    expect(found!.workPackages.every(row => !(row.total > 0 && (row.followOn?.total ?? 0) > 0))).toBe(true);
   });
 
   it("does not phase a design that fits", () => {
-    const document = phased();
-    document.report.entitlement.hours = 200;
+    const document = acmeHealth();
+    document.fields.estimateInputs.smallEstate = "no";
+    document.report.entitlement.hours = 700;
     expect(effortOf(document).internal.fit!.designPhased).toBe(false);
   });
-});
 
-describe("rule 5: what still does not fit is under-funded and stays internal", () => {
-  it("flags the gap, the hours the full scope needs, and splits nothing further", () => {
+  it("is under-funded, with the gap in hours, when the minimum does not fit; nothing is shaved or squeezed", () => {
     const document = acmeHealthUnderFunded();
     const effort = effortOf(document);
     const fit = effort.internal.fit!;
     expect(fit.underFunded).not.toBeNull();
     expect(fit.underFunded!.gapHours).toBeGreaterThan(0);
-    expect(fit.underFunded!.fullScopeGapHours).toBeGreaterThan(fit.underFunded!.gapHours);
-    // The foundation design stays whole, in the entitlement; everything else is wholly follow-on.
-    expect(fit.placements.filter(item => item.bucket === "E1").map(item => item.unitId)).toEqual(["A:foundation"]);
+    expect(fit.underFunded!.fullScopeGapHours).toBeGreaterThanOrEqual(fit.underFunded!.gapHours);
+    // The minimum is placed whole, over the fillable hours: discovery, the foundation design, the build, the Operations design.
+    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A:foundation", "D", "NX", "S_storage", "X4:design-share"].sort());
+    expect(effort.totals.total).toBeGreaterThan(fit.fillableHours);
+    expect(effort.workPackages.filter(row => row.deferred === "over budget")).toEqual([]);
     expect(effort.workPackages.every(row => !(row.total > 0 && (row.followOn?.total ?? 0) > 0))).toBe(true);
     expect(fit.warnings[0]).toMatch(/^Under-funded/);
   });
+});
 
+describe("rule 5: what still does not fit is under-funded and stays internal", () => {
   it("makes the issue gate ask for a decision, saying how many more hours the full scope needs", () => {
     const document = acmeHealthUnderFunded();
     const effort = effortOf(document);
@@ -257,14 +299,84 @@ describe("rule 5: what still does not fit is under-funded and stays internal", (
   it("prints nothing about the gap in any customer document", () => {
     for (const document of [acmeHealthUnderFunded(), (() => { const d = riverbendHealth(); d.fields.bsasHours = 90; return d; })()]) {
       const effort = effortOf(document);
-      const gap = effort.internal.fit!.underFunded!;
+      const gap = effort.internal.fit!.underFunded;
       for (const format of ["summary", undefined] as const) {
         const text = visible(renderCondensedFcpHtml(document.fields.customerName, document, { effort, today: FIXTURE_TODAY, ...(format ? { format } : {}) }));
         expect(text).not.toMatch(/under-?funded|full scope needs|fillable|design first|more hours than/i);
-        expect(text).not.toContain(`${Math.round(gap.fullScopeGapHours)} more hours`);
+        if (gap) expect(text).not.toContain(`${Math.round(gap.fullScopeGapHours)} more hours`);
         expect(text).not.toContain("Closing the gap");
       }
     }
+  });
+});
+
+describe("every CDW bar on the entitlement timeline is a funded package", () => {
+  const fixtures = () => [acmeHealth(), acmeHealthReconciled(), meridianHealth(), riverbendHealth(), northwindMfg(), cedarRidgeLogistics(), acmeHealthUnderFunded()];
+  const unfunded = (document: EngagementDocument) => {
+    const effort = effortOf(document);
+    const owned = withOwnership(document);
+    const { adoption } = timelinesWithDeferrals(owned, effort.workPackages.filter(row => row.deferred).map(row => row.id), unscopedWorkPackageIds(effort));
+    const rows = new Map(effort.workPackages.map(row => [row.id, row]));
+    return adoption.lanes.flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "cdw" && !(rows.get(bar.id)?.total! > 0) && bar.id !== "bar-playbook-design-requirements").map(bar => bar.id);
+  };
+
+  it("draws no CDW bar with no funded hours, for every fixture", () => {
+    for (const document of fixtures()) expect(unfunded(document), document.fields.customerName).toEqual([]);
+  });
+
+  it("moves the unfunded Acme bars to the Two-Year Notional and keeps the customer's bars where they are", () => {
+    const document = acmeHealth();
+    const effort = effortOf(document);
+    const { adoption, notional } = timelinesWithDeferrals(withOwnership(document), effort.workPackages.filter(row => row.deferred).map(row => row.id), unscopedWorkPackageIds(effort));
+    const year1 = new Set(adoption.lanes.flatMap(lane => lane.bars).map(bar => bar.id));
+    const later = new Set(notional.lanes.flatMap(lane => lane.bars).map(bar => bar.id));
+    for (const id of ["bar-playbook-execution-migration-waves", RUNBOOK_TRANSFER_BAR, "bar-operations-observability", "bar-resilience-recovery-architecture"]) {
+      expect(year1.has(id), `${id} is not in year one`).toBe(false);
+      expect(later.has(id), `${id} is in the notional`).toBe(true);
+    }
+    // The migration plan has no hours anywhere (the reference design does not include it): it is drawn on neither.
+    expect(year1.has("bar-playbook-design-migration-design")).toBe(false);
+    expect(year1.has("bar-hcl-remediation")).toBe(true);
+  });
+
+  it("holds across entitlement sizes and pathways", () => {
+    const offenders: string[] = [];
+    for (const path of ["greenfield", "converge", "in-place"] as const) {
+      for (const hours of [90, 200, 262, 330, 700, 3000]) {
+        const document = acmeHealth();
+        document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: path } as never;
+        document.report.entitlement.hours = hours;
+        document.fields.entitlementAmount = Math.round(hours * 330);
+        for (const id of unfunded(refreshDerivedDocument(document, { forceRebuild: true }))) offenders.push(`${path}/${hours}: ${id}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe("no package is scaled to fit", () => {
+  it("places every unit at its full size, except a design share and the NSX carve-out, which are packages of their own", () => {
+    const offenders: string[] = [];
+    for (const path of ["greenfield", "converge", "in-place"] as const) {
+      for (const hours of [90, 200, 262, 330, 700, 3000]) {
+        const document = acmeHealth();
+        document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: path } as never;
+        document.report.entitlement.hours = hours;
+        document.fields.entitlementAmount = Math.round(hours * 330);
+        const refreshed = refreshDerivedDocument(document, { forceRebuild: true });
+        const pass1 = scopeV2(refreshed);
+        const units = new Map(pass1.lines.flatMap(line => line.units.map(unit => [unit.id, unit.base] as const)));
+        for (const item of effortOf(refreshed).internal.fit!.placements) {
+          if (item.designShare || item.unitId === "NX:3.5") continue;
+          const full = units.get(item.unitId);
+          if (full === undefined) continue;
+          // A displaced add-on whose design share is funded carries the other 75%, and the networking line gives up the carved NSX design.
+          const remainder = Math.abs(item.base - full * 0.75) < 1e-6 || /^X(5|6|7|16)/.test(item.code);
+          if (Math.abs(item.base - full) > 1e-6 && !remainder) offenders.push(`${path}/${hours}: ${item.unitId} ${item.base} of ${full}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
 

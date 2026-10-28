@@ -288,7 +288,6 @@ export const HOURS_V2 = {
     reviewMonth: c(6, "Practice decision", "Spec 7.7: review burn at month 3 and month 6"),
     burnCheckpointShare: c(0.4, "Practice decision", "Spec 7.7: re-scope if burn at month 6 is below 40%"),
     termMonths: c(12, "Practice decision", "VCF Services Entitlement SPD: used within the initial 12 months"),
-    designFirstThreshold: c(300, "Practice decision", "Product owner: under 300 hours after delivered hours and the reserve, year one is discovery, full design and the foundation build if it fits"),
   },
 } as const;
 

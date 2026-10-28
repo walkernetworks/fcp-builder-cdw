@@ -270,7 +270,7 @@ describe("v2 Pass 2 fit (spec section 7)", () => {
     focus: { operations: ["lifecycle", "observability"], security: ["segmentation"], automation: ["vm-self-service"] },
     depth: { operations: "tier-2", automation: "tier-2", networkingSecurity: "tier-2" },
   });
-  const fitOf = (pass1: Pass1, entitlementHours: number, extra: Partial<Parameters<typeof fitV2>[1]> = {}) => fitV2(pass1, { entitlementHours, monthsRemaining: 12, datedWaves: 1, designFirstThreshold: 0, ...extra });
+  const fitOf = (pass1: Pass1, entitlementHours: number, extra: Partial<Parameters<typeof fitV2>[1]> = {}) => fitV2(pass1, { entitlementHours, monthsRemaining: 12, datedWaves: 1, ...extra });
 
   it("reproduces the 7.8 worked example under the section 6 and 7 rules", () => {
     const fit = fitOf(scopeV2(example()), 100_000 / 250);
@@ -312,25 +312,27 @@ describe("v2 Pass 2 fit (spec section 7)", () => {
     const fit = fitOf(pass1, 200);
     expect(fit.underFunded).not.toBeNull();
     expect(fit.underFunded!.gapHours).toBeCloseTo(fit.coreRequiredHours - fit.fillableHours, 6);
-    expect(fit.placements.filter(item => item.step <= 5).every(item => item.bucket === "E1")).toBe(true);
+    // The minimum is placed whole, over the fillable hours; every other package waits for hours the minimum leaves.
+    expect(fit.placements.filter(item => (item.step <= 3 || item.designShare) && item.reason !== "design phased").every(item => item.bucket === "E1")).toBe(true);
+    expect(fit.placements.filter(item => item.step > 3 && !item.designShare && item.bucket !== "F").map(item => item.unitId + item.bucket)).toEqual([]);
     expect(fit.buckets.E2).toBe(0);
     expect(fit.warnings[0]).toMatch(/^Under-funded/);
   });
 
-  it("keeps a displaced add-on's design share in E2 when it fits", () => {
+  it("keeps a displaced add-on's design share in E2 when it fits, as a package of its own at its full estimate", () => {
     const pass1 = scopeV2(example());
-    const core = fitOf(pass1, 100_000).coreRequiredHours;
-    // Room for the core, all of X11 at Tier 1 and 15 hours: the Automation platform (40.5) does not fit, its design share (10.1) does, and the X2 share then does not.
-    const x11 = pass1.lines.find(line => line.code === "X11")!;
-    const x11Tier1 = x11.units.filter(unit => unit.tier === 1).reduce((sum, unit) => sum + loadedOf(pass1, x11, unit.base), 0);
-    const fit = fitOf(pass1, (core + x11Tier1 + 15) / 0.92);
-    const shares = fit.placements.filter(item => item.designShare);
-    expect(shares.map(item => item.code)).toEqual(["X_VCFA_platform"]);
-    expect(shares[0].bucket).toBe("E2");
-    expect(shares[0].base).toBeCloseTo(8);
-    // The rest of the line carries 75% of its Tier 1 units into F.
-    expect(fit.placements.find(item => item.unitId === "X_VCFA_platform" && !item.designShare)).toMatchObject({ bucket: "F", base: 24 });
-    expect(fit.designShareFlags.some(flag => flag.startsWith("VM self-service"))).toBe(true);
+    // Somewhere between the core and the full scope the Automation platform does not fit but its design share does.
+    let found: ReturnType<typeof fitOf> | null = null;
+    for (let hours = 150; hours <= 700 && !found; hours += 2) {
+      const fit = fitOf(pass1, hours);
+      if (fit.placements.some(item => item.designShare && item.code === "X_VCFA_platform")) found = fit;
+    }
+    expect(found).not.toBeNull();
+    const share = found!.placements.find(item => item.designShare && item.code === "X_VCFA_platform")!;
+    expect(share.bucket).toBe("E2");
+    expect(share.base).toBeCloseTo(8);
+    // The rest of the line is the build package: 75% of the Tier 1 value, whole in the follow-on.
+    expect(found!.placements.find(item => item.unitId === "X_VCFA_platform" && !item.designShare)).toMatchObject({ bucket: "F", base: 24 });
   });
 
   it("moves the design share with the line and flags it when it does not fit", () => {
@@ -341,9 +343,11 @@ describe("v2 Pass 2 fit (spec section 7)", () => {
 
   it("splits migration waves by wave and keeps HCX setup and the pilot with the first", () => {
     const pass1 = scopeV2(doc({ hosts: 40, vms: 800 }));
-    const core = fitOf(pass1, 100_000).coreRequiredHours;
     const waves = pass1.lines.find(line => line.code === "FILL_mig")!;
-    const fit = fitOf(pass1, (core + loadedOf(pass1, waves, waves.units[1].base) + 1) / 0.92);
+    const everything = fitOf(pass1, 100_000);
+    // Everything ahead of the second wave in the fill order, then the second wave and one hour.
+    const ahead = everything.placements.filter(item => item.step < 7 && !item.designShare).reduce((sum, item) => sum + item.loaded, 0);
+    const fit = fitOf(pass1, (ahead + loadedOf(pass1, waves, waves.units[1].base) + 1) / 0.92);
     const placed = (id: string) => fit.placements.find(item => item.unitId === id)!;
     expect(placed("FILL_mig:wave-1")).toMatchObject({ bucket: "E1", step: 4 });
     expect(placed("FILL_mig:wave-2")).toMatchObject({ bucket: "E2", step: 7 });
@@ -429,32 +433,29 @@ describe("v2 in the plan", () => {
 });
 
 describe("entitlement ceiling and the reserve field", () => {
-  it("never plans more than the entitlement after the reserve except for protected work, which never moves", async () => {
+  it("never plans more than the entitlement after the reserve except an under-funded minimum, and never squeezes or trims a package", async () => {
     const { scopedEffortForDocument } = await import("./rateCard");
-    const { isDesignWorkPackage, protectedWorkPackages } = await import("../shared/effort");
-    // A 150-host greenfield build whose core needs more than these entitlements fund.
+    // A 150-host greenfield build whose minimum needs more than the smaller entitlements fund.
+    let underFunded = 0;
     let fitted = 0;
-    for (const entitlement of [150_000, 180_000, 200_000, 230_000, 260_000]) {
+    for (const entitlement of [150_000, 180_000, 200_000, 230_000, 260_000, 600_000]) {
       const document = doc({ hosts: 150, entitlement });
       const effort = scopedEffortForDocument(document);
       const fit = effort.internal.fit!;
-      const kept = protectedWorkPackages(document.adoptionTimeline);
-      const moved = effort.workPackages.filter(row => row.deferred === "over budget");
-      // Moved work is follow-on, never protected, and the buckets follow it.
-      expect(moved.every(row => (row.followOn?.total ?? 0) > 0 && !kept.has(row.id))).toBe(true);
+      // Nothing moves "over budget": the fit places whole packages in order, and the rest is under-funded or follow-on.
+      expect(effort.workPackages.filter(row => row.deferred === "over budget")).toEqual([]);
+      expect(fit.scopeMoves?.filter(item => item.reason === "over budget") ?? []).toEqual([]);
       expect(Math.abs(fit.buckets.E1 + fit.buckets.E2 - effort.totals.total)).toBeLessThanOrEqual(2);
-      expect(fit.scopeMoves?.length ?? 0).toBeGreaterThanOrEqual(moved.length);
-      for (const id of Array.from(kept)) expect(effort.workPackages.find(row => row.id === id)?.deferred, id).toBeUndefined();
-      if (effort.totals.total <= Math.floor(fit.fillableHours)) {
-        expect(fit.underFunded).toBeNull();
-        expect(effort.internal.cost!.status).not.toBe("over");
-        if (fit.movedToFollowOn?.hours) fitted += 1;
+      if (fit.underFunded) {
+        underFunded += 1;
+        expect(effort.totals.total).toBeGreaterThan(Math.floor(fit.fillableHours));
       } else {
-        // Still over: only protected, design and governance work is left, and the plan says so.
-        expect(fit.underFunded).not.toBeNull();
-        expect(effort.workPackages.filter(row => row.total > 0 && !row.deferred).every(row => kept.has(row.id) || isDesignWorkPackage(row.id) || row.placement === "entitlement")).toBe(true);
+        fitted += 1;
+        expect(effort.totals.total).toBeLessThanOrEqual(Math.floor(fit.fillableHours) + 1);
+        expect(effort.internal.cost!.status).not.toBe("over");
       }
     }
+    expect(underFunded).toBeGreaterThan(0);
     expect(fitted).toBeGreaterThan(0);
   });
 

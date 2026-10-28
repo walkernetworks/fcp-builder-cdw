@@ -65,7 +65,7 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
         <>
           {fit.underFunded && (
             <p className="rounded-lg border border-state-blocked/30 bg-state-blocked-soft p-3 font-semibold text-state-blocked-text">
-              Under-funded: {fit.designFirst ? "discovery and the foundation design" : "the core work"} need{fit.designFirst ? "" : "s"} {hours(fit.designFirst ? fit.buckets.E1 : fit.coreRequiredHours)} hours, {hours(fit.underFunded.gapHours)} more than the {hours(fit.fillableHours)} fillable hours
+              Under-funded: discovery, the design, the foundation build and the Operations design need {hours(fit.coreRequiredHours)} hours, {hours(fit.underFunded.gapHours)} more than the {hours(fit.fillableHours)} fillable hours
               {money ? ` (${dollars(fit.underFunded.gapHours * money.blendedRate)} at ${dollars(money.blendedRate)}/hr)` : ""}. The full scope needs {hours(fit.underFunded.fullScopeGapHours)} more hours{money ? ` (${dollars(fit.underFunded.fullScopeGapHours * money.blendedRate)})` : ""}. Nothing is split further and none of this prints for the customer; raise the entitlement, change the scope, or record the decision when issuing.
             </p>
           )}

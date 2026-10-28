@@ -46,36 +46,34 @@ describe("hours reconciliation", () => {
   it("names an under-funded plan and a plan that leaves hours unplanned, for the planner", () => {
     const over = acmeHealthUnderFunded();
     const problem = fundingProblem(over, scopedEffortForDocument(over, FIXTURE_TODAY), FIXTURE_TODAY);
-    expect(problem).toContain("Under-funded: 39 delivered, 51 planned and 4 held in reserve come to 4 hours more than the 90-hour entitlement. Move work to the follow-on or reduce hours in the Plan section.");
+    expect(problem).toContain("Under-funded: 39 delivered, 191 planned and 4 held in reserve come to 144 hours more than the 90-hour entitlement. Move work to the follow-on or reduce hours in the Plan section.");
     // Rule 5: the internal problem says how many more hours the full scope needs.
-    expect(problem).toMatch(/The full scope needs 168 more hours than the entitlement funds after the reserve \(4 more for the minimum that can be delivered\)\./);
-    // Without the hours-fill package, the 19 hours the design and build leave over are not planned.
+    expect(problem).toMatch(/The full scope needs 219 more hours than the entitlement funds after the reserve \(148 more for the minimum that can be delivered\)\./);
+    // Without the hours-fill package, the 14 hours the design, build and Operations design leave over are not planned.
     const under = acmeHealth();
-    expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("19 hours are not planned and will be forfeited at term end (39 delivered, 186 planned and 18 held in reserve, against the 262-hour entitlement). Plan them in the Plan section.");
+    expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("14 hours are not planned and will be forfeited at term end (39 delivered, 191 planned and 18 held in reserve, against the 262-hour entitlement). Plan them in the Plan section.");
   });
 
-  it("moves design work that cannot fit to the follow-on whole, leaving only protected work over the funded hours", () => {
-    // A large estate on an entitlement over the design-first threshold: the squeeze moves whole design packages, never part of one.
+  it("never moves a package to the follow-on for hours: a large estate whose minimum does not fit is under-funded, whole", () => {
     const document = acmeHealth();
     Object.assign(document.inventory, { hosts: 120, clusters: 8 });
     document.report.entitlement.hours = 380;
     const effort = scopedEffortForDocument(document, FIXTURE_TODAY);
-    const moved = effort.workPackages.filter(row => row.deferred === "over budget" && /^bar-playbook-design-/.test(row.id));
-    expect(moved.length).toBeGreaterThan(0);
-    expect(effort.internal.fit?.designFirst).toBe(false);
-    expect(effort.internal.fit?.underFunded?.gapHours).toBeLessThan(60);
+    expect(effort.workPackages.filter(row => row.deferred === "over budget")).toEqual([]);
+    expect(effort.internal.fit?.underFunded?.gapHours).toBeGreaterThan(0);
+    expect(effort.workPackages.every(row => !(row.total > 0 && (row.followOn?.total ?? 0) > 0))).toBe(true);
   });
 
   it("allows an hour either way for rounding, and says so on the page instead of claiming the figures are equal", () => {
     const document = acmeHealth();
-    document.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 24, projectManager: 4, placement: "auto", owner: "auto" });
+    document.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 20, projectManager: 4, placement: "auto", owner: "auto" });
     const effort = scopedEffortForDocument(document, FIXTURE_TODAY);
     expect(reconcileHours(document, effort, FIXTURE_TODAY)).toMatchObject({ planned: 204, balanced: true, exact: false, difference: -1 });
     expect(fundingProblem(document, effort, FIXTURE_TODAY)).toBeNull();
     const text = visible(summary(document));
     expect(text).toContain("39 delivered, 204 planned and 18 held for change requests use the 262-hour entitlement, to within an hour of rounding");
     expect(text).toContain("Total, funded by the entitlement 261");
-    document.report.workPackageHours.push({ id: "bar-platform-runbook-transfer", architect: 0, srConsultant: 3, projectManager: 0, placement: "auto", owner: "auto" });
+    document.report.workPackageHours.push({ id: "bar-platform-enablement", architect: 0, srConsultant: 3, projectManager: 0, placement: "auto", owner: "auto" });
     expect(fundingProblem(document, scopedEffortForDocument(document, FIXTURE_TODAY), FIXTURE_TODAY)).toMatch(/^3 hours are not planned/);
   });
 
@@ -127,7 +125,7 @@ describe("Summary FCP", () => {
     const html = summary(document);
     const text = visible(html);
     for (const term of ["Under-funded", "under-funded", "Scope by Bucket", "reserve", "more than it funds", "Moved out of", "gap", "bucket"]) expect(text).not.toContain(term);
-    expect(text).toContain("Total CDW hours 94");
+    expect(text).toContain("Total CDW hours 234");
     expect(text).not.toMatch(/add up to the|use the 262/);
     expect(checks(html, document)).toEqual([]);
   });

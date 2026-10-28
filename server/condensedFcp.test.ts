@@ -136,7 +136,7 @@ describe("Condensed FCP", () => {
     document.report.resourceAssignments = [];
     const visible = text(render(document));
     expect(visible).toContain("Work Packages and Scoped Effort");
-    expect(visible).toContain("Run the design discovery sessions to");
+    expect(visible).toMatch(/Reference Architecture Design/);
     expect(visible).toContain("Accepted when:");
     expect(visible).not.toContain("What CDW Delivers");
     expect(visible).not.toContain("Adoption Sequence & Dependencies");
