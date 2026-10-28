@@ -11,7 +11,8 @@ import { deliveryBriefing, renewalStartsCurrentTerm } from "../shared/deliveryBr
 import { getIndustryDiscoveryTemplate } from "../shared/industryDiscovery";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { customerFacing, DRAFT_MARK, ENTITLEMENT_WORDING, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, sentence, shortDate, UNDECIDED_DEPTH, type Wording } from "./fcpReportParts";
-import { renderSummaryFcpHtml, type IssueStamp } from "./fcpSummaryRenderer";
+import { renderStandardFcpHtml } from "./fcpStandardRenderer";
+import { renderSummaryFcpHtml, type IssueStamp, type SupersededVersion } from "./fcpSummaryRenderer";
 import { renderTimeline, sliceTimeline } from "./timelineHtml";
 
 /**
@@ -241,11 +242,14 @@ export type CondensedFcpOptions = {
   version?: IssueStamp;
   /** What the delivered hours were for, from the consumption entries' notes (shared/consumption.ts deliveredNotes). */
   deliveredNotes?: string[];
+  /** Standard only: the previous issue and its recorded approvals. */
+  supersedes?: SupersededVersion;
 };
 
 
 export function renderCondensedFcpHtml(title: string, input: EngagementDocument, options: CondensedFcpOptions): string {
   if (options.format === "summary") return renderSummaryFcpHtml(title, input, options);
+  if (options.format === "standard") return renderStandardFcpHtml(title, input, options);
   const { bsasOnly, w, deferredWork, customerTimelines, document, today, asOf, customer, burndown, termEnd, assumedEnd, termStart, bsas } = prepareReport(input, options);
   // An end date assumed from the start (not on the record) is marked wherever the customer reads it.
   const tbc = assumedEnd ? " (to be confirmed)" : "";

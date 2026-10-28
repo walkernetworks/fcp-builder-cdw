@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 vi.mock("./db", () => {
   class BuildLockedError extends Error {}
-  return { BuildLockedError, getEngagement: vi.fn(), getUserById: vi.fn(), getLatestIssuedVersion: vi.fn(), issueFcpVersion: vi.fn(), getIssuedVersion: vi.fn(), recordApproval: vi.fn(), listConsumptionEntries: vi.fn(async () => []) };
+  return { BuildLockedError, getEngagement: vi.fn(), getUserById: vi.fn(), getLatestIssuedVersion: vi.fn(), listIssuedVersions: vi.fn().mockResolvedValue([]), issueFcpVersion: vi.fn(), getIssuedVersion: vi.fn(), recordApproval: vi.fn(), listConsumptionEntries: vi.fn(async () => []) };
 });
 vi.mock("./pdf", () => ({ renderPdf: vi.fn(async (html: string) => Buffer.from(`%PDF-1.7\n${html.length}\n`, "utf8")) }));
 
@@ -85,7 +85,7 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getEngagement).mockResolvedValue(row(document));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
-    expect(await caller().fcpRecord.issue({ id: 4, label: "Initial plan", revisionNote: null })).toEqual({ id: 90, issueNumber: 1 });
+    expect(await caller().fcpRecord.issue({ id: 4, label: "Initial plan", revisionNote: null, reportFormat: "full" })).toEqual({ id: 90, issueNumber: 1 });
     const [, , input] = vi.mocked(db.issueFcpVersion).mock.calls[0];
     expect(input.html).toBe(renderCondensedFcpHtml("Acme Health FCP", input.data, { effort: input.effort }));
     expect(input.html).not.toContain("draft-mark");
@@ -97,11 +97,86 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getEngagement).mockResolvedValue(row(document));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
-    await caller().fcpRecord.issue({ id: 4 });
+    await caller().fcpRecord.issue({ id: 4, reportFormat: "full" });
     const [, , first] = vi.mocked(db.issueFcpVersion).mock.calls[0];
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue({ id: 90, issueNumber: 1, status: "issued", data: first.data, effortSnapshot: first.effort, renderedHtml: first.html, issuedAt: new Date(), reportFormat: null } as never);
-    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "Nothing has changed since issue 1." });
+    await expect(caller().fcpRecord.issue({ id: 4, reportFormat: "full" })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "Nothing has changed since issue 1." });
     expect(db.issueFcpVersion).toHaveBeenCalledTimes(1);
+  });
+
+  describe("unchanged compares data, not rendered output", () => {
+    const standardRow = (document: EngagementDocument) => ({ ...(row(document) as object), segment: "corporate" }) as never;
+    /** Issues the document as Standard (Version 2, on top of a Version 1 approved by both parties) and returns what was stored. */
+    async function issuedVersionTwo() {
+      const document = acmeHealthReconciled();
+      vi.mocked(db.getEngagement).mockResolvedValue(standardRow(document));
+      vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 91, issueNumber: 2 } });
+      const earlier = acmeHealth();
+      vi.mocked(db.getLatestIssuedVersion).mockResolvedValue({ id: 90, issueNumber: 1, status: "issued", data: earlier, effortSnapshot: effortOf(earlier), renderedHtml: "<html>v1</html>", issuedAt: new Date("2026-09-30"), reportFormat: "standard", broadcomApprovedOn: "2026-10-12", customerApprovedOn: "2026-10-15" } as never);
+      await caller().fcpRecord.issue({ id: 4, reportFormat: "standard" });
+      return { document, stored: vi.mocked(db.issueFcpVersion).mock.calls.at(-1)![2] };
+    }
+    const asLatest = (stored: Awaited<ReturnType<typeof issuedVersionTwo>>["stored"], extra: object = {}) => ({ id: 91, issueNumber: 2, status: "issued", data: stored.data, effortSnapshot: stored.effort, renderedHtml: stored.html, issuedAt: new Date("2026-10-20"), reportFormat: "standard", issueContext: stored.issueContext, ...extra }) as never;
+
+    it("captures the superseded version's approvals and the signature lines when the issue is made", async () => {
+      const { stored } = await issuedVersionTwo();
+      expect(stored.issueContext).toEqual({ supersedes: { issueNumber: 1, broadcomApprovedOn: "2026-10-12", customerApprovedOn: "2026-10-15" } });
+      const text = stored.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      expect(text).toContain("Supersedes Version 1, approved by Broadcom 12 Oct 2026 and by Acme Health 15 Oct 2026");
+    });
+
+    it("does not count an approval recorded after the issue as a change", async () => {
+      const { document, stored } = await issuedVersionTwo();
+      // Version 1's approvals are recorded or amended later, and Version 2 is approved by the customer.
+      vi.mocked(db.listIssuedVersions).mockResolvedValue([{ id: 90, issueNumber: 1, broadcomApprovedOn: "2026-11-02", customerApprovedOn: "2026-11-03" }] as never);
+      vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(asLatest(stored, { customerApprovedOn: "2026-11-01" }));
+      vi.mocked(db.getEngagement).mockResolvedValue(standardRow(document));
+      const preview = await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" });
+      expect(preview.unchanged).toBe(true);
+      await expect(caller().fcpRecord.issue({ id: 4, reportFormat: "standard" })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "Nothing has changed since issue 2." });
+    });
+
+    it("does not count a renderer change with identical data as a change", async () => {
+      const { document, stored } = await issuedVersionTwo();
+      // The version was issued by an older renderer: its stored pages differ from anything rendered today.
+      vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(asLatest(stored, { renderedHtml: "<!doctype html><html><body>rendered by an older renderer</body></html>" }));
+      vi.mocked(db.getEngagement).mockResolvedValue(standardRow(document));
+      expect((await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" })).unchanged).toBe(true);
+    });
+
+    it("compares the document only: a changed hours model gets its own note and can be issued again with a revision note", async () => {
+      const { document, stored } = await issuedVersionTwo();
+      // The issue was made when the plan carried other hours: same document, different effort snapshot.
+      const held = structuredClone(stored.effort);
+      held.totals.total += 40;
+      vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(asLatest(stored, { effortSnapshot: held }));
+      vi.mocked(db.getEngagement).mockResolvedValue(standardRow(document));
+      const preview = await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" });
+      expect(preview.unchanged).toBe(true);
+      expect(preview.hoursOnly).toBe(true);
+      // Issuing needs a revision note saying why.
+      await expect(caller().fcpRecord.issue({ id: 4, reportFormat: "standard" })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Only the hours model has changed since issue 2. Add a revision note") });
+      vi.mocked(db.issueFcpVersion).mockClear();
+      await caller().fcpRecord.issue({ id: 4, reportFormat: "standard", revisionNote: "Hours re-estimated with the updated planning model." });
+      expect(vi.mocked(db.issueFcpVersion).mock.calls.at(-1)![2]).toMatchObject({ revisionNote: "Hours re-estimated with the updated planning model." });
+      expect(preview.hoursNote).toBe(`The hours model has changed since issue 2: the plan now carries ${Math.round(stored.effort.totals.total)} hours where the issue held ${Math.round(held.totals.total)}.`);
+      // Nothing to note when the hours are the same.
+      vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(asLatest(stored));
+      const same = await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" });
+      expect(same.hoursNote).toBeNull();
+      expect(same.hoursOnly).toBe(false);
+    });
+
+    it("still sees a change in the data, and a different format", async () => {
+      const { document, stored } = await issuedVersionTwo();
+      vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(asLatest(stored));
+      const edited = structuredClone(document);
+      edited.fields.primaryContact = "Pat Rivera, Platform lead (changed)";
+      vi.mocked(db.getEngagement).mockResolvedValue(standardRow(edited));
+      expect((await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" })).unchanged).toBe(false);
+      vi.mocked(db.getEngagement).mockResolvedValue(standardRow(document));
+      expect((await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "summary" })).unchanged).toBe(false);
+    });
   });
 
   it("issues a Commercial record as the Summary, numbered and dated, and records the format", async () => {
@@ -121,7 +196,7 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
     await caller().fcpRecord.issue({ id: 4 });
-    expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].reportFormat).toBeNull();
+    expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].reportFormat).toBe("standard");
     await caller().fcpRecord.issue({ id: 4, reportFormat: "summary" });
     const [, , summary] = vi.mocked(db.issueFcpVersion).mock.calls[1];
     expect(summary.reportFormat).toBe("summary");

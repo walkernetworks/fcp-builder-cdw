@@ -19,12 +19,13 @@ const visible = (html: string) => html.replace(/<style[\s\S]*?<\/style>/g, " ").
 const count = (html: string, pattern: RegExp) => (html.match(pattern) ?? []).length;
 
 describe("report format choice", () => {
-  it("follows the tracker segment: Commercial gets the Summary, everyone else the long report for now", () => {
+  it("follows the tracker segment: Commercial gets the Summary, Corporate and Strategic the Standard", () => {
     expect(defaultReportFormat("commercial")).toBe("summary");
-    expect(defaultReportFormat("corporate")).toBe("full");
-    expect(defaultReportFormat("strategic")).toBe("full");
-    expect(defaultReportFormat(null)).toBe("full");
+    expect(defaultReportFormat("corporate")).toBe("standard");
+    expect(defaultReportFormat("strategic")).toBe("standard");
+    expect(defaultReportFormat(null)).toBe("standard");
     expect(reportFormatOption("full")).toBeUndefined();
+    expect(reportFormatOption("standard")).toBe("standard");
     expect(reportFormatOption("summary")).toBe("summary");
   });
 

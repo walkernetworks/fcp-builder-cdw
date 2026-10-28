@@ -198,7 +198,7 @@ export const appRouter = router({
     /** What issuing now would produce: the checks and the change summary. Writes nothing. */
     issuePreview: protectedProcedure.input(z.object({ id: recordId, reportFormat: reportFormatInput })).mutation(async ({ ctx, input }) => {
       const prepared = requireRow(await prepareIssue(viewerFor(ctx.user), input.id, { reportFormat: input.reportFormat }));
-      return { failures: prepared.failures, fundingProblem: prepared.fundingProblem, reportFormat: prepared.reportFormat, changeSummary: prepared.changeSummary, unchanged: prepared.unchanged, basedOnIssue: prepared.basedOn?.issueNumber ?? null };
+      return { failures: prepared.failures, fundingProblem: prepared.fundingProblem, reportFormat: prepared.reportFormat, changeSummary: prepared.changeSummary, unchanged: prepared.unchanged, hoursNote: prepared.hoursNote, hoursOnly: prepared.hoursOnly, basedOnIssue: prepared.basedOn?.issueNumber ?? null };
     }),
     /** Issues the saved FCP as the next numbered version, exactly as rendered now, without the draft mark. */
     issue: protectedProcedure
@@ -215,9 +215,10 @@ export const appRouter = router({
         const prepared = requireRow(await prepareIssue(viewer, input.id, { reportFormat: input.reportFormat }));
         if (prepared.failures.length) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued because it failed these checks:\n- ${prepared.failures.join("\n- ")}` });
         if (prepared.fundingProblem && !input.fundingOverride) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued: ${prepared.fundingProblem} To issue it anyway, give the reason.` });
-        if (prepared.unchanged) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Nothing has changed since issue ${prepared.basedOn?.issueNumber}.` });
+        if (prepared.unchanged && !prepared.hoursOnly) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Nothing has changed since issue ${prepared.basedOn?.issueNumber}.` });
+        if (prepared.hoursOnly && !input.revisionNote) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Only the hours model has changed since issue ${prepared.basedOn?.issueNumber}. Add a revision note to issue it, for example: Hours re-estimated with the updated planning model.` });
         const reportFormat = reportFormatOption(prepared.reportFormat) ?? null;
-        return unwrap(await lockAware(() => db.issueFcpVersion(viewer, input.id, { title: prepared.title, data: prepared.document, effort: prepared.effort, html: prepared.html, label: input.label, revisionNote: input.revisionNote || null, changeSummary: prepared.changeSummary, basedOnVersionId: prepared.basedOn?.id ?? null, reportFormat, fundingOverrideNote: prepared.fundingProblem ? input.fundingOverride : null })));
+        return unwrap(await lockAware(() => db.issueFcpVersion(viewer, input.id, { title: prepared.title, data: prepared.document, effort: prepared.effort, html: prepared.html, label: input.label, revisionNote: input.revisionNote || null, changeSummary: prepared.changeSummary, basedOnVersionId: prepared.basedOn?.id ?? null, reportFormat, fundingOverrideNote: prepared.fundingProblem ? input.fundingOverride : null, issueContext: prepared.issueContext })));
       }),
     /** Replaces the working FCP with the current issued version (saved to History first), to start the next revision. */
     revise: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => unwrap(await lockAware(() => db.reviseFromIssued(viewerFor(ctx.user), input.id)))),
@@ -328,6 +329,7 @@ export const appRouter = router({
     /** `id`, when given, is the record whose consumption notes label the delivered hours; it must be visible. */
     preview: protectedProcedure.input(z.object({ title: z.string().max(240), data: engagementDocumentSchema, reportFormat: reportFormatInput, id: recordId.optional() })).mutation(async ({ ctx, input }) => {
       const notes = input.id && input.reportFormat && input.reportFormat !== "full" ? await recordDeliveredNotes(viewerFor(ctx.user), input.id, input.data) : [];
+      const record = input.id ? await db.getEngagement(viewerFor(ctx.user), input.id) : undefined;
       return draftFcp(input.title, input.data, input.reportFormat, notes);
     }),
     downloadTicket: protectedProcedure.input(z.object({ id: z.number().int().positive(), format: z.enum(["html", "pdf", "xlsx"]), documentType: z.enum([/** @deprecated The full template; no UI sends it. Removed with server/fcpRenderer.ts. */ "fcp", "condensed-fcp", "plan-output", "building-blocks"]).default("condensed-fcp"), reportFormat: reportFormatInput })).mutation(async ({ ctx, input }) => {

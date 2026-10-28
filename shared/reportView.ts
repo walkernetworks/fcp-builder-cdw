@@ -215,7 +215,10 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   const situation: string[] = [];
   if (inventory.hosts) {
     const vcenters = report.discovery.vcenters;
-    situation.push(`${inventory.hosts} ESXi hosts · ${inventory.vmCount.toLocaleString("en-US")} VMs (${inventory.poweredOnVms.toLocaleString("en-US")} powered on)${vcenters ? ` across ${vcenters} vCenter${vcenters === 1 ? "" : "s"}` : ""}${inventory.clusters ? ` and ${inventory.clusters} cluster${inventory.clusters === 1 ? "" : "s"}` : ""}`);
+    // A count that is zero or missing is left out rather than printed ("0 powered on"), and one reads as singular.
+    const plural = (count: number, noun: string) => `${count.toLocaleString("en-US")} ${noun}${count === 1 ? "" : "s"}`;
+    const vms = inventory.vmCount > 0 ? ` · ${plural(inventory.vmCount, "VM")}${inventory.poweredOnVms > 0 ? ` (${inventory.poweredOnVms.toLocaleString("en-US")} powered on)` : ""}` : "";
+    situation.push(`${plural(inventory.hosts, "ESXi host")}${vms}${vcenters && vcenters > 0 ? ` across ${plural(vcenters, "vCenter")}` : ""}${inventory.clusters > 0 ? ` and ${plural(inventory.clusters, "cluster")}` : ""}`);
     // Every host in vHost counts, maintenance-mode and disconnected hosts included; a model reported under several
     // names or CPUs ("HPE Synergy 480 Gen10", "Synergy 480 Gen10") is one model.
     const byModel = new Map<string, { label: string; hosts: number }>();

@@ -33,6 +33,8 @@ export type TwoYearView = {
   hasContent: boolean;
   /** The page body: heading, lead, Gantt, follow-on table and the funding box. Empty without content. */
   html: string;
+  /** The same page with the follow-on table at full width and the funding box below it. */
+  stackedHtml: string;
 };
 
 /**
@@ -59,7 +61,7 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
   const slice: Timeline | null = notional.lanes.length && firstAfter <= notional.columns.length ? sliceTimeline(notional, firstAfter, Math.min(firstAfter + 11, notional.columns.length)) : null;
   const hasBars = Boolean(slice?.lanes.some(lane => lane.bars.length));
   // The generic notional lanes (governance reviews, operating model, service consumption) alone do not make a page.
-  if (!followOnRows.length && !bsasPlan) return { hasContent: false, html: "" };
+  if (!followOnRows.length && !bsasPlan) return { hasContent: false, html: "", stackedHtml: "" };
 
   const window = booked ? w("entitlement", "BSAS term") : "planned delivery window";
   const first = slice?.columns[0];
@@ -113,5 +115,7 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
   const funding = `<h3>How It's Funded</h3><div class="after">${[notDrawn, bsasLine, options, why].filter(Boolean).map(line => `<p>${esc(line)}</p>`).join("")}</div>`;
 
   const body = table ? `<div class="two"><div>${table}</div><div>${funding}</div></div>` : funding;
-  return { hasContent: true, html: `<h2>After the ${esc(booked ? w("Entitlement", "BSAS Term") : "Plan")}</h2><p class="lead">${lead}</p>${gantt}${body}` };
+  const head = `<h2>After the ${esc(booked ? w("Entitlement", "BSAS Term") : "Plan")}</h2><p class="lead">${lead}</p>${gantt}`;
+  // `stackedHtml`: the follow-on table at full width with How It's Funded below it (the Standard's page).
+  return { hasContent: true, html: `${head}${body}`, stackedHtml: `${head}${table}${funding}` };
 }
