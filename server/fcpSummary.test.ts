@@ -49,9 +49,9 @@ describe("hours reconciliation", () => {
     expect(problem).toContain("Under-funded: 39 delivered, 191 planned and 4 held in reserve come to 144 hours more than the 90-hour entitlement. Move work to the follow-on or reduce hours in the Plan section.");
     // Rule 5: the internal problem says how many more hours the full scope needs.
     expect(problem).toMatch(/The full scope needs 219 more hours than the entitlement funds after the reserve \(148 more for the minimum that can be delivered\)\./);
-    // Without the hours-fill package, the 14 hours the design, build and Operations design leave over are not planned.
+    // Without the hours-fill package, the 6 hours the whole packages leave over are not planned.
     const under = acmeHealth();
-    expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("14 hours are not planned and will be forfeited at term end (39 delivered, 191 planned and 18 held in reserve, against the 262-hour entitlement). Plan them in the Plan section.");
+    expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("6 hours are not planned and will be forfeited at term end (39 delivered, 199 planned and 18 held in reserve, against the 262-hour entitlement). Plan them in the Plan section.");
   });
 
   it("never moves a package to the follow-on for hours: a large estate whose minimum does not fit is under-funded, whole", () => {
@@ -66,14 +66,14 @@ describe("hours reconciliation", () => {
 
   it("allows an hour either way for rounding, and says so on the page instead of claiming the figures are equal", () => {
     const document = acmeHealth();
-    document.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 20, projectManager: 4, placement: "auto", owner: "auto" });
+    document.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 11, projectManager: 4, placement: "auto", owner: "auto" });
     const effort = scopedEffortForDocument(document, FIXTURE_TODAY);
     expect(reconcileHours(document, effort, FIXTURE_TODAY)).toMatchObject({ planned: 204, balanced: true, exact: false, difference: -1 });
     expect(fundingProblem(document, effort, FIXTURE_TODAY)).toBeNull();
     const text = visible(summary(document));
     expect(text).toContain("39 delivered, 204 planned and 18 held for change requests use the 262-hour entitlement, to within an hour of rounding");
     expect(text).toContain("Total, funded by the entitlement 261");
-    document.report.workPackageHours.push({ id: "bar-platform-enablement", architect: 0, srConsultant: 3, projectManager: 0, placement: "auto", owner: "auto" });
+    document.report.workPackageHours.push({ id: "bar-platform-enablement", architect: 0, srConsultant: 4, projectManager: 0, placement: "auto", owner: "auto" });
     expect(fundingProblem(document, scopedEffortForDocument(document, FIXTURE_TODAY), FIXTURE_TODAY)).toMatch(/^3 hours are not planned/);
   });
 

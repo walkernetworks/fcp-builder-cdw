@@ -236,7 +236,7 @@ describe("Condensed FCP review fixes", () => {
     const visible = text(render(withEstate({ includeVcfReadiness: true, includeOperationalTimeline: true })));
     const governance = /Program Management & Governance — ([^.]*?)(?= Modernize| Operations)/.exec(visible)?.[1] ?? "";
     expect(governance).not.toContain("no work in scope");
-    expect(governance).toMatch(/Discovery Sessions/);
+    expect(governance).toMatch(/Kickoff and Delivery Plan/);
   });
 
   it("builds lifecycle images only for the host models the compatibility check lists", () => {
@@ -386,6 +386,9 @@ describe("Condensed FCP review fixes", () => {
     document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid" } as never;
     document.report.customerOwnedWork = [];
     document.inventory.vmCount = 1_100;
+    // The customer runs the remaining waves only behind CDW's proving waves, so the entitlement has to fund them.
+    document.report.entitlement.hours = 1_500;
+    document.fields.entitlementAmount = 1_500 * 330;
     const visible = text(render(refreshDerivedDocument(document, { forceRebuild: true })));
     expect(visible).toContain("Remaining migration waves, run by Acme Health with the proven runbook");
     // 1,100 VMs at about 250 a month is five months of customer-run waves.

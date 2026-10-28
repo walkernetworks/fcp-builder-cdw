@@ -60,6 +60,11 @@ export const HOURS_V2 = {
     hostTermCap: c(40, "Low", JUDGMENT),
     /** The Reference Architecture Design tier: a small estate gets this flat design instead of the formula above. */
     referenceFlat: c(40, "Practice decision", "Product owner: small estates take a flat 40-hour Reference Architecture Design"),
+    /** Own packages beside the Reference Architecture Design on a small estate, each with its own estimate (all hours, project management included). */
+    /** The kickoff and delivery plan: project management hours, stated all-in, funded first on a small estate. */
+    kickoff: c(2, "Low", "Kickoff and Delivery Plan as a package of its own; confirm the estimate"),
+    hardwareReview: c(13, "Low", "Hardware Compatibility Review as a package of its own; confirm the estimate"),
+    roleAccess: c(13, "Low", "Role and Access Mapping as a package of its own; confirm the estimate"),
     /**
      * When the entitlement cannot carry the full design, it is phased by deliverable. Foundation design (management domain,
      * platform, network and storage) is this many hours of the base; workload domain design, and DR and NSX overlay design
@@ -147,6 +152,8 @@ export const HOURS_V2 = {
     executionPerVm: c(0.15, "Low", HCX_KB),
     perExtendedVlan: c(2, "Low", HCX_KB),
     pilot: c(16, "Low", "Practitioner: pilot wave of 5 to 10 non-critical VMs"),
+    /** The Migration and Cutover Plan as a package of its own on a small estate (all hours, project management included). */
+    migrationPlan: c(24, "Low", "Migration and Cutover Plan as a package of its own; confirm the estimate"),
   },
   inPlaceWaves: {
     hostsPerWindow: c(16, "Low-Medium", "Broadcom ESX 9.1 upgrade doc (clusters in parallel, per-host selection)"),

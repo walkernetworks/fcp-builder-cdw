@@ -35,7 +35,7 @@ describe("no entitlement booked: the Summary", () => {
   });
 
   it("shows the plan's hours once, its dates, and says the entitlement is not booked", () => {
-    expect(tiles(summary(cedarRidgeLogistics()))).toEqual(["Planned CDW Hours: 318 hrs", "Plan Starts: 2 Nov 2026", "Planned Completion: 31 Jul 2027", "Entitlement: Not yet booked"]);
+    expect(tiles(summary(cedarRidgeLogistics()))).toEqual(["Planned CDW Hours: 335 hrs", "Plan Starts: 2 Nov 2026", "Planned Completion: 31 Jul 2027", "Entitlement: Not yet booked"]);
   });
 
   it("calls it the planned delivery window, never the entitlement window", () => {

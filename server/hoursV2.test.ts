@@ -99,7 +99,9 @@ describe("v2 Pass 1 formulas (spec section 6)", () => {
     // 64 + 16 + 4 + (24 + 8 dedicated NSX) + 8 x (7 - 1 - 1) + 0.75 x 64 + 0.5 x 36
     expect(base(doc({ hosts: 100, clusters: 7, inputs: { dedicatedNsxWorkloadDomains: 1 } }), "D")).toBeCloseTo(222);
     // Consolidated: no workload domain, every extra cluster counts.
-    expect(base(doc({ hosts: 8, clusters: 1, topology: "consolidated" }), "D")).toBeCloseTo(84 + 6);
+    // (A small estate funds the first workload domain as a line of its own, DW; the two together are the build.)
+    const consolidated = doc({ hosts: 8, clusters: 1, topology: "consolidated" });
+    expect(base(consolidated, "D") + base(consolidated, "DW")).toBeCloseTo(84 + 6);
     expect(base(doc({ hosts: 24, clusters: 2 }), "D")).toBeCloseTo(84 + 24 + 0.75 * 24);
     expect(base(doc({ hosts: 25, clusters: 2 }), "D")).toBeCloseTo(84 + 24 + 0.75 * 25);
   });

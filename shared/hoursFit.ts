@@ -118,12 +118,20 @@ function fillOrder(pass1: Pass1, options: FitOptions): Item[] {
 
   // 1. Discovery. 2. Design. 3. The pathway spine.
   for (const line of [...byCode("DD"), ...byCode("DX")]) for (const unit of line.units.filter(item => item.tier === 1)) push(line, unit, 1);
+  // On a small estate the hardware review comes first, then the design; the access mapping follows the foundation build.
+  for (const line of byCode("AK")) for (const unit of line.units) push(line, unit, 2);
+  for (const line of byCode("AH")) for (const unit of line.units) push(line, unit, 2);
   for (const line of byCode("A")) for (const unit of line.units) push(line, unit, 2);
   for (const code of SPINE) for (const line of byCode(code)) for (const unit of line.units.filter(item => item.tier === 1)) push(line, unit, 3);
+  // Fill order c: the role and access mapping rides with the foundation, after the build.
+  for (const line of byCode("AR")) for (const unit of line.units) push(line, unit, 3);
+  // Fill order d: the migration plan, the proving waves, then e: the first workload domain (before the rest of the operations build).
+  for (const line of byCode("AP")) for (const unit of line.units) push(line, unit, 4);
   // 4. Migration waves with a date behind them (the first wave carries the HCX setup and pilot). 7. The rest.
   for (const line of byCode("FILL_mig")) {
     line.units.filter(item => item.tier === 1).forEach((unit, index) => push(line, unit, index < Math.max(1, options.datedWaves) ? 4 : 7));
   }
+  for (const line of byCode("DW")) for (const unit of line.units) push(line, unit, 4.5);
   // 5. The Operations design is reserved by the fit itself (the design share of the X4 line), not a unit.
   // 6. VCF Operations at Tier 1 (the platform term, health and logs, lifecycle), then the selected outcomes at Tier 1, in the customer's ranking, each after the lines it needs.
   const outcomeLines = afterRequirements(pass1.lines.filter(line => line.capability && line.code !== "EF").sort((left, right) => rank(left) - rank(right)));
@@ -230,7 +238,7 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     // Funding the Operations build covers the design reserved for it.
     const credit = isOps && !opsReleased ? opsDesignCost : 0;
     if (!stopped && used - credit + cost <= fillableHours + eps) {
-      place(item, item.step <= 4 || (item.step === 6 && item.unit.tag === "ops-core") ? "E1" : "E2");
+      place(item, item.step <= 4.5 || (item.step === 6 && item.unit.tag === "ops-core") ? "E1" : "E2");
       used += cost - credit;
       if (isOps && !opsReleased) {
         opsReleased = true;
@@ -241,6 +249,9 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
       if (item.line.code === "FILL_mig" && item.step === 4) provingFunded = true;
     } else if (options.customerRunsLaterWaves && provingFunded && item.line.code === "FILL_mig" && item.step === 7) {
       customerRun.push(item);
+    } else if (pass1.estate.small && item.step <= 4.5 && !stopped) {
+      // Packages d and e are whole or follow-on: one that does not fit does not hold back the next package that does.
+      displaced.push(item);
     } else {
       stopped = true;
       displaced.push(item);

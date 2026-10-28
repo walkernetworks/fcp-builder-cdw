@@ -3,7 +3,7 @@ import { ESTATE_SIZE_UNKNOWN_FLAG, estateSizeFlag, resolveEstateSize, withSmallE
 import { LATER_DESIGN_PHASE, RUNBOOK_TRANSFER_BAR, timelinesWithDeferrals, unscopedWorkPackageIds, withOwnership } from "../shared/effort";
 import { activityOwner, migrateDocument, REFERENCE_DESIGN, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { HOURS_V2 } from "../shared/hoursConfig";
-import { scopeV2 } from "../shared/hoursV2";
+import { loadedOf, scopeV2 } from "../shared/hoursV2";
 import { fundingProblem } from "../shared/reportFormat";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { acmeHealth, acmeHealthReconciled, acmeHealthUnderFunded, cedarRidgeLogistics, FCP_FIXTURES, FIXTURE_TODAY, meridianHealth, northwindMfg, riverbendHealth } from "./fixtures/fcpFixtures";
@@ -11,6 +11,8 @@ import { scopedEffortForDocument } from "./rateCard";
 
 const effortOf = (document: EngagementDocument) => scopedEffortForDocument(document, FIXTURE_TODAY);
 const design = (document: EngagementDocument) => scopeV2(document).lines.find(line => line.code === "A")!;
+/** The design package's hours as shown: second role and project management inside the stated number. */
+const designHours = (document: EngagementDocument) => { const pass1 = scopeV2(document); const line = pass1.lines.find(item => item.code === "A")!; return loadedOf(pass1, line, line.computedBase); };
 const visible = (html: string) => html.replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<svg[\s\S]*?<\/svg>/g, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 /** Acme Health sized exactly as given: RVTools counts, the brief's vCenters and instances, and the sites in scope. */
@@ -34,7 +36,7 @@ describe("rule 1: the Reference Architecture Design tier", () => {
     expect(resolveEstateSize(document)).toMatchObject({ small: true, known: true, exceeds: [] });
     const line = design(document);
     expect(line.name).toBe("Reference Architecture Design");
-    expect(line.computedBase).toBe(40);
+    expect(designHours(document)).toBeCloseTo(40, 6);
     expect(line.drivers.tier).toBe("reference architecture");
   });
 
@@ -69,13 +71,15 @@ describe("rule 1: the Reference Architecture Design tier", () => {
     expect(full.label).toBe("Greenfield Design and Bill of Materials");
   });
 
-  it("carries the hours on that package and the two focused reviews, not on discovery or the migration plan", () => {
+  it("is 40 hours on its own: the hardware review, the role and access mapping and the migration plan are separate packages with their own estimates", () => {
     const rows = effortOf(acmeHealth()).workPackages;
     const total = (id: string) => rows.find(row => row.id === id)?.total ?? 0;
-    expect(total("bar-playbook-design-target-state")).toBeGreaterThan(0);
+    expect(total("bar-playbook-design-target-state")).toBe(HOURS_V2.design.referenceFlat.value);
+    expect(total("bar-hcl-review")).toBe(HOURS_V2.design.hardwareReview.value);
+    expect(total("bar-design-access-mapping")).toBe(HOURS_V2.design.roleAccess.value);
+    expect(total("bar-platform-plan")).toBe(HOURS_V2.design.kickoff.value);
+    expect(total("bar-playbook-design-migration-design")).toBe(HOURS_V2.waves.migrationPlan.value);
     expect(total("bar-playbook-design-requirements")).toBe(0);
-    expect(total("bar-playbook-design-migration-design")).toBe(0);
-    expect(total("bar-playbook-design-target-state") + total("bar-hcl-review") + total("bar-design-access-mapping")).toBeGreaterThanOrEqual(47);
   });
 
   it("moves a saved plan to the right title when the estate changes size, and never overwrites a typed label", () => {
@@ -113,7 +117,7 @@ describe("rule 2: unknown inventory, the Small estate input and the brief's coun
   it("lets the planner decide: yes forces the reference design, no forces the full design, auto follows the counts", () => {
     const yes = unknown();
     yes.fields.estimateInputs.smallEstate = "yes";
-    expect(design(yes).computedBase).toBe(40);
+    expect(designHours(yes)).toBeCloseTo(40, 6);
     expect(estateSizeFlag(yes)).toBeNull();
     const no = acmeHealth();
     no.fields.estimateInputs.smallEstate = "no";
@@ -182,16 +186,42 @@ describe("the fill order: whole packages, in order, never shaved", () => {
     const effort = effortOf(acmeHealth());
     const fit = effort.internal.fit!;
     expect(fit.underFunded).toBeNull();
-    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A", "D", "NX", "S_storage", "X4:design-share"]);
+    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A", "AH", "AK", "AP", "AR", "D", "NX", "S_storage", "X10:design-share", "X4:design-share"]);
     const total = (id: string) => effort.workPackages.find(row => row.id === id)?.total ?? 0;
-    for (const id of ["bar-hcl-review", "bar-playbook-design-target-state", "bar-design-access-mapping", "bar-management-domain", "bar-workload-domain", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-component-design-operations"]) expect(total(id), id).toBeGreaterThan(0);
+    for (const id of ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-playbook-design-migration-design"]) expect(total(id), id).toBeGreaterThan(0);
+    // The first workload domain is whole or follow-on, and it is not in the build package's hours.
+    expect(effort.workPackages.find(row => row.id === "bar-workload-domain")).toMatchObject({ total: 0, deferred: "not funded" });
+  });
+
+  it("never funds a package while an earlier one in the order is left out though it would have fit", () => {
+    for (const document of [acmeHealth(), acmeHealthReconciled(), meridianHealth(), riverbendHealth(), cedarRidgeLogistics()]) {
+      const fit = effortOf(document).internal.fit;
+      if (!fit) continue;
+      const funded = fit.placements.filter(item => item.bucket === "E1" || item.bucket === "E2");
+      const left = fit.placements.filter(item => (item.bucket === "F" || item.bucket === "C") && item.reason === "ran out");
+      for (const out of left) {
+        const spentBefore = funded.filter(item => item.step <= out.step && !item.designShare).reduce((sum, item) => sum + item.loaded, 0) + funded.filter(item => item.designShare && item.code === "X4").reduce((sum, item) => sum + item.loaded, 0);
+        const fits = out.loaded <= fit.fillableHours - spentBefore + 1e-6;
+        const laterFunded = funded.filter(item => item.step > out.step && !item.designShare);
+        expect(fits && laterFunded.length > 0, `${document.fields.customerName}: ${out.label} fits but ${laterFunded.map(item => item.label).join(", ")} was funded after it`).toBe(false);
+      }
+    }
+  });
+
+  it("lists Acme's funded packages in fill order, with their hours", () => {
+    const effort = effortOf(acmeHealth());
+    const order = ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-design-migration-design", "bar-playbook-component-design-resilience"];
+    expect(order.map(id => [id, effort.workPackages.find(row => row.id === id)!.total])).toEqual([
+      ["bar-platform-plan", 2], ["bar-hcl-review", 13], ["bar-playbook-design-target-state", 40], ["bar-management-domain", 63], ["bar-playbook-component-design-operations", 10], ["bar-design-access-mapping", 13],
+      ["bar-platform-licensing", 7], ["bar-platform-enablement", 6], ["bar-platform-handover", 11], ["bar-playbook-design-migration-design", 24], ["bar-playbook-component-design-resilience", 10],
+    ]);
   });
 
   it("puts the migration plan, proving waves, runbook transfer, health and logs and recovery in the follow-on, whole, when they do not fit", () => {
     const effort = effortOf(acmeHealth());
     const fit = effort.internal.fit!;
     expect(fit.customerRun).toEqual({ hours: 0, waves: 0 });
-    for (const id of ["bar-playbook-execution-migration-waves", RUNBOOK_TRANSFER_BAR, "bar-operations-observability", "bar-resilience-recovery-architecture", "bar-playbook-component-design-resilience"]) {
+    for (const id of ["bar-playbook-execution-migration-waves", RUNBOOK_TRANSFER_BAR, "bar-operations-observability", "bar-resilience-recovery-architecture", "bar-workload-domain"]) {
       const row = effort.workPackages.find(item => item.id === id)!;
       expect(row, id).toMatchObject({ total: 0, deferred: "not funded" });
       expect(row.followOn!.total, id).toBeGreaterThan(0);
@@ -317,8 +347,20 @@ describe("every CDW bar on the entitlement timeline is a funded package", () => 
     const owned = withOwnership(document);
     const { adoption } = timelinesWithDeferrals(owned, effort.workPackages.filter(row => row.deferred).map(row => row.id), unscopedWorkPackageIds(effort));
     const rows = new Map(effort.workPackages.map(row => [row.id, row]));
-    return adoption.lanes.flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "cdw" && !(rows.get(bar.id)?.total! > 0) && bar.id !== "bar-playbook-design-requirements").map(bar => bar.id);
+    return adoption.lanes.flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "cdw" && !(rows.get(bar.id)?.total! > 0)).map(bar => bar.id);
   };
+  /** The checkpoints and the package each gates: a checkpoint stays on the entitlement timeline only with its package funded. */
+  const GATES: Record<string, RegExp> = { "bar-hcl-gate": /^bar-hcl-review$/, "bar-backup-gate": /^bar-playbook-execution-/ };
+  const strayCheckpoints = (document: EngagementDocument) => {
+    const effort = effortOf(document);
+    const { adoption } = timelinesWithDeferrals(withOwnership(document), effort.workPackages.filter(row => row.deferred).map(row => row.id), unscopedWorkPackageIds(effort));
+    const funded = effort.workPackages.filter(row => row.total > 0).map(row => row.id);
+    return adoption.lanes.flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "checkpoint" && GATES[bar.id] && !funded.some(id => GATES[bar.id].test(id))).map(bar => bar.id);
+  };
+
+  it("draws no checkpoint whose package is not funded in year one, for every fixture", () => {
+    for (const document of fixtures()) expect(strayCheckpoints(document), document.fields.customerName).toEqual([]);
+  });
 
   it("draws no CDW bar with no funded hours, for every fixture", () => {
     for (const document of fixtures()) expect(unfunded(document), document.fields.customerName).toEqual([]);
@@ -334,8 +376,9 @@ describe("every CDW bar on the entitlement timeline is a funded package", () => 
       expect(year1.has(id), `${id} is not in year one`).toBe(false);
       expect(later.has(id), `${id} is in the notional`).toBe(true);
     }
-    // The migration plan has no hours anywhere (the reference design does not include it): it is drawn on neither.
-    expect(year1.has("bar-playbook-design-migration-design")).toBe(false);
+    // The migration plan is a funded package of its own; the workload domain, its backup checkpoint and discovery are not.
+    expect(year1.has("bar-playbook-design-migration-design")).toBe(true);
+    for (const id of ["bar-workload-domain", "bar-backup-gate", "bar-playbook-design-requirements"]) expect(year1.has(id), `${id} is not in year one`).toBe(false);
     expect(year1.has("bar-hcl-remediation")).toBe(true);
   });
 
@@ -411,5 +454,29 @@ describe("no package is cut by hours with its remainder shown as After <date>", 
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("the customer's asks follow the plan", () => {
+  const text = (document: EngagementDocument, format: "summary" | "standard") =>
+    visible(renderCondensedFcpHtml(document.fields.customerName, document, { effort: effortOf(document), today: FIXTURE_TODAY, format, version: { issueNumber: 1, issuedOn: FIXTURE_TODAY } }));
+
+  it("prints no customer-run waves, and no FTE peak from them, when CDW's proving waves are not funded", () => {
+    // The example brief carries a customer-owned waves row of its own; the generated customer-run waves are what follow the plan.
+    const document = acmeHealth();
+    document.report.customerOwnedWork = [];
+    for (const format of ["summary", "standard"] as const) {
+      const html = text(document, format);
+      expect(html, format).not.toMatch(/customer-run/i);
+      expect(html, format).not.toContain("Backup Validation");
+      expect(html, format).not.toContain("Discovery and Funding");
+    }
+  });
+
+  it("prints the customer-run waves when the proving waves are in", () => {
+    const withWaves = acmeHealth();
+    withWaves.report.entitlement.hours = 900;
+    withWaves.fields.entitlementAmount = 900 * 330;
+    expect(text(refreshDerivedDocument(withWaves, { forceRebuild: true }), "summary")).toMatch(/customer-run migration waves/i);
   });
 });

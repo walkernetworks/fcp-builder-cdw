@@ -469,12 +469,18 @@ const addOnBars = (code: EffortLine["code"]) => (code === "FILL" ? undefined : (
 /** Lines that carry discovery, architecture, and the build (spread by build weight), in both models. */
 const DISCOVERY_CODES = /^(DD\d?|DX)$/;
 const DESIGN_CODES = /^A\d?$/;
-const BUILD_CODES = /^(D\d|U\d|X1|D|D_VVF|S_storage|U_VVF|C1|R_remed|U3)$/;
+const BUILD_CODES = /^(D\d|DW|U\d|X1|D|D_VVF|S_storage|U_VVF|C1|R_remed|U3)$/;
 /** The component design package(s) an add-on's design work sits on. */
 const componentDesign = (addOn: { design: string }) => (id: string) => new RegExp(`^bar-playbook-component-design-(${addOn.design})$`).test(id);
 
 export function barsForLine(item: Pick<EffortLine, "code" | "reduction">, discoveryInScope = true): (id: string) => boolean {
   // With a prior assessment there is no discovery line, and the architecture line covers requirements too.
+  // Small-estate packages with an estimate of their own sit on their one package.
+  if (item.code === "AK") return id => id === "bar-platform-plan";
+  if (item.code === "AH") return id => id === "bar-hcl-review";
+  if (item.code === "AR") return id => id === "bar-design-access-mapping";
+  if (item.code === "AP") return id => id === "bar-playbook-design-migration-design";
+  if (item.code === "DW") return id => /^bar-workload-domain$/.test(id);
   if (DESIGN_CODES.test(item.code)) return id => CORE_DESIGN_BARS.test(id) && !(discoveryInScope && DISCOVERY_BARS.test(id));
   if (DISCOVERY_CODES.test(item.code)) return id => DISCOVERY_BARS.test(id);
   if (/^(D\d|U\d|D|D_VVF|S_storage|U_VVF|C1)$/.test(item.code)) return id => BUILD_BARS.test(id);
@@ -530,7 +536,7 @@ function footedColumn(values: number[], target: number): number[] {
  * add-on's build when only its design fits, anything starting after the entitlement ends, and anything
  * the planner places there. The planner's hours replace the baseline wherever the work is planned.
  */
-export function workPackageEffort(source: EngagementDocument, lines: EffortLine[], totals: RoleHours, options: { ignoreHourOverrides?: boolean; holdRunbook?: boolean } = {}): WorkPackageEffort[] {
+export function workPackageEffort(source: EngagementDocument, lines: EffortLine[], totals: RoleHours, options: { ignoreHourOverrides?: boolean; holdRunbook?: boolean; firstWorkloadSeparate?: boolean } = {}): WorkPackageEffort[] {
   const document = withOwnership(source);
   const timeline = document.adoptionTimeline;
   const termEnd = entitlementTermEnd(document);
@@ -600,7 +606,8 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
   const domainWeights = new Map(domainPackages(document.fields).map(({ id, domain }) => [id, domainBuildWeight(domain, domainHosts(domain, document.inventory).hosts)]));
   for (const item of lines) {
     let roles = rolesOf(item);
-    if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && governance.length) {
+    // The Reference Architecture Design states its hours all-in, so its project management stays on the package.
+    if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && governance.length && item.workstream !== REFERENCE_DESIGN.title) {
       designPm += roles.projectManager;
       roles = { ...roles, projectManager: 0 };
     }
@@ -616,11 +623,13 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
       const first = matches.reduce((earliest, candidate) => (candidate.bar.startCol < earliest.bar.startCol ? candidate : earliest));
       matches = [first];
     }
-    // The Reference Architecture Design is one package: the flat design hours sit on it and on the two focused reviews
-    // (hardware compatibility and access mapping), not on discovery or the migration plan.
+    // The first workload domain has its own line on a small estate; the rest of the build does not draw on it.
+    if (item.code !== "DW" && BUILD_CODES.test(item.code) && options.firstWorkloadSeparate) matches = matches.filter(({ bar }) => bar.id !== "bar-workload-domain");
+    // The Reference Architecture Design is one package: its flat hours sit on it alone. The hardware review, the access
+    // mapping and the migration plan are packages of their own, with their own estimates.
     if (item.workstream === REFERENCE_DESIGN.title) {
       const referenceId = referenceDesignBarId(playbookPlanForFields(document.fields).path);
-      if (referenceId && matches.some(({ bar }) => bar.id === referenceId)) matches = matches.filter(({ bar }) => bar.id === referenceId || /^bar-(hcl-review|design-access-mapping)$/.test(bar.id));
+      if (referenceId && matches.some(({ bar }) => bar.id === referenceId)) matches = matches.filter(({ bar }) => bar.id === referenceId);
     }
     // Architecture and discovery fall back to the other design packages, then to any design package, when theirs are not on the plan.
     if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && !matches.some(({ bar }) => inEntitlement(bar.id))) {
@@ -784,19 +793,26 @@ export function timelinesWithDeferrals(document: EngagementDocument, deferredIds
 /**
  * Packages the plan carries no hours for: CDW-owned, not funded and not follow-on scope either (a migration plan the
  * reference design does not include, say). Under v2 they leave the timelines, so every CDW bar on the entitlement
- * timeline is a funded package. The estate discovery package stays: its hours may already be delivered.
+ * timeline is a funded package. Discovery goes with them: hours already delivered show in the delivered row of the
+ * hours table, not as a bar.
  */
 export function unscopedWorkPackageIds(effort: Pick<ScopedEffort, "workPackages" | "internal">): string[] {
   if (!effort.internal.pass1) return [];
-  return effort.workPackages.filter(row => row.owner === "cdw" && !row.deferred && row.total === 0 && row.note === "not in the scoped hours" && !DISCOVERY_BARS.test(row.id) && !(row.followOn && row.followOn.total > 0)).map(row => row.id);
+  return effort.workPackages.filter(row => row.owner === "cdw" && !row.deferred && row.total === 0 && row.note === "not in the scoped hours" && !(row.followOn && row.followOn.total > 0)).map(row => row.id);
 }
+
+/** The packages each checkpoint gates. */
+const GATED_WORK: Record<string, RegExp> = { "bar-backup-gate": /^bar-playbook-execution-/ };
 
 function movedTimelines(document: EngagementDocument, deferredIds: string[]): { adoption: Timeline; notional: Timeline } {
   const ids = new Set(deferredIds);
   // Work that stays no longer waits for work that moved out: it goes ahead without it (for example VLAN-backed
   // workload domains when the NSX build-out moves to the follow-on).
   const withoutMoved = (bar: TimelineBar) => (bar.prerequisites?.some(id => ids.has(id)) ? { ...bar, prerequisites: bar.prerequisites.filter(id => !ids.has(id)) } : bar);
-  const adoption: Timeline = { ...document.adoptionTimeline, lanes: document.adoptionTimeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !ids.has(bar.id)).map(withoutMoved) })) };
+  // A checkpoint gates a package: with no such package left on the entitlement timeline, the checkpoint goes too.
+  const remaining = document.adoptionTimeline.lanes.flatMap(lane => lane.bars).filter(bar => !ids.has(bar.id));
+  const gateless = new Set(Object.entries(GATED_WORK).filter(([, work]) => !remaining.some(bar => work.test(bar.id))).map(([gate]) => gate));
+  const adoption: Timeline = { ...document.adoptionTimeline, lanes: document.adoptionTimeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !ids.has(bar.id) && !gateless.has(bar.id)).map(withoutMoved) })) };
   const notional = document.twoYearPlan;
   const termEnd = entitlementTermEnd(document);
   const start = /^(\d{4})-(\d{2})/.exec(notional.startDate);
@@ -807,7 +823,7 @@ function movedTimelines(document: EngagementDocument, deferredIds: string[]): { 
   const all = notional.lanes.flatMap(lane => lane.bars);
   // A checkpoint tied to moved work moves with it.
   const movedIds = new Set(all.filter(bar => ids.has(bar.id) && bar.startCol < firstAfter).map(bar => bar.id));
-  for (const bar of all) if (activityOwner(bar) === "checkpoint" && (bar.prerequisites ?? []).some(id => movedIds.has(id))) movedIds.add(bar.id);
+  for (const bar of all) if (activityOwner(bar) === "checkpoint" && ((bar.prerequisites ?? []).some(id => movedIds.has(id)) || (GATED_WORK[bar.id] && gateless.has(bar.id)))) movedIds.add(bar.id);
   const moving = all.filter(bar => movedIds.has(bar.id));
   const notionalWithoutMoved: Timeline = { ...notional, lanes: notional.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => (ids.has(bar.id) ? bar : withoutMoved(bar))) })) };
   if (!moving.length || firstAfter > notional.columns.length) return { adoption, notional: notionalWithoutMoved };
@@ -1125,7 +1141,7 @@ function assembleScopedEffort(
   }));
   // v2: the runbook needs CDW's proving waves; a plan with waves in scope but none funded holds it back.
   const holdRunbook = Boolean(extra.pass1?.lines.some(item => item.code === "FILL_mig")) && !lines.some(item => item.code === "FILL_mig");
-  const workPackages = workPackageEffort(document, lines, totalsOf(calculatedRows), { holdRunbook });
+  const workPackages = workPackageEffort(document, lines, totalsOf(calculatedRows), { holdRunbook, firstWorkloadSeparate: Boolean(extra.pass1?.lines.some(item => item.code === "DW")) });
   const planned = workPackages.filter(row => row.total > 0);
   const rows = assignments.length ? assignments : calculatedRows;
   // The calculated plan is the work packages as adjusted by the planner; it falls back to the catalog lines with no timeline.
@@ -1206,6 +1222,12 @@ export function formatWindow(start: string, end: string): string {
  * CDW's waves end, about one month per 250 VMs (3 to 12 months). Null when the plan has no waves.
  */
 export function customerRemainingWaves(document: EngagementDocument): { label: string; start: string; end: string } | null {
+  // They exist only behind CDW's proving waves in the entitlement; waves that moved to the follow-on are CDW's whole package.
+  return buildScopedEffort(document).workPackages.some(row => /^bar-playbook-execution-/.test(row.id) && row.total > 0 && !row.deferred) ? plannedRemainingWaves(document) : null;
+}
+
+/** The remaining waves as the timeline places them, whether or not CDW's proving waves are funded (the fit decides that). */
+function plannedRemainingWaves(document: EngagementDocument): { label: string; start: string; end: string } | null {
   // CDW's waves in the entitlement, or in the Two-Year Notional when they moved there.
   const endOf = (timeline: Timeline) => timeline.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-playbook-execution-/.test(bar.id))
     .map(bar => barWindow(timeline, bar)?.end).filter((end): end is string => Boolean(end)).sort().at(-1);
@@ -1227,7 +1249,7 @@ export const WAVES_LABEL = /\bwaves?\b/i;
  */
 export function customerRunsRemainingWaves(document: EngagementDocument): boolean {
   if (completedReport(document.report).customerOwnedWork.some(row => WAVES_LABEL.test(row.label))) return true;
-  const generated = customerRemainingWaves(document);
+  const generated = plannedRemainingWaves(document);
   return Boolean(generated && !document.report.hiddenGenerated.includes(`customerOwnedWork:${generated.label.trim().toLowerCase()}`));
 }
 
