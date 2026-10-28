@@ -29,3 +29,8 @@ The proving wave (126) does not fit after step d; the First Workload Domain (42)
 ## Delivery model round (PR #64, `fcp-wave-delivery`)
 
 `delivery-model-acme-summary.pdf` (3 pages) and `delivery-model-acme-standard.pdf` (7 pages), from `acmeHealthReconciled`, with the default Migration waves setting (CDW runs all waves). Fake data only. Acme's planned hours are unchanged at 205 (39 delivered + 205 planned + 18 held = 262). The waves are now one whole package of 215 hours in the follow-on (before: wave 1 was cut out and the rest handed to the customer); there is no runbook transfer, no "Remaining migration waves" row and no customer-run phase.
+
+## Round 4 (PR #64 after review fixes, commit 79a9db3)
+`waves-acme-{summary,standard}-{draft,issued}.pdf/.html`, default Migration waves setting. Summary 3 pages, Standard 7 pages (draft and issued).
+Draft: header band / document control say "Draft" (plus the watermark); issued says "Issued 30 Sep 2026".
+Acme hours are independent of the runbook transfer: foundation 63, training 6, handover 11. Fill order shifted (about 5.7 h freed from the build line): Health, Logs and Diagnostics (operations configuration) is now funded, Recovery and Resilience Design moves to follow-on, and Operations design / Health-Logs are partly split into "Remaining Scope" continuation rows.
