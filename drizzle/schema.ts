@@ -26,7 +26,7 @@ import type { SegmentReview } from "../shared/fcpRecord";
 import type { ScopedEffort } from "../shared/effort";
 import type { ChangeSummary } from "../shared/fcpChangeSummary";
 import { SEGMENTS, STAGES } from "../shared/vsaStage";
-import { STORED_REPORT_FORMATS } from "../shared/reportFormat";
+import { STORED_REPORT_FORMATS, type IssueContext } from "../shared/reportFormat";
 import type { ReportConfig } from "../shared/vsaReports";
 import type { AppSettingValue } from "../shared/appSettings";
 
@@ -303,6 +303,8 @@ export const fcpVersions = mysqlTable(
     reportFormat: mysqlEnum("reportFormat", STORED_REPORT_FORMATS),
     /** Why it was issued although its hours do not reconcile with the funding; null when they did. */
     fundingOverrideNote: text("fundingOverrideNote"),
+    /** What the issue's document control and acceptance block were rendered with (the superseded version's approvals, the signature lines), captured at issue time and never recomputed. Null before it was captured. */
+    issueContext: json("issueContext").$type<IssueContext>(),
   },
   table => [uniqueIndex("fcp_versions_number_uq").on(table.engagementId, table.versionNumber), uniqueIndex("fcp_versions_issue_uq").on(table.engagementId, table.issueNumber)],
 );

@@ -217,7 +217,7 @@ export const appRouter = router({
         if (prepared.fundingProblem && !input.fundingOverride) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued: ${prepared.fundingProblem} To issue it anyway, give the reason.` });
         if (prepared.unchanged) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Nothing has changed since issue ${prepared.basedOn?.issueNumber}.` });
         const reportFormat = reportFormatOption(prepared.reportFormat) ?? null;
-        return unwrap(await lockAware(() => db.issueFcpVersion(viewer, input.id, { title: prepared.title, data: prepared.document, effort: prepared.effort, html: prepared.html, label: input.label, revisionNote: input.revisionNote || null, changeSummary: prepared.changeSummary, basedOnVersionId: prepared.basedOn?.id ?? null, reportFormat, fundingOverrideNote: prepared.fundingProblem ? input.fundingOverride : null })));
+        return unwrap(await lockAware(() => db.issueFcpVersion(viewer, input.id, { title: prepared.title, data: prepared.document, effort: prepared.effort, html: prepared.html, label: input.label, revisionNote: input.revisionNote || null, changeSummary: prepared.changeSummary, basedOnVersionId: prepared.basedOn?.id ?? null, reportFormat, fundingOverrideNote: prepared.fundingProblem ? input.fundingOverride : null, issueContext: prepared.issueContext })));
       }),
     /** Replaces the working FCP with the current issued version (saved to History first), to start the next revision. */
     revise: protectedProcedure.input(z.object({ id: recordId })).mutation(async ({ ctx, input }) => unwrap(await lockAware(() => db.reviseFromIssued(viewerFor(ctx.user), input.id)))),

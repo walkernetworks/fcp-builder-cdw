@@ -1,8 +1,8 @@
 import type { ScopedEffort } from "../shared/effort";
-import { computeChangeSummary, isEmptyChange, type ChangeSummary } from "../shared/fcpChangeSummary";
+import { computeChangeSummary, type ChangeSummary } from "../shared/fcpChangeSummary";
 import { migrateDocument, type EngagementDocument } from "../shared/fcp";
 import { deliveredNotes } from "../shared/consumption";
-import { defaultReportFormat, fundingProblem, needsBroadcomSignature, reportFormatOption, type ReportFormat, type ReportFormatChoice } from "../shared/reportFormat";
+import { defaultReportFormat, fundingProblem, needsBroadcomSignature, reportFormatOption, type IssueContext, type ReportFormat, type ReportFormatChoice } from "../shared/reportFormat";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import * as db from "./db";
@@ -21,6 +21,13 @@ export function condensedReleaseFailures(html: string, document: EngagementDocum
   return failures;
 }
 
+/**
+ * Key order, undefined fields and generated-at stamps do not matter: a stored JSON snapshot and a freshly built object
+ * compare by their data (the document's readiness list is stamped with the time it was generated).
+ */
+const canonical = (value: unknown): string => JSON.stringify(JSON.parse(JSON.stringify(value ?? null)), (key, item) => (key === "generatedAt" ? undefined : item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item));
+export const sameData = (left: unknown, right: unknown) => canonical(left) === canonical(right);
+
 export type PreparedIssue = {
   title: string;
   document: EngagementDocument;
@@ -35,6 +42,8 @@ export type PreparedIssue = {
   /** Nothing changed since the current issued version. */
   unchanged: boolean;
   basedOn: { id: number; issueNumber: number } | null;
+  /** What the Standard's document control and acceptance block were rendered with; stored on the version at issue. */
+  issueContext: IssueContext | null;
 };
 
 /**
@@ -52,18 +61,18 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
   const format = reportFormatOption(reportFormat);
   const latest = await db.getLatestIssuedVersion(viewer, engagementId);
   const notes = format ? await recordDeliveredNotes(viewer, engagementId, document) : [];
-  // The Standard's document control prints the superseded version's recorded approvals.
-  const issued = format === "standard" ? (await db.listIssuedVersions(viewer, engagementId)) ?? [] : [];
-  const supersedes = (issueNumber: number) => {
-    const prior = issued.find(item => item.issueNumber === issueNumber - 1);
-    return prior ? { supersedes: { issueNumber: issueNumber - 1, broadcomApprovedOn: prior.broadcomApprovedOn ?? null, customerApprovedOn: prior.customerApprovedOn ?? null } } : {};
-  };
-  const render = (version: { issueNumber: number; issuedOn: string }) => renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version, deliveredNotes: notes, ...(format === "standard" ? { ...supersedes(version.issueNumber), broadcomSignature: needsBroadcomSignature(row.segment) } : {}) } : {}) });
-  const html = render({ issueNumber: (latest?.issueNumber ?? 0) + 1, issuedOn });
+  // What the document control and acceptance block say beyond the data is captured here, at issue time, from the version
+  // this issue supersedes, and stored with the version. It is never recomputed, so an approval recorded on the previous
+  // version later does not rewrite an issued version.
+  const issueContext: IssueContext | null = format
+    ? { supersedes: latest && latest.issueNumber !== null ? { issueNumber: latest.issueNumber, broadcomApprovedOn: latest.broadcomApprovedOn ?? null, customerApprovedOn: latest.customerApprovedOn ?? null } : null, broadcomSignature: needsBroadcomSignature(row.segment) }
+    : null;
+  const html = renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version: { issueNumber: (latest?.issueNumber ?? 0) + 1, issuedOn }, deliveredNotes: notes, ...(format === "standard" && issueContext ? { ...(issueContext.supersedes ? { supersedes: issueContext.supersedes } : {}), broadcomSignature: issueContext.broadcomSignature } : {}) } : {}) });
   const previous = latest && latest.issueNumber !== null && latest.effortSnapshot ? { document: latest.data, effort: latest.effortSnapshot, issueNumber: latest.issueNumber } : null;
   const changeSummary = computeChangeSummary(previous, { document, effort });
-  // Unchanged means the customer would receive the same pages: rendered as the current issue was, number and date included.
-  const asIssued = latest && latest.issueNumber !== null && latest.issuedAt && (latest.reportFormat ?? null) === (format ?? null) ? render({ issueNumber: latest.issueNumber, issuedOn: latest.issuedAt.toISOString().slice(0, 10) }) : null;
+  // Unchanged means the data is the same as the current issue's stored snapshots, in the same format. Not the rendered
+  // pages: a renderer change, or an approval recorded since, never makes an issued version look changed.
+  const unchanged = Boolean(previous) && (latest!.reportFormat ?? null) === (format ?? null) && sameData(migrateDocument(latest!.data), document) && sameData(latest!.effortSnapshot, effort);
   return {
     title: row.title,
     document,
@@ -73,8 +82,9 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
     fundingProblem: fundingProblem(document, effort, today),
     reportFormat,
     changeSummary,
-    unchanged: Boolean(previous) && isEmptyChange(changeSummary) && asIssued !== null && latest?.renderedHtml === asIssued,
+    unchanged,
     basedOn: latest && latest.issueNumber !== null ? { id: latest.id, issueNumber: latest.issueNumber } : null,
+    issueContext,
   };
 }
 

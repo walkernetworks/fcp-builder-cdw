@@ -31,6 +31,16 @@ export function defaultReportFormat(segment: Segment | null | undefined): Report
   return segment === "commercial" ? "summary" : "standard";
 }
 
+/** The version an issue supersedes and the approvals recorded on it when the issue was made. */
+export type SupersededVersion = { issueNumber: number; broadcomApprovedOn: string | null; customerApprovedOn: string | null };
+
+/**
+ * What an issue's document control and acceptance block say that the document data does not: captured when the issue
+ * is made and stored with the version, never recomputed. An approval recorded on the previous version later, or the
+ * deal's segment changing, does not rewrite an issued version.
+ */
+export type IssueContext = { supersedes: SupersededVersion | null; broadcomSignature: boolean };
+
 /** Corporate and Strategic deals go to Broadcom for approval, so the Standard's acceptance block carries their signature line too. */
 export const needsBroadcomSignature = (segment: Segment | null | undefined) => segment === "corporate" || segment === "strategic";
 

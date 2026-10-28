@@ -31,7 +31,7 @@ import { deletableEngagements, editableReports, visibleEngagements, visibleRepor
 import type { ReportConfig } from "../shared/vsaReports";
 import type { ScopedEffort } from "../shared/effort";
 import type { ChangeSummary } from "../shared/fcpChangeSummary";
-import type { STORED_REPORT_FORMATS } from "../shared/reportFormat";
+import type { IssueContext, STORED_REPORT_FORMATS } from "../shared/reportFormat";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -844,6 +844,8 @@ export type IssueInput = {
   reportFormat: (typeof STORED_REPORT_FORMATS)[number] | null;
   /** Why it is issued although its hours do not reconcile with the funding. */
   fundingOverrideNote: string | null;
+  /** The superseded version's approvals and the signature lines the issue was rendered with; stored, never recomputed. */
+  issueContext: IssueContext | null;
 };
 
 /**
@@ -881,6 +883,7 @@ export async function issueFcpVersion(viewer: Viewer, engagementId: number, inpu
       changeSummary: input.changeSummary,
       reportFormat: input.reportFormat,
       fundingOverrideNote: input.fundingOverrideNote,
+      issueContext: input.issueContext,
       issuedAt: now,
       issuedByUserId: viewer.id,
     });

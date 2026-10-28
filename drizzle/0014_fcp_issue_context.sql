@@ -1,0 +1,1 @@
+ALTER TABLE `fcpVersions` ADD `issueContext` json;

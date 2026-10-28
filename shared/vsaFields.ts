@@ -166,7 +166,7 @@ export const FCP_VERSION_COLUMN_VISIBILITY = {
   customerApproverName: "internal",
   customerApprovalNote: "internal",
   reportFormat: "internal",
-  fundingOverrideNote: "internal",
+  fundingOverrideNote: "internal", issueContext: "internal",
 } as const satisfies Record<keyof FcpVersion, "customer" | "internal">;
 
 export const CONSUMPTION_ENTRY_COLUMN_VISIBILITY = {

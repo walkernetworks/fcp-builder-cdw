@@ -1,3 +1,4 @@
+import type { SupersededVersion } from "../shared/reportFormat";
 import { formatWindow, type ScopedEffort } from "../shared/effort";
 import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument, type Timeline } from "../shared/fcp";
 import { planBsasAllocation } from "../shared/planView";
@@ -146,9 +147,7 @@ export function footerCss(customer: string, version: IssueStamp | undefined): st
   return `@page{@bottom-left{content:${cssString(LEGEND)};${box}}@bottom-right{content:${cssString(right)} counter(page) " of " counter(pages);text-align:right;${box}}}@page :first{@bottom-left{padding-left:.45in}@bottom-right{padding-right:.45in}}`;
 }
 
-/** The version an issue supersedes and the approvals recorded on it, for the Standard's document control. */
-export type SupersededVersion = { issueNumber: number; broadcomApprovedOn: string | null; customerApprovedOn: string | null };
-
+export type { SupersededVersion };
 export type SummaryOptions = {
   today?: string; effort: ScopedEffort; draft?: boolean; version?: IssueStamp; deliveredNotes?: string[];
   /** The previous issue and its recorded approvals; absent on Version 1. */
