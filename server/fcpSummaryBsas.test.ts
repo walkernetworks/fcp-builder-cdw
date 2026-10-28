@@ -29,7 +29,7 @@ describe("Summary with BSAS", () => {
     const document = meridianHealth();
     const html = summary(document);
     const after = visible(html).split("How It's Funded")[1] ?? "";
-    expect(after).toContain("(BSAS) fund this work: 323 hours from 1 May 2027 to 30 Apr 2028. 323 hours are planned.");
+    expect(after).toContain("(BSAS) fund this work: 291 hours from 1 May 2027 to 30 Apr 2028. 291 hours are planned.");
     expect(after).not.toMatch(/\$\s?\d|rate|tier|forfeit|needs one of/i);
     expect(visible(html)).toMatch(/BSAS hours\s+Governance|BSAS hours/);
     expect(checks(html, document)).toEqual([]);

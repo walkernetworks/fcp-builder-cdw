@@ -96,6 +96,7 @@ table{width:100%;border-collapse:collapse}
 .wp th{background:#eef0f3;color:var(--slate);font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;text-align:left;padding:5px 7px}
 .wp td{padding:3px 7px;border-bottom:1px solid var(--hair);color:var(--slate)}
 .wp td:first-child{color:var(--ink);font-weight:600}
+.wp-detail{font-weight:400;font-size:8.5px;color:var(--muted);margin-top:2px;line-height:1.35}
 .wp .num{text-align:right;font-variant-numeric:tabular-nums}
 .wp tr.cat td{background:#f4f5f7;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);padding:4px 7px}
 .wp tr.total td{border-top:2px solid #1a1d21;border-bottom:0;font-weight:900;color:var(--ink)}
