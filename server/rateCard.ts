@@ -101,13 +101,12 @@ function withinBudget(document: EngagementDocument, effort: ScopedEffort, value:
     return over > 0 ? [Math.min(V1_FILL_TRIM_LIMIT, over)] : [];
   };
   let trimmed = 0;
-  let trimmedWaves = 0;
-  const waveShares = firstWave && !fits() ? (effort.internal.fit ? laterWaveShares(effort) : v1Fill()) : [];
+  // Under v2 a package is never cut by hours: the waves stay whole, and other whole packages move instead. Only the v1 fill line is trimmed.
+  const waveShares = firstWave && !fits() && !effort.internal.fit ? v1Fill() : [];
   for (const share of waveShares) {
     if (fits()) break;
     const part = scaleRoles(firstWave!, share);
     trimmed += share;
-    trimmedWaves += 1;
     cost -= costOf(part);
     planned -= part.total;
   }
@@ -126,7 +125,7 @@ function withinBudget(document: EngagementDocument, effort: ScopedEffort, value:
   const order = effort.workPackages.filter(row => moves.has(row.id)).map(row => row.id);
   const ranked = [...steps.flatMap(step => order.filter(id => step(id))), ...order];
   const scopeMoves: ScopeMove[] = Array.from(new Set(ranked)).map(id => ({ label: rows.get(id)!.label, hours: rows.get(id)!.total, reason: "over budget" }));
-  if (trimmed) scopeMoves.push({ label: effort.internal.fit ? `${firstWave!.label}: ${trimmedWaves} wave${trimmedWaves === 1 ? "" : "s"} after the first` : `${firstWave!.label}: later waves`, hours: scaleRoles(firstWave!, trimmed).total, reason: "over budget" });
+  if (trimmed) scopeMoves.push({ label: `${firstWave!.label}: later waves`, hours: scaleRoles(firstWave!, trimmed).total, reason: "over budget" });
   let result = deferWorkPackages(effort, moves);
   if (trimmed) result = splitToFollowOn(result, firstWave!.id, trimmed);
   if (!merged) return { effort: result, moves: scopeMoves };
@@ -134,13 +133,6 @@ function withinBudget(document: EngagementDocument, effort: ScopedEffort, value:
 }
 
 const V1_FILL_TRIM_LIMIT = 0.9;
-
-/** Each funded wave after the first, last first, as its share of the waves package (by the fit's wave units). */
-function laterWaveShares(effort: ScopedEffort): number[] {
-  const waves = (effort.internal.fit?.placements ?? []).filter(item => item.code === "FILL_mig" && (item.bucket === "E1" || item.bucket === "E2"));
-  const total = waves.reduce((sum, item) => sum + item.base, 0);
-  return total > 0 ? waves.slice(1).map(item => item.base / total).reverse() : [];
-}
 
 const scaleRoles = (row: RoleHours, share: number) => {
   const roles = { architect: row.architect * share, srConsultant: row.srConsultant * share, projectManager: row.projectManager * share };
@@ -190,7 +182,9 @@ function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEff
   const envelope = document.report.entitlement.hours === null && value ? value / blendedRate : null;
   const built = buildScopedEffort(document, { envelopeHours: envelope, envelopeSource: "entitlement value", today });
   // Under a signed work plan too: the plan's work packages never exceed the hours left after the reserve.
-  const fitted = built.internal.fit?.underFunded ? fitUnderCap(document, built, built.internal.fit) : built;
+  // v2 never squeezes: the fit places whole packages in the owner's order, phases the design by deliverable and leaves
+  // whatever still does not fit under-funded, for a decision. No package is moved or trimmed to make the hours fit.
+  const fitted = built;
   // Signed entitled hours can be worth more than the entitlement value; the fill stops at whichever is lower.
   const reserveShare = document.fields.estimateInputs.reservePercent !== undefined ? document.fields.estimateInputs.reservePercent / 100 : HOURS_V2.fit.reserveShare.value;
   // Delivered hours were paid from the same value, and the reserve is a share of what is left after them.
@@ -211,33 +205,6 @@ function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEff
   // Under v2 the fit decides what is in the entitlement; only an under-funded core makes the plan cost more than the value.
   const status = fit?.underFunded ? "over" : costStatus(ratio && ratio > 1 ? 1 : ratio);
   return { ...effort, internal: { ...effort.internal, cost: { planCost, followOnCost, entitlementValue: value, ratio, status, byPackage }, ...(money ? { money } : {}) } };
-}
-
-/** Moves work packages to the follow-on, in priority order, until the plan fits the hours left after the reserve, and keeps the buckets in step. */
-function fitUnderCap(document: EngagementDocument, effort: ScopedEffort, fit: NonNullable<ScopedEffort["internal"]["fit"]>): ScopedEffort {
-  const { effort: squeezed, moves } = withinBudget(document, effort, 0, Math.floor(fit.fillableHours), true);
-  const freed = planHours(effort) - planHours(squeezed);
-  const toFollowOn = moves.filter(item => item.reason === "over budget");
-  const moved = toFollowOn.reduce((sum, item) => sum + item.hours, 0);
-  const saved = freed - moved;
-  const stillOver = planHours(squeezed) > Math.floor(fit.fillableHours);
-  const labels = toFollowOn.map(item => item.label);
-  return {
-    ...squeezed,
-    internal: {
-      ...squeezed.internal,
-      fit: {
-        ...fit,
-        // Moved work joins the follow-on; hours saved by merging discovery into the pathway leave the core.
-        buckets: { ...fit.buckets, E1: fit.buckets.E1 - freed, F: fit.buckets.F + moved },
-        // Still over only when protected work, and the design it builds on, alone exceed what the entitlement funds.
-        underFunded: stillOver ? { gapHours: planHours(squeezed) - fit.fillableHours } : null,
-        movedToFollowOn: { hours: moved, packages: labels },
-        scopeMoves: [...(fit.scopeMoves ?? []), ...moves],
-        notes: [...fit.notes, `The core needed ${Math.round(fit.coreRequiredHours)} hours against ${Math.round(fit.fillableHours)} after the reserve; ${Math.round(moved)} hours (${labels.join(", ") || "none"}) moved to the Two-Year Notional as follow-on${saved >= 1 ? ` and ${Math.round(saved)} hours were saved by merging discovery into the pathway package` : ""}.`],
-      },
-    },
-  };
 }
 
 /** The plan's hours in the entitlement: its work packages, whatever the totals are taken from. */

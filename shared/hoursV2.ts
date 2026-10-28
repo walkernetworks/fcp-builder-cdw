@@ -1,4 +1,5 @@
-import { HOURS_V2 as H, type Coefficient } from "./hoursConfig";
+import { BUILD_STAGE_WEIGHTS, HOURS_V2 as H, type Coefficient } from "./hoursConfig";
+import { ESTATE_SIZE_UNKNOWN_FLAG, resolveEstateSize, type EstateSize } from "./estateSize";
 import { effectiveDeliveryPath, effectivePlatformEdition, resolvePlanOutcomes, type AdoptionDetails, type Capability, type EngagementDocument, type VcfDeliveryPath } from "./fcp";
 
 /**
@@ -8,7 +9,7 @@ import { effectiveDeliveryPath, effectivePlatformEdition, resolvePlanOutcomes, t
  */
 
 export type V2Code =
-  | "DD" | "DX" | "A" | "D" | "D_VVF" | "S_storage" | "C1" | "R_remed" | "X1" | "U_VVF" | "U3" | "FILL_mig" | "FILL_ip"
+  | "DD" | "DX" | "AK" | "A" | "AH" | "AR" | "AP" | "D" | "DW" | "D_VVF" | "S_storage" | "C1" | "R_remed" | "X1" | "U_VVF" | "U3" | "FILL_mig" | "FILL_ip"
   | "X_VCFA_platform" | "X2" | "X3" | "X4" | "X5" | "X6" | "X7" | "X8" | "X9" | "X10" | "X11" | "X12" | "X13" | "X14" | "X15" | "X16" | "EF" | "NX";
 
 export type V2Lead = "architect" | "srConsultant";
@@ -42,6 +43,9 @@ export type UnitTag =
   | "zone"
   | "app"
   | "ops-core" // Operations Tier 1: the X4 platform term and the lifecycle and health modules
+  | "design-foundation" // design of the management domain, platform, network and storage
+  | "design-workload" // workload domain design
+  | "design-dr-nsx" // DR and NSX overlay design
   | "uplift";
 
 export type V2Line = {
@@ -82,6 +86,8 @@ export type Pass1 = {
   pmRatio: number;
   assumptions: Assumption[];
   inputs: ResolvedInputs;
+  /** The estate-size test behind the design hours: the Reference Architecture Design tier, or the full design. */
+  estate: EstateSize;
   /**
    * The VCF Installer deploys NSX with a new management domain, so the build needs at least a VLAN-backed NSX design
    * (transport zones, TEP and MTU, IP pools). When no NSX design is funded, Pass 2 carves this much out of the
@@ -95,11 +101,12 @@ const v = (coefficient: Coefficient) => coefficient.value;
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
 
 /** Lead hours, secondary hours and the loaded total for a line or unit, at the engagement's PM ratio. */
-export function technicalOf(line: Pick<V2Line, "secondaryShare">, base: number): number {
-  return base * (1 + line.secondaryShare);
+export function technicalOf(line: Pick<V2Line, "secondaryShare"> & { code?: V2Code }, base: number): number {
+  return line.code === "AK" ? 0 : base * (1 + line.secondaryShare);
 }
-export function loadedOf(pass1: Pick<Pass1, "pmRatio">, line: Pick<V2Line, "secondaryShare">, base: number): number {
-  return technicalOf(line, base) * (1 + pass1.pmRatio);
+/** The kickoff is project management hours, stated all-in: no second role and no project management on top. */
+export function loadedOf(pass1: Pick<Pass1, "pmRatio">, line: Pick<V2Line, "secondaryShare"> & { code?: V2Code }, base: number): number {
+  return line.code === "AK" ? base : technicalOf(line, base) * (1 + pass1.pmRatio);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -369,10 +376,26 @@ export function scopeV2(document: EngagementDocument): Pass1 {
   }
 
   // ---- Design
-  const hostTerm = Math.min(v(H.design.hostTermCap), v(H.design.perHostAboveThreshold) * Math.max(0, x.hosts - v(H.design.hostThreshold)));
-  const design = v(H.design.base) + v(H.design.perWorkloadDomain) * x.workloadDomains + v(H.design.perExtraInstance) * (x.instances - 1) + v(H.design.perExtraSite) * (x.sites - 1)
-    + v(H.design.perStretchedCluster) * x.stretchedClusters + v(H.design.perExtraStorageType) * (x.storageTypes - 1) + hostTerm;
-  add("A", "Architecture and design", "architect", [unit("A", "Architecture and design", design)], { workloadDomains: x.workloadDomains, instances: x.instances, sites: x.sites, stretchedClusters: x.stretchedClusters, storageTypes: x.storageTypes, hosts: x.hosts });
+  // A small estate takes the Reference Architecture Design: a flat number of hours, no formula. Every other estate, and
+  // any whose size is unknown, gets the full design, phased by deliverable when the entitlement cannot carry it.
+  const estate = resolveEstateSize(document);
+  if (estate.small) {
+    add("A", "Reference Architecture Design", "architect", [unit("A", "Reference Architecture Design", v(H.design.referenceFlat))], { tier: "reference architecture", hosts: x.hosts, clusters: estate.clusters, sites: x.sites });
+    add("AK", "Kickoff and Delivery Plan", "architect", [unit("AK", "Kickoff and Delivery Plan", v(H.design.kickoff))], { tier: "reference architecture" });
+    // The hardware review and the access mapping are packages of their own, each with its own estimate beside the 40 hours.
+    add("AH", "Hardware Compatibility Review", "architect", [unit("AH", "Hardware Compatibility Review", v(H.design.hardwareReview))], { tier: "reference architecture", hosts: x.hosts });
+    add("AR", "Role and Access Mapping", "architect", [unit("AR", "Role and Access Mapping", v(H.design.roleAccess))], { tier: "reference architecture" });
+  } else {
+    const hostTerm = Math.min(v(H.design.hostTermCap), v(H.design.perHostAboveThreshold) * Math.max(0, x.hosts - v(H.design.hostThreshold)));
+    const foundation = Math.min(v(H.design.base), v(H.design.foundationBase));
+    // By deliverable: the foundation (management domain, platform, network and storage); each workload domain; and DR and the NSX overlay.
+    const parts: Array<[string, string, number, UnitTag]> = [
+      ["A:foundation", "Foundation design: management domain, platform, network and storage", foundation + hostTerm + v(H.design.perExtraInstance) * (x.instances - 1) + v(H.design.perExtraStorageType) * (x.storageTypes - 1), "design-foundation"],
+      ["A:workload", "Workload domain design", v(H.design.perWorkloadDomain) * x.workloadDomains, "design-workload"],
+      ["A:dr-nsx", "DR and NSX overlay design", v(H.design.base) - foundation + v(H.design.perExtraSite) * (x.sites - 1) + v(H.design.perStretchedCluster) * x.stretchedClusters, "design-dr-nsx"],
+    ];
+    add("A", "Architecture and design", "architect", parts.map(([id, label, base, tag]) => unit(id, label, base, tag)), { tier: "full design", workloadDomains: x.workloadDomains, instances: x.instances, sites: x.sites, stretchedClusters: x.stretchedClusters, storageTypes: x.storageTypes, hosts: x.hosts });
+  }
 
   // ---- Pathway spine
   const remediation = v(H.remediation.perClusterOnVum) * x.clustersOnVum + v(H.remediation.perVcenterWithIwa) * x.vcentersWithIwa + v(H.remediation.perClusterOnVss) * x.clustersOnVss + v(H.remediation.legacyLogs) * Number(x.legacyLogs);
@@ -403,7 +426,13 @@ export function scopeV2(document: EngagementDocument): Pass1 {
       const d = v(H.deploy.managementDomain) + v(H.deploy.handover) + v(H.deploy.managementServices) + v(H.deploy.perExtraInstance) * (x.instances - 1) + wld
         + v(H.deploy.perExtraCluster) * Math.max(0, x.platformClusters - 1 - x.workloadDomains) + v(H.deploy.perStretchedCluster) * x.stretchedClusters
         + v(H.deploy.perHostFirst) * Math.min(x.hosts, v(H.deploy.firstHostBand)) + v(H.deploy.perHostAbove) * Math.max(0, x.hosts - v(H.deploy.firstHostBand));
-      add("D", path === "hybrid" ? "Shared foundation build" : "Management and workload domain build", "srConsultant", [unit("D", "Platform deploy", d, "platform")], { instances: x.instances, workloadDomains: x.workloadDomains, dedicatedNsx: x.dedicatedNsxWorkloadDomains, clusters: x.platformClusters, stretchedClusters: x.stretchedClusters, hosts: x.hosts });
+      // A small estate funds the first workload domain after the migration plan and the proving waves, so its share of
+      // the build (the same weights the packages split the build by) is a line of its own.
+      const weights = BUILD_STAGE_WEIGHTS;
+      const workloadShare = estate.small && path === "greenfield"
+        ? weights.workloadDomain.value / (weights.managementDomain.value + weights.workloadDomain.value + 2 * weights.handover.value + weights.licensing.value) : 0;
+      add("D", path === "hybrid" ? "Shared foundation build" : "Management and workload domain build", "srConsultant", [unit("D", "Platform deploy", d * (1 - workloadShare), "platform")], { instances: x.instances, workloadDomains: x.workloadDomains, dedicatedNsx: x.dedicatedNsxWorkloadDomains, clusters: x.platformClusters, stretchedClusters: x.stretchedClusters, hosts: x.hosts });
+      if (workloadShare > 0) add("DW", "First workload domain build", "srConsultant", [unit("DW", "First workload domain", d * workloadShare, "platform")], { workloadDomains: x.workloadDomains });
     }
     add("S_storage", "Principal storage adder", "srConsultant", [unit("S_storage", "Principal storage adder", storageAdder)], { clustersOnFcOrNfs: x.clustersOnFcOrNfs, mixedStorage: x.mixedStorage });
   };
@@ -434,7 +463,11 @@ export function scopeV2(document: EngagementDocument): Pass1 {
     add("FILL_ip", "In-place upgrade windows", "srConsultant", units, { hosts: x.hosts, windows });
   };
 
-  if (path === "greenfield" || path === "hybrid") { deploy(); migrationWaves(); }
+  if (path === "greenfield" || path === "hybrid") {
+    deploy();
+    if (estate.small && !vvf && x.vms > 0) add("AP", "Migration and Cutover Plan", "architect", [unit("AP", "Migration and Cutover Plan", v(H.waves.migrationPlan))], { vms: x.vms });
+    migrationWaves();
+  }
   if (path === "converge") converge();
   if (path === "import-workload-domain") importLine(x.vcenters, true);
   if (path === "in-place") {
@@ -608,23 +641,50 @@ export function scopeV2(document: EngagementDocument): Pass1 {
   }
 
   // ---- Engagement project management
-  const technical = sum(lines.map(line => technicalOf(line, line.computedBase)));
   const build = lines.some(line => ["D", "D_VVF", "C1", "X1", "U3", "U_VVF", "FILL_mig", "FILL_ip"].includes(line.code));
   const floor = v(build ? H.roles.pmFloorBuild : H.roles.pmFloorDesign);
+  // The small-estate packages carry a stated number of hours, all-in: what the package shows is that number, with the
+  // second role and project management inside it. Their base is solved against the engagement's PM ratio.
+  if (estate.small) {
+    const stated: Array<[V2Line, number]> = lines.flatMap((line): Array<[V2Line, number]> => {
+      const target = line.code === "A" ? v(H.design.referenceFlat) : line.code === "AH" ? v(H.design.hardwareReview) : line.code === "AR" ? v(H.design.roleAccess) : line.code === "AP" ? v(H.waves.migrationPlan) : 0;
+      return target ? [[line, target]] : [];
+    });
+    if (stated.length) {
+      const others = sum(lines.filter(line => !stated.some(([flat]) => flat === line)).map(line => technicalOf(line, line.computedBase)));
+      let ratio = 0;
+      for (let pass = 0; pass < 80; pass++) {
+        const technicalTotal = others + sum(stated.map(([line, target]) => target / (1 + ratio) ));
+        ratio = Math.max(floor, v(H.roles.pmShare) * technicalTotal) / technicalTotal;
+      }
+      for (const [line, target] of stated) {
+        line.computedBase = target / (1 + ratio) / (1 + line.secondaryShare);
+        line.units[0].base = line.computedBase;
+      }
+    }
+  }
+  const technical = sum(lines.map(line => technicalOf(line, line.computedBase)));
   const share = v(H.roles.pmShare) * technical;
   const pm = Math.max(floor, share);
   const present = new Set(lines.map(line => line.code));
+  assumptions.push({
+    key: "smallEstate", label: "Small estate (Reference Architecture Design)", value: estate.small ? "yes" : "no",
+    source: estate.choice !== "auto" ? "Set by the planner"
+      : !estate.known ? `${ESTATE_SIZE_UNKNOWN_FLAG}; no host count in RVTools or the brief`
+      : estate.small ? `Within the limits: ${estate.hosts} hosts, ${estate.clusters} cluster${estate.clusters === 1 ? "" : "s"}, ${estate.vcenters} vCenter, ${estate.instances} VCF instance, ${estate.sites} site${estate.sites === 1 ? "" : "s"}`
+      : `Over the limits: ${estate.exceeds.join(", ")}`,
+  });
   const relevant = assumptions.filter(item => {
     const users = ASSUMPTION_USERS[item.key];
     return !users || users.some(code => present.has(code));
   });
-  return { path, edition, lines, technical, pm, pmFloorApplied: floor > share, pmRatio: technical ? pm / technical : 0, assumptions: relevant, inputs: x, nsxMinimalDesign };
+  return { path, edition, lines, technical, pm, pmFloorApplied: floor > share, pmRatio: technical ? pm / technical : 0, assumptions: relevant, inputs: x, estate, nsxMinimalDesign };
 }
 
 /** The lines each defaulted input feeds; an assumption is listed only when one of them is in the plan. Inputs not listed here feed every plan. */
 const ASSUMPTION_USERS: Record<string, V2Code[]> = {
   targetClusters: ["D", "D_VVF", "S_storage", "X5", "X7"],
-  stretchedClusters: ["A", "D"], storageTypes: ["A"], clustersOnFcOrNfs: ["S_storage", "D", "D_VVF"], mixedStorage: ["S_storage", "D", "D_VVF"],
+  smallEstate: ["A"], stretchedClusters: ["A", "D"], storageTypes: ["A"], clustersOnFcOrNfs: ["S_storage", "D", "D_VVF"], mixedStorage: ["S_storage", "D", "D_VVF"],
   dedicatedNsxWorkloadDomains: ["D"], noExistingNsx: ["C1", "X1"], enhancedLinkedMode: ["X1"], source8x: ["X1"], sourceIsVcf: ["C1"],
   clustersOnVum: ["C1", "U_VVF"], vcentersWithIwa: ["C1", "U_VVF"], clustersOnVss: ["C1", "U_VVF"], legacyLogs: ["C1", "U_VVF"],
   upgradeVcfAutomation: ["U3"], upgradeLogs: ["U3"], upgradeVidmToIdentityBroker: ["U3"], upgradeHcx: ["U3"], upgradeAvi: ["U3"], upgradeSrm: ["U3"], upgradeSupervisors: ["U3"], upgradeNsxFederation: ["U3"],
@@ -640,6 +700,7 @@ const ASSUMPTION_USERS: Record<string, V2Code[]> = {
 
 /** A line's hours by role, with its share of the engagement PM pool. */
 export function lineRoles(pass1: Pick<Pass1, "pmRatio">, line: V2Line, base = line.computedBase) {
+  if (line.code === "AK") return { architect: 0, srConsultant: 0, projectManager: base };
   const lead = base;
   const secondary = base * line.secondaryShare;
   const architect = line.lead === "architect" ? lead : secondary;

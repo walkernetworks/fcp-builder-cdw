@@ -58,6 +58,27 @@ export const HOURS_V2 = {
     hostThreshold: c(32, "Low", JUDGMENT),
     perHostAboveThreshold: c(0.25, "Low", JUDGMENT),
     hostTermCap: c(40, "Low", JUDGMENT),
+    /** The Reference Architecture Design tier: a small estate gets this flat design instead of the formula above. */
+    referenceFlat: c(40, "Practice decision", "Product owner: small estates take a flat 40-hour Reference Architecture Design"),
+    /** Own packages beside the Reference Architecture Design on a small estate, each with its own estimate (all hours, project management included). */
+    /** The kickoff and delivery plan: project management hours, stated all-in, funded first on a small estate. */
+    kickoff: c(2, "Low", "Kickoff and Delivery Plan as a package of its own; confirm the estimate"),
+    hardwareReview: c(13, "Low", "Hardware Compatibility Review as a package of its own; confirm the estimate"),
+    roleAccess: c(13, "Low", "Role and Access Mapping as a package of its own; confirm the estimate"),
+    /**
+     * When the entitlement cannot carry the full design, it is phased by deliverable. Foundation design (management domain,
+     * platform, network and storage) is this many hours of the base; workload domain design, and DR and NSX overlay design
+     * (the rest of the base, plus extra sites and stretched clusters), follow.
+     */
+    foundationBase: c(40, "Practice decision", "Product owner: foundation design is the management domain, platform, network and storage; the rest of the base is DR and NSX overlay design"),
+  },
+  /** The small-estate test for the Reference Architecture Design tier: all of these must hold, at most. */
+  smallEstate: {
+    hosts: c(16, "Practice decision", "Product owner: at most 16 hosts"),
+    clusters: c(2, "Practice decision", "Product owner: at most 2 clusters"),
+    vcenters: c(1, "Practice decision", "Product owner: at most 1 vCenter"),
+    instances: c(1, "Practice decision", "Product owner: at most 1 VCF instance"),
+    sites: c(1, "Practice decision", "Product owner: at most 1 site"),
   },
   deploy: {
     managementDomain: c(64, "Medium-Low", PRESIDIO_VCF),
@@ -131,6 +152,8 @@ export const HOURS_V2 = {
     executionPerVm: c(0.15, "Low", HCX_KB),
     perExtendedVlan: c(2, "Low", HCX_KB),
     pilot: c(16, "Low", "Practitioner: pilot wave of 5 to 10 non-critical VMs"),
+    /** The Migration and Cutover Plan as a package of its own on a small estate (all hours, project management included). */
+    migrationPlan: c(24, "Low", "Migration and Cutover Plan as a package of its own; confirm the estimate"),
   },
   inPlaceWaves: {
     hostsPerWindow: c(16, "Low-Medium", "Broadcom ESX 9.1 upgrade doc (clusters in parallel, per-host selection)"),

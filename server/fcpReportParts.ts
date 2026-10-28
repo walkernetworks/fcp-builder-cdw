@@ -1,5 +1,5 @@
 import { bsasTerm, fundedDocument, isBsasOnly } from "../shared/bsas";
-import { buildBurndown, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
+import { buildBurndown, unscopedWorkPackageIds, timelinesWithDeferrals, withOwnership, type Burndown, type ScopedEffort } from "../shared/effort";
 import { calculateEntitlementEndDate, type EngagementDocument, type Timeline } from "../shared/fcp";
 import { effectiveReport, termEndAssumed } from "../shared/reportView";
 import { projectOperationalTimelineToMonths, sliceTimeline } from "./timelineHtml";
@@ -81,7 +81,7 @@ export function prepareReport(input: EngagementDocument, options: { today?: stri
   // Work the entitlement cannot carry is drawn after it, in the Two-Year Notional.
   const deferredWork = options.effort.workPackages.filter(row => row.deferred);
   // Every bar carries who owns it (the planner's choice or the default) for drawing and sequencing.
-  const customerTimelines = timelinesWithDeferrals(withOwnership(source), deferredWork.map(row => row.id));
+  const customerTimelines = timelinesWithDeferrals(withOwnership(source), deferredWork.map(row => row.id), unscopedWorkPackageIds(options.effort));
   const planned: EngagementDocument = { ...source, adoptionTimeline: customerTimelines.adoption, twoYearPlan: customerTimelines.notional };
   const document: EngagementDocument = { ...planned, report: effectiveReport(planned) };
   const { fields, report } = document;
