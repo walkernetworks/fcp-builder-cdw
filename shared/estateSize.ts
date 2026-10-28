@@ -60,3 +60,21 @@ export function estateSizeFlag(document: Source): string | null {
   const size = resolveEstateSize(document);
   return !size.known && size.choice === "auto" ? ESTATE_SIZE_UNKNOWN_FLAG : null;
 }
+
+/**
+ * Sets the Small estate choice and logs the change (what it was, what it is, when) in the document's planner log. The log
+ * is internal and never printed. Choosing what is already chosen changes nothing and logs nothing; "auto" clears the input.
+ */
+export function withSmallEstateChoice<T extends { fields: { estimateInputs: { smallEstate?: SmallEstateChoice }; plannerLog?: Array<{ at: string; input: string; from: string; to: string }> } }>(document: T, choice: SmallEstateChoice, at: string = new Date().toISOString()): T {
+  const from = document.fields.estimateInputs.smallEstate ?? "auto";
+  if (from === choice) return document;
+  const { smallEstate: _previous, ...rest } = document.fields.estimateInputs;
+  return {
+    ...document,
+    fields: {
+      ...document.fields,
+      estimateInputs: choice === "auto" ? rest : { ...rest, smallEstate: choice },
+      plannerLog: [...(document.fields.plannerLog ?? []), { at, input: "Small estate", from, to: choice }].slice(-200),
+    },
+  };
+}

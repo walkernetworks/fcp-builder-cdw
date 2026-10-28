@@ -4,7 +4,7 @@ import { BUILD_STAGE_WEIGHTS, HOURS_V2 } from "./hoursConfig";
 import { lineRoles, loadedOf, scopeV2, type Pass1, type V2Code } from "./hoursV2";
 import { fitV2, type FitV2 } from "./hoursFit";
 import type { Timeline } from "./fcp";
-import { activityOwner, calculateEntitlementEndDate, HOURS_FILL_BAR_ID, domainBuildWeight, domainHosts, domainPackages, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
+import { activityOwner, referenceDesignBarId, playbookPlanForFields, REFERENCE_DESIGN, calculateEntitlementEndDate, HOURS_FILL_BAR_ID, domainBuildWeight, domainHosts, domainPackages, DELIVERY_ROLE_BY_WORKSTREAM, stampActivityOwners, type ActivityOwner, effectiveDeliveryPath, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, resolvePlanOutcomes, type EngagementDocument, type TimelineBar, type TimelineLane } from "./fcp";
 
 /**
  * Hours model for the Condensed FCP, after the fcp-builder skill's fcp_hours.py.
@@ -600,6 +600,12 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     if (item.code === "X_VCFA_platform" && matches.length > 1) {
       const first = matches.reduce((earliest, candidate) => (candidate.bar.startCol < earliest.bar.startCol ? candidate : earliest));
       matches = [first];
+    }
+    // The Reference Architecture Design is one package: the flat design hours sit on it and on the two focused reviews
+    // (hardware compatibility and access mapping), not on discovery or the migration plan.
+    if (item.workstream === REFERENCE_DESIGN.title) {
+      const referenceId = referenceDesignBarId(playbookPlanForFields(document.fields).path);
+      if (referenceId && matches.some(({ bar }) => bar.id === referenceId)) matches = matches.filter(({ bar }) => bar.id === referenceId || /^bar-(hcl-review|design-access-mapping)$/.test(bar.id));
     }
     // Architecture and discovery fall back to the other design packages, then to any design package, when theirs are not on the plan.
     if ((DESIGN_CODES.test(item.code) || DISCOVERY_CODES.test(item.code)) && !matches.some(({ bar }) => inEntitlement(bar.id))) {

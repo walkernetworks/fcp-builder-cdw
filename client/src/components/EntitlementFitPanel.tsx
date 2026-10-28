@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input";
 import type { ScopedEffort } from "@shared/effort";
 import { estimateInputsSchema, type EngagementDocument, type EstimateInputs, type HoursModel } from "@shared/fcp";
+import { withSmallEstateChoice, type SmallEstateChoice } from "@shared/estateSize";
 
 const hours = (value: number) => Math.round(value).toLocaleString("en-US");
 // CDW written style: money carries double zeros.
@@ -64,8 +65,8 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
         <>
           {fit.underFunded && (
             <p className="rounded-lg border border-state-blocked/30 bg-state-blocked-soft p-3 font-semibold text-state-blocked-text">
-              Under-funded: the core work needs {hours(fit.coreRequiredHours)} hours, {hours(fit.underFunded.gapHours)} more than the {hours(fit.fillableHours)} fillable hours
-              {money ? ` (${dollars(fit.underFunded.gapHours * money.blendedRate)} at ${dollars(money.blendedRate)}/hr)` : ""}. The plan keeps the whole core and nothing else; raise the entitlement or change the pathway.
+              Under-funded: {fit.designFirst ? "discovery and the foundation design" : "the core work"} need{fit.designFirst ? "" : "s"} {hours(fit.designFirst ? fit.buckets.E1 : fit.coreRequiredHours)} hours, {hours(fit.underFunded.gapHours)} more than the {hours(fit.fillableHours)} fillable hours
+              {money ? ` (${dollars(fit.underFunded.gapHours * money.blendedRate)} at ${dollars(money.blendedRate)}/hr)` : ""}. The full scope needs {hours(fit.underFunded.fullScopeGapHours)} more hours{money ? ` (${dollars(fit.underFunded.fullScopeGapHours * money.blendedRate)})` : ""}. Nothing is split further and none of this prints for the customer; raise the entitlement, change the scope, or record the decision when issuing.
             </p>
           )}
           {fit.underFunded && (
@@ -140,7 +141,8 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
                   <label key={item.key} className="grid gap-0.5 rounded-lg border border-s100 bg-surface p-2" htmlFor={`assumption-${item.key}`}>
                     <span className="font-semibold">{item.label}</span>
                     <span className="text-s400">{item.source}</span>
-                    {!canEdit ? <span>{String(item.value)} (from RVTools or the brief when known)</span>
+                    {item.key === "smallEstate" ? <select id="assumption-smallEstate" className="w-40 rounded-md border border-s200 bg-surface px-2 py-1" value={inputs.smallEstate ?? "auto"} onChange={event => onChange(withSmallEstateChoice(document, event.target.value as SmallEstateChoice))}><option value="auto">Auto ({String(item.value)})</option><option value="yes">Yes</option><option value="no">No</option></select>
+                      : !canEdit ? <span>{String(item.value)} (from RVTools or the brief when known)</span>
                       : typeof item.value === "boolean" ? <select id={`assumption-${item.key}`} className="w-28 rounded-md border border-s200 px-2 py-1" value={String(inputs[key] ?? item.value)} onChange={event => setInput(key, event.target.value === "true")}><option value="false">No</option><option value="true">Yes</option></select>
                       : typeof item.value === "string" ? <select id={`assumption-${item.key}`} className="w-40 rounded-md border border-s200 px-2 py-1" value={String(inputs[key] ?? item.value)} onChange={event => setInput(key, event.target.value as EstimateInputs["transitGateway"])}><option value="distributed">Distributed</option><option value="centralized">Centralized</option></select>
                       : <Input id={`assumption-${item.key}`} type="number" min={0} className="w-28" value={inputs[key] === undefined ? "" : String(inputs[key])} placeholder={String(item.value)} onChange={event => setInput(key, event.target.value === "" ? undefined : Math.max(0, Math.round(Number(event.target.value))))} />}
@@ -148,6 +150,12 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
                 );
               })}
             </div>
+            {(document.fields.plannerLog?.length ?? 0) > 0 && (
+              <div className="mt-2">
+                <p className="mb-1 font-semibold">Planner changes</p>
+                <ul className="space-y-0.5 text-s500">{document.fields.plannerLog!.slice(-5).map((entry, index) => <li key={`${entry.at}-${index}`}>{new Date(entry.at).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}: {entry.input} changed from {entry.from} to {entry.to}</li>)}</ul>
+              </div>
+            )}
           </div>
         </>
       )}

@@ -106,7 +106,7 @@ function HoursOverview({ document, effort, onChange }: { document: EngagementDoc
             </tbody>
           </table>
           <div className="mt-1.5"><ProvenancePill provenance={{ state: "assumed", source: "Placed by the entitlement fit, in order of priority" }} /></div>
-          {fit?.underFunded && <p className="mt-2 rounded-lg border border-state-blocked/30 bg-state-blocked-soft px-3 py-2 text-xs leading-5 text-state-blocked-text" role="status"><strong>Under-funded:</strong> the work that stays in the entitlement needs {hours(fit.underFunded.gapHours)} hours more than it funds. Design work never moves, so the FCP will not export until it fits. Change the scope, not the estimate.</p>}
+          {fit?.underFunded && <p className="mt-2 rounded-lg border border-state-blocked/30 bg-state-blocked-soft px-3 py-2 text-xs leading-5 text-state-blocked-text" role="status"><strong>Under-funded:</strong> the work that stays in the entitlement needs {hours(fit.underFunded.gapHours)} hours more than it funds, and the full scope needs {hours(fit.underFunded.fullScopeGapHours)} more. Design work never moves, so the FCP will not export until it fits. Change the scope, not the estimate.</p>}
           {(fit?.scopeMoves?.length ?? 0) > 0 && <p className="mt-2 text-xs leading-5 text-ink-muted"><strong className="font-medium text-ink">Moved out of the entitlement:</strong> {fit!.scopeMoves!.map(move => `${move.label} (${hours(move.hours)} h, ${move.reason})`).join("; ")}.</p>}
         </div>
       ) : <p className="text-xs text-ink-muted">Scope by bucket prints with the v2 hours model; this plan uses the earlier model.</p>}

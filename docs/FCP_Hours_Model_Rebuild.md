@@ -165,6 +165,23 @@ All values are base (lead-role) hours. ceil = round up. Booleans are 0 or 1.
 
 - A = 64 + 16 x WLDs + 24 x (instances minus 1) + 32 x (sites minus 1) + 24 x stretched_clusters + 8 x (storage_types minus 1) + min(40, 0.25 x max(0, hosts minus 32)).
 
+### Reference Architecture Design tier (small estates)
+
+- Trigger: at most 16 hosts, 2 clusters, 1 vCenter, 1 VCF instance and 1 site. Every limit is a setting (`HOURS_V2.smallEstate` in `shared/hoursConfig.ts`). Then A is a flat 40 hours (`design.referenceFlat`), with no per-domain, per-site or per-host terms.
+- The package is named Reference Architecture Design. It is accepted when the completed VCF Planning and Preparation Workbook, the bill of materials and a short list of deviations from the reference architecture are approved by the customer. The hours sit on that package and on the hardware compatibility and access mapping reviews.
+- Counts come from RVTools when it is loaded, else from the brief (the brief has no cluster count, so clusters are the assumed ceil(hosts / 16)). No host count anywhere means the estate is not small: the full design applies and the planner sees the flag "Estate size unknown; design hours assume a full design".
+- The planner input Small estate (auto, yes, no) overrides the test either way. A change is logged in the document's planner log (`fields.plannerLog`), which is internal and never printed.
+
+### Design first (fillable hours under 300)
+
+- When the hours left after delivered hours and the reserve are under 300 (`fit.designFirstThreshold`), year one is discovery, the full design, and the foundation build if the whole build then fits. Migration waves become customer-run with the runbook. Everything else (Operations Tier 1, outcomes, depth) is follow-on, wholly.
+- If discovery and the full design do not fit, the design is phased by deliverable, never by hours. Foundation design (management domain, platform, network and storage; `design.foundationBase` plus the host, extra instance and extra storage terms) stays in the entitlement. Workload domain design, and DR and NSX overlay design (the rest of the base, extra sites and stretched clusters), move to the follow-on as a package of their own, "Workload Domain, DR and NSX Overlay Design", with its own outcome and acceptance.
+- Whatever still does not fit is under-funded: nothing is split further. `fit.underFunded` carries `gapHours` (the minimum less the fillable hours) and `fullScopeGapHours` (how many more hours the full scope needs). The issue gate (`fundingProblem`) states both and needs a logged decision; no customer document prints either.
+
+### No package is split by hours
+
+- A package is wholly in the entitlement or wholly follow-on. Displaced scope that lands on a package the entitlement does fund (later migration waves, say) is a package of its own, `<id>:later`, entirely follow-on. Planner hours on a package never feed the displaced-scope calculation. Waves are customer-run (design first) or whole-package follow-on; the squeeze no longer trims later waves by share.
+
 ## Deploy
 
 - D_VCF = 64 + 16 + 4 (Management Services, 9.1) + 40 x (instances minus 1) + sum per WLD (24 + 8 x dedicated_NSX) + 8 x max(0, clusters minus 1 minus WLDs) + 24 x stretched_clusters + 0.75 x min(hosts, 64) + 0.5 x max(0, hosts minus 64) + S_storage.
@@ -278,7 +295,7 @@ Fill in this order. Stop when the next whole unit would exceed entitlement_hours
 
 - DD and DX for the areas selected, unless Broadcom baselining was already delivered.
 
-- A (design) in full. Design is never deferred, because every later bucket depends on it.
+- A (design) in full. Design is never deferred, because every later bucket depends on it, except under 300 fillable hours, where it can be phased by deliverable (see Design first below).
 
 - The pathway spine. D (greenfield), C1 (converge), X1 per vCenter (import), U3 (VCF upgrade), or U_VVF. For in-place, FILL_ip at the minimum windows needed to clear vSphere 8 EOGS.
 

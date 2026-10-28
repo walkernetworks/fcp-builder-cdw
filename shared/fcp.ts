@@ -3223,6 +3223,12 @@ export const REFERENCE_DESIGN = {
   acceptance: "The completed VCF Planning and Preparation Workbook, the bill of materials, and a short list of deviations from the reference architecture are approved by the customer.",
 } as const;
 
+/** The timeline package that carries the Reference Architecture Design for a pathway, or null where the tier has no such package. */
+export function referenceDesignBarId(path: VcfDeliveryPath): string | null {
+  const id = REFERENCE_DESIGN_PACKAGE[path];
+  return id ? `bar-playbook-design-${id}` : null;
+}
+
 /** The plan context for a document: what the generator needs from outside the fields. */
 export function planContextFor(document: Pick<EngagementDocument, "fields" | "inventory" | "report">): PlanContext {
   return { edgeSites: document.report.discovery.edgeSites, referenceDesign: resolveEstateSize(document).small };
