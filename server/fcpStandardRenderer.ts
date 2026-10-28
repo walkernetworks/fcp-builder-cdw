@@ -40,6 +40,9 @@ const EXTRA_CSS = `
 .std tr.cat td{background:#f4f5f7;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);padding:4px 7px}
 .std tr.done td{color:var(--muted);font-weight:400;font-style:italic}
 .std tr.hold td{color:var(--muted)}
+.signs{display:grid;grid-template-columns:repeat(auto-fit,minmax(2.6in,1fr));gap:.3in;margin-top:6px}
+.sign .line{border-bottom:1px solid var(--ink);height:.3in;margin-top:5px;font-size:7.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.std tr.sub td{font-weight:800;color:var(--ink);border-top:1px solid var(--line)}
 .wp-detail{font-weight:400;font-size:8.5px;color:var(--muted);margin-top:2px;line-height:1.35}
 .milestones div{display:grid;grid-template-columns:.85in 1fr;gap:6px;padding:4px 0;border-bottom:1px solid var(--hair);font-size:10.5px;color:var(--slate)}
 .milestones b{color:var(--ink)}
@@ -50,10 +53,10 @@ type Cell = string;
 const table = (headers: string[], rows: Cell[][], options: { numeric?: number[]; foot?: boolean; total?: Cell[]; className?: string } = {}) => {
   const numeric = new Set(options.numeric ?? []);
   const cell = (value: Cell, index: number, tag: "td" | "th") => `<${tag}${numeric.has(index) ? ' class="num"' : ""}>${value}</${tag}>`;
-  // A row's first cell can carry a style marker ("\u0001done" or "\u0001hold") that becomes the row's class.
+  // A row's first cell can carry a style marker ("\u0001done", "\u0001hold" or "\u0001sub") that becomes the row's class.
   const body = rows.map(row => {
     if (row.length === 1) return `<tr class="cat"><td colspan="${headers.length}">${row[0]}</td></tr>`;
-    const marked = /^\u0001(done|hold):/.exec(row[0]);
+    const marked = /^\u0001(done|hold|sub):/.exec(row[0]);
     const cells = marked ? [row[0].slice(marked[0].length), ...row.slice(1)] : row;
     return `<tr${marked ? ` class="${marked[1]}"` : ""}>${cells.map((value, index) => cell(value, index, "td")).join("")}</tr>`;
   }).join("");
@@ -77,7 +80,14 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
   const cover = `<section class="cover" ${fitAttribute(PAGE_FIT.first)}><div>${cdwLogoSvg("logo")}</div><div><div class="eyebrow">Functional Consumption Plan · Standard</div><h1>${vvf ? "VMware vSphere Foundation" : "VMware Cloud Foundation"} Adoption: ${esc(customer)}</h1><div class="tag">Amazing happens when ${esc(customer)} runs a modern ${esc(platform)} private cloud with confidence.</div></div><div class="who"><b>Prepared for ${esc(customer)}</b><br>${esc(issued)}<br>Prepared by CDW Consulting Solution Architecture<br><b>Make Amazing Happen.</b></div></section>`;
 
   // ---- Summary page: tiles, document control, the plan on a page
-  const control = `<div class="ctrl"><div><b>Version</b>${version ? `${version.issueNumber}, issued ${esc(shortDate(version.issuedOn))}` : "Working draft"}</div><div><b>Supersedes</b>${version && version.issueNumber > 1 ? `Version ${version.issueNumber - 1}` : "None"}</div><div style="grid-column:span 2"><b>Revision</b>${esc(report.revision || (version && version.issueNumber === 1 ? "Initial plan" : "Working draft"))}</div></div>`;
+  // The previous issue's approvals are history, so they print; a status for this issue would go stale once it is approved.
+  const supersededText = (() => {
+    if (!version || version.issueNumber <= 1) return "None";
+    const prior = options.supersedes;
+    const approvals = [prior?.broadcomApprovedOn ? `by Broadcom ${shortDate(prior.broadcomApprovedOn)}` : "", prior?.customerApprovedOn ? `by ${customer} ${shortDate(prior.customerApprovedOn)}` : ""].filter(Boolean);
+    return `Version ${version.issueNumber - 1}${approvals.length ? `, approved ${approvals.join(" and ")}` : ""}`;
+  })();
+  const control = `<div class="ctrl"><div><b>Version</b>${version ? `${version.issueNumber}, issued ${esc(shortDate(version.issuedOn))}` : "Working draft"}</div><div style="grid-column:span 2"><b>Supersedes</b>${esc(supersededText)}</div><div><b>Revision</b>${esc(report.revision || (version && version.issueNumber === 1 ? "Initial plan" : "Working draft"))}</div></div>`;
   const situation = report.situation.length ? `<h3>Situation</h3><ul class="asks">${report.situation.map(item => `<li>${esc(item)}</li>`).join("")}</ul>` : "";
   const summaryPage = page(`<h2>${vvf ? "VMware vSphere Foundation" : "VMware Cloud Foundation"} Adoption: ${esc(customer)}</h2>${pills}${kpis}${control}<div class="two"><div><h3>Summary</h3><p class="synopsis">${esc(synopsis)}</p>${situation}</div><div><h3>Plan on a Page</h3>${scope}</div></div>`);
   void plan;
@@ -109,8 +119,15 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
   const workRows = effort.source === "assignments" || !shown.length
     ? effort.rows.filter(row => row.total > 0).map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), "", "", num(row.architect), num(row.srConsultant), num(row.projectManager), num(row.total)])
     : [...packageRows, ...uncategorised];
-  // Delivered rows carry the "done" look; the table's own rows are plain.
-  const workTable = table(["Work package", "Window", "Lead role", "Architect", "Sr. Consultant", "PM", "Total"], [...(deliveredRow as Cell[][]), ...workRows, ...reserveRow], { numeric: [3, 4, 5, 6], foot: true, className: "wp-table", total: [esc(totalLabel), "", "", num(effort.totals.architect), num(effort.totals.srConsultant), num(effort.totals.projectManager), num(total)] });
+  // The planned packages, then their subtotal, then what the entitlement also holds: hours already delivered and the
+  // reserve have no role split, so the entitlement total shows hours only and every role column adds up where it shows.
+  const plannedRoles = (effort.source === "assignments" || !shown.length ? effort.rows.filter(row => row.total > 0) : shown).reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
+  const heldRows = [...(deliveredRow as Cell[][]), ...reserveRow];
+  const plannedRow = heldRows.length ? [[`\u0001sub:Total planned`, "", "", num(plannedRoles.architect), num(plannedRoles.srConsultant), num(plannedRoles.projectManager), num(plannedRoles.total)]] : [];
+  const entitlementTotal = heldRows.length
+    ? [esc(totalLabel), "", "", "", "", "", num(total)]
+    : [esc(totalLabel), "", "", num(effort.totals.architect), num(effort.totals.srConsultant), num(effort.totals.projectManager), num(total)];
+  const workTable = table(["Work package", "Window", "Lead role", "Architect", "Sr. Consultant", "PM", "Total"], [...workRows, ...plannedRow, ...heldRows], { numeric: [3, 4, 5, 6], foot: true, className: "wp-table", total: entitlementTotal });
   const workPage = page(`<h2>Work Packages and Scoped Effort</h2><p class="lead">Each package with its window, lead role, CDW hours and how it is accepted. ${esc(reconcileNote)}${balanced ? "" : ""}</p>${workTable}`);
 
   // ---- Adoption timeline, milestones to date, key dates
@@ -138,7 +155,10 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
   const customerRun = report.customerOwnedWork.length ? `<h3>Work Run by ${esc(customer)}</h3>${table(["Work", "Window"], report.customerOwnedWork.map(row => [esc(row.label), esc(formatWindow(row.start.length === 7 ? `${row.start}-01` : row.start, row.end.length === 7 ? `${row.end}-01` : row.end))]))}` : "";
   const left = customerEffort + commitments + customerRun;
   const right = constraints + openItems + people;
-  const togetherPage = left || right ? page(`<h2>Working Together</h2><p class="lead">What ${esc(customer)}'s team commits to, what shapes the sequence, and who is involved.</p><div class="two"><div>${left}</div><div>${right}</div></div><div class="closer">Make Amazing Happen.</div>`) : "";
+  // Blank lines only: no pre-filled status, so the page stays true whether or not anyone has signed.
+  const signer = (party: string) => `<div class="sign"><h3>${esc(party)}</h3>${["Name", "Title", "Date", "Signature"].map(label => `<div class="line"><span>${label}</span></div>`).join("")}</div>`;
+  const signatures = `<h3>Acceptance</h3><div class="signs">${signer(customer)}${options.broadcomSignature ? signer("Broadcom") : ""}</div>`;
+  const togetherPage = left || right ? page(`<h2>Working Together</h2><p class="lead">What ${esc(customer)}'s team commits to, what shapes the sequence, and who is involved.</p><div class="two"><div>${left}</div><div>${right}</div></div>${signatures}<div class="closer">Make Amazing Happen.</div>`) : "";
 
   void listJoin; void longDate; void UNDECIDED_DEPTH; void bsasOnly;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} - FCP</title><style>${CSS}${EXTRA_CSS}${footerCss(customer, version)}</style></head><body>${options.draft ? DRAFT_MARK : ""}${cover}${summaryPage}${scopePage}${workPage}${timelinePage}${roadmapPage}${togetherPage}<button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button>${FIT_SCRIPT}</body></html>`;

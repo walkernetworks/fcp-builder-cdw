@@ -12,7 +12,7 @@ import { getIndustryDiscoveryTemplate } from "../shared/industryDiscovery";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { customerFacing, DRAFT_MARK, ENTITLEMENT_WORDING, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, sentence, shortDate, UNDECIDED_DEPTH, type Wording } from "./fcpReportParts";
 import { renderStandardFcpHtml } from "./fcpStandardRenderer";
-import { renderSummaryFcpHtml, type IssueStamp } from "./fcpSummaryRenderer";
+import { renderSummaryFcpHtml, type IssueStamp, type SupersededVersion } from "./fcpSummaryRenderer";
 import { renderTimeline, sliceTimeline } from "./timelineHtml";
 
 /**
@@ -242,6 +242,10 @@ export type CondensedFcpOptions = {
   version?: IssueStamp;
   /** What the delivered hours were for, from the consumption entries' notes (shared/consumption.ts deliveredNotes). */
   deliveredNotes?: string[];
+  /** Standard only: the previous issue and its recorded approvals. */
+  supersedes?: SupersededVersion;
+  /** Standard only: a Broadcom signature line on the acceptance block (Corporate and Strategic). */
+  broadcomSignature?: boolean;
 };
 
 

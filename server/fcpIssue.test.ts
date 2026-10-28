@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 vi.mock("./db", () => {
   class BuildLockedError extends Error {}
-  return { BuildLockedError, getEngagement: vi.fn(), getUserById: vi.fn(), getLatestIssuedVersion: vi.fn(), issueFcpVersion: vi.fn(), getIssuedVersion: vi.fn(), recordApproval: vi.fn(), listConsumptionEntries: vi.fn(async () => []) };
+  return { BuildLockedError, getEngagement: vi.fn(), getUserById: vi.fn(), getLatestIssuedVersion: vi.fn(), listIssuedVersions: vi.fn().mockResolvedValue([]), issueFcpVersion: vi.fn(), getIssuedVersion: vi.fn(), recordApproval: vi.fn(), listConsumptionEntries: vi.fn(async () => []) };
 });
 vi.mock("./pdf", () => ({ renderPdf: vi.fn(async (html: string) => Buffer.from(`%PDF-1.7\n${html.length}\n`, "utf8")) }));
 

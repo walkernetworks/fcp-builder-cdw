@@ -146,7 +146,16 @@ export function footerCss(customer: string, version: IssueStamp | undefined): st
   return `@page{@bottom-left{content:${cssString(LEGEND)};${box}}@bottom-right{content:${cssString(right)} counter(page) " of " counter(pages);text-align:right;${box}}}@page :first{@bottom-left{padding-left:.45in}@bottom-right{padding-right:.45in}}`;
 }
 
-export type SummaryOptions = { today?: string; effort: ScopedEffort; draft?: boolean; version?: IssueStamp; deliveredNotes?: string[] };
+/** The version an issue supersedes and the approvals recorded on it, for the Standard's document control. */
+export type SupersededVersion = { issueNumber: number; broadcomApprovedOn: string | null; customerApprovedOn: string | null };
+
+export type SummaryOptions = {
+  today?: string; effort: ScopedEffort; draft?: boolean; version?: IssueStamp; deliveredNotes?: string[];
+  /** The previous issue and its recorded approvals; absent on Version 1. */
+  supersedes?: SupersededVersion;
+  /** Corporate and Strategic deals carry a Broadcom signature line on the acceptance block. */
+  broadcomSignature?: boolean;
+};
 
 /**
  * The Summary's building blocks, which the Standard FCP reuses so both formats draw the same timeline, tiles, key

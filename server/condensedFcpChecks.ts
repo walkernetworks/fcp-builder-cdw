@@ -37,19 +37,31 @@ function numberCell(cell: string): number | null {
   return /^-?\d+(\.\d+)?$/.test(text) ? Number(text) : null;
 }
 
-/** Tables marked data-foot="sum" must foot: every numeric column of the last row equals the sum above it. */
+/**
+ * Tables marked data-foot="sum" must foot: every numeric column of the last row equals the sum of the rows above it.
+ * A subtotal row (class "sub") is not counted in that sum; it must instead equal the plain rows before it, and rows
+ * marked "done" or "hold" (hours without a role split) come after it.
+ */
 function footingFailures(html: string): string[] {
   const failures: string[] = [];
   for (const match of Array.from(html.matchAll(/<table\b[^>]*\bdata-foot="sum"[^>]*>([\s\S]*?)<\/table>/g))) {
     const body = match[1].split("<tbody>")[1] ?? "";
-    const rows = Array.from(body.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g), (row: RegExpMatchArray) => Array.from(row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g), (cell: RegExpMatchArray) => cell[1]));
+    const rows = Array.from(body.matchAll(/<tr([^>]*)>([\s\S]*?)<\/tr>/g), (row: RegExpMatchArray) => ({ kind: /class="(sub|done|hold)"/.exec(row[1])?.[1] ?? "plain", cells: Array.from(row[2].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g), (cell: RegExpMatchArray) => cell[1]) }));
     const total = rows.pop();
     if (!total) continue;
-    total.forEach((cell, index) => {
+    const sumOf = (list: typeof rows, index: number) => list.reduce((acc, row) => acc + (numberCell(row.cells[index] ?? "") ?? 0), 0);
+    total.cells.forEach((cell, index) => {
       const expected = numberCell(cell);
       if (expected === null) return;
-      const sum = rows.reduce((acc, row) => acc + (numberCell(row[index] ?? "") ?? 0), 0);
+      const sum = sumOf(rows.filter(row => row.kind !== "sub"), index);
       if (Math.abs(sum - expected) > 0.5) failures.push(`A table column does not foot: column ${index + 1} totals ${expected} but its rows sum to ${sum}.`);
+    });
+    const subtotal = rows.findIndex(row => row.kind === "sub");
+    if (subtotal >= 0) rows[subtotal].cells.forEach((cell, index) => {
+      const expected = numberCell(cell);
+      if (expected === null) return;
+      const sum = sumOf(rows.slice(0, subtotal).filter(row => row.kind === "plain"), index);
+      if (Math.abs(sum - expected) > 0.5) failures.push(`A table subtotal does not foot: column ${index + 1} shows ${expected} but the rows above sum to ${sum}.`);
     });
   }
   return failures;

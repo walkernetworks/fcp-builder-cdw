@@ -31,6 +31,9 @@ export function defaultReportFormat(segment: Segment | null | undefined): Report
   return segment === "commercial" ? "summary" : "standard";
 }
 
+/** Corporate and Strategic deals go to Broadcom for approval, so the Standard's acceptance block carries their signature line too. */
+export const needsBroadcomSignature = (segment: Segment | null | undefined) => segment === "corporate" || segment === "strategic";
+
 /** The renderer option for a choice: undefined renders the long report. */
 export function reportFormatOption(choice: ReportFormatChoice): ReportFormat | undefined {
   return choice === "full" ? undefined : choice;

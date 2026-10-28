@@ -69,6 +69,56 @@ describe("Standard FCP", () => {
     expect(text).toContain("Not yet booked");
   });
 
+  it("prints the superseded version's recorded approvals in document control, and None for Version 1", () => {
+    const document = meridianHealth();
+    const render = (issueNumber: number, supersedes?: { issueNumber: number; broadcomApprovedOn: string | null; customerApprovedOn: string | null }) =>
+      visible(renderCondensedFcpHtml(document.fields.customerName, document, { effort: scopedEffortForDocument(document, FIXTURE_TODAY), today: FIXTURE_TODAY, format: "standard", version: { issueNumber, issuedOn: FIXTURE_TODAY }, ...(supersedes ? { supersedes } : {}) }));
+    expect(render(1)).toContain("Supersedes None");
+    expect(render(2, { issueNumber: 1, broadcomApprovedOn: "2026-10-12", customerApprovedOn: "2026-10-15" })).toContain("Supersedes Version 1, approved by Broadcom 12 Oct 2026 and by Meridian Health 15 Oct 2026");
+    expect(render(2, { issueNumber: 1, broadcomApprovedOn: null, customerApprovedOn: "2026-10-15" })).toContain("Supersedes Version 1, approved by Meridian Health 15 Oct 2026");
+    expect(render(2, { issueNumber: 1, broadcomApprovedOn: null, customerApprovedOn: null })).toContain("Supersedes Version 1 ");
+    // A status for this issue would go stale once it is approved, so none is printed.
+    expect(render(2)).not.toMatch(/Pending|Approved by Broadcom: /);
+  });
+
+  it("ends with an acceptance block of blank lines: the customer's, and Broadcom's on Corporate and Strategic deals", () => {
+    const document = meridianHealth();
+    const render = (broadcomSignature: boolean) => renderCondensedFcpHtml(document.fields.customerName, document, { effort: scopedEffortForDocument(document, FIXTURE_TODAY), today: FIXTURE_TODAY, format: "standard", version: { issueNumber: 1, issuedOn: FIXTURE_TODAY }, broadcomSignature });
+    const withBroadcom = render(true);
+    const signs = (html: string) => Array.from(html.matchAll(/<div class="sign"><h3>([^<]*)<\/h3>((?:<div class="line"><span>[^<]*<\/span><\/div>){4})<\/div>/g), match => [match[1], Array.from(match[2].matchAll(/<span>([^<]*)<\/span>/g), item => item[1])]);
+    expect(signs(withBroadcom)).toEqual([["Meridian Health", ["Name", "Title", "Date", "Signature"]], ["Broadcom", ["Name", "Title", "Date", "Signature"]]]);
+    expect(signs(render(false)).map(([party]) => party)).toEqual(["Meridian Health"]);
+    expect(withBroadcom.indexOf("<h3>Acceptance</h3>")).toBeGreaterThan(withBroadcom.indexOf("Who Is Involved"));
+  });
+
+  it("adds up the work packages: a Total planned row whose role columns sum, then delivered, held and the entitlement total", () => {
+    const html = standard(acmeHealthReconciled());
+    expect(checks(html, acmeHealthReconciled())).toEqual([]);
+    const rows = Array.from((html.match(/<table class="std wp-table"[\s\S]*?<\/table>/) ?? [""])[0].matchAll(/<tr([^>]*)>([\s\S]*?)<\/tr>/g), match => ({ kind: /class="([a-z]+)"/.exec(match[1])?.[1] ?? "plain", cells: Array.from(match[2].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g), cell => cell[1].replace(/<[^>]+>/g, "").trim()) }));
+    const number = (value: string | undefined) => (value ? Number(value.replace(/,/g, "")) : 0);
+    const kinds = rows.filter(row => row.kind !== "cat").map(row => row.kind);
+    expect(kinds.slice(-4)).toEqual(["sub", "done", "hold", "total"]);
+    const planned = rows.filter(row => row.kind === "plain");
+    const sub = rows.find(row => row.kind === "sub")!;
+    const total = rows.find(row => row.kind === "total")!;
+    for (const column of [3, 4, 5]) expect(number(sub.cells[column]), `role column ${column + 1}`).toBe(planned.reduce((sum, row) => sum + number(row.cells[column]), 0));
+    expect(number(sub.cells[3]) + number(sub.cells[4]) + number(sub.cells[5])).toBe(number(sub.cells[6]));
+    expect(sub.cells[0]).toBe("Total planned");
+    // Delivered and held hours have no role split, so the entitlement total shows hours only.
+    expect([3, 4, 5].map(column => total.cells[column])).toEqual(["", "", ""]);
+    expect(number(sub.cells[6]) + rows.filter(row => row.kind === "done" || row.kind === "hold").reduce((sum, row) => sum + number(row.cells[6]), 0)).toBe(number(total.cells[6]));
+  });
+
+  it("never prints a zero or unknown count in the estate line", () => {
+    for (const document of [cedarRidgeLogistics(), meridianHealth(), acmeHealthReconciled()]) {
+      const text = visible(standard(document));
+      expect(text).not.toMatch(/\b0 (powered on|VMs?|vCenters?|clusters?|ESXi hosts?)\b|\bunknown\b|\bNaN\b/i);
+    }
+    const document = cedarRidgeLogistics();
+    Object.assign(document.inventory, { hosts: 1, clusters: 1, vmCount: 0, poweredOnVms: 0 });
+    expect(visible(standard(document))).toMatch(/1 ESXi host and 1 cluster/);
+  });
+
   it("is self-contained: one inline script, no network", () => {
     const scripts = standard(meridianHealth()).match(/<script[^>]*>[\s\S]*?<\/script>/g) ?? [];
     expect(scripts).toHaveLength(1);

@@ -2,7 +2,7 @@ import type { ScopedEffort } from "../shared/effort";
 import { computeChangeSummary, isEmptyChange, type ChangeSummary } from "../shared/fcpChangeSummary";
 import { migrateDocument, type EngagementDocument } from "../shared/fcp";
 import { deliveredNotes } from "../shared/consumption";
-import { defaultReportFormat, fundingProblem, reportFormatOption, type ReportFormat, type ReportFormatChoice } from "../shared/reportFormat";
+import { defaultReportFormat, fundingProblem, needsBroadcomSignature, reportFormatOption, type ReportFormat, type ReportFormatChoice } from "../shared/reportFormat";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import * as db from "./db";
@@ -52,7 +52,13 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
   const format = reportFormatOption(reportFormat);
   const latest = await db.getLatestIssuedVersion(viewer, engagementId);
   const notes = format ? await recordDeliveredNotes(viewer, engagementId, document) : [];
-  const render = (version: { issueNumber: number; issuedOn: string }) => renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version, deliveredNotes: notes } : {}) });
+  // The Standard's document control prints the superseded version's recorded approvals.
+  const issued = format === "standard" ? (await db.listIssuedVersions(viewer, engagementId)) ?? [] : [];
+  const supersedes = (issueNumber: number) => {
+    const prior = issued.find(item => item.issueNumber === issueNumber - 1);
+    return prior ? { supersedes: { issueNumber: issueNumber - 1, broadcomApprovedOn: prior.broadcomApprovedOn ?? null, customerApprovedOn: prior.customerApprovedOn ?? null } } : {};
+  };
+  const render = (version: { issueNumber: number; issuedOn: string }) => renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version, deliveredNotes: notes, ...(format === "standard" ? { ...supersedes(version.issueNumber), broadcomSignature: needsBroadcomSignature(row.segment) } : {}) } : {}) });
   const html = render({ issueNumber: (latest?.issueNumber ?? 0) + 1, issuedOn });
   const previous = latest && latest.issueNumber !== null && latest.effortSnapshot ? { document: latest.data, effort: latest.effortSnapshot, issueNumber: latest.issueNumber } : null;
   const changeSummary = computeChangeSummary(previous, { document, effort });
