@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { problemsAddressedByFollowOn } from "./fcpTwoYear";
+import { shortBarLabel } from "./timelineLabels";
 import { acmeHealthReconciled, FIXTURE_TODAY } from "./fixtures/fcpFixtures";
 import { scopedEffortForDocument } from "./rateCard";
 
@@ -22,5 +23,10 @@ describe("the problem the follow-on work addresses", () => {
       { problem: "Platform sprawl", addressedBy: "a platform build with a design review" },
     ];
     expect(problemsAddressedByFollowOn(document, rows)).toEqual([]);
+  });
+
+  it("shortens the small-estate design package to Reference Design on the timeline", () => {
+    expect(shortBarLabel("Reference Architecture Design")).toBe("Reference Design");
+    expect(shortBarLabel("Month 2: Reference Architecture Design")).toBe("Reference Design");
   });
 });
