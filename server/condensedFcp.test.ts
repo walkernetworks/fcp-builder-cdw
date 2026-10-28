@@ -308,6 +308,9 @@ describe("Condensed FCP review fixes", () => {
   it("dates the platform build from the foundation build and starts licensing inside it", () => {
     const document = withEstate({ includeVcfReadiness: false, includeOperationalTimeline: true });
     document.fields.adoptionDetails = { ...document.fields.adoptionDetails, upgradePath: "hybrid" } as never;
+    // An entitlement big enough to build in (design first applies under 300 hours), so the build is dated from its own package.
+    document.report.entitlement.hours = 700;
+    document.fields.entitlementAmount = 230_000;
     const refreshed = refreshDerivedDocument(document, { forceRebuild: true });
     const window = (id: string) => { const bar = refreshed.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(item => item.id === id); return bar ? barWindow(refreshed.adoptionTimeline, bar) : null; };
     const foundation = window("bar-management-domain")!;
@@ -577,6 +580,8 @@ describe("generated report content", () => {
   it("prints generated rows until the planner hides or overrides them", async () => {
     const { generateReport, effectiveReport } = await import("../shared/reportView");
     const document = engagement(raw => { raw.personnel = []; });
+    // Enough entitlement hours for the plan to have more than one workstream (design first applies under 300 hours).
+    document.report.entitlement.hours = 700;
     const generated = generateReport(document);
     const [first, second] = generated.personnel;
     expect(first && second).toBeTruthy();

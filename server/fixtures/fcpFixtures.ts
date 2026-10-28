@@ -30,7 +30,8 @@ function smallEstate(document: EngagementDocument): EngagementDocument {
   document.inventory.hosts = 14;
   document.inventory.clusters = 1;
   document.fields.estimateInputs.sites = 1;
-  return document;
+  // The generated plan names the architecture package for the estate's size.
+  return refreshDerivedDocument(document);
 }
 
 /** Commercial, entitlement only, imported from the example brief (signed resource assignments, consumption to date). */
@@ -112,10 +113,10 @@ export function riverbendHealth(): EngagementDocument {
   return issuedAsPlanned(riverbendCalculated());
 }
 
-/** Riverbend Health with only 150 BSAS hours: the protected work and the design it builds on alone need more, so the squeeze cannot close the gap. A gate fixture, not a golden. */
+/** Riverbend Health with only 90 BSAS hours: 46 remain after delivery and the reserve, less than the 51 hours of discovery-free design, so the plan is under-funded and nothing else fits. A gate fixture, not a golden. */
 export function riverbendHealthOverfunded(): EngagementDocument {
   const document = riverbendHealth();
-  document.fields.bsasHours = 150;
+  document.fields.bsasHours = 90;
   return document;
 }
 
