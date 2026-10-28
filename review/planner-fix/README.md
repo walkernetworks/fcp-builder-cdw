@@ -25,3 +25,7 @@ Files re-rendered this round: `standard-acme`, `standard-cedar`, `standard-merid
 
 Follow-on, whole: First Workload Domain (about 42), Workload Migration and Cutover (about 215), Runbook Knowledge Transfer, Health, Logs and Diagnostics, Recovery Services Build.
 The proving wave (126) does not fit after step d; the First Workload Domain (42) does not fit in the 15 hours left after step d. Nothing later in the order was funded while an earlier package that fitted was left out (`never funds a package while an earlier one in the order is left out though it would have fit`).
+
+## Delivery model round (PR #64, `fcp-wave-delivery`)
+
+`delivery-model-acme-summary.pdf` (3 pages) and `delivery-model-acme-standard.pdf` (7 pages), from `acmeHealthReconciled`, with the default Migration waves setting (CDW runs all waves). Fake data only. Acme's planned hours are unchanged at 205 (39 delivered + 205 planned + 18 held = 262). The waves are now one whole package of 215 hours in the follow-on (before: wave 1 was cut out and the rest handed to the customer); there is no runbook transfer, no "Remaining migration waves" row and no customer-run phase.
