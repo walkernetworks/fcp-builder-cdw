@@ -960,7 +960,7 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
     wantThisYear: inputs.wantThisYear,
     datedWaves: pass1.inputs.datedWaves,
     ...(inputs.reservePercent !== undefined ? { reserveShare: inputs.reservePercent / 100 } : {}),
-    customerRunsLaterWaves: customerRunsRemainingWaves(document),
+    wavesMode: migrationWavesChoice(document),
   });
   const fundedBases = new Map<V2Code, number>();
   const displacedBases = new Map<V2Code, number>();
@@ -1217,40 +1217,53 @@ export function formatWindow(start: string, end: string): string {
   return start.slice(0, 4) === end.slice(0, 4) ? `${monthOnly(start)} – ${monthYear(end)}` : `${monthYear(start)} – ${monthYear(end)}`;
 }
 
-/**
- * The waves the customer's team runs after CDW's proving waves, with the runbook CDW proved: from the month after
- * CDW's waves end, about one month per 250 VMs (3 to 12 months). Null when the plan has no waves.
- */
-export function customerRemainingWaves(document: EngagementDocument): { label: string; start: string; end: string } | null {
-  // They exist only behind CDW's proving waves in the entitlement; waves that moved to the follow-on are CDW's whole package.
-  return buildScopedEffort(document).workPackages.some(row => /^bar-playbook-execution-/.test(row.id) && row.total > 0 && !row.deferred) ? plannedRemainingWaves(document) : null;
+/** Who runs the migration and upgrade waves. CDW runs all of them unless the customer asked otherwise (a per-engagement setting). */
+export function migrationWavesChoice(document: EngagementDocument): "cdw" | "customer-remaining" | "customer-all" {
+  return document.fields.estimateInputs.migrationWaves ?? "cdw";
 }
 
-/** The remaining waves as the timeline places them, whether or not CDW's proving waves are funded (the fit decides that). */
-function plannedRemainingWaves(document: EngagementDocument): { label: string; start: string; end: string } | null {
-  // CDW's waves in the entitlement, or in the Two-Year Notional when they moved there.
-  const endOf = (timeline: Timeline) => timeline.lanes.flatMap(lane => lane.bars).filter(bar => /^bar-playbook-execution-/.test(bar.id))
+/**
+ * The waves the customer's team runs, only when they asked to (the Migration waves setting). After CDW's first waves
+ * ("customer-remaining") they start the month after CDW's waves end and take about one month per 250 VMs (3 to 12 months);
+ * the label says "with the proven runbook" only when CDW's first waves and the runbook transfer are in the funded plan.
+ * With "customer-all" they run every wave, from the end of CDW's design and build. Null otherwise.
+ */
+export function customerRemainingWaves(document: EngagementDocument): { label: string; start: string; end: string } | null {
+  const choice = migrationWavesChoice(document);
+  if (choice === "cdw") return null;
+  const funded = (test: (id: string) => boolean) => buildScopedEffort(document).workPackages.some(row => test(row.id) && row.total > 0 && !row.deferred);
+  if (choice === "customer-all") return plannedCustomerWaves(document, false);
+  // They exist only behind CDW's first waves in the entitlement; waves that moved to the follow-on are CDW's whole package.
+  if (!funded(id => /^bar-playbook-execution-/.test(id))) return null;
+  return plannedCustomerWaves(document, funded(id => id === RUNBOOK_TRANSFER_BAR));
+}
+
+/** The customer's waves as the timeline places them, whether or not CDW's first waves are funded (the fit decides that). */
+function plannedCustomerWaves(document: EngagementDocument, provenRunbook: boolean): { label: string; start: string; end: string } | null {
+  const choice = migrationWavesChoice(document);
+  // CDW's waves in the entitlement, or in the Two-Year Notional when they moved there; with the customer running all, the last of CDW's design and build.
+  const endOf = (timeline: Timeline, pattern: RegExp) => timeline.lanes.flatMap(lane => lane.bars).filter(bar => pattern.test(bar.id))
     .map(bar => barWindow(timeline, bar)?.end).filter((end): end is string => Boolean(end)).sort().at(-1);
-  const last = endOf(document.adoptionTimeline) ?? endOf(document.twoYearPlan);
+  const pattern = choice === "customer-all" ? /^bar-/ : /^bar-playbook-execution-/;
+  const last = endOf(document.adoptionTimeline, pattern) ?? endOf(document.twoYearPlan, pattern);
   if (!last) return null;
   const upgrade = effectiveDeliveryPath(document.fields) === "in-place";
   const months = Math.min(12, Math.max(3, Math.ceil((document.inventory.vmCount || 0) / 250)));
   const month = (iso: string, add: number) => { const date = new Date(`${iso.slice(0, 7)}-01T00:00:00Z`); date.setUTCMonth(date.getUTCMonth() + add); return date.toISOString().slice(0, 7); };
   const customer = document.fields.customerName || "the customer";
-  return { label: `Remaining ${upgrade ? "upgrade" : "migration"} waves, run by ${customer} with the proven runbook`, start: month(last, 1), end: month(last, months) };
+  const kind = upgrade ? "upgrade" : "migration";
+  const label = choice === "customer-all"
+    ? `${upgrade ? "Upgrade" : "Migration"} waves, run by ${customer}`
+    : `Remaining ${kind} waves, run by ${customer}${provenRunbook ? " with the proven runbook" : ""}`;
+  return { label, start: month(last, 1), end: month(last, months) };
 }
 
 /** Labels that name migration or upgrade waves. */
 export const WAVES_LABEL = /\bwaves?\b/i;
 
-/**
- * True when the customer's team runs the waves after CDW's: the report has its own wave row, or the plan's generated
- * one is not hidden. Those waves are then customer work only, never CDW follow-on scope as well.
- */
+/** True when the customer's team runs waves, because the planner chose it (a customer request). Those waves are then customer work only, never CDW follow-on scope as well. */
 export function customerRunsRemainingWaves(document: EngagementDocument): boolean {
-  if (completedReport(document.report).customerOwnedWork.some(row => WAVES_LABEL.test(row.label))) return true;
-  const generated = plannedRemainingWaves(document);
-  return Boolean(generated && !document.report.hiddenGenerated.includes(`customerOwnedWork:${generated.label.trim().toLowerCase()}`));
+  return migrationWavesChoice(document) !== "cdw";
 }
 
 /** Customer effort per phase from the plan's windows and the default hours per week. */
@@ -1268,7 +1281,7 @@ export function buildCustomerEffort(document: EngagementDocument): { phases: Cus
   for (const work of completedReport(document.report).customerOwnedWork) {
     const start = work.start.length === 7 ? `${work.start}-01` : work.start;
     const end = work.end.length === 7 ? `${work.end}-28` : work.end;
-    add(WAVES_LABEL.test(work.label) ? "customerWaves" : "build", { label: work.label, start, end });
+    add(WAVES_LABEL.test(work.label) && customerRunsRemainingWaves(document) ? "customerWaves" : "build", { label: work.label, start, end });
   }
   const phases = Array.from(sources.entries()).map(([key, items]) => {
     const defaults = CUSTOMER_EFFORT_DEFAULTS[key];

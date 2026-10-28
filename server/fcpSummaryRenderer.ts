@@ -3,7 +3,7 @@ import { formatWindow, type ScopedEffort } from "../shared/effort";
 import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument, type Timeline } from "../shared/fcp";
 import { planBsasAllocation } from "../shared/planView";
 import { reconcileHours } from "../shared/reportFormat";
-import { customerOpenItems, planKeyDates, platformName, selectedScopeSummary } from "../shared/reportView";
+import { customerOpenItems, deliveryClause, planKeyDates, platformName, selectedScopeSummary } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { barWindow } from "../shared/buildingBlocks";
 import { DRAFT_MARK, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, RESERVE_LINE, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
@@ -206,7 +206,7 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   // ---- What we're doing: the plan in a few sentences; what follows the entitlement is in After This Plan
   const builds = plan.implementationPackages.length > 0;
   const synopsis = [
-    builds ? `CDW designs and builds the ${platform} foundation for ${customer}, proves the runbook and hands the platform over, and ${customer}'s team repeats it.` : `CDW delivers the ${platform} architecture and an implementation-ready design that ${customer}'s team builds from.`,
+    builds ? `CDW designs and builds the ${platform} foundation for ${customer}, ${deliveryClause(document, customer, "hands the platform over")}.` : `CDW delivers the ${platform} architecture and an implementation-ready design that ${customer}'s team builds from.`,
     selectedScopeSummary(document),
   ].join(" ");
 

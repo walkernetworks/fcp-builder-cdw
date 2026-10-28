@@ -86,7 +86,7 @@ export type FitOptions = {
   /** Share of the hours left after delivery held back, 0 to 0.5; the 8% default when unset. */
   reserveShare?: number;
   /** The customer's team runs the waves CDW's entitlement does not carry, so they are not CDW follow-on scope. */
-  customerRunsLaterWaves?: boolean;
+  wavesMode?: "cdw" | "customer-remaining" | "customer-all";
 };
 
 /** Spec 7.4 step 6 default order when the customer has not ranked outcomes. Operations modules beyond Tier 1 come last. */
@@ -128,8 +128,11 @@ function fillOrder(pass1: Pass1, options: FitOptions): Item[] {
   // Fill order d: the migration plan, the proving waves, then e: the first workload domain (before the rest of the operations build).
   for (const line of byCode("AP")) for (const unit of line.units) push(line, unit, 4);
   // 4. Migration waves with a date behind them (the first wave carries the HCX setup and pilot). 7. The rest.
+  // CDW runs every wave by default, so the whole waves package sits at step 4 and is funded whole or moves whole to the follow-on.
+  // Only when the customer asks to run the remaining waves do the waves past the dated ones drop to step 7; when they ask to run all, none is CDW's.
+  const wavesMode = options.wavesMode ?? "cdw";
   for (const line of byCode("FILL_mig")) {
-    line.units.filter(item => item.tier === 1).forEach((unit, index) => push(line, unit, index < Math.max(1, options.datedWaves) ? 4 : 7));
+    line.units.filter(item => item.tier === 1).forEach((unit, index) => push(line, unit, wavesMode === "cdw" || index < Math.max(1, options.datedWaves) ? 4 : 7));
   }
   for (const line of byCode("DW")) for (const unit of line.units) push(line, unit, 4.5);
   // 5. The Operations design is reserved by the fit itself (the design share of the X4 line), not a unit.
@@ -144,7 +147,8 @@ function fillOrder(pass1: Pass1, options: FitOptions): Item[] {
   // Anything a step did not claim (the EF uplift) fills last.
   const claimed = new Set(items.map(item => item.unit.id));
   for (const line of pass1.lines) for (const unit of line.units) if (!claimed.has(unit.id)) push(line, unit, 9);
-  return items.sort((left, right) => left.step - right.step || left.order - right.order);
+  // When the customer runs every wave, none of the waves line is CDW's, at any depth.
+  return items.filter(item => !(wavesMode === "customer-all" && item.line.code === "FILL_mig")).sort((left, right) => left.step - right.step || left.order - right.order);
 }
 
 const ADD_ON = /^(X|EF$)/;
@@ -215,6 +219,10 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   });
   const displaced: Item[] = [];
   const customerRun: Item[] = [];
+  const wavesMode = options.wavesMode ?? "cdw";
+  if (wavesMode === "customer-all") for (const line of pass1.lines.filter(entry => entry.code === "FILL_mig")) for (const unit of line.units.filter(entry => entry.tier === 1)) customerRun.push({ line, unit, step: 7, order: -1 });
+  const wavesCost = items.filter(entry => entry.line.code === "FILL_mig" && entry.step === 4).reduce((sum, entry) => sum + loaded(entry.line, entry.unit.base), 0);
+  let wavesWhole: boolean | undefined;
   const reasonOf = new Map<string, DisplacedReason>();
   const sharedLines = new Set<V2Code>();
 
@@ -237,7 +245,10 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     const isOps = Boolean(opsLine) && item.line === opsLine && item.unit.tier === 1;
     // Funding the Operations build covers the design reserved for it.
     const credit = isOps && !opsReleased ? opsDesignCost : 0;
-    if (!stopped && used - credit + cost <= fillableHours + eps) {
+    const wholeWaves = wavesMode === "cdw" && item.line.code === "FILL_mig";
+    if (wholeWaves && wavesWhole === undefined) wavesWhole = !stopped && used + wavesCost <= fillableHours + eps;
+    const fits = wholeWaves ? Boolean(wavesWhole) : !stopped && used - credit + cost <= fillableHours + eps;
+    if (fits) {
       place(item, item.step <= 4.5 || (item.step === 6 && item.unit.tag === "ops-core") ? "E1" : "E2");
       used += cost - credit;
       if (isOps && !opsReleased) {
@@ -247,7 +258,7 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
         sharedLines.delete("X4");
       }
       if (item.line.code === "FILL_mig" && item.step === 4) provingFunded = true;
-    } else if (options.customerRunsLaterWaves && provingFunded && item.line.code === "FILL_mig" && item.step === 7) {
+    } else if (wavesMode === "customer-remaining" && provingFunded && item.line.code === "FILL_mig" && item.step === 7) {
       customerRun.push(item);
     } else if (pass1.estate.small && item.step <= 4.5 && !stopped) {
       // Packages d and e are whole or follow-on: one that does not fit does not hold back the next package that does.

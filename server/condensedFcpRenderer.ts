@@ -2,7 +2,7 @@ import { allocateBsas, type BsasTerm } from "../shared/bsas";
 import { barWindow } from "../shared/buildingBlocks";
 import { buildCustomerEffort, formatWindow, type ScopedEffort } from "../shared/effort";
 import { activityOwner, domainHosts, domainPackages, effectivePlatformEdition, FIXED_GANTT_CATEGORIES, summarizeCompatibilityHandoff, planOutcomeLabel, playbookPlanForFields, resolvePlanOutcomes, type EngagementDocument, type Timeline, type TimelineBar, type TimelineCategory, type WorkstreamType } from "../shared/fcp";
-import { customerOpenItems, minimumTargetRelease, planKeyDates, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
+import { customerOpenItems, deliveryClause, minimumTargetRelease, planKeyDates, platformName, selectedScopeSummary, termEndAssumed } from "../shared/reportView";
 import type { ReportFormat } from "../shared/reportFormat";
 import { VCF_CORPUS } from "../shared/vcfCorpus";
 import { DOMAIN_BUILD_WEIGHTS } from "../shared/hoursConfig";
@@ -510,7 +510,7 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
   // ---- Adoption plan & recommendation
   const builds = plan.implementationPackages.length > 0;
   const funds = builds
-    ? `CDW designs and builds the ${esc(platform)} foundation, proves the runbook and hands over, and ${esc(customer)}'s team repeats it`
+    ? `CDW designs and builds the ${esc(platform)} foundation, ${esc(deliveryClause(document, customer))}`
     : `CDW delivers the ${esc(platform)} architecture and an implementation-ready design that ${esc(customer)}'s team builds from`;
   const shortVersion = burndown
     ? `${hours(burndown.remainingHours)} hours remain and the ${w("entitlement expires", "BSAS term ends")} on <b>${esc(longDate(burndown.termEnd))}</b>${tbc}. Unconsumed hours are not refunded. ${w("The entitlement funds", "BSAS funds")} the one-time work: ${funds}. That requires about ${burndown.expiryPace} hours of delivery per week from today.`

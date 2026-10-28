@@ -343,19 +343,40 @@ describe("v2 Pass 2 fit (spec section 7)", () => {
     expect(fit.designShareFlags).toEqual(expect.arrayContaining([expect.stringContaining("VCF Automation platform")]));
   });
 
-  it("splits migration waves by wave and keeps HCX setup and the pilot with the first", () => {
+  it("splits migration waves by wave and keeps HCX setup and the pilot with the first, when the customer runs the remaining waves", () => {
     const pass1 = scopeV2(doc({ hosts: 40, vms: 800 }));
     const waves = pass1.lines.find(line => line.code === "FILL_mig")!;
-    const everything = fitOf(pass1, 100_000);
+    const remaining = { wavesMode: "customer-remaining" as const };
+    const everything = fitOf(pass1, 100_000, remaining);
     // Everything ahead of the second wave in the fill order, then the second wave and one hour.
     const ahead = everything.placements.filter(item => item.step < 7 && !item.designShare).reduce((sum, item) => sum + item.loaded, 0);
-    const fit = fitOf(pass1, (ahead + loadedOf(pass1, waves, waves.units[1].base) + 1) / 0.92);
+    const fit = fitOf(pass1, (ahead + loadedOf(pass1, waves, waves.units[1].base) + 1) / 0.92, remaining);
     const placed = (id: string) => fit.placements.find(item => item.unitId === id)!;
     expect(placed("FILL_mig:wave-1")).toMatchObject({ bucket: "E1", step: 4 });
     expect(placed("FILL_mig:wave-2")).toMatchObject({ bucket: "E2", step: 7 });
-    expect(placed("FILL_mig:wave-3").bucket).toBe("F");
-    // More dated waves pull more into E1.
-    expect(fitOf(pass1, 100_000, { datedWaves: 3 }).placements.filter(item => item.code === "FILL_mig" && item.step === 4)).toHaveLength(3);
+    // The waves past the funded ones are the customer's, not follow-on.
+    expect(fit.placements.some(item => item.unitId === "FILL_mig:wave-3")).toBe(false);
+    expect(fit.customerRun.waves).toBeGreaterThan(0);
+    expect(fitOf(pass1, 100_000, { datedWaves: 3, ...remaining }).placements.filter(item => item.code === "FILL_mig" && item.step === 4)).toHaveLength(3);
+  });
+
+  it("sizes and funds CDW's waves as one whole package by default, and leaves them out when the customer runs all", () => {
+    const pass1 = scopeV2(doc({ hosts: 40, vms: 800 }));
+    const waves = pass1.lines.find(line => line.code === "FILL_mig")!;
+    const all = waves.units.filter(unit => unit.tier === 1).map(unit => unit.id);
+    expect(all.length).toBeGreaterThan(1);
+    const funded = fitOf(pass1, 100_000);
+    expect(funded.placements.filter(item => item.code === "FILL_mig").map(item => [item.unitId, item.step])).toEqual(all.map(id => [id, 4]));
+    expect(funded.customerRun).toEqual({ hours: 0, waves: 0 });
+    // Whole or follow-on: when the package does not fit, none of it is funded and none is the customer's.
+    const ahead = funded.placements.filter(item => item.step < 4 && !item.designShare).reduce((sum, item) => sum + item.loaded, 0);
+    const short = fitOf(pass1, (ahead + 1) / 0.92);
+    expect(short.placements.filter(item => item.code === "FILL_mig" && item.bucket !== "F")).toEqual([]);
+    expect(short.customerRun.waves).toBe(0);
+    // The customer runs all waves on request: none is CDW's, funded or follow-on.
+    const theirs = fitOf(pass1, 100_000, { wavesMode: "customer-all" });
+    expect(theirs.placements.filter(item => item.code === "FILL_mig")).toEqual([]);
+    expect(theirs.customerRun.waves).toBe(all.length);
   });
 
   it("splits in-place windows, imports by vCenter, recovery by site pair and exercise, and vDefend by stage", () => {

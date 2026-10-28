@@ -1,7 +1,7 @@
 import { Input } from "@/components/ui/input";
 import type { ScopedEffort } from "@shared/effort";
 import { estimateInputsSchema, type EngagementDocument, type EstimateInputs, type HoursModel } from "@shared/fcp";
-import { withSmallEstateChoice, type SmallEstateChoice } from "@shared/estateSize";
+import { withMigrationWavesChoice, withSmallEstateChoice, type MigrationWavesChoice, type SmallEstateChoice } from "@shared/estateSize";
 
 const hours = (value: number) => Math.round(value).toLocaleString("en-US");
 // CDW written style: money carries double zeros.
@@ -150,6 +150,15 @@ export function EntitlementFitPanel({ document, effort, onChange }: { document: 
                 );
               })}
             </div>
+            <label className="mt-2 grid gap-0.5 rounded-lg border border-s100 bg-surface p-2" htmlFor="assumption-migrationWaves">
+              <span className="font-semibold">Migration waves</span>
+              <span className="text-s400">CDW runs every wave unless the customer asks to run them. The change is logged below.</span>
+              <select id="assumption-migrationWaves" className="w-full max-w-md rounded-md border border-s200 bg-surface px-2 py-1" value={inputs.migrationWaves ?? "cdw"} onChange={event => onChange(withMigrationWavesChoice(document, event.target.value as MigrationWavesChoice))}>
+                <option value="cdw">CDW runs all waves</option>
+                <option value="customer-remaining">Customer runs the remaining waves after CDW's first waves (customer request)</option>
+                <option value="customer-all">Customer runs all waves (customer request)</option>
+              </select>
+            </label>
             {(document.fields.plannerLog?.length ?? 0) > 0 && (
               <div className="mt-2">
                 <p className="mb-1 font-semibold">Planner changes</p>

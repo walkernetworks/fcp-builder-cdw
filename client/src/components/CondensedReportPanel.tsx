@@ -79,7 +79,7 @@ export function CondensedReportPanel({ document, onChange, showJsonEditor = true
               {data.internal.shortfallHours > 0 && <><dt>Unfunded hours</dt><dd className="text-right font-semibold">{data.internal.shortfallHours} hrs</dd></>}
               {data.internal.headroomHours > 0 && <><dt>Hours to spare</dt><dd className="text-right">{data.internal.headroomHours} hrs</dd></>}
             </dl>
-            {data.internal.status === "short" && <p className="mt-2">Options: CDW does the one-time work and the customer repeats it; stage the scope; or redirect the entitlement. Express any gap to the customer as hours, never dollars.</p>}
+            {data.internal.status === "short" && <p className="mt-2">Options: stage the scope; the customer runs the remaining waves, if they ask to (Migration waves setting); or redirect the entitlement. Express any gap to the customer as hours, never dollars.</p>}
           </div>
         </div>
       )}
