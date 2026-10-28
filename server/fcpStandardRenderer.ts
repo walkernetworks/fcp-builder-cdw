@@ -24,6 +24,7 @@ const EXTRA_CSS = `
 .cover .who{font-size:12px;line-height:1.7}
 .cover .who b{font-size:15px}
 .pg{break-before:page;width:10.1in}
+.paged{width:100%;border-collapse:collapse}.paged>thead>tr>td,.paged>tbody>tr>td{padding:0;border:0;background:none}.paged>thead{display:table-header-group}
 @media screen{.pg{margin:0 auto}}
 .ctrl{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid var(--line);margin-top:10px;font-size:10px}
 .ctrl div{padding:6px 10px;border-right:1px solid var(--line);color:var(--slate)}
@@ -40,8 +41,6 @@ const EXTRA_CSS = `
 .std tr.cat td{background:#f4f5f7;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);padding:4px 7px}
 .std tr.done td{color:var(--muted);font-weight:400;font-style:italic}
 .std tr.hold td{color:var(--muted)}
-.signs{display:grid;grid-template-columns:repeat(auto-fit,minmax(2.6in,1fr));gap:.3in;margin-top:6px}
-.sign .line{border-bottom:1px solid var(--ink);height:.3in;margin-top:5px;font-size:7.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .std tr.sub td{font-weight:800;color:var(--ink);border-top:1px solid var(--line)}
 .wp-detail{font-weight:400;font-size:8.5px;color:var(--muted);margin-top:2px;line-height:1.35}
 .milestones div{display:grid;grid-template-columns:.85in 1fr;gap:6px;padding:4px 0;border-bottom:1px solid var(--hair);font-size:10.5px;color:var(--slate)}
@@ -87,7 +86,7 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
     const approvals = [prior?.broadcomApprovedOn ? `by Broadcom ${shortDate(prior.broadcomApprovedOn)}` : "", prior?.customerApprovedOn ? `by ${customer} ${shortDate(prior.customerApprovedOn)}` : ""].filter(Boolean);
     return `Version ${version.issueNumber - 1}${approvals.length ? `, approved ${approvals.join(" and ")}` : ""}`;
   })();
-  const control = `<div class="ctrl"><div><b>Version</b>${version ? `${version.issueNumber}, issued ${esc(shortDate(version.issuedOn))}` : "Working draft"}</div><div style="grid-column:span 2"><b>Supersedes</b>${esc(supersededText)}</div><div><b>Revision</b>${esc(report.revision || (version && version.issueNumber === 1 ? "Initial plan" : "Working draft"))}</div></div>`;
+  const control = `<div class="ctrl"><div><b>Version</b>${version ? `${version.issueNumber}, issued ${esc(shortDate(version.issuedOn))}` : "Working draft"}</div><div style="grid-column:span 2"><b>Supersedes</b>${esc(supersededText)}</div><div><b>Revision</b>${esc(report.revision || (version && version.issueNumber === 1 ? "Initial plan" : "Working draft"))}</div><div style="grid-column:1/-1"><b>Approval</b>To approve this plan, reply to the email it was sent with.</div></div>`;
   const situation = report.situation.length ? `<h3>Situation</h3><ul class="asks">${report.situation.map(item => `<li>${esc(item)}</li>`).join("")}</ul>` : "";
   const summaryPage = page(`<h2>${vvf ? "VMware vSphere Foundation" : "VMware Cloud Foundation"} Adoption: ${esc(customer)}</h2>${pills}${kpis}${control}<div class="two"><div><h3>Summary</h3><p class="synopsis">${esc(synopsis)}</p>${situation}</div><div><h3>Plan on a Page</h3>${scope}</div></div>`);
   void plan;
@@ -137,7 +136,8 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
 
   // ---- Roadmap: the second year of the two-year view, shared with the Summary's page 3, with hours by role
   // The roadmap is not scaled to one page: when it runs long it continues onto a second page at full size.
-  const roadmapPage = parts.twoYear.hasContent ? `<section class="pg">${strip}${parts.twoYear.html}</section>` : "";
+  // The header strip is the table head of a wrapper table, so it repeats on every printed page the roadmap runs onto.
+  const roadmapPage = parts.twoYear.hasContent ? `<section class="pg"><table class="paged"><thead><tr><td>${strip}</td></tr></thead><tbody><tr><td>${parts.twoYear.stackedHtml}</td></tr></tbody></table></section>` : "";
 
   // ---- Working together
   const effortPlan = buildCustomerEffort(document);
@@ -156,10 +156,7 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
   const customerRun = report.customerOwnedWork.length ? `<h3>Work Run by ${esc(customer)}</h3>${table(["Work", "Window"], report.customerOwnedWork.map(row => [esc(row.label), esc(formatWindow(row.start.length === 7 ? `${row.start}-01` : row.start, row.end.length === 7 ? `${row.end}-01` : row.end))]))}` : "";
   const left = customerEffort + commitments + customerRun;
   const right = constraints + openItems + people;
-  // Blank lines only: no pre-filled status, so the page stays true whether or not anyone has signed.
-  const signer = (party: string) => `<div class="sign"><h3>${esc(party)}</h3>${["Name", "Title", "Date", "Signature"].map(label => `<div class="line"><span>${label}</span></div>`).join("")}</div>`;
-  const signatures = `<h3>Acceptance</h3><div class="signs">${signer(customer)}${options.broadcomSignature ? signer("Broadcom") : ""}</div>`;
-  const togetherPage = left || right ? page(`<h2>Working Together</h2><p class="lead">What ${esc(customer)}'s team commits to, what shapes the sequence, and who is involved.</p><div class="two"><div>${left}</div><div>${right}</div></div>${signatures}<div class="closer">Make Amazing Happen.</div>`) : "";
+  const togetherPage = left || right ? page(`<h2>Working Together</h2><p class="lead">What ${esc(customer)}'s team commits to, what shapes the sequence, and who is involved.</p><div class="two"><div>${left}</div><div>${right}</div></div><div class="closer">Make Amazing Happen.</div>`) : "";
 
   void listJoin; void longDate; void UNDECIDED_DEPTH; void bsasOnly;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} - FCP</title><style>${CSS}${EXTRA_CSS}${footerCss(customer, version)}</style></head><body>${options.draft ? DRAFT_MARK : ""}${cover}${summaryPage}${scopePage}${workPage}${timelinePage}${roadmapPage}${togetherPage}<button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button>${FIT_SCRIPT}</body></html>`;

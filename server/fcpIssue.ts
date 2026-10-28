@@ -2,7 +2,7 @@ import type { ScopedEffort } from "../shared/effort";
 import { computeChangeSummary, type ChangeSummary } from "../shared/fcpChangeSummary";
 import { migrateDocument, type EngagementDocument } from "../shared/fcp";
 import { deliveredNotes } from "../shared/consumption";
-import { defaultReportFormat, fundingProblem, needsBroadcomSignature, reportFormatOption, type IssueContext, type ReportFormat, type ReportFormatChoice } from "../shared/reportFormat";
+import { defaultReportFormat, fundingProblem, reportFormatOption, type IssueContext, type ReportFormat, type ReportFormatChoice } from "../shared/reportFormat";
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import * as db from "./db";
@@ -69,9 +69,9 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
   // this issue supersedes, and stored with the version. It is never recomputed, so an approval recorded on the previous
   // version later does not rewrite an issued version.
   const issueContext: IssueContext | null = format
-    ? { supersedes: latest && latest.issueNumber !== null ? { issueNumber: latest.issueNumber, broadcomApprovedOn: latest.broadcomApprovedOn ?? null, customerApprovedOn: latest.customerApprovedOn ?? null } : null, broadcomSignature: needsBroadcomSignature(row.segment) }
+    ? { supersedes: latest && latest.issueNumber !== null ? { issueNumber: latest.issueNumber, broadcomApprovedOn: latest.broadcomApprovedOn ?? null, customerApprovedOn: latest.customerApprovedOn ?? null } : null }
     : null;
-  const html = renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version: { issueNumber: (latest?.issueNumber ?? 0) + 1, issuedOn }, deliveredNotes: notes, ...(format === "standard" && issueContext ? { ...(issueContext.supersedes ? { supersedes: issueContext.supersedes } : {}), broadcomSignature: issueContext.broadcomSignature } : {}) } : {}) });
+  const html = renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version: { issueNumber: (latest?.issueNumber ?? 0) + 1, issuedOn }, deliveredNotes: notes, ...(format === "standard" && issueContext ? { ...(issueContext.supersedes ? { supersedes: issueContext.supersedes } : {}) } : {}) } : {}) });
   const previous = latest && latest.issueNumber !== null && latest.effortSnapshot ? { document: latest.data, effort: latest.effortSnapshot, issueNumber: latest.issueNumber } : null;
   const changeSummary = computeChangeSummary(previous, { document, effort });
   // Unchanged means the working document is the same as the current issue's stored snapshot, in the same format. Not the

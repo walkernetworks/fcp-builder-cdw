@@ -81,14 +81,10 @@ describe("Standard FCP", () => {
     expect(render(2)).not.toMatch(/Pending|Approved by Broadcom: /);
   });
 
-  it("ends with an acceptance block of blank lines: the customer's, and Broadcom's on Corporate and Strategic deals", () => {
-    const document = meridianHealth();
-    const render = (broadcomSignature: boolean) => renderCondensedFcpHtml(document.fields.customerName, document, { effort: scopedEffortForDocument(document, FIXTURE_TODAY), today: FIXTURE_TODAY, format: "standard", version: { issueNumber: 1, issuedOn: FIXTURE_TODAY }, broadcomSignature });
-    const withBroadcom = render(true);
-    const signs = (html: string) => Array.from(html.matchAll(/<div class="sign"><h3>([^<]*)<\/h3>((?:<div class="line"><span>[^<]*<\/span><\/div>){4})<\/div>/g), match => [match[1], Array.from(match[2].matchAll(/<span>([^<]*)<\/span>/g), item => item[1])]);
-    expect(signs(withBroadcom)).toEqual([["Meridian Health", ["Name", "Title", "Date", "Signature"]], ["Broadcom", ["Name", "Title", "Date", "Signature"]]]);
-    expect(signs(render(false)).map(([party]) => party)).toEqual(["Meridian Health"]);
-    expect(withBroadcom.indexOf("<h3>Acceptance</h3>")).toBeGreaterThan(withBroadcom.indexOf("Who Is Involved"));
+  it("carries no signature lines, and says approval is by reply to the email", () => {
+    const html = standard(meridianHealth());
+    expect(html).not.toMatch(/Acceptance<\/h3>|class="sign"|class="signs"|Signature/);
+    for (const issueNumber of [1, 2]) expect(visible(standard(meridianHealth(), issueNumber))).toContain("To approve this plan, reply to the email it was sent with.");
   });
 
   it("adds up the work packages: a Total planned row whose role columns sum, then delivered, held and the entitlement total", () => {
@@ -125,13 +121,18 @@ describe("Standard FCP", () => {
     expect(scripts[0]).not.toMatch(/src=|https?:|fetch|XMLHttpRequest|import\(/);
   });
 
-  it.skipIf(!chrome)("prints on seven pages, or more when the roadmap runs long (it continues at full size), or fewer when a page has nothing to show", async () => {
-    // The roadmap is never shrunk to fit one page: it continues onto a second page at full size.
-    expect(standard(meridianHealth(), 1, true)).toMatch(/<section class="pg"><div class="strip/);
-    const acme = pages(await renderPdf(standard(acmeHealthReconciled(), 1, true)));
-    expect(acme).toBeGreaterThanOrEqual(7);
-    expect(acme).toBeLessThanOrEqual(9);
-    expect(pages(await renderPdf(standard(meridianHealth(), 1, true)))).toBeLessThanOrEqual(9);
+  it("puts the follow-on table at full width with How It's Funded below it, under a header strip that repeats on every page", () => {
+    const html = standard(meridianHealth());
+    const roadmap = html.slice(html.indexOf('<table class="paged">'));
+    expect(roadmap).toContain('<thead><tr><td><div class="strip">');
+    expect(roadmap.indexOf("Follow-on Work")).toBeGreaterThan(0);
+    expect(roadmap.indexOf("Follow-on Work")).toBeLessThan(roadmap.indexOf("How It's Funded"));
+    expect(roadmap.slice(0, roadmap.indexOf("How It's Funded"))).not.toContain('class="two"');
+  });
+
+  it.skipIf(!chrome)("prints on seven pages, or fewer when a page has nothing to show", async () => {
+    expect(pages(await renderPdf(standard(acmeHealthReconciled(), 1, true)))).toBe(7);
+    expect(pages(await renderPdf(standard(meridianHealth(), 1, true)))).toBe(7);
     expect(pages(await renderPdf(standard(cedarRidgeLogistics(), 1, true)))).toBeLessThanOrEqual(7);
   }, 90_000);
 });

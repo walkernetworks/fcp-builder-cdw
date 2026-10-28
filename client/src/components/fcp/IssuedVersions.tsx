@@ -276,8 +276,8 @@ function Approval({ engagementId, versionId, party, title, on, approver, by, not
     <div className="flex flex-wrap items-end gap-2">
       <div className="space-y-1"><Label htmlFor={`approval-${party}-${versionId}`} className="text-[11px]">Approved on</Label><Input id={`approval-${party}-${versionId}`} type="date" max={today()} className="h-8 w-40" value={draft.on} onChange={event => setDraft({ ...draft, on: event.target.value })} /></div>
       <div className="space-y-1"><Label htmlFor={`approver-${party}-${versionId}`} className="text-[11px]">Approved by</Label><Input id={`approver-${party}-${versionId}`} className="h-8 w-48" maxLength={160} placeholder="Name and role" value={draft.approverName} onChange={event => setDraft({ ...draft, approverName: event.target.value })} /></div>
-      <Input aria-label={`${title} note`} className="h-8 min-w-0 flex-1" maxLength={2000} placeholder="Note (optional): how it was given" value={draft.note} onChange={event => setDraft({ ...draft, note: event.target.value })} />
-      <Button size="sm" className="h-8" disabled={record.isPending || !/^\d{4}-\d{2}-\d{2}$/.test(draft.on) || !draft.approverName.trim()} onClick={() => void save()}>{record.isPending && <Loader2 className="size-4 animate-spin" />} Record</Button>
+      <Input aria-label={`${title} email reference`} required className="h-8 min-w-0 flex-1" maxLength={2000} placeholder="Email reference: who replied, date, subject" value={draft.note} onChange={event => setDraft({ ...draft, note: event.target.value })} />
+      <Button size="sm" className="h-8" disabled={record.isPending || !/^\d{4}-\d{2}-\d{2}$/.test(draft.on) || !draft.approverName.trim() || !draft.note.trim()} onClick={() => void save()}>{record.isPending && <Loader2 className="size-4 animate-spin" />} Record</Button>
     </div>
   );
   return <div className="rounded-lg border border-s100 p-3"><p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-muted">{title}</p>{body}</div>;

@@ -120,7 +120,7 @@ describe("fcpRecord.issue", () => {
 
     it("captures the superseded version's approvals and the signature lines when the issue is made", async () => {
       const { stored } = await issuedVersionTwo();
-      expect(stored.issueContext).toEqual({ supersedes: { issueNumber: 1, broadcomApprovedOn: "2026-10-12", customerApprovedOn: "2026-10-15" }, broadcomSignature: true });
+      expect(stored.issueContext).toEqual({ supersedes: { issueNumber: 1, broadcomApprovedOn: "2026-10-12", customerApprovedOn: "2026-10-15" } });
       const text = stored.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
       expect(text).toContain("Supersedes Version 1, approved by Broadcom 12 Oct 2026 and by Acme Health 15 Oct 2026");
     });

@@ -152,8 +152,6 @@ export type SummaryOptions = {
   today?: string; effort: ScopedEffort; draft?: boolean; version?: IssueStamp; deliveredNotes?: string[];
   /** The previous issue and its recorded approvals; absent on Version 1. */
   supersedes?: SupersededVersion;
-  /** Corporate and Strategic deals carry a Broadcom signature line on the acceptance block. */
-  broadcomSignature?: boolean;
 };
 
 /**

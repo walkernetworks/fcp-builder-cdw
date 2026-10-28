@@ -104,7 +104,8 @@ Same spine, with the depth a Broadcom approver and a larger customer team expect
 
 **As built** (`server/fcpStandardRenderer.ts`, 7 pages, fewer when a page has nothing to show). It reuses the Summary's parts (`summaryParts` in `server/fcpSummaryRenderer.ts`), so the tiles, the short-labelled timeline with its filtered key, the key dates and the funding wording are the same code in both formats. Differences from the mockup, all deliberate:
 
-- **Document control** prints version, issue date, the issue it supersedes and the revision line. It does not print Broadcom and customer approval status: an issued version is a stored snapshot, so a printed "Pending" would be wrong as soon as an approval is recorded. Approvals stay in the tracker.
+- **Approvals are by email, and no format carries signature lines.** Document control prints "To approve this plan, reply to the email it was sent with." on every version. The approval is recorded in the tracker with an email reference (who replied, date, subject) in the note. The Standard has no acceptance block (name, title, date, signature).
+- **Document control** prints version, issue date, the issue it supersedes and the revision line. It does not print the status of this version's approvals: an issued version is a stored snapshot, so a printed "Pending" would be wrong as soon as an approval is recorded. The Supersedes line carries the recorded email approvals of the version it replaces ("Version 1, approved by Broadcom <date> and by <customer> <date>").
 - **Tiles** are the Summary's (value, hours remaining, plan start, end), not days to expiry and weekly pace.
 - **Decisions needed** is not a separate table: the dated decisions are a commitment line today, because the report model has no decision list with owners and dates.
 - **Hours by role for delivered work** are blank: consumption is recorded as a total.

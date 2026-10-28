@@ -244,8 +244,6 @@ export type CondensedFcpOptions = {
   deliveredNotes?: string[];
   /** Standard only: the previous issue and its recorded approvals. */
   supersedes?: SupersededVersion;
-  /** Standard only: a Broadcom signature line on the acceptance block (Corporate and Strategic). */
-  broadcomSignature?: boolean;
 };
 
 
