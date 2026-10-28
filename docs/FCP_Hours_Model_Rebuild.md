@@ -192,7 +192,7 @@ What remains proportional, and why: a line's hours are spread over the packages 
 
 ### No package is split by hours
 
-- A package is wholly in the entitlement or wholly follow-on. Displaced scope that lands on a package the entitlement does fund (later migration waves, say) is a package of its own, `<id>:later`, entirely follow-on. Planner hours on a package never feed the displaced-scope calculation. The squeeze no longer trims later waves by share.
+- A package is wholly in the entitlement or wholly follow-on. The fit never part funds a package: the Operations build and each outcome at Tier 1 are funded whole or all of them move to the follow-on, and the waves are one package. No continuation ("Remaining Scope") rows exist, and every follow-on row has a month; a package with no bar of its own starts the month after the entitlement ends. Planner hours on a package never feed the displaced-scope calculation. The squeeze no longer trims later waves by share.
 
 ## Deploy
 

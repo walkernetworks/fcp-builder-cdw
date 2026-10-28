@@ -223,6 +223,7 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   if (wavesMode === "customer-all") for (const line of pass1.lines.filter(entry => entry.code === "FILL_mig")) for (const unit of line.units.filter(entry => entry.tier === 1)) customerRun.push({ line, unit, step: 7, order: -1 });
   const wavesCost = items.filter(entry => entry.line.code === "FILL_mig" && entry.step === 4).reduce((sum, entry) => sum + loaded(entry.line, entry.unit.base), 0);
   let wavesWhole: boolean | undefined;
+  const groupFits = new Map<string, boolean>();
   const reasonOf = new Map<string, DisplacedReason>();
   const sharedLines = new Set<V2Code>();
 
@@ -247,7 +248,14 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     const credit = isOps && !opsReleased ? opsDesignCost : 0;
     const wholeWaves = wavesMode === "cdw" && item.line.code === "FILL_mig";
     if (wholeWaves && wavesWhole === undefined) wavesWhole = !stopped && used + wavesCost <= fillableHours + eps;
-    const fits = wholeWaves ? Boolean(wavesWhole) : !stopped && used - credit + cost <= fillableHours + eps;
+    // The outcomes at Tier 1, and the Operations build (configuration, lifecycle, health and logs), are one package a line:
+    // funded whole, or all of it is follow-on. A package is never part funded, so no row carries a remainder.
+    const groupKey = item.step === 6 ? `${item.line.code}:${item.unit.tag === "ops-core"}` : null;
+    if (groupKey && !groupFits.has(groupKey)) {
+      const group = items.filter(entry => entry.step === 6 && entry.line === item.line && (entry.unit.tag === "ops-core") === (item.unit.tag === "ops-core"));
+      groupFits.set(groupKey, !stopped && used - credit + hoursOf(group) <= fillableHours + eps);
+    }
+    const fits = wholeWaves ? Boolean(wavesWhole) : groupKey ? Boolean(groupFits.get(groupKey)) : !stopped && used - credit + cost <= fillableHours + eps;
     if (fits) {
       place(item, item.step <= 4.5 || (item.step === 6 && item.unit.tag === "ops-core") ? "E1" : "E2");
       used += cost - credit;

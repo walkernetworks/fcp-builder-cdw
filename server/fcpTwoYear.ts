@@ -70,11 +70,18 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
   const gantt = slice && hasBars ? renderTimeline(summaryTimeline(slice), "No activities are scheduled after the plan.", undefined, { skipEmptyCategories: true, legendFromChart: true }) : "";
 
   // ---- Follow-on work: package, month, hours; the Standard adds the hours by role and the BSAS hours
+  const firstMonth = (() => {
+    const base = boundary ? /^(\d{4})-(\d{2})/.exec(boundary) : null;
+    if (!base) return notional.startDate;
+    const month = Number(base[2]);
+    return month === 12 ? `${Number(base[1]) + 1}-01-01` : `${base[1]}-${String(month + 1).padStart(2, "0")}-01`;
+  })();
   const notionalBars = new Map(customerTimelines.notional.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
   const monthOf = (row: WorkPackageEffort) => {
     const bar = notionalBars.get(row.id);
     const span = bar ? barWindow(customerTimelines.notional, bar) : null;
-    return span && (!boundary || span.start > boundary) ? formatWindow(span.start, span.end) : boundary ? `After ${shortDate(boundary)}` : `After the ${window}`;
+    // Every follow-on package has a month: one without a bar of its own (the later design phase) starts the month after the boundary.
+    return span && (!boundary || span.start > boundary) ? formatWindow(span.start, span.end) : formatWindow(firstMonth, firstMonth);
   };
   const totals = followOnRows.reduce((sum, row) => ({ architect: sum.architect + row.followOn!.architect, srConsultant: sum.srConsultant + row.followOn!.srConsultant, projectManager: sum.projectManager + row.followOn!.projectManager, total: sum.total + row.followOn!.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
   const bsasById = new Map(bsasPlan?.rows.map(row => [row.id, row.bsasHours]) ?? []);
@@ -88,8 +95,7 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
     const named = (row: WorkPackageEffort) => {
       const outcome = row.detail?.outcome ? sentence(firstSentence(row.detail.outcome, 220)) : "";
       const accepted = row.detail?.acceptance ? sentence(`Accepted when: ${firstSentence(row.detail.acceptance, 260)}`) : "";
-      // The rest of a package that is partly in the entitlement repeats what its first part already states.
-      const text = row.id.includes(":") ? [] : [outcome, accepted].filter(Boolean);
+      const text = [outcome, accepted].filter(Boolean);
       return `${esc(packageLabel(row.label))}${text.length ? `<div class="wp-detail">${text.map(item => esc(item)).join(" ")}</div>` : ""}`;
     };
     const rows = followOnRows.map(row => detail

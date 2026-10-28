@@ -50,10 +50,10 @@ describe("hours reconciliation", () => {
     expect(problem).toContain("Under-funded: 39 delivered, 188 planned and 4 held in reserve come to 141 hours more than the 90-hour entitlement. Move work to the follow-on or reduce hours in the Plan section.");
     // Rule 5: the internal problem says how many more hours the full scope needs.
     expect(problem).toMatch(/The full scope needs 211 more hours than the entitlement funds after the reserve \(140 more for the minimum that can be delivered\)\./);
-    // The whole packages fill the entitlement to within an hour; trimming a package by hand leaves hours unplanned.
+    // Whole packages leave what no package takes unplanned; the optimization package (hours fill) takes it up.
+    const reconciled = acmeHealthReconciled();
+    expect(fundingProblem(reconciled, scopedEffortForDocument(reconciled, FIXTURE_TODAY), FIXTURE_TODAY)).toBeNull();
     const under = acmeHealth();
-    expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBeNull();
-    under.report.workPackageHours.push({ id: "bar-platform-enablement", architect: 0, srConsultant: 1, projectManager: 0, placement: "auto", owner: "auto" });
     expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("5 hours are not planned and will be forfeited at term end (39 delivered, 200 planned and 18 held in reserve, against the 262-hour entitlement). Plan them in the Plan section.");
   });
 
@@ -69,7 +69,7 @@ describe("hours reconciliation", () => {
 
   it("allows an hour either way for rounding, and says so on the page instead of claiming the figures are equal", () => {
     const document = acmeHealth();
-    document.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 5, projectManager: 4, placement: "auto", owner: "auto" });
+    document.report.workPackageHours.push({ id: "bar-platform-handover", architect: 1, srConsultant: 10, projectManager: 4, placement: "auto", owner: "auto" });
     const effort = scopedEffortForDocument(document, FIXTURE_TODAY);
     expect(reconcileHours(document, effort, FIXTURE_TODAY)).toMatchObject({ planned: 204, balanced: true, exact: false, difference: -1 });
     expect(fundingProblem(document, effort, FIXTURE_TODAY)).toBeNull();
@@ -77,7 +77,7 @@ describe("hours reconciliation", () => {
     expect(text).toContain("39 delivered, 204 planned and 18 held for change requests use the 262-hour entitlement, to within an hour of rounding");
     expect(text).toContain("Total, funded by the entitlement 261");
     document.report.workPackageHours.push({ id: "bar-platform-enablement", architect: 0, srConsultant: 4, projectManager: 0, placement: "auto", owner: "auto" });
-    expect(fundingProblem(document, scopedEffortForDocument(document, FIXTURE_TODAY), FIXTURE_TODAY)).toMatch(/^3 hours are not planned/);
+    expect(fundingProblem(document, scopedEffortForDocument(document, FIXTURE_TODAY), FIXTURE_TODAY)).toMatch(/^4 hours are not planned/);
   });
 
   it("has nothing to reconcile without entitled hours, and falls back to the fit's under-funded flag", () => {

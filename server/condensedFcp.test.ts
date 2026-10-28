@@ -662,7 +662,6 @@ describe("work the entitlement cannot carry", () => {
     const { timelinesWithDeferrals } = await import("../shared/effort");
     const document = migrateDocument(engagement(raw => { raw.resourceAssignments = []; }));
     const effort = scopedEffortForDocument(document);
-    // A package split between the entitlement and the follow-on has a ":later" row for the rest; it is not a bar of its own.
     const deferred = effort.workPackages.filter(row => row.deferred && !row.id.includes(":"));
     expect(deferred.length).toBeGreaterThan(0);
     expect(deferred.every(row => row.total === 0)).toBe(true);

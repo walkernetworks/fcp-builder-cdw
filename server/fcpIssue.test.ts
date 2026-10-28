@@ -237,8 +237,8 @@ describe("fcpRecord.issue", () => {
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
     const preview = await caller().fcpRecord.issuePreview({ id: 4 });
-    expect(preview.fundingProblem).toContain("290 hours are not planned and will be forfeited at term end (310 planned against the 600-hour BSAS allocation, 2027-05-01 to 2028-04-30).");
-    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("290 hours are not planned and will be forfeited at term end") });
+    expect(preview.fundingProblem).toContain("285 hours are not planned and will be forfeited at term end (315 planned against the 600-hour BSAS allocation, 2027-05-01 to 2028-04-30).");
+    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("285 hours are not planned and will be forfeited at term end") });
     expect(db.issueFcpVersion).not.toHaveBeenCalled();
   });
 

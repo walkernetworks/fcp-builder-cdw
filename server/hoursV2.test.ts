@@ -292,14 +292,15 @@ describe("v2 Pass 2 fit (spec section 7)", () => {
     const e1 = fit.placements.filter(item => item.bucket === "E1");
     expect(e1.map(item => item.unitId)).toEqual(["DD", "DX:Operations and automation", "DX:Security", "A:foundation", "A:workload", "A:dr-nsx", "C1", "X4:platform", "X4:lifecycle", "X4:observability"]);
     expect(fit.buckets.E1).toBeCloseTo(45.54 + 23 + 103.73 + 88.55 + 50.6, 1);
-    expect(fit.placements.filter(item => item.bucket === "E2").map(item => item.unitId)).toEqual(["X11:stages-1-2", "X11:stage-3", "X11:zone-1", "X11:zone-2"]);
-    expect(fit.buckets.E1 + fit.buckets.E2).toBeCloseTo(366.62, 1);
+    // An outcome is a package: funded whole or all follow-on, never part funded. None of the outcomes fits whole, so each keeps its design share.
+    expect(fit.placements.filter(item => item.bucket === "E2").map(item => item.unitId)).toEqual(["X11:design-share", "X_VCFA_platform:design-share", "X2:design-share"]);
+    expect(fit.buckets.E1 + fit.buckets.E2).toBeCloseTo(358.57, 1);
     expect(fit.buckets.E1 + fit.buckets.E2).toBeLessThanOrEqual(fit.fillableHours);
     expect(fit.reserveHours).toBe(32);
     expect(fit.fillableHours).toBe(368);
     const displaced = fit.placements.filter(item => item.bucket === "F").map(item => item.unitId);
-    expect(displaced).toEqual(expect.arrayContaining(["X11:zone-3", "X11:zone-4", "X11:app-1", "X11:app-5", "X_VCFA_platform", "X2:module", "X2:org-1", "X11:tier-2", "X2:tier-2", "X4:tier-2"]));
-    expect(fit.designShareFlags).toHaveLength(2);
+    expect(displaced).toEqual(expect.arrayContaining(["X11:stages-1-2", "X11:zone-1", "X11:app-1", "X_VCFA_platform", "X2:module", "X2:org-1", "X11:tier-2", "X2:tier-2", "X4:tier-2"]));
+    expect(fit.designShareFlags).toHaveLength(0);
     expect(fit.underFunded).toBeNull();
   });
 
@@ -351,8 +352,8 @@ describe("v2 Pass 2 fit (spec section 7)", () => {
   });
 
   it("moves the design share with the line and flags it when it does not fit", () => {
-    const fit = fitOf(scopeV2(example()), 400);
-    expect(fit.placements.some(item => item.designShare)).toBe(false);
+    const fit = fitOf(scopeV2(example()), 340);
+    expect(fit.placements.some(item => item.designShare && item.code !== "X4")).toBe(false);
     expect(fit.designShareFlags).toEqual(expect.arrayContaining([expect.stringContaining("VCF Automation platform")]));
   });
 
@@ -450,13 +451,12 @@ describe("v2 in the plan", () => {
     expect(automation.deferred).toBe("not funded");
     expect(automation.followOn!.total).toBeGreaterThan(0);
     const segmentation = effort.workPackages.find(row => row.id === "bar-security-segmentation")!;
-    expect(segmentation.total).toBeGreaterThan(0);
-    // A package is wholly in the entitlement or wholly follow-on: the stages the fit displaced are a package of their own.
-    expect(segmentation.followOn).toBeUndefined();
-    const later = effort.workPackages.find(row => row.id === "bar-security-segmentation:later")!;
-    expect(later.total).toBe(0);
-    expect(later.deferred).toBe("not funded");
-    expect(later.followOn!.total).toBeGreaterThan(0);
+    // Segmentation does not fit whole beside the funded packages, so all of it is follow-on.
+    expect(segmentation).toMatchObject({ total: 0, deferred: "not funded" });
+    expect(segmentation.followOn!.total).toBeGreaterThan(0);
+    // A package is wholly in the entitlement or wholly follow-on: no row carries a remainder.
+    expect(effort.workPackages.some(row => row.id.includes(":"))).toBe(false);
+    expect(effort.workPackages.every(row => !(row.total > 0 && (row.followOn?.total ?? 0) > 0))).toBe(true);
     expect(effort.workPackages.some(row => row.id.startsWith("line:"))).toBe(false);
   });
 
