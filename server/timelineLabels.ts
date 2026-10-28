@@ -12,6 +12,7 @@ const SHORT_BAR_LABELS: Array<[RegExp, string]> = [
   [/^Kickoff and Delivery Plan$/, "Kickoff"],
   [/^Close HCL Evidence Gaps$/, "Close HCL Gaps"],
   [/^Greenfield Design and Bill of Materials$/, "Design and BOM"],
+  [/^Reference Architecture Design$/, "Reference Design"],
   [/^Migration and Cutover Plan$/, "Cutover Plan"],
   [/^Greenfield (VCF|VVF) Foundation Build$/, "$1 Foundation Build"],
   [/^Workload Clusters and vLCM Images$/, "Clusters and vLCM"],

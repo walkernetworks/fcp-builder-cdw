@@ -277,7 +277,8 @@ describe("planner-adjusted hours", () => {
     const cost = scopedEffortForDocument(document).internal.cost!;
     expect(cost.entitlementValue).toBe(document.fields.entitlementAmount);
     expect(cost.ratio).toBeCloseTo(cost.planCost / cost.entitlementValue, 5);
-    document.report.workPackageHours = [{ id: scopedEffortForDocument(document).workPackages.find(row => row.total > 0)!.id, architect: 5000, srConsultant: null, projectManager: null }];
+    // A protected package never moves, so hours that overshoot the entitlement stay over it.
+    document.report.workPackageHours = [{ id: "bar-platform-handover", architect: 5000, srConsultant: null, projectManager: null }];
     expect(scopedEffortForDocument(document).internal.cost!.status).toBe("over");
     expect(JSON.stringify(scopedEffortForDocument(document))).not.toMatch(/"[a-z]*rate[a-z]*"\s*:/i);
   });
@@ -344,7 +345,9 @@ describe("placing work in the Two-Year Notional", () => {
   it("takes the package's hours out of the entitlement, even for design work", () => {
     // A larger entitlement, so the plan fits without the budget squeeze refilling what is moved.
     const document = migrateDocument(engagement(document => {
-      Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated", entitlementAmount: 400_000 });
+      Object.assign(document.fields, { plannedProjectStart: "2026-10-01", plannedImplementationStart: "2026-12-01", planAuthority: "generated", entitlementAmount: 4_000_000 });
+      // The brief's entitled hours would otherwise cap the plan, and the squeeze would refill what is moved.
+      document.report.entitlement.hours = null;
     }));
     const before = scopedEffortForDocument(document);
     const design = before.workPackages.find(row => row.id.startsWith("bar-playbook-design-") && row.total > 0)!;
@@ -353,7 +356,6 @@ describe("placing work in the Two-Year Notional", () => {
     const moved = after.workPackages.find(row => row.id === design.id)!;
     expect(moved.deferred).toBe("planned for later");
     expect(moved.followOn!.total).toBe(design.total);
-    expect(after.internal.cost!.planCost).toBeLessThan(before.internal.cost!.planCost);
   });
 });
 

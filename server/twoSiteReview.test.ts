@@ -135,7 +135,9 @@ describe("Two-site review: scope and sequencing", () => {
     // A small entitlement may carry no management domain at all; the rule applies to every plan that does.
     expect(checked).toBeGreaterThanOrEqual(3);
     // The note reaches the customer document with the build date.
-    expect(text(render(plans[1]))).toContain(`Platform build begins. ${NSX_VLAN_NOTE}`);
+    const carrying = plans.find(plan => scopedEffortForDocument(plan).internal.lines.some(line => line.code === "NX"));
+    expect(carrying).toBeDefined();
+    expect(text(render(carrying!))).toContain(`Platform build begins. ${NSX_VLAN_NOTE}`);
   });
 
   it("3. states one vSphere 8 finding in the constraint and the open item, for waves after and before its end of support", () => {
@@ -410,6 +412,7 @@ describe("Two-site review: a later start", () => {
   const startingOn = (projectStart: string, implementationStart: string | null = null) => twoSite(raw => { raw.schedule = { ...raw.schedule, projectStart, implementationStart }; });
   const shifted = (months: number) => { const date = new Date(Date.UTC(2026, 9 + months, months ? 2 : 16)); return date.toISOString().slice(0, 10); };
   /** CDW packages that carry hours in the entitlement or as follow-on scope. */
+  const base = (id: string) => id.replace(/:later$/, "");
   const packages = (document: EngagementDocument) => scopedEffortForDocument(document).workPackages.filter(row => row.owner === "cdw" && (row.total > 0 || (row.followOn?.total ?? 0) > 0));
 
   it("never loses a package when the start moves later, and the domain packages do not grow to absorb freed hours", () => {
@@ -417,8 +420,10 @@ describe("Two-site review: a later start", () => {
     const domainIds = new Set(domainPackages(twoSite().fields).map(({ id }) => id));
     for (let months = 1; months <= 4; months += 1) {
       const after = packages(startingOn(shifted(months)));
-      expect(after.length, `start + ${months} months`).toBeGreaterThanOrEqual(before.length);
-      for (const row of before) expect(after.some(item => item.id === row.id), `${row.id} at + ${months} months`).toBe(true);
+      // A package the entitlement partly funds has its displaced scope as a package of its own (`:later`); when the whole
+      // package moves, that scope joins it. Either way the work is still listed under the package's id.
+      expect(new Set(after.map(row => base(row.id))).size, `start + ${months} months`).toBeGreaterThanOrEqual(new Set(before.map(row => base(row.id))).size);
+      for (const row of before) expect(after.some(item => base(item.id) === base(row.id)), `${row.id} at + ${months} months`).toBe(true);
       // Each role column is rounded on its own, so a package can differ by an hour per role.
       for (const row of after.filter(item => domainIds.has(item.id) && !item.deferred)) {
         expect(row.total, `${row.id} at + ${months} months`).toBeLessThanOrEqual(before.find(item => item.id === row.id)!.total + 3);

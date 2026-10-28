@@ -2,7 +2,7 @@ import type { BsasAllocation } from "../shared/bsas";
 import { barWindow } from "../shared/buildingBlocks";
 import { formatWindow, type ScopedEffort, type WorkPackageEffort } from "../shared/effort";
 import type { EngagementDocument, Timeline } from "../shared/fcp";
-import { customerFacing, esc, hours, longDate, shortDate, type PreparedReport } from "./fcpReportParts";
+import { customerFacing, esc, firstSentence, hours, longDate, sentence, shortDate, type PreparedReport } from "./fcpReportParts";
 import { renderTimeline, sliceTimeline } from "./timelineHtml";
 import { packageLabel, summaryTimeline } from "./timelineLabels";
 
@@ -84,9 +84,16 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
     const detail = Boolean(input.detail);
     const headers = detail ? ["Work package", "Planned window", "Lead role", "Architect", "Sr. Consultant", "PM", "Total hours", ...(bsasPlan ? ["BSAS hours"] : [])] : ["Package", "Month", "Hours", ...(bsasPlan ? ["BSAS hours"] : [])];
     const cell = (value: string, index: number, tag: "td" | "th") => `<${tag}${(detail ? index >= 3 : index >= 2) ? ' class="num"' : ""}>${value}</${tag}>`;
+    // Each package prints its outcome, and what accepts it where it states one, under its name.
+    const named = (row: WorkPackageEffort) => {
+      const outcome = row.detail?.outcome ? sentence(firstSentence(row.detail.outcome, 220)) : "";
+      const accepted = row.detail?.acceptance ? sentence(`Accepted when: ${firstSentence(row.detail.acceptance, 260)}`) : "";
+      const text = [outcome, accepted].filter(Boolean);
+      return `${esc(packageLabel(row.label))}${text.length ? `<div class="wp-detail">${text.map(item => esc(item)).join(" ")}</div>` : ""}`;
+    };
     const rows = followOnRows.map(row => detail
-      ? [esc(packageLabel(row.label)), esc(monthOf(row)), esc(row.leadRole), num(row.followOn!.architect), num(row.followOn!.srConsultant), num(row.followOn!.projectManager), num(row.followOn!.total), ...(bsasPlan ? [num(bsasById.get(row.id) ?? 0)] : [])]
-      : [esc(packageLabel(row.label)), esc(monthOf(row)), num(row.followOn!.total), ...(bsasPlan ? [num(bsasById.get(row.id) ?? 0)] : [])]);
+      ? [named(row), esc(monthOf(row)), esc(row.leadRole), num(row.followOn!.architect), num(row.followOn!.srConsultant), num(row.followOn!.projectManager), num(row.followOn!.total), ...(bsasPlan ? [num(bsasById.get(row.id) ?? 0)] : [])]
+      : [named(row), esc(monthOf(row)), num(row.followOn!.total), ...(bsasPlan ? [num(bsasById.get(row.id) ?? 0)] : [])]);
     const total = detail
       ? ["Total follow-on hours", "", "", num(totals.architect), num(totals.srConsultant), num(totals.projectManager), num(totals.total), ...(bsasPlan ? [num(bsasPlan.plannedHours)] : [])]
       : ["Total follow-on", "", num(totals.total), ...(bsasPlan ? [num(bsasPlan.plannedHours)] : [])];
