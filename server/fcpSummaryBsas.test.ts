@@ -25,12 +25,13 @@ describe("Summary with BSAS", () => {
     await expect(html).toMatchFileSnapshot("./__golden__/summary-riverbend-health.html");
   });
 
-  it("entitlement plus BSAS: After This Plan names the BSAS hours, term and forfeiture, in hours and dates only (golden)", async () => {
+  it("entitlement plus BSAS: How It's Funded names the BSAS hours, term and forfeiture, in hours and dates only (golden)", async () => {
     const document = meridianHealth();
     const html = summary(document);
-    const after = visible(html).split("After This Plan")[1] ?? "";
-    expect(after).toContain("(BSAS) provide 188 hours from 1 May 2027 to 30 Apr 2028. 188 hours are planned.");
-    expect(after).not.toMatch(/\$\s?\d|rate|tier|forfeit/i);
+    const after = visible(html).split("How It's Funded")[1] ?? "";
+    expect(after).toContain("(BSAS) fund this work: 188 hours from 1 May 2027 to 30 Apr 2028. 188 hours are planned.");
+    expect(after).not.toMatch(/\$\s?\d|rate|tier|forfeit|needs one of/i);
+    expect(visible(html)).toMatch(/BSAS hours\s+Governance|BSAS hours/);
     expect(checks(html, document)).toEqual([]);
     await expect(html).toMatchFileSnapshot("./__golden__/summary-meridian-health.html");
   });

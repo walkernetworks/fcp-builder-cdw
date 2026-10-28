@@ -141,8 +141,9 @@ describe("Summary FCP", () => {
 
   it("leaves out sections with nothing to show", () => {
     const document = northwindMfg();
+    document.twoYearPlan = { ...document.twoYearPlan, lanes: document.twoYearPlan.lanes.map(lane => ({ ...lane, bars: [] })) };
     const html = summary(document);
-    for (const heading of ["Delivered to Date", "After This Plan", "See the full list"]) expect(html).not.toContain(heading);
+    for (const heading of ["Delivered to Date", "After This Plan", "After the Entitlement", "See the full list"]) expect(html).not.toContain(heading);
     expect(visible(html)).toContain("Planned CDW Hours");
     expect(checks(html, document)).toEqual([]);
   });

@@ -33,7 +33,7 @@ describe("Standard FCP", () => {
 
   it("has the seven sections in order, with the document control on the Summary page", () => {
     const text = visible(standard(acmeHealthReconciled()));
-    const order = ["Functional Consumption Plan · Standard", "Version 1, issued", "Scope and Architecture", "Work Packages and Scoped Effort", "Adoption Timeline", "Roadmap: After the Entitlement", "Working Together"].map(heading => text.indexOf(heading));
+    const order = ["Functional Consumption Plan · Standard", "Version 1, issued", "Scope and Architecture", "Work Packages and Scoped Effort", "Adoption Timeline", "After the Entitlement", "Working Together"].map(heading => text.indexOf(heading));
     expect(order.every(index => index >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(text).toMatch(/Supersedes None/);
@@ -59,7 +59,7 @@ describe("Standard FCP", () => {
   it("states the BSAS pool in the roadmap's follow-on table, in hours and dates only", () => {
     const text = visible(standard(meridianHealth()));
     expect(text).toContain("BSAS hours");
-    expect(text).toContain("(BSAS) provide 188 hours from 1 May 2027 to 30 Apr 2028. 188 hours are planned.");
+    expect(text).toContain("(BSAS) fund this work: 188 hours from 1 May 2027 to 30 Apr 2028. 188 hours are planned.");
   });
 
   it("calls the window the planned delivery window when no entitlement is booked", () => {

@@ -62,7 +62,7 @@ const table = (headers: string[], rows: Cell[][], options: { numeric?: number[];
 };
 
 export function renderStandardFcpHtml(title: string, input: EngagementDocument, options: SummaryOptions): string {
-  const parts = summaryParts(title, input, options, { keyDates: 99, commitments: 99, openItems: 99 });
+  const parts = summaryParts(title, input, options, { keyDates: 99, commitments: 99, openItems: 99 }, true);
   const { prepared, plan, platform, vvf, issued, kpis, pills, synopsis, scope, strip, timeline, datesSection, delivered, reserve, balanced, totalLabel, total, reconcileNote, followOnRows, bsasPlan, after, customerItems } = parts;
   const { document, customer, today, termEnd, assumedEnd, bsasOnly, w, customerTimelines } = prepared;
   const booked = parts.booked;
@@ -118,30 +118,8 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
   const milestones = past.length ? `<h3>Milestones to Date</h3><div class="milestones">${past.map(item => `<div><b>${esc(shortDate(item.date))}</b><span>${esc(item.event)}</span></div>`).join("")}</div>` : "";
   const timelinePage = page(`${timeline.replace("<h2>Timeline</h2>", "<h2>Adoption Timeline</h2>")}<div class="two">${milestones ? `<div>${milestones}</div>` : ""}<div>${datesSection}</div></div>`);
 
-  // ---- Roadmap: the notional after the entitlement, and the follow-on scope in hours
-  const notional = customerFacing(document.twoYearPlan);
-  const start = /^(\d{4})-(\d{2})/.exec(notional.startDate);
-  const end = termEnd ? /^(\d{4})-(\d{2})/.exec(termEnd) : null;
-  const firstAfter = !booked ? 1 : start && end ? Math.max(1, (Number(end[1]) - Number(start[1])) * 12 + Number(end[2]) - Number(start[2]) + 2) : 13;
-  const roadmapSlice = notional.lanes.length && firstAfter <= notional.columns.length ? sliceTimeline(notional, firstAfter, Math.min(firstAfter + 11, notional.columns.length)) : null;
-  const notionalBars = new Map(customerTimelines.notional.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
-  const followOnWindow = (row: (typeof followOnRows)[number]) => {
-    const bar = notionalBars.get(row.id);
-    const window = bar ? barWindow(customerTimelines.notional, bar) : null;
-    return window && (!termEnd || window.start > termEnd) ? window : null;
-  };
-  const bsasById = new Map(bsasPlan?.rows.map(row => [row.id, row.bsasHours]) ?? []);
-  const followTotals = followOnRows.reduce((sum, row) => ({ architect: sum.architect + row.followOn!.architect, srConsultant: sum.srConsultant + row.followOn!.srConsultant, projectManager: sum.projectManager + row.followOn!.projectManager, total: sum.total + row.followOn!.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
-  const followTable = followOnRows.length
-    ? `<h3>Follow-on Scope</h3>${table(["Work package", "Planned window", "Lead role", "Architect", "Sr. Consultant", "PM", "Total hours", ...(bsasPlan ? ["BSAS hours"] : [])], followOnRows.map(row => {
-      const window = followOnWindow(row);
-      return [esc(packageLabel(row.label)), esc(window ? formatWindow(window.start, window.end) : termEnd ? `After ${shortDate(termEnd)}` : w("After the entitlement", "After the BSAS term")), esc(row.leadRole), num(row.followOn!.architect), num(row.followOn!.srConsultant), num(row.followOn!.projectManager), num(row.followOn!.total), ...(bsasPlan ? [num(bsasById.get(row.id) ?? 0)] : [])];
-    }), { numeric: bsasPlan ? [3, 4, 5, 6, 7] : [3, 4, 5, 6], foot: true, total: ["Total follow-on hours", "", "", num(followTotals.architect), num(followTotals.srConsultant), num(followTotals.projectManager), num(followTotals.total), ...(bsasPlan ? [num(bsasPlan.plannedHours)] : [])] })}`
-    : "";
-  const roadmapWindow = roadmapSlice ? `${roadmapSlice.columns[0]} through ${roadmapSlice.columns.at(-1)}` : "";
-  const roadmapPage = roadmapSlice || followTable
-    ? page(`<h2>Roadmap: After the ${w("Entitlement", "BSAS Term")}</h2><p class="lead">${roadmapWindow ? `${esc(roadmapWindow)}. ` : ""}Directional work that is not funded by the current ${w("entitlement", "BSAS hours")} and needs ${w("a renewal with entitlement attached or a services purchase", "additional BSAS hours or a services purchase")}.${termEnd && assumedEnd ? " The end date is to be confirmed." : ""}</p>${roadmapSlice ? renderTimeline(summaryTimeline(roadmapSlice), "No activities are scheduled after the entitlement.", undefined, { skipEmptyCategories: true, legendFromChart: true }) : ""}${followTable}${after}`)
-    : "";
+  // ---- Roadmap: the second year of the two-year view, shared with the Summary's page 3, with hours by role
+  const roadmapPage = parts.twoYear.hasContent ? page(parts.twoYear.html) : "";
 
   // ---- Working together
   const effortPlan = buildCustomerEffort(document);

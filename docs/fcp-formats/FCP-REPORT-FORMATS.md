@@ -8,7 +8,7 @@ The 15-page FCP is trying to serve three readers at once: the customer, Broadcom
 
 | Output | Reader | Length | Goes to |
 |---|---|---|---|
-| **Summary FCP** | Commercial customers | 2 pages, plus cover | Customer |
+| **Summary FCP** | Commercial customers | 3 pages (2 when there is no follow-on work) | Customer |
 | **Standard FCP** | Corporate and Strategic customers, Broadcom approval | 6 to 7 pages | Customer and Broadcom |
 | **Delivery Handoff** | CDW delivery team | As long as it needs | Internal only |
 
@@ -63,7 +63,7 @@ That fits on two or three pages. The remaining twelve pages of the current FCP a
 
 ---
 
-## 3. Summary FCP (Commercial): 2 pages
+## 3. Summary FCP (Commercial): 3 pages
 
 The customer reads this in two minutes and knows what's happening, when, and what they owe.
 
@@ -79,7 +79,14 @@ The customer reads this in two minutes and knows what's happening, when, and wha
 - The entitlement-window Gantt (existing, unchanged).
 - **Key dates:** 5 at most.
 - **What we need from you:** customer commitments and open items with owners, 3 each at most.
-- **After this plan:** one sentence naming the follow-on work and its hours.
+- **After this plan:** one sentence naming the follow-on work and its hours, pointing to page 3.
+
+**Page 3: After the entitlement**
+- The second year of the two-year view as a Gantt, starting the month after the entitlement ends (or after planned completion when no entitlement is booked).
+- **Follow-on work:** package, month, hours, with a total. Hours only.
+- **How it's funded:** not drawn from the current entitlement; needs a renewal with a services entitlement, a services purchase, or BSAS hours. When BSAS exists, state its hours, term and forfeiture here, hours and dates only. One line on why it matters, drawn from the customer problems the follow-on work addresses; omit it if there are none.
+- Page 3 prints only when there is follow-on or notional work. Otherwise the Summary is 2 pages.
+- This page covers Broadcom's capability-roadmap requirement for Commercial deals.
 
 ---
 
@@ -127,8 +134,8 @@ This is also the right home for the hours mechanics that currently confuse the c
 
 - **Format follows the tracker segment.** Commercial gets Summary; Corporate and Strategic get Standard. This lines up with the stage model, where only Corporate and Strategic go through Broadcom Approval. Allow an override per export, recorded on the issued version. Use the tracker segment, not the FCP's Commercial plan setting; that field controls plan generation, not document length.
 - **Empty sections never print.** No compatibility section with no evidence, no burndown before any hours are consumed, no notional sheet that only continues bars from the previous one.
-- **The customer sees funded scope.** Overage, buckets and the reserve mechanics (its share, the month-6 review, late work released into it) go to the Handoff. The reserve itself prints as one line, so the hours add up.
-- **Hours reconcile on the page.** Hours already delivered, plus hours planned, plus the reserve, equal the entitlement, to within an hour of rounding. Delivered hours print as their own "Delivered to date" row, labelled with the consumption entries' notes when they have any; the reserve prints as one row, "Held for change requests, released to follow-on work if unused". The planner schedules only what remains: planned hours = entitlement − delivered hours − reserve, and the reserve is its share (8% by default) of the hours left after delivery. The Acme sample planned 347 future hours while 39 of 262 were already used; reconciled, it is 39 delivered + 205 planned + 18 held = 262. (The mockups predate the reserve line and show 39 + 223 = 262.) A plan that does not reconcile cannot be issued without a logged reason, in either direction: over is under-funded, and under reads "N hours are not planned and will be forfeited at term end."
+- **The customer sees funded scope.** Overage, buckets and reserve mechanics go to the Handoff.
+- **Hours reconcile on the page.** Hours already delivered plus hours planned must equal the entitlement. Delivered hours print as their own "Delivered to date" row, and the plan only schedules what remains. The Acme sample planned 347 future hours while 39 of 262 were already used; the mockups show the corrected accounting (39 delivered + 223 planned = 262).
 - **Hard caps in the renderer.** Key dates 5, commitments 3, open items 3 in Summary (with "see the full list in the Standard FCP" if more exist). Caps keep the format from creeping back up.
 - **No new data entry.** All three formats render from the same document and effort.
 

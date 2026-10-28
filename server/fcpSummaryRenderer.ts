@@ -6,7 +6,10 @@ import { customerOpenItems, planKeyDates, platformName, selectedScopeSummary } f
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { barWindow } from "../shared/buildingBlocks";
 import { DRAFT_MARK, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, RESERVE_LINE, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
+import { twoYearView } from "./fcpTwoYear";
 import { renderTimeline } from "./timelineHtml";
+import { packageLabel, shortBarLabel, summaryTimeline } from "./timelineLabels";
+export { packageLabel, shortBarLabel, summaryTimeline };
 
 /**
  * Summary FCP (docs/fcp-formats/FCP-REPORT-FORMATS.md section 3): two pages for a Commercial customer. Page 1 is the
@@ -24,46 +27,13 @@ export const SUMMARY_CAPS = { keyDates: 5, commitments: 3, openItems: 3 } as con
 export const LEGEND = "CDW · Proprietary and confidential. Copying restricted.";
 export const MORE = "See the full list in the Standard FCP.";
 
-/**
- * Bar labels for the Summary's timeline, where a bar can be a single month wide: the plan's package names, shortened.
- * The Work Packages table keeps the full names. A label with no short form is only stripped of its planner prefix.
- */
-const SHORT_BAR_LABELS: Array<[RegExp, string]> = [
-  [/^Greenfield Discovery Sessions and Funding$/, "Discovery and Funding"],
-  [/^Hardware Compatibility Review$/, "Hardware Review"],
-  [/^Hardware Compatibility Sign-Off$/, "Hardware Sign-Off"],
-  [/^Kickoff and Delivery Plan$/, "Kickoff"],
-  [/^Close HCL Evidence Gaps$/, "Close HCL Gaps"],
-  [/^Greenfield Design and Bill of Materials$/, "Design and BOM"],
-  [/^Migration and Cutover Plan$/, "Cutover Plan"],
-  [/^Greenfield (VCF|VVF) Foundation Build$/, "$1 Foundation Build"],
-  [/^Workload Clusters and vLCM Images$/, "Clusters and vLCM"],
-  [/^Workload Migration and Cutover$/, "Migration Waves"],
-  [/^Backup Validated Before Each Wave$/, "Backup Validation"],
-  [/^(VCF|VVF) Operations Design$/, "Operations Design"],
-  [/^Role and Access Mapping$/, "Roles and Access"],
-  [/^Training and Knowledge Transfer$/, "Training"],
-  [/^(VCF|VVF) Operations Licensing$/, "Licensing"],
-  [/^Platform Lifecycle and Service Health$/, "Lifecycle and Health"],
-  [/^Runbook Knowledge Transfer$/, "Runbook Transfer"],
-  [/^Handover and Service Acceptance$/, "Handover"],
-];
 /** The page 2 bottom row. A column with nothing to show is left out and the others take its width (width = relative share). */
 export function bottomRow(columns: Array<[number, string]>): string {
   const filled = columns.filter(([, html]) => html);
   return `<div class="bottom" style="grid-template-columns:${filled.map(([width]) => `${width}fr`).join(" ")}">${filled.map(([, html]) => `<div>${html}</div>`).join("")}</div>`;
 }
-export const shortBarLabel = (label: string) => {
-  const plain = packageLabel(label);
-  for (const [pattern, short] of SHORT_BAR_LABELS) if (pattern.test(plain)) return plain.replace(pattern, short);
-  return plain;
-};
-export const summaryTimeline = (timeline: Timeline): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.map(bar => ({ ...bar, label: bar.label.replace(/^((?:← )?)(.*?)((?: →)?)$/, (_all, before: string, name: string, after: string) => `${before}${shortBarLabel(name)}${after}`) })) })) });
-
 /** A CSS string literal: the footer text lives in @page margin boxes, which take only CSS content. */
 export const cssString = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3C ").replace(/[\r\n]+/g, " ")}"`;
-/** Bar labels without the planner's prefixes ("Month 1: ", "Weeks 1-2: "). */
-export const packageLabel = (value: string) => value.replace(UNDECIDED_DEPTH, "").replace(/^(Month \d+|Weeks? [\d–-]+): /, "");
 export const listJoin = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0] ?? "");
 export const monthAfter = (iso: string) => {
   const [year, month] = iso.split("-").map(Number);
@@ -146,6 +116,10 @@ tr{break-inside:avoid}
 .after{background:#f6f7f9;border-left:3px solid var(--dark);padding:9px 12px;font-size:10.5px;color:var(--slate)}
 .after b{color:var(--ink)}
 .closer{font-weight:900;color:var(--red);font-size:14px;margin-top:12px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:.3in;margin-top:12px}
+.two>div>h3:first-child{margin-top:0}
+.after p{margin:0 0 5px}
+.after p:last-child{margin-bottom:0}
 .timeline-legend{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:0 0 6px;font-size:7.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
 .timeline-legend-item{display:inline-flex;align-items:center;gap:4px;border:1px solid;border-radius:999px;padding:2px 5px;font-size:7px;line-height:1;font-weight:800;letter-spacing:0;text-transform:none}
 .timeline-legend-item i{display:inline-block;width:6px;height:6px;border-radius:999px;background:currentColor;opacity:.55}
@@ -178,7 +152,7 @@ export type SummaryOptions = { today?: string; effort: ScopedEffort; draft?: boo
  * The Summary's building blocks, which the Standard FCP reuses so both formats draw the same timeline, tiles, key
  * dates and funding wording. `caps` limits the lists; the Standard passes none.
  */
-export function summaryParts(title: string, input: EngagementDocument, options: SummaryOptions, caps: { keyDates: number; commitments: number; openItems: number } = SUMMARY_CAPS) {
+export function summaryParts(title: string, input: EngagementDocument, options: SummaryOptions, caps: { keyDates: number; commitments: number; openItems: number } = SUMMARY_CAPS, detail = false) {
   const { bsasOnly, w, deferredWork, document, today, asOf, customer, burndown, termEnd, assumedEnd, termStart, bsas, customerTimelines } = prepareReport(input, options);
   const { fields, report } = document;
   const effort = options.effort;
@@ -326,26 +300,30 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
     : `The rest of the ${listJoin(remainder)} follows ${when}`;
   // Entitlement plus BSAS: the BSAS pool is stated on its own, in hours and dates, with what is not planned in the term.
   const bsasPlan = bsas && !bsasOnly ? planBsasAllocation(input, effort) : null;
+  // The two-year view's second year is page 3 when there is follow-on or notional work; page 2 only points to it.
+  const twoYear = twoYearView({ document, effort, prepared: { customer, termEnd, assumedEnd, bsasOnly, w, customerTimelines }, booked, plannedEnd, followOnRows, bsasPlan, detail });
   const bsasFunds = bsasPlan
     ? `Broadcom Software Adoption Services (BSAS) provide ${hours(bsasPlan.term.hours)} hours from ${shortDate(bsasPlan.term.termStart)} to ${shortDate(bsasPlan.term.termEnd)}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}. ${hours(bsasPlan.plannedHours)} hours are planned${bsasPlan.forfeitedHours > 0 ? `; ${hours(bsasPlan.forfeitedHours)} hours are not planned and will be forfeited at term end` : ""}.`
     : "";
-  const after = followOnRows.length
-    ? `<h3>After This Plan</h3><div class="after">${esc(whatFollows)}, about <b>${hours(followOnHours)} hours</b>.${bsasFunds ? ` ${esc(bsasFunds)}` : ""} It needs follow-on funding: ${w("a renewal with entitlement attached or a services purchase", "additional BSAS hours or a services purchase")}.</div>`
+  const runsFrom = termEnd ? monthAfter(termEnd) : plannedEnd ? monthAfter(plannedEnd) : null;
+  const after = twoYear.hasContent
+    ? `<h3>After This Plan</h3><div class="after">${followOnRows.length ? `About <b>${hours(followOnHours)} hours</b> of follow-on work runs ${runsFrom ? `from ${esc(runsFrom)}` : `after the ${windowName}`}. ` : ""}The two-year view and how it's funded are on page 3.</div>`
     : bsasFunds ? `<h3>After This Plan</h3><div class="after">No follow-on work is planned yet. ${esc(bsasFunds)}</div>` : "";
 
   const strip = `<div class="strip"><span>${cdwLogoSvg("logo")}Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for ${esc(customer)} · ${esc(issued)}</span></div>`;
-  return { prepared: { bsasOnly, w, deferredWork, document, today, asOf, customer, burndown, termEnd, assumedEnd, termStart, bsas, customerTimelines }, plan, platform, vvf, issued, band, pills, kpis, synopsis, inPlan, notInPlan, scope, architecture, workPackages, timeline, keyDates, candidates, datesSection, asks, needs, customerItems, openItems, followOnRows, followOnHours, whatFollows, bsasPlan, bsasFunds, after, strip, reconciliation, delivered, reserve, balanced, total, totalLabel, basis, reconcileNote, booked, windowName, windowStart, windowEnd, plannedEnd, planStart, buildLater, buildStart, termLabel: term };
+  return { prepared: { bsasOnly, w, deferredWork, document, today, asOf, customer, burndown, termEnd, assumedEnd, termStart, bsas, customerTimelines }, plan, platform, vvf, issued, band, pills, kpis, synopsis, inPlan, notInPlan, scope, architecture, workPackages, timeline, keyDates, candidates, datesSection, asks, needs, customerItems, openItems, followOnRows, followOnHours, whatFollows, bsasPlan, bsasFunds, after, strip, reconciliation, delivered, reserve, balanced, total, totalLabel, basis, reconcileNote, booked, windowName, windowStart, windowEnd, plannedEnd, planStart, buildLater, buildStart, termLabel: term, twoYear };
 }
 
 export function renderSummaryFcpHtml(title: string, input: EngagementDocument, options: SummaryOptions): string {
   const parts = summaryParts(title, input, options);
   const { customer, document } = parts.prepared;
-  const { band, pills, kpis, synopsis, scope, architecture, workPackages, timeline, datesSection, needs, openItems, after, strip } = parts;
+  const { band, pills, kpis, synopsis, scope, architecture, workPackages, timeline, datesSection, needs, openItems, after, strip, twoYear } = parts;
   const version = options.version;
   void document;
   const page1 = `<section class="p1sheet" ${fitAttribute(PAGE_FIT.first)}>${band}<div class="p1">${pills}${kpis}<div class="cols"><div><h3>What We're Doing</h3><p class="synopsis">${esc(synopsis)}</p>${scope}${architecture}</div><div>${workPackages}</div></div></div></section>`;
-  const bottom = bottomRow([[1, datesSection], [1.15, needs + openItems], [0.9, `${after}<div class="closer">Make Amazing Happen.</div>`]]);
+  const bottom = bottomRow([[1, datesSection], [1.15, needs + openItems], [0.9, `${after}${twoYear.hasContent ? "" : '<div class="closer">Make Amazing Happen.</div>'}`]]);
   const page2 = `<section class="p2" ${fitAttribute(PAGE_FIT.rest)}>${strip}${timeline}${bottom}</section>`;
+  const page3 = twoYear.hasContent ? `<section class="p2" ${fitAttribute(PAGE_FIT.rest)}>${strip}${twoYear.html}<div class="closer">Make Amazing Happen.</div></section>` : "";
 
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} - FCP</title><style>${CSS}${footerCss(customer, version)}</style></head><body>${options.draft ? DRAFT_MARK : ""}${page1}${page2}<button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button>${FIT_SCRIPT}</body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} - FCP</title><style>${CSS}${footerCss(customer, version)}</style></head><body>${options.draft ? DRAFT_MARK : ""}${page1}${page2}${page3}<button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button>${FIT_SCRIPT}</body></html>`;
 }
