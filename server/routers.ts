@@ -198,7 +198,7 @@ export const appRouter = router({
     /** What issuing now would produce: the checks and the change summary. Writes nothing. */
     issuePreview: protectedProcedure.input(z.object({ id: recordId, reportFormat: reportFormatInput })).mutation(async ({ ctx, input }) => {
       const prepared = requireRow(await prepareIssue(viewerFor(ctx.user), input.id, { reportFormat: input.reportFormat }));
-      return { failures: prepared.failures, fundingProblem: prepared.fundingProblem, reportFormat: prepared.reportFormat, changeSummary: prepared.changeSummary, unchanged: prepared.unchanged, hoursNote: prepared.hoursNote, basedOnIssue: prepared.basedOn?.issueNumber ?? null };
+      return { failures: prepared.failures, fundingProblem: prepared.fundingProblem, reportFormat: prepared.reportFormat, changeSummary: prepared.changeSummary, unchanged: prepared.unchanged, hoursNote: prepared.hoursNote, hoursOnly: prepared.hoursOnly, basedOnIssue: prepared.basedOn?.issueNumber ?? null };
     }),
     /** Issues the saved FCP as the next numbered version, exactly as rendered now, without the draft mark. */
     issue: protectedProcedure
@@ -215,7 +215,8 @@ export const appRouter = router({
         const prepared = requireRow(await prepareIssue(viewer, input.id, { reportFormat: input.reportFormat }));
         if (prepared.failures.length) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued because it failed these checks:\n- ${prepared.failures.join("\n- ")}` });
         if (prepared.fundingProblem && !input.fundingOverride) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued: ${prepared.fundingProblem} To issue it anyway, give the reason.` });
-        if (prepared.unchanged) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Nothing has changed since issue ${prepared.basedOn?.issueNumber}.` });
+        if (prepared.unchanged && !prepared.hoursOnly) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Nothing has changed since issue ${prepared.basedOn?.issueNumber}.` });
+        if (prepared.hoursOnly && !input.revisionNote) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Only the hours model has changed since issue ${prepared.basedOn?.issueNumber}. Add a revision note to issue it, for example: Hours re-estimated with the updated planning model.` });
         const reportFormat = reportFormatOption(prepared.reportFormat) ?? null;
         return unwrap(await lockAware(() => db.issueFcpVersion(viewer, input.id, { title: prepared.title, data: prepared.document, effort: prepared.effort, html: prepared.html, label: input.label, revisionNote: input.revisionNote || null, changeSummary: prepared.changeSummary, basedOnVersionId: prepared.basedOn?.id ?? null, reportFormat, fundingOverrideNote: prepared.fundingProblem ? input.fundingOverride : null, issueContext: prepared.issueContext })));
       }),

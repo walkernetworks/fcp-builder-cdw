@@ -144,7 +144,7 @@ describe("fcpRecord.issue", () => {
       expect((await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" })).unchanged).toBe(true);
     });
 
-    it("compares the document only: a changed hours model gets its own note and is not a change", async () => {
+    it("compares the document only: a changed hours model gets its own note and can be issued again with a revision note", async () => {
       const { document, stored } = await issuedVersionTwo();
       // The issue was made when the plan carried other hours: same document, different effort snapshot.
       const held = structuredClone(stored.effort);
@@ -153,10 +153,18 @@ describe("fcpRecord.issue", () => {
       vi.mocked(db.getEngagement).mockResolvedValue(standardRow(document));
       const preview = await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" });
       expect(preview.unchanged).toBe(true);
+      expect(preview.hoursOnly).toBe(true);
+      // Issuing needs a revision note saying why.
+      await expect(caller().fcpRecord.issue({ id: 4, reportFormat: "standard" })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Only the hours model has changed since issue 2. Add a revision note") });
+      vi.mocked(db.issueFcpVersion).mockClear();
+      await caller().fcpRecord.issue({ id: 4, reportFormat: "standard", revisionNote: "Hours re-estimated with the updated planning model." });
+      expect(vi.mocked(db.issueFcpVersion).mock.calls.at(-1)![2]).toMatchObject({ revisionNote: "Hours re-estimated with the updated planning model." });
       expect(preview.hoursNote).toBe(`The hours model has changed since issue 2: the plan now carries ${Math.round(stored.effort.totals.total)} hours where the issue held ${Math.round(held.totals.total)}.`);
       // Nothing to note when the hours are the same.
       vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(asLatest(stored));
-      expect((await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" })).hoursNote).toBeNull();
+      const same = await caller().fcpRecord.issuePreview({ id: 4, reportFormat: "standard" });
+      expect(same.hoursNote).toBeNull();
+      expect(same.hoursOnly).toBe(false);
     });
 
     it("still sees a change in the data, and a different format", async () => {

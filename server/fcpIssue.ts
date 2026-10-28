@@ -41,8 +41,10 @@ export type PreparedIssue = {
   changeSummary: ChangeSummary;
   /** The document has not changed since the current issued version (the hours model and the renderer do not count). */
   unchanged: boolean;
-  /** The same document now plans different hours than the current issue held; informational, never a change. */
+  /** The same document now plans different hours than the current issue held. */
   hoursNote: string | null;
+  /** Only the hours model changed since the current issue: it can be issued again, with a revision note saying so. */
+  hoursOnly: boolean;
   basedOn: { id: number; issueNumber: number } | null;
   /** What the Standard's document control and acceptance block were rendered with; stored on the version at issue. */
   issueContext: IssueContext | null;
@@ -73,8 +75,9 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
   const previous = latest && latest.issueNumber !== null && latest.effortSnapshot ? { document: latest.data, effort: latest.effortSnapshot, issueNumber: latest.issueNumber } : null;
   const changeSummary = computeChangeSummary(previous, { document, effort });
   // Unchanged means the working document is the same as the current issue's stored snapshot, in the same format. Not the
-  // rendered pages, and not the effort: a renderer change, an approval recorded since, or a changed hours model never
-  // makes an issued version look changed.
+  // rendered pages, and not the effort: a renderer change or an approval recorded since never makes an issued version
+  // look changed. A changed hours model is its own case (hoursOnly): the customer's hours moved, so it can be issued
+  // again, with a revision note.
   const unchanged = Boolean(previous) && (latest!.reportFormat ?? null) === (format ?? null) && sameData(migrateDocument(latest!.data), document);
   // A changed hours model has its own note: same document, different hours than the issue held.
   const heldHours = latest?.effortSnapshot?.totals.total;
@@ -92,6 +95,7 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
     changeSummary,
     unchanged,
     hoursNote,
+    hoursOnly: unchanged && hoursNote !== null,
     basedOn: latest && latest.issueNumber !== null ? { id: latest.id, issueNumber: latest.issueNumber } : null,
     issueContext,
   };

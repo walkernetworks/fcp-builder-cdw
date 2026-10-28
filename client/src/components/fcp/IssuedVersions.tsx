@@ -131,7 +131,7 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
       </div>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" size="sm" disabled={readOnly || busy} onClick={() => void check()}>{preview.isPending && <Loader2 className="size-4 animate-spin" />} Check and show the changes</Button>
-        <Button size="sm" disabled={readOnly || busy || !result || result.failures.length > 0 || result.unchanged || needsOverride} onClick={() => void doIssue()}>{issue.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Issue {next}</Button>
+        <Button size="sm" disabled={readOnly || busy || !result || result.failures.length > 0 || (result.unchanged && !result.hoursOnly) || (result.hoursOnly && !note.trim()) || needsOverride} onClick={() => void doIssue()}>{issue.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />} Issue {next}</Button>
       </div>
       {!result && <p className="text-xs text-ink-muted">Check first: it saves the FCP, runs the same content checks as an export in the {REPORT_FORMAT_LABELS[reportFormat]} format, and shows what changed since the last issue.</p>}
       {result?.fundingProblem && (
@@ -146,9 +146,9 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
           <ul className="mt-1 list-disc pl-5">{result.failures.map(failure => <li key={failure}>{failure}</li>)}</ul>
         </div>
       )}
-      {result && result.unchanged && <p className="text-xs text-ink-muted">Nothing has changed since issue {result.basedOnIssue}, so there is nothing to issue.</p>}
-      {result?.hoursNote && <p className="text-xs text-ink-muted">{result.hoursNote}</p>}
-      {result && result.failures.length === 0 && !result.unchanged && <ChangeSummaryView summary={result.changeSummary} />}
+      {result && result.unchanged && !result.hoursOnly && <p className="text-xs text-ink-muted">Nothing has changed since issue {result.basedOnIssue}, so there is nothing to issue.</p>}
+      {result?.hoursNote && <p className="text-xs text-ink-muted">{result.hoursNote}{result.hoursOnly ? " Nothing else has changed. To issue it again, write a revision note, for example: Hours re-estimated with the updated planning model." : ""}</p>}
+      {result && result.failures.length === 0 && (!result.unchanged || result.hoursOnly) && <ChangeSummaryView summary={result.changeSummary} />}
     </Panel>
   );
 }

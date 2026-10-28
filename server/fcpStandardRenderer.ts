@@ -136,7 +136,8 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
   const timelinePage = page(`${timeline.replace("<h2>Timeline</h2>", "<h2>Adoption Timeline</h2>")}<div class="two">${milestones ? `<div>${milestones}</div>` : ""}<div>${datesSection}</div></div>`);
 
   // ---- Roadmap: the second year of the two-year view, shared with the Summary's page 3, with hours by role
-  const roadmapPage = parts.twoYear.hasContent ? page(parts.twoYear.html) : "";
+  // The roadmap is not scaled to one page: when it runs long it continues onto a second page at full size.
+  const roadmapPage = parts.twoYear.hasContent ? `<section class="pg">${strip}${parts.twoYear.html}</section>` : "";
 
   // ---- Working together
   const effortPlan = buildCustomerEffort(document);

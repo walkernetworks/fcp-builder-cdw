@@ -125,9 +125,13 @@ describe("Standard FCP", () => {
     expect(scripts[0]).not.toMatch(/src=|https?:|fetch|XMLHttpRequest|import\(/);
   });
 
-  it.skipIf(!chrome)("prints on seven pages, or fewer when a page has nothing to show", async () => {
-    expect(pages(await renderPdf(standard(acmeHealthReconciled(), 1, true)))).toBe(7);
-    expect(pages(await renderPdf(standard(meridianHealth(), 1, true)))).toBe(7);
+  it.skipIf(!chrome)("prints on seven pages, or more when the roadmap runs long (it continues at full size), or fewer when a page has nothing to show", async () => {
+    // The roadmap is never shrunk to fit one page: it continues onto a second page at full size.
+    expect(standard(meridianHealth(), 1, true)).toMatch(/<section class="pg"><div class="strip/);
+    const acme = pages(await renderPdf(standard(acmeHealthReconciled(), 1, true)));
+    expect(acme).toBeGreaterThanOrEqual(7);
+    expect(acme).toBeLessThanOrEqual(9);
+    expect(pages(await renderPdf(standard(meridianHealth(), 1, true)))).toBeLessThanOrEqual(9);
     expect(pages(await renderPdf(standard(cedarRidgeLogistics(), 1, true)))).toBeLessThanOrEqual(7);
   }, 90_000);
 });
