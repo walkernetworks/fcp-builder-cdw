@@ -84,5 +84,5 @@ export const FIELD_GROUPS: { title: string; fields: FieldDef[] }[] = [
 
 export const ROLE_LABELS: Record<string, string> = { sales_rep: "Sales rep", account_manager: "Account manager", presales: "Presales", architect: "Architect", pm: "PM", sr_consultant: "Sr. consultant", broadcom_ad: "Broadcom AD" };
 
-export const SOURCE_KIND_LABELS: Record<string, string> = { rvtools: "RVTools export", discovery_notes: "Discovery notes", customer_brief: "Customer brief", hardware_review: "Hardware review", hours_source: "Hours source", broadcom_ser: "Broadcom SER", other: "Other" };
+export const SOURCE_KIND_LABELS: Record<string, string> = { rvtools: "RVTools export", discovery_notes: "Discovery notes", customer_brief: "Customer brief", hardware_review: "Hardware review", hours_source: "Entitled hours (Broadcom record)", broadcom_ser: "Broadcom SER", other: "Other" };
 export const SOURCE_STATUS_LABELS: Record<string, string> = { needed: "Needed", requested: "Requested", received: "Received", verified: "Verified", waived: "Waived" };

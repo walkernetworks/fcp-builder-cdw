@@ -262,3 +262,12 @@ describe("plan inputs from the brief", () => {
     ]);
   });
 });
+
+describe("prompt documentation", () => {
+  it("keeps docs/COPILOT-BRIEF-PROMPT.md the same as the prompt the app copies", async () => {
+    const { COPILOT_BRIEF_PROMPT } = await import("../shared/briefPrompt");
+    const doc = readFileSync(path.resolve(import.meta.dirname, "../docs/COPILOT-BRIEF-PROMPT.md"), "utf8");
+    const start = doc.indexOf("```text\n") + 8;
+    expect(doc.slice(start, doc.indexOf("\n```", start))).toBe(COPILOT_BRIEF_PROMPT.trimEnd());
+  });
+});

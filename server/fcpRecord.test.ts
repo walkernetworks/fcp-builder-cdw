@@ -22,9 +22,17 @@ describe("source checklist evidence from the FCP", () => {
     expect(update).toMatchObject({ id: 1, status: "received", receivedOn: "2026-10-12", reference: "RVTools_export_example.xlsx" });
   });
 
-  it("receives the customer brief from what the FCP holds, and leaves the hours source to people", () => {
+  it("receives the customer brief from what the FCP holds; signed hours from an old document receive nothing", () => {
     const updates = sourceUpdatesFromDocument(documentWith({ brief: true, signedHours: 320 }), items(), TODAY);
     expect(updates.map(update => update.id)).toEqual([3]);
+  });
+
+  it("receives the hours source once entitled hours from Broadcom's record are on the plan", () => {
+    const document = documentWith();
+    document.report.entitlement.hours = 1000;
+    const [update] = sourceUpdatesFromDocument(document, items(), TODAY);
+    expect(update).toMatchObject({ id: 4, status: "received", reference: "1,000 entitled hours" });
+    expect(sourceUpdatesFromDocument(document, items({ hours_source: "waived" }), TODAY)).toEqual([]);
   });
 
   it("never changes a verified or waived decision, and leaves discovery notes to people", () => {
