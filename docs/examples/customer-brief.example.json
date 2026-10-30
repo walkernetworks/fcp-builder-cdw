@@ -36,7 +36,7 @@
     "consolidatedDomain": true,
     "newHostsPurchased": { "management": 0, "workload": 8 },
     "addOnsConsidered": ["VCF Operations", "VMware Live Recovery"],
-    "notInterested": ["Kubernetes", "Private AI", "HCX"],
+    "notInterested": ["Kubernetes", "Private AI", "HCX"], "outOfScope": [],
     "sitePrerequisitesOpen": [],
     "componentDepth": { "operations": null, "automation": null, "networkingSecurity": null, "kubernetesAi": null, "efficiency": null },
     "industry": null, "targetRelease": null, "domains": [], "excludedHosts": [],

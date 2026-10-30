@@ -303,6 +303,44 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   if (efficiency && depths.efficiency === "not-selected") depths.efficiency = "tier-1";
   details.componentDepths = depths;
   details.followOnOnly = statesScope ? Array.from(followOnOnly) : current.adoptionDetails.followOnOnly;
+  // Out of scope: the customer has ruled it out. It leaves the plan and the follow-on completely, unlike a considered
+  // add-on (follow-on) or a declined one (simply not added).
+  const outOfScopeGiven = discovery.outOfScope !== undefined ? discovery.outOfScope : discovery.outOfScopeThisTerm;
+  const outOfScopeKey = discovery.outOfScope !== undefined ? "discovery.outOfScope" : "discovery.outOfScopeThisTerm";
+  const outOfScope: string[] = [];
+  const dropped = new Set<string>();
+  const removeFocus = (detailKey: string, focus: string[]) => {
+    details[detailKey] = (details[detailKey] as string[]).filter(item => !focus.includes(item));
+  };
+  for (const value of textList(outOfScopeGiven, outOfScopeKey, warnings)) {
+    const key = canonicalAddOn(value);
+    const addOn = key ? ADD_ON_OUTCOMES[key] : null;
+    const focusKey = value.toLowerCase().replace(/[\s_]+/g, "-");
+    const area = OUTCOME_AREAS.find(([detailKey]) => focusOptions(detailKey).includes(focusKey));
+    if (addOn?.efficiency) {
+      depths.efficiency = "not-selected";
+      dropped.add("efficiency");
+    } else if (addOn?.detailKey && addOn.focus) {
+      removeFocus(addOn.detailKey, addOn.focus);
+      if (addOn.priority) dropped.add(addOn.priority);
+    } else if (area) {
+      removeFocus(area[0], [focusKey]);
+      dropped.add(area[1]);
+    } else {
+      warnings.push(`${outOfScopeKey}: "${value}" is not a recognized add-on or outcome; ignored`);
+      continue;
+    }
+    outOfScope.push(addOn?.label ?? value);
+    changes.push(`${outOfScopeKey}: ${addOn?.label ?? value} is out of scope; left out of the plan and the follow-on`);
+  }
+  for (const capability of Array.from(dropped)) {
+    // An area with nothing left in it leaves the plan and the follow-on.
+    const detailKey = OUTCOME_AREAS.find(([, owner]) => owner === capability)?.[0];
+    const empty = capability === "efficiency" || (detailKey !== undefined && !(details[detailKey] as string[]).length);
+    if (!empty) continue;
+    priorities.delete(capability);
+    details.followOnOnly = (details.followOnOnly as string[]).filter(item => item !== capability);
+  }
   const nextPriorities = capabilitySchema.options.filter(capability => priorities.has(capability) && !(declinedPriorities.has(capability) && !current.priorities.includes(capability)));
 
   const mergedFields = deepMerge(
@@ -365,7 +403,7 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
       consumedAsOf: typeof entitlement.consumedAsOf === "string" ? entitlement.consumedAsOf : prior.entitlement.consumedAsOf,
     }),
     discovery: discoveryCheck.success ? discoveryCheck.data : prior.discovery,
-    declined: keep(declined, prior.declined),
+    declined: keep(Array.from(new Set([...declined, ...outOfScope])), prior.declined),
     situation: keep(textList(brief.situation, "situation", warnings), prior.situation),
     designProfile: designProfile.success ? designProfile.data : prior.designProfile,
     designElements: keep(parseRows(brief.designElements, element(reportShape.designElements), "designElements", warnings), prior.designElements),
