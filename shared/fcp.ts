@@ -2428,8 +2428,14 @@ function softPrerequisiteLabel(key: AdoptionDetails["softPrerequisites"][number]
   }[key];
 }
 
-/** Pathway design packages written alongside the design before them; only the target-state design gates the build. */
-const PARALLEL_DESIGN_PACKAGES = new Set(["converge-runbook", "import-runbook", "upgrade-runbook", "migration-design", "integrated-runbook"]);
+/**
+ * Runbooks written alongside the design before them: they start with it (a week later on a weekly plan) and are approved
+ * once it is, so the runbook does not push the build back.
+ */
+const RUNBOOK_DESIGN_PACKAGES = new Set(["converge-runbook", "import-runbook", "upgrade-runbook"]);
+/** Design for the migration waves: it follows the target-state design but the foundation build does not wait for it. */
+const WAVE_DESIGN_PACKAGES = new Set(["migration-design"]);
+const WRITTEN_ALONGSIDE = "Written alongside the design before it and approved once that design is approved.";
 
 function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary, path = getHclSchedulePath(inventory), requiredColumns = 0, context: PlanContext = {}): Timeline {
   const cadence = fields.adoptionCadence;
@@ -2497,13 +2503,14 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     return "operations";
   };
   let pathwayDesignCursor = 1;
+  // The end of the pathway design the build waits for; wave design runs on without holding the build.
+  let buildDesignGate = 1;
   let previousDesignStart = 1;
   let firstDesignPackageEnd: number | undefined;
   playbookPlan.designPackages.forEach((workPackage, index) => {
     const duration = index === 0 ? scheduleUnits(cadence, 2, 1) : scheduleUnits(cadence, 3, 1);
-    // A runbook or migration design is written alongside the design before it, so it does not push the build back.
-    const parallel = index > 1 && PARALLEL_DESIGN_PACKAGES.has(workPackage.id) && playbookPlan.path !== "design-only";
-    const [taskStart, taskEnd] = range(parallel ? previousDesignStart : pathwayDesignCursor, duration);
+    const alongside = index > 1 && RUNBOOK_DESIGN_PACKAGES.has(workPackage.id) && playbookPlan.path !== "design-only";
+    const [taskStart, taskEnd] = range(alongside ? Math.min(pathwayDesignCursor, previousDesignStart + (cadence === "week" ? 1 : 0)) : pathwayDesignCursor, duration);
     previousDesignStart = taskStart;
     const ownership = getVcfPlaybookWorkPackageOwnership(playbookPlan.path, workPackage);
     const reference = context.referenceDesign && REFERENCE_DESIGN_PACKAGE[playbookPlan.path as VcfDeliveryPath] === workPackage.id ? REFERENCE_DESIGN : null;
@@ -2515,10 +2522,11 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       reference?.title ?? workPackage.title,
       false,
       false,
-      appendDeliveryContext(workPackage.dependsOn),
+      appendDeliveryContext(alongside ? `${workPackage.dependsOn} ${WRITTEN_ALONGSIDE}` : workPackage.dependsOn),
       `${reference?.outcome ?? workPackage.outcome} Acceptance: ${reference?.acceptance ?? workPackage.acceptance}`,
     ));
     pathwayDesignCursor = Math.max(pathwayDesignCursor, taskEnd);
+    if (!WAVE_DESIGN_PACKAGES.has(workPackage.id) || playbookPlan.path === "design-only") buildDesignGate = Math.max(buildDesignGate, taskEnd);
     firstDesignPackageEnd ??= taskEnd;
   });
   // Component designs start once requirements are confirmed and run alongside the rest of the pathway design.
@@ -2638,7 +2646,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   programBars.push(bar("bar-hcl-gate", hclGateStart, hclGateEnd, "gate", "Hardware Compatibility Sign-Off", true, false, hclDependency, `Platform build starts only after this milestone. Compatibility check result: ${hclPathLabel(path)}.`));
 
   const pathwayDesignEnd = playbookPlan.designPackages.length ? pathwayDesignCursor : hclGateEnd;
-  const infrastructureDesignEnd = Math.max(pathwayDesignEnd, componentDesignCursors.infrastructureBuild, componentDesignCursors.infrastructureWaves);
+  const infrastructureDesignEnd = Math.max(playbookPlan.designPackages.length ? buildDesignGate : hclGateEnd, componentDesignCursors.infrastructureBuild, componentDesignCursors.infrastructureWaves);
   // New hardware ordered at the project start arrives after its lead time plus about two weeks to rack and stack;
   // the build waits for it.
   const hardwareLead = fields.hardwareAvailability === "new" && fields.hardwareLeadWeeks > 0
