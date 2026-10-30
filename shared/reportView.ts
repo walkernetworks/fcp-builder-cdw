@@ -435,8 +435,18 @@ export function generateReport(document: EngagementDocument): GeneratedReport {
   if (renewalPassed) openItems.push({ item: `The subscription renewal date on record (${shortDate(discovery.renewalDate!)}) has passed: confirm the renewal and the new term`, gates: "Licensing activation and core sizing", owner: withCustomer });
   // Licensed cores the imported hosts do not account for usually mean an estate that was not exported.
   if (required && licensed && licensed > required) openItems.push({ item: `${(licensed - required).toLocaleString("en-US")} licensed cores are not matched to the hosts in these RVTools exports`, gates: "Licensing sizing; confirm whether another vCenter needs an RVTools export", owner: PLATFORM_OWNER(customer) });
-  const exported = document.inventorySources.filter(source => /\.xlsx?$/i.test(source.filename)).length;
+  // Distinct vCenters across the exports when the exports say which they cover; otherwise one per workbook.
+  const workbooks = document.inventorySources.filter(source => /\.xlsx?$/i.test(source.filename));
+  const vcenterKeys = new Set(workbooks.flatMap(source => source.vcenterKeys ?? []));
+  const exported = workbooks.length && workbooks.every(source => source.vcenterKeys?.length) ? vcenterKeys.size : workbooks.length;
   if (discovery.vcenters && exported && exported < discovery.vcenters) openItems.push({ item: `RVTools exports for ${exported} of ${discovery.vcenters} vCenters`, gates: "Sizing, compatibility and licensing for the vCenters not exported", owner: PLATFORM_OWNER(customer) });
+
+  // An export more than 60 days older than the plan's as-of date may no longer match the estate.
+  const stale = document.inventorySources.filter(source => source.exportedOn && (Date.parse(today) - Date.parse(source.exportedOn)) / 86_400_000 > STALE_EXPORT_DAYS);
+  if (stale.length) {
+    const oldest = stale.map(source => source.exportedOn!).sort()[0];
+    openItems.push({ item: `RVTools export${stale.length === 1 ? "" : "s"} from ${shortDate(oldest)} ${stale.length === 1 ? "is" : "are"} more than ${STALE_EXPORT_DAYS} days old`, gates: "Sizing and compatibility; refresh the export before design sign-off", owner: PLATFORM_OWNER(customer) });
+  }
 
   // ---- Milestones from the engagement dates
   const milestonesToDate: Array<Row<"milestonesToDate">> = [];
@@ -497,6 +507,9 @@ export function visibleGenerated<S extends GeneratedSection>(document: Engagemen
 }
 
 /** The report as it prints: generated rows (unless hidden or overridden) followed by the planner's completed rows. */
+/** An RVTools export older than this, before the plan's as-of date, is raised as an open item. */
+const STALE_EXPORT_DAYS = 60;
+
 export function effectiveReport(document: EngagementDocument): ReportContent {
   const generated = generateReport(document);
   const own = completedReport(document.report);

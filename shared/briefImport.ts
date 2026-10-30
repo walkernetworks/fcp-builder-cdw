@@ -376,6 +376,7 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
     constraints: keep(parseRows(brief.constraints, element(reportShape.constraints), "constraints", warnings), prior.constraints),
     customerAsks: keep(textList(brief.customerAsks, "customerAsks", warnings), prior.customerAsks),
     customerOwnedWork: keep(parseRows(brief.customerOwnedWork, element(reportShape.customerOwnedWork), "customerOwnedWork", warnings), prior.customerOwnedWork),
+    customerEffort: keep(parseRows(Array.isArray(brief.customerEffort) ? brief.customerEffort.map(row => isPlainObject(row) ? { ...row, phase: String(row.phase ?? "").toLowerCase().replace(/[\s_]+/g, "-") } : row) : brief.customerEffort, element(reportShape.customerEffort), "customerEffort", warnings), prior.customerEffort),
     openItems: keep(parseRows(brief.openItems, element(reportShape.openItems), "openItems", warnings), prior.openItems),
     personnel: keep(parseRows(brief.personnel, element(reportShape.personnel), "personnel", warnings), prior.personnel),
     milestonesToDate: keep(parseRows(brief.milestonesToDate, element(reportShape.milestonesToDate), "milestonesToDate", warnings), prior.milestonesToDate),

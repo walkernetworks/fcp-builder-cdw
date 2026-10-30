@@ -1,5 +1,5 @@
 import { effectiveDeliveryPath, resolvePlanOutcomes, usesVdefend, type EngagementDocument } from "./fcp";
-import { ADD_ON_OUTCOMES, canonicalAddOn } from "./report";
+import { ADD_ON_OUTCOMES, canonicalAddOn, storageLabel } from "./report";
 
 /**
  * What the delivery team needs to know walking into the engagement: every discovery answer on record,
@@ -33,7 +33,7 @@ export function deliveryBriefing(document: EngagementDocument): BriefingItem[] {
   add("Data centers", discovery.datacenters ? String(discovery.datacenters) : inventory.datacenters ? `${inventory.datacenters} (from RVTools)` : null, "Sets the site count for the design and where the management domain lands.");
   add("Edge sites", discovery.edgeSites ? String(discovery.edgeSites) : null, "Edge sites need their own connectivity, lifecycle and support decisions.");
   add("Server vendor", discovery.serverVendor, "Determines the vLCM vendor add-on, hardware support manager and firmware baseline.");
-  add("Storage", discovery.storage, "Confirms the principal storage workflow and the array support matrix to check before the build.");
+  add("Storage", storageLabel(discovery.storage), "Confirms the principal storage workflow and the array support matrix to check before the build.");
   add("Networking", discovery.networking, inScope("networking") ? "Shapes the NSX transport, Edge and VLAN design in scope." : "Needed for the management network, VLANs and IP plan of the build.");
   add("Jumbo frames", discovery.jumboFrames === null ? null : discovery.jumboFrames === "mixed" ? "Mixed" : yesNo(discovery.jumboFrames), discovery.jumboFrames === "mixed" ? "Some switches run jumbo frames and others do not: confirm the MTU end to end on every transport VLAN." : discovery.jumboFrames === false ? "Not enabled: raise the MTU on transport VLANs before overlay or vSAN traffic runs." : "Confirm the MTU end to end on the transport VLANs.");
   add("Backup", discovery.backup, moving ? "Confirm support for the target release before the first wave and re-point jobs as workloads move." : "Record it in the design so the build plan covers protection from day one.");

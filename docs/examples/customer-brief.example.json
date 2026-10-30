@@ -65,6 +65,7 @@
   "technicalItems": [{ "item": "The VCF Installer deploys vCenter, NSX and VCF Operations with the management domain", "reference": "VCF 9.1 documentation > Overview > VCF Installer Overview" }],
   "constraints": [{ "constraint": "DR site online before DR build and testing", "imposedBy": "calendar", "effect": "Recovery design now; DR build follows the site" }],
   "customerAsks": ["Decisions by November: hosts for the build, DR policy direction, wave ownership"],
+  "customerEffort": [],
   "customerOwnedWork": [{ "label": "Legacy cluster retirement", "start": "2027-02", "end": "2027-04" }],
   "openItems": [{ "item": "Current RVTools export", "gates": "Design sign-off and sizing", "owner": "Pat Rivera" }],
   "personnel": [{ "workstream": "Design discovery, architecture and design", "cdw": ["Jordan Blake (Architect)"], "broadcom": [], "customer": ["Pat Rivera", "Sam Lee"] }],

@@ -906,6 +906,10 @@ export const inventorySourceSchema = z.object({
   sheets: z.array(z.string()),
   importedAt: z.string(),
   warnings: z.array(z.string()),
+  /** One-way keys of the vCenters in the export (never the names), so the same vCenter exported twice counts once. */
+  vcenterKeys: z.array(z.string().max(16)).max(200).optional(),
+  /** The day RVTools wrote the export, YYYY-MM-DD. */
+  exportedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 export const inventoryVersionSchema = z.object({ version: z.string(), hosts: z.number().int().nonnegative() });

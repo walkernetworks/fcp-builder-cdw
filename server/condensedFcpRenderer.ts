@@ -199,6 +199,9 @@ tr{break-inside:avoid}
 .bd-tick{position:absolute;top:-4px;bottom:-4px;width:3px;background:#1A1D21;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .keep{break-inside:avoid}
 .closer{font-size:18px;font-weight:900;border-top:3px solid var(--red);padding-top:8px;margin:22px 0 6px;break-after:avoid}
+/* The closing lines stay with the content before them, so they never sit alone on a last page. */
+.ending{break-before:avoid;break-inside:avoid}
+.ending .closer{margin-top:14px}
 .closer.red{color:var(--red)}
 .tl-sheet{break-before:page;break-inside:avoid}
 .tl-head{margin:0 0 8px;padding:0 0 7px;border-bottom:2px solid var(--dark)}
@@ -579,9 +582,9 @@ ${table(["Constraint", "Imposed By", "Effect on the Sequence"], constraints.map(
 ${asks.length ? `<h3>Customer Team Commitments</h3><ul>${asks.map(item => `<li>${item}</li>`).join("")}</ul>` : ""}
 ${openItems}
 
-<div class="closer red">Make Amazing Happen.</div>
+<div class="ending"><div class="closer red">Make Amazing Happen.</div>
 ${report.revision ? `<div class="revision">Revision: ${esc(report.revision)}</div>` : ""}
-<p class="sources">Prepared by CDW Consulting Solution Architecture for ${esc(customer)} — Functional Consumption Plan (Condensed) · ${esc(stamp)}.</p>`;
+<p class="sources">Prepared by CDW Consulting Solution Architecture for ${esc(customer)} — Functional Consumption Plan (Condensed) · ${esc(stamp)}.</p></div>`;
 
   const cover = `<section class="cover">${cdwLogoSvg("logo")}${cdwLogoSvg("orbit", "")}<div class="eyebrow">Functional Consumption Plan · ${esc(customer)}</div><h1>Amazing happens when ${esc(customer)} runs a modern VMware Cloud Foundation private cloud with confidence.</h1><div class="sign">Make Amazing Happen.</div><div class="meta"><div><b>Prepared for</b>${esc(customer)}</div><div><b>Date</b>${esc(longDate(asOf))}</div><div><b>Prepared by</b>CDW Consulting Solution Architecture</div></div><div class="legend">${esc(LEGEND)}</div></section>`;
 

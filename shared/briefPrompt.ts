@@ -55,6 +55,7 @@ What each section is for
 - technicalItems: version minimums and platform constraints to confirm early, with the VCF documentation reference (part and heading).
 - constraints: calendar or business constraints on the order of work (site dates, freezes, deadlines), who imposes them, and the effect on the sequence.
 - customerAsks: what we need from the customer's team (decisions by a date, access, remediation they own).
+- customerEffort: only when the customer gave its own estimate of its team's time: hours per week by role (platformLead, operations, network) for a phase (design, build, migration, customer-waves, capability, recovery, handover). Leave [] otherwise; CDW's planning estimate is used.
 - customerOwnedWork: work the customer's team will run themselves (for example the remaining migration waves), with start and end months.
 - openItems: every item still outstanding, what it gates, and the owner.
 - personnel: for each work stream, the named CDW, Broadcom and customer people.
@@ -97,6 +98,7 @@ JSON shape (fill every key; keep the structure exactly)
   "constraints": [{ "constraint": "", "imposedBy": "", "effect": "" }],
   "customerAsks": [],
   "customerOwnedWork": [{ "label": "", "start": "YYYY-MM", "end": "YYYY-MM" }],
+  "customerEffort": [],
   "openItems": [{ "item": "", "gates": "", "owner": "" }],
   "personnel": [{ "workstream": "", "cdw": [], "broadcom": [], "customer": [] }],
   "milestonesToDate": [{ "date": "YYYY-MM-DD", "event": "", "detail": "" }],

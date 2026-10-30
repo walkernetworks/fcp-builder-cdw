@@ -44,6 +44,21 @@ describe("customer brief import", () => {
     expect(adoptionDetails.followOnOnly).toContain("automation");
   });
 
+  it("uses the customer's own effort estimate when the brief gives one", async () => {
+    const { buildCustomerEffort } = await import("../shared/effort");
+    const brief = example();
+    brief.customerEffort = [{ phase: "Customer Waves", platformLead: 20, operations: null, network: 2 }, { phase: "build", platformLead: 6 }];
+    const result = applyCustomerBrief(createDefaultDocument(), brief);
+    expect(result.document.report.customerEffort).toEqual([
+      { phase: "customer-waves", platformLead: 20, operations: null, network: 2 },
+      { phase: "build", platformLead: 6, operations: null, network: null },
+    ]);
+    const document = refreshDerivedDocument(result.document);
+    const build = buildCustomerEffort(document).phases.find(phase => phase.phase === "Platform build");
+    // Platform lead from the customer; operations and network keep CDW's planning default.
+    expect(build).toMatchObject({ platformLead: 6, operations: 2, network: 2, total: 10 });
+  });
+
   it("does not add declined outcomes", () => {
     const brief = example();
     brief.discovery.addOnsConsidered = ["VKS", "VCF Operations"];
@@ -127,7 +142,7 @@ describe("Copilot prompt", () => {
 
   it("asks for every top-level brief field the importer reads", async () => {
     const { COPILOT_BRIEF_PROMPT } = await import("../shared/briefPrompt");
-    for (const key of ["entitlement", "discovery", "designProfile", "designElements", "whatWeHeard", "problems", "openQuestions", "technicalItems", "constraints", "customerAsks", "customerOwnedWork", "openItems", "personnel", "milestonesToDate", "sources", "headline", "revision"]) {
+    for (const key of ["entitlement", "discovery", "designProfile", "designElements", "whatWeHeard", "problems", "openQuestions", "technicalItems", "constraints", "customerAsks", "customerOwnedWork", "customerEffort", "openItems", "personnel", "milestonesToDate", "sources", "headline", "revision"]) {
       expect(COPILOT_BRIEF_PROMPT, key).toContain(`"${key}"`);
     }
     expect(COPILOT_BRIEF_PROMPT).toContain("Do NOT use the words \"readiness\", \"workshop\" or \"TRW\"");
