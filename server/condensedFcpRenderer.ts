@@ -1,3 +1,4 @@
+import { declinedInCategory } from "../shared/report";
 import { allocateBsas, type BsasTerm } from "../shared/bsas";
 import { barWindow } from "../shared/buildingBlocks";
 import { buildCustomerEffort, formatWindow, type ScopedEffort } from "../shared/effort";
@@ -301,7 +302,7 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
       if (!items.includes(label(bar.label))) items.push(label(bar.label));
     }
     const later = deferredWork.filter(row => row.category === category).map(row => row.label.replace(UNDECIDED_DEPTH, ""));
-    const text = `${items.length ? esc(items.join("; ")) : later.length ? w("nothing in the entitlement window", "nothing in the BSAS term") : `no work in scope${report.declined.length ? ` (${esc(report.declined.join(", "))} not requested)` : ""}`}${later.length ? `; ${w("after the entitlement", "after the BSAS term")}: ${esc(later.join("; "))}` : ""}`;
+    const text = `${items.length ? esc(items.join("; ")) : later.length ? w("nothing in the entitlement window", "nothing in the BSAS term") : `no work in scope${declinedInCategory(report.declined, category).length ? ` (${esc(declinedInCategory(report.declined, category).join(", "))} not requested)` : ""}`}${later.length ? `; ${w("after the entitlement", "after the BSAS term")}: ${esc(later.join("; "))}` : ""}`;
     return `<li><b>${esc(category)}</b> — ${text}</li>`;
   }).join("");
   const lead = `A design-led plan to move ${esc(customer)} onto ${esc(platform)} — ${esc(plan.label.toLowerCase())}${termEnd ? ` — ${w("consuming the services entitlement before it ends", "consuming the BSAS hours before the term ends")} on ${esc(longDate(termEnd))}${assumedEnd ? " (12 months from the start; to be confirmed)" : ""}` : ""}.`;
