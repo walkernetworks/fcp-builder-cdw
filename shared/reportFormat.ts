@@ -96,7 +96,7 @@ function entitlementProblem(document: EngagementDocument, effort: ScopedEffort, 
  * Funded work the timeline schedules after the term. Hours are placed by fit, never by the calendar, so this is a
  * scheduling problem for the planner to fix (or log a reason for), not a silent move to the follow-on.
  */
-function lateWorkProblem(document: EngagementDocument, effort: ScopedEffort): string | null {
+export function lateWorkProblem(document: EngagementDocument, effort: ScopedEffort): string | null {
   const late = lateWorkPackages(effort).map(row => ({ label: row.label, hours: row.followOn!.total }));
   if (!late.length) return null;
   const hours = (value: number) => Math.round(value).toLocaleString("en-US");
