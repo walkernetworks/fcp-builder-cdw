@@ -2805,13 +2805,15 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   // domain, so it runs alongside the migration waves; elsewhere the pathway execution itself readies the platform.
   const migratesOntoNewPlatform = playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid";
   const deliveryCompleteId = platformReadyId;
-  // On converge and import plans, VCF Operations and the other capabilities run on the management domain, so they start
-  // once the foundation is accepted and run alongside the domain imports instead of waiting for the last one.
-  const capabilitiesFollowFoundation = playbookPlan.path === "converge" || playbookPlan.path === "import-workload-domain";
-  const platformReadyEnd = migratesOntoNewPlatform ? workloadEnd : capabilitiesFollowFoundation ? foundationEnd : migrationEnd;
+  const platformReadyEnd = migratesOntoNewPlatform ? workloadEnd : migrationEnd;
   // The platform is ready when the last build package is accepted (the first workload domain on a standard plan).
   if (migratesOntoNewPlatform) platformReadyId = vvf ? "bar-vvf-workload-clusters" : lastBuildId;
-  if (capabilitiesFollowFoundation) platformReadyId = foundationId;
+  // On converge and import plans VCF Operations runs on the management domain, so operations work starts once the
+  // foundation is accepted and runs alongside the domain imports. Cloud, security and resilience work still waits for the
+  // workload domains it provisions into or protects.
+  const operationsFollowFoundation = playbookPlan.path === "converge" || playbookPlan.path === "import-workload-domain";
+  const operationsReadyEnd = operationsFollowFoundation ? foundationEnd : platformReadyEnd;
+  const operationsReadyId = operationsFollowFoundation ? foundationId : platformReadyId;
   const implementationApproved = playbookPlan.path !== "undecided" && playbookPlan.path !== "design-only";
   const operationsBars: TimelineBar[] = [...designBars.operations];
   if (executionPathway) {
@@ -2828,7 +2830,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const endById = new Map([...programBars, ...infrastructureBars, ...migrationBars].map(activity => [activity.id, activity.endCol]));
   const cursors = {
     infrastructure: nsxScheduledWithFoundation ? endById.get("bar-vcf-networking-nsx") ?? platformReadyEnd : platformReadyEnd,
-    operations: Math.max(componentDesignCursors.operations, platformReadyEnd),
+    operations: Math.max(componentDesignCursors.operations, operationsReadyEnd),
     cloud: Math.max(componentDesignCursors.cloud, platformReadyEnd),
     security: Math.max(componentDesignCursors.security, platformReadyEnd),
   };
@@ -2900,7 +2902,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
         Math.max(slots[slot], ...prerequisiteIds.map(prerequisiteId => endById.get(prerequisiteId)!)),
         outcome.key === "platform:nsx" ? networkingDuration : lane === "security" ? securityDuration : moduleDuration,
       );
-      const anchorId = lane === "infrastructure" && nsxScheduledWithFoundation ? "bar-vcf-networking-nsx" : platformReadyId;
+      const anchorId = lane === "infrastructure" && nsxScheduledWithFoundation ? "bar-vcf-networking-nsx" : lane === "operations" ? operationsReadyId : platformReadyId;
       const startsAfter = Array.from(new Set([labelById(anchorId), ...prerequisiteIds.map(labelById)].filter((label): label is string => Boolean(label))));
       const dependsOn = [`Starts after: ${startsAfter.join("; ")}.`, PLAN_OUTCOME_NOTES[outcome.key] ?? ""].filter(Boolean).join(" ");
       const outcomeText = outcome.requiredBy.length

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { reconcileHours } from "../shared/reportFormat";
+import { refreshDerivedDocument } from "../shared/fcp";
+import { fundingProblem, reconcileHours } from "../shared/reportFormat";
 import { harborPointLogistics } from "./fixtures/fcpFixtures";
 import { scopedEffortForDocument } from "./rateCard";
 
@@ -46,5 +47,23 @@ describe("Harbor Point Logistics fixture", () => {
     expect(observability.startCol).toBeGreaterThanOrEqual(byId("bar-converge-management-domain").endCol);
     expect(observability.startCol).toBeLessThan(byId("bar-import-domain-2").endCol);
     expect(observability.prerequisites).toContain("bar-converge-management-domain");
+  });
+
+  it("shows the gap, and does not fund the fill, when funded work lands after the term", () => {
+    const onTime = scopedEffortForDocument(harborPointLogistics(), TODAY);
+    const late = harborPointLogistics();
+    late.fields.plannedProjectStart = "2027-01-04";
+    late.fields.plannedImplementationStart = "2027-03-01";
+    const document = refreshDerivedDocument(late);
+    const effort = scopedEffortForDocument(document, TODAY);
+    const moved = effort.workPackages.filter(row => row.deferred === "after the entitlement window");
+    expect(moved.map(row => row.id)).toContain("bar-operations-observability");
+    const fill = (rows: typeof effort.workPackages) => rows.find(row => row.id === "bar-hours-fill")!.total;
+    // The late work's hours are not handed to Optimization and Advisory Services.
+    expect(fill(effort.workPackages)).toBeLessThanOrEqual(fill(onTime.workPackages) + 1);
+    const reconciliation = reconcileHours(document, effort, TODAY)!;
+    expect(reconciliation.balanced).toBe(false);
+    expect(-reconciliation.difference).toBeCloseTo(moved.reduce((sum, row) => sum + row.followOn!.total, 0), -1);
+    expect(fundingProblem(document, effort, TODAY)).toMatch(/^Does not fit the window: .*Health, Logs, and Diagnostics \(38 hours\)/);
   });
 });

@@ -1,6 +1,6 @@
 import { fundedDocument } from "./bsas";
 import { planBsasAllocation } from "./planView";
-import { buildBurndown, type ScopedEffort } from "./effort";
+import { buildBurndown, lateWorkPackages, type ScopedEffort } from "./effort";
 import type { EngagementDocument } from "./fcp";
 import type { Segment } from "./vsaStage";
 
@@ -97,7 +97,7 @@ function entitlementProblem(document: EngagementDocument, effort: ScopedEffort, 
  * scheduling problem for the planner to fix (or log a reason for), not a silent move to the follow-on.
  */
 function lateWorkProblem(document: EngagementDocument, effort: ScopedEffort): string | null {
-  const late = (effort.internal.fit?.scopeMoves ?? []).filter(move => move.reason === "after the entitlement window");
+  const late = lateWorkPackages(effort).map(row => ({ label: row.label, hours: row.followOn!.total }));
   if (!late.length) return null;
   const hours = (value: number) => Math.round(value).toLocaleString("en-US");
   const unit = document.fields.fundingSource === "bsas" ? "BSAS term" : "entitlement";

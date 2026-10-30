@@ -1017,6 +1017,11 @@ function withLateWorkReleased(effort: ScopedEffort): ScopedEffort {
   };
 }
 
+/** Funded work packages the timeline schedules after the entitlement ends: a calendar problem, not a scope decision. */
+export function lateWorkPackages(effort: ScopedEffort): WorkPackageEffort[] {
+  return effort.workPackages.filter(row => row.deferred === "after the entitlement window" && !row.id.includes(":") && (row.followOn?.total ?? 0) > 0);
+}
+
 /**
  * v2: entitlement hours the plan's work packages leave unused after the reserve; planner adjustments count. The lower
  * of the entitlement hours and what the entitlement value funds is the limit. Null without a fit.
@@ -1025,7 +1030,10 @@ export function unusedEntitlementHours(effort: ScopedEffort): number | null {
   const fit = effort.internal.fit;
   if (!fit) return null;
   const planned = effort.workPackages.reduce((sum, row) => sum + row.total, 0);
-  const limit = Math.min(fit.entitlementHours - fit.deliveredHours - fit.reserveHours, effort.internal.valueCapHours ?? Infinity);
+  // Hours of funded work the timeline put after the term belong to that work: they are not free for the fill, so the
+  // plan shows the gap until the work is moved back into the window.
+  const late = lateWorkPackages(effort).reduce((sum, row) => sum + (row.followOn?.total ?? 0), 0);
+  const limit = Math.min(fit.entitlementHours - fit.deliveredHours - fit.reserveHours - late, effort.internal.valueCapHours ?? Infinity);
   return Math.max(0, Math.floor(limit - planned));
 }
 
