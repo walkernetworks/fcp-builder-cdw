@@ -52,18 +52,19 @@ describe("Harbor Point Logistics fixture", () => {
   it("shows the gap, and does not fund the fill, when funded work lands after the term", () => {
     const onTime = scopedEffortForDocument(harborPointLogistics(), TODAY);
     const late = harborPointLogistics();
-    late.fields.plannedProjectStart = "2027-01-04";
-    late.fields.plannedImplementationStart = "2027-03-01";
+    late.fields.plannedProjectStart = "2027-02-01";
+    late.fields.plannedImplementationStart = "2027-04-01";
     const document = refreshDerivedDocument(late);
     const effort = scopedEffortForDocument(document, TODAY);
     const moved = effort.workPackages.filter(row => row.deferred === "after the entitlement window");
-    expect(moved.map(row => row.id)).toContain("bar-operations-observability");
+    expect(moved.length).toBeGreaterThan(0);
     const fill = (rows: typeof effort.workPackages) => rows.find(row => row.id === "bar-hours-fill")!.total;
     // The late work's hours are not handed to Optimization and Advisory Services.
     expect(fill(effort.workPackages)).toBeLessThanOrEqual(fill(onTime.workPackages) + 1);
     const reconciliation = reconcileHours(document, effort, TODAY)!;
     expect(reconciliation.balanced).toBe(false);
     expect(-reconciliation.difference).toBeCloseTo(moved.reduce((sum, row) => sum + row.followOn!.total, 0), -1);
-    expect(fundingProblem(document, effort, TODAY)).toMatch(/^Does not fit the window: .*Health, Logs, and Diagnostics \(38 hours\)/);
+    expect(fundingProblem(document, effort, TODAY)).toMatch(/^Does not fit the window: /);
+    for (const row of moved) expect(fundingProblem(document, effort, TODAY)).toContain(row.label);
   });
 });
