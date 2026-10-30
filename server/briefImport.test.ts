@@ -31,6 +31,19 @@ describe("customer brief import", () => {
     expect(report.customerOwnedWork[0]).toMatchObject({ start: "2027-02", end: "2027-04" });
   });
 
+  it("plans considered add-ons as follow-on only: none adds an outcome to an area the plan builds", () => {
+    const brief = example();
+    brief.discovery.outcomesWanted = { ...brief.discovery.outcomesWanted, networking: ["physical-fabric"] };
+    brief.discovery.addOnsConsidered = ["nsx", "VCF Automation"];
+    const result = applyCustomerBrief(createDefaultDocument(), brief);
+    const { adoptionDetails } = result.document.fields;
+    // NSX ships with VCF: considering it adds no networking outcome.
+    expect(adoptionDetails.networking).toEqual(["physical-fabric"]);
+    expect(result.coerced.concat(result.warnings).join(" ")).not.toContain("nsx");
+    // Automation is not an area the plan builds, so it is follow-on scope.
+    expect(adoptionDetails.followOnOnly).toContain("automation");
+  });
+
   it("does not add declined outcomes", () => {
     const brief = example();
     brief.discovery.addOnsConsidered = ["VKS", "VCF Operations"];

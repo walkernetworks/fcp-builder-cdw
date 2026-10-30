@@ -39,7 +39,7 @@ What each section is for
     - resilience: recovery-architecture (disaster recovery design), recovery-exercises (DR tests and runbooks), cyber-recovery (on-premises clean room), cloud-cyber-recovery
     - kubernetes: workload-domains (Supervisor and VKS), platform-operations (cluster lifecycle), developer-experience (developer access and guardrails)
     - privateAi: gpu-capacity, ai-guardrails (data and model governance), pilot-onboarding (a first AI pilot)
-  - addOnsConsidered and notInterested use these names: vcf-operations, chargeback, vcf-automation, vcf-networks, nsx, vpc, vdefend, atp, acc, vks, private-ai, live-recovery, cloud-cyber-recovery, dsm, avi, hcx, memory-tiering.
+  - addOnsConsidered and notInterested use these names: vcf-operations, chargeback, vcf-automation, vcf-networks, nsx, vpc, vdefend, atp, acc, vks, private-ai, live-recovery, cloud-cyber-recovery, dsm, avi, hcx, memory-tiering. An add-on in addOnsConsidered is planned as follow-on scope, never built in this plan; list what the customer wants built now in outcomesWanted.
 - situation: short factual bullets about the estate and context that RVTools cannot show (new sites being built, hardware refreshes, deadlines).
 - designProfile: one sentence each on the decided or proposed design for consumption, physical site configuration, availability, isolation (networking), recoverability, and expansion.
 - designElements: per component (inventory, management domain, principal storage, networking, licensing, workloads, DR...): the requirement, the recommendation for this customer, and a gate when something must happen first.

@@ -151,9 +151,9 @@ describe("Two-site review: scope and sequencing", () => {
         anyAfter: /after vSphere 8 general support ends/.test(visible),
       };
     };
-    // After: the customer's waves run to Sep 2028. Both rows say so, with the same month; the item has an owner and three options.
+    // After: the customer's waves run to Aug 2028. Both rows say so, with the same month; the item has an owner and three options.
     const after = rows(twoSite());
-    expect(after.constraint?.[1]).toBe("Sep 2028");
+    expect(after.constraint?.[1]).toBe("Aug 2028");
     expect(after.constraint?.[2]).toMatch(/^how those hosts stay supported is an open item/);
     expect(after.openItem?.[1]).toBe(after.constraint?.[1]);
     expect(after.openItem?.[2]).toBe("299");
@@ -460,8 +460,8 @@ describe("Two-site review: a later start", () => {
         expect(effort.workPackages.find(row => row.id === id)?.deferred, `${id} at + ${months} months`).toBeUndefined();
       }
     }
-    // At a 2 November start the waves end in the last entitlement month: handover runs in that month with the runbook transfer.
-    const late = startingOn("2026-11-02");
+    // At a 1 December start the waves end in the last entitlement month: handover runs in that month with the runbook transfer.
+    const late = startingOn("2026-12-01");
     expect(windowOf(late, "bar-platform-handover")!.start.slice(0, 7)).toBe(windowOf(late, "bar-platform-runbook-transfer")!.start.slice(0, 7));
     expect(text(render(late))).toContain("Handover and Service Acceptance");
   });
