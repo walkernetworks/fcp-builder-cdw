@@ -227,3 +227,19 @@ export function storageLabel(value: string | null | undefined): string | null {
   return STORAGE_LABELS[value.trim().toLowerCase()] ?? value;
 }
 
+const CATEGORY_OF_CAPABILITY: Record<string, string> = {
+  operations: "Operations",
+  automation: "Modernize Cloud", kubernetes: "Modernize Cloud", "private-ai": "Modernize Cloud",
+  networking: "Modernize Infrastructure",
+  security: "Modernize Security & Resilience", resilience: "Modernize Security & Resilience",
+};
+
+/** The declined add-ons that belong to a plan category, so "not requested" names only that category's items. */
+export function declinedInCategory(declined: readonly string[], category: string): string[] {
+  return declined.filter(item => {
+    const key = canonicalAddOn(item);
+    const capability = key ? ADD_ON_OUTCOMES[key].priority : undefined;
+    return Boolean(capability && CATEGORY_OF_CAPABILITY[capability] === category);
+  });
+}
+

@@ -1,4 +1,4 @@
-import { storageLabel } from "../shared/report";
+import { declinedInCategory, storageLabel } from "../shared/report";
 import type { SupersededVersion } from "../shared/reportFormat";
 import { formatWindow, type ScopedEffort } from "../shared/effort";
 import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument, type Timeline } from "../shared/fcp";
@@ -221,7 +221,7 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
     const later = deferredWork.filter(row => row.category === category).map(row => packageLabel(row.label));
     if (labels.length) inPlan.push(`<li><b>${esc(category)}:</b> ${esc(labels.join(", "))}</li>`);
     if (later.length) notInPlan.push(`<li><b>${esc(category)}:</b> ${esc(later.join(", "))}, after the ${bsasOnly ? "BSAS term" : booked ? "entitlement" : "planned delivery window"}</li>`);
-    else if (!labels.length) notInPlan.push(`<li><b>${esc(category)}:</b> ${report.declined.length ? `not requested (${esc(listJoin(report.declined))})` : "not in this plan"}</li>`);
+    else if (!labels.length) { const declined = declinedInCategory(report.declined, category); notInPlan.push(`<li><b>${esc(category)}:</b> ${declined.length ? `not requested (${esc(listJoin(declined))})` : "not in this plan"}</li>`); }
   }
   if (report.customerOwnedWork.length) notInPlan.push(`<li><b>Run by ${esc(customer)}:</b> ${esc(report.customerOwnedWork.map(work => work.label).join("; "))}</li>`);
   const scope = inPlan.length || notInPlan.length
