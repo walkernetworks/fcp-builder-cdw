@@ -39,7 +39,7 @@
     "notInterested": ["Kubernetes", "Private AI", "HCX"],
     "sitePrerequisitesOpen": [],
     "componentDepth": { "operations": null, "automation": null, "networkingSecurity": null, "kubernetesAi": null, "efficiency": null },
-    "industry": null, "targetRelease": null, "domains": [],
+    "industry": null, "targetRelease": null, "domains": [], "excludedHosts": [],
     "planningNotes": null,
     "outcomesWanted": { "operations": ["observability"], "automation": [], "networking": [], "security": [], "resilience": ["recovery-architecture"], "kubernetes": [], "privateAi": [] }
   },

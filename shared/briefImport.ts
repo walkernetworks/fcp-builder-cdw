@@ -201,8 +201,19 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
     } : row) : discovery.domains;
     detailsPatch.domains = parseRows(rows, vcfDomainSchema, "discovery.domains", warnings);
   }
+  if (discovery.excludedHosts !== undefined) {
+    if (Array.isArray(discovery.excludedHosts) && discovery.excludedHosts.every(name => typeof name === "string")) {
+      detailsPatch.excludedHosts = (discovery.excludedHosts as string[]).map(name => name.trim()).filter(Boolean);
+    } else if (discovery.excludedHosts !== null) {
+      warnings.push("discovery.excludedHosts: expected a list of host names; ignored");
+    }
+  }
   const newHosts = isPlainObject(discovery.newHostsPurchased) ? discovery.newHostsPurchased : {};
-  if ((Number(newHosts.management) || 0) + (Number(newHosts.workload) || 0) > 0) fieldsPatch.hardwareAvailability = "new";
+  const purchased = (value: unknown) => (value === null || value === undefined || value === "" ? null : Number(value));
+  const [newManagement, newWorkload] = [purchased(newHosts.management), purchased(newHosts.workload)];
+  if ((newManagement ?? 0) + (newWorkload ?? 0) > 0) fieldsPatch.hardwareAvailability = "new";
+  // Both counts stated as zero: no hosts are bought, so the plan runs on the existing hardware.
+  else if (newManagement === 0 && newWorkload === 0) fieldsPatch.hardwareAvailability = "existing";
 
   const fieldsShape = minimalFieldsSchema.shape;
   const coercedFields = coercer.coerce("fields", "fields", fieldsPatch, minimalFieldsSchema) as JsonObject;
