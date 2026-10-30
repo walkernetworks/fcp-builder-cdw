@@ -33,7 +33,7 @@ function smallEstate(document: EngagementDocument): EngagementDocument {
   return refreshDerivedDocument(document);
 }
 
-/** Commercial, entitlement only, imported from the example brief (signed resource assignments, consumption to date). */
+/** Commercial, entitlement only, imported from the example brief (entitled hours, consumption to date). */
 export function acmeHealth(): EngagementDocument {
   return smallEstate(fromBrief(raw => { raw.customer.name = "Acme Health"; }));
 }

@@ -1,13 +1,13 @@
 import { InternalPanel, ProvenancePill } from "@/components/fcp/Provenance";
 import { EntitlementFitPanel } from "@/components/EntitlementFitPanel";
 import { HoursFillPanel } from "@/components/HoursFillPanel";
-import { generatedRowsFor, ReportContentEditor, RowTable } from "@/components/ReportContentEditor";
+import { generatedRowsFor, RowTable } from "@/components/ReportContentEditor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Chip, EmptyState, Panel, Pill } from "@/components/vsa/elements";
-import { AssignmentsInForce, CostMeter, EntitlementTimelineWithHours, NotionalTimelineWithHours, useScopedEffort } from "@/components/WorkPackageHours";
+import { CostMeter, EntitlementTimelineWithHours, NotionalTimelineWithHours, useScopedEffort } from "@/components/WorkPackageHours";
 import { isMovedToFollowOn, packageSettings, resetRoleHours, setFollowOn, setOwner, setRoleHours, setWindow, windowColumns } from "@/lib/planEdits";
 import type { RoleHours, ScopedEffort, WorkPackageEffort } from "@shared/effort";
 import { formatWindow } from "@shared/effort";
@@ -46,10 +46,10 @@ export function PlanEditor({ document, onChange, onRebuild, previewHtml, notes }
       </Panel>
 
       {!effort ? <p className="flex items-center gap-2 text-sm text-ink-muted"><Loader2 className="size-4 animate-spin" /> Calculating hours…</p> : <>
-        <HoursOverview document={document} effort={effort} onChange={onChange} />
+        <HoursOverview document={document} effort={effort} />
         <InternalPanel title="Entitlement fit" sub="The fit check, the gap and the risk band against the entitlement value, with the rate it assumes. Used to plan; none of it prints.">
           <div className="space-y-3">
-            {effort.internal.cost && <CostMeter cost={effort.internal.cost} hours={effort.totals.total} assignments={effort.source === "assignments"} fit={effort.internal.fit} />}
+            {effort.internal.cost && <CostMeter cost={effort.internal.cost} hours={effort.totals.total} fit={effort.internal.fit} />}
             <HoursFillPanel document={document} effort={effort} onChange={onChange} />
             <EntitlementFitPanel document={document} effort={effort} onChange={onChange} />
           </div>
@@ -77,7 +77,7 @@ export function PlanEditor({ document, onChange, onRebuild, previewHtml, notes }
   );
 }
 
-function HoursOverview({ document, effort, onChange }: { document: EngagementDocument; effort: ScopedEffort; onChange: (document: EngagementDocument) => void }) {
+function HoursOverview({ document, effort }: { document: EngagementDocument; effort: ScopedEffort }) {
   const buckets = planBuckets(document, effort);
   const bsas = planBsasAllocation(document, effort);
   const funding = fundingProvenance(document);
@@ -88,11 +88,9 @@ function HoursOverview({ document, effort, onChange }: { document: EngagementDoc
       <div className="space-y-2">
         <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Hours source</p>
         <div className="flex flex-wrap items-center gap-2 text-sm text-ink">
-          <Pill verdict={effort.source === "assignments" ? "ready" : "warn"}>{effort.source === "assignments" ? "Signed resource assignments" : "Estimated from this plan"}</Pill>
-          <span className="text-xs text-ink-muted">{effort.source === "assignments" ? "The FCP prints the signed hours by workstream; the packages below still shape the timeline." : "The FCP prints the hours below until signed resource assignments are entered, and says they are an estimate."}</span>
+          <Pill verdict="warn">Estimated from this plan</Pill>
+          <span className="text-xs text-ink-muted">The FCP prints the hours below, estimated by role from the work packages and fitted into the entitlement.</span>
         </div>
-        <AssignmentsInForce document={document} effort={effort} onChange={onChange} />
-        <ReportContentEditor document={document} onChange={onChange} sections={["assignments"]} />
       </div>
 
       {buckets.length > 0 ? (
@@ -168,7 +166,7 @@ function PackageRow({ document, effort, row, columns, onChange }: { document: En
   const cdw = row.owner === "cdw";
   const tag = row.deferred ? DEFERRED[row.deferred] : row.note ? NOTE[row.note] : null;
   const span = !row.deferred ? windowColumns(document, row.id) : null;
-  const provenance = packageHoursProvenance(row, effort.source);
+  const provenance = packageHoursProvenance(row);
   return (
     <tr className="border-b border-s100 align-top">
       <td className="min-w-[16rem] px-3 py-2">

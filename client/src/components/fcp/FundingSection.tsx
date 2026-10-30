@@ -48,7 +48,7 @@ export function FundingSection({ engagementId, document, onChange, tracker, read
   const derivation = !internal
     ? "Calculating…"
     : internal.envelopeSource === "entitled hours"
-      ? `${hours(internal.envelopeHours ?? 0)} hours, entered as the entitled hours${facts.entitledHours.source === "Signed resource assignments" ? " (the signed resource assignment total)" : ""}.`
+      ? `${hours(internal.envelopeHours ?? 0)} hours, entered as the entitled hours.`
       : internal.envelopeSource === "entitlement value"
         ? `${hours(internal.envelopeHours ?? 0)} hours: the entitlement value at the blended rate${internal.valueCapHours !== undefined ? `; ${hours(internal.valueCapHours)} hours after the reserve` : ""}.`
         : "No funded hours yet: enter the entitlement value or the entitled hours.";
@@ -105,7 +105,7 @@ export function FundingSection({ engagementId, document, onChange, tracker, read
           <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Hours</p>
           <div className="mt-2 grid gap-4 md:grid-cols-3">
             {!bsasOnly && (
-              <Row label="Entitled hours" fact={facts.entitledHours} readOnly={readOnly} hint="What the entitlement funds: the signed Broadcom resource assignment total. Leave blank until they are signed; the plan derives the hours from the entitlement value meanwhile.">
+              <Row label="Entitled hours" fact={facts.entitledHours} readOnly={readOnly} hint="What the entitlement funds, from Broadcom's record. Left blank, the plan derives the hours from the entitlement value.">
                 <Input type="number" min={0} value={report.entitlement.hours ?? ""} onChange={event => setEntitlement({ hours: numberOrNull(event.target.value) })} />
               </Row>
             )}

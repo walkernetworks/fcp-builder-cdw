@@ -12,7 +12,6 @@ import { activityOwner, referenceDesignBarId, playbookPlanForFields, REFERENCE_D
  * Scoped effort is priced from the services catalog (the ROM estimator's Required Hours table): the smallest
  * bracket that fits the estate, never per-host constants. Each line's base hours are split by role (lead 100%,
  * support 15%, project manager 25% of the two) unless the catalog entry sets its own support or PM share. Migration and in-place waves have no bracket and are solved to the envelope.
- * Signed Resource Assignments replace the calculated table on the page when they are entered.
  *
  * This module holds no rates. The envelope is the entitled hours when known; the server may supply an
  * envelope estimated from the entitlement value. The fit result is internal and never rendered.
@@ -74,7 +73,7 @@ export type EffortLine = {
 export type RoleHours = { architect: number; srConsultant: number; projectManager: number };
 /** Signed work plans can also carry these roles; calculated hours never do. */
 export type WorkPlanRoles = { seniorArchitect?: number; offshoreProjectManager?: number };
-export type EffortRow = RoleHours & WorkPlanRoles & { workstream: string; total: number; note?: string };
+export type EffortRow = RoleHours & { workstream: string; total: number; note?: string };
 
 /** Plan cost against the entitlement value: within up to 90%, near up to 100%, over beyond it. */
 export const COST_THRESHOLDS = { near: 0.9, over: 1 } as const;
@@ -123,12 +122,12 @@ export type DeferralReason = "not funded" | "after the entitlement window" | "ov
 export type FitMoney = { blendedRate: number; rateSource: "rate card" | "planner override"; buckets: Record<"E1" | "E2" | "F" | "C" | "reserve", number> };
 
 export type ScopedEffort = {
-  /** Which table the report shows. */
-  source: "assignments" | "calculated";
+  /** The hours are always the calculated estimate from the work packages. */
+  source: "calculated";
   rows: EffortRow[];
   /** The calculated hours spread over the timeline work packages that deliver them; columns foot to the calculated totals. */
   workPackages: WorkPackageEffort[];
-  totals: RoleHours & WorkPlanRoles & { total: number };
+  totals: RoleHours & { total: number };
   /** INTERNAL: the calculated lines and the fit against the envelope. Never rendered in the report. */
   internal: {
     lines: EffortLine[];
@@ -327,17 +326,13 @@ function rowsFromLines(lines: EffortLine[]): EffortRow[] {
   });
 }
 
-function totalsOf(rows: EffortRow[]): RoleHours & WorkPlanRoles & { total: number } {
-  const totals = rows.reduce((sum, row) => ({
+function totalsOf(rows: EffortRow[]): RoleHours & { total: number } {
+  return rows.reduce((sum, row) => ({
     architect: sum.architect + row.architect,
     srConsultant: sum.srConsultant + row.srConsultant,
     projectManager: sum.projectManager + row.projectManager,
-    seniorArchitect: sum.seniorArchitect + (row.seniorArchitect ?? 0),
-    offshoreProjectManager: sum.offshoreProjectManager + (row.offshoreProjectManager ?? 0),
     total: sum.total + row.total,
-  }), { architect: 0, srConsultant: 0, projectManager: 0, seniorArchitect: 0, offshoreProjectManager: 0, total: 0 });
-  const { seniorArchitect, offshoreProjectManager, ...rest } = totals;
-  return { ...rest, ...(seniorArchitect ? { seniorArchitect } : {}), ...(offshoreProjectManager ? { offshoreProjectManager } : {}) };
+  }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
 }
 
 /**
@@ -791,7 +786,6 @@ export function deferWorkPackages(effort: ScopedEffort, moves: Map<string, Defer
     const prior = row.followOn ?? { architect: 0, srConsultant: 0, projectManager: 0, total: 0 };
     return { ...row, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: reason, followOn: { architect: prior.architect + row.architect, srConsultant: prior.srConsultant + row.srConsultant, projectManager: prior.projectManager + row.projectManager, total: prior.total + row.total } };
   });
-  if (effort.source === "assignments") return { ...effort, workPackages };
   const totals = workPackages.reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
   return { ...effort, workPackages, totals, internal: { ...effort.internal, planHours: totals.total } };
 }
@@ -1037,13 +1031,13 @@ export function unusedEntitlementHours(effort: ScopedEffort): number | null {
 
 /**
  * The hours-fill work package takes up the entitlement hours the plan leaves unused, split in the plan's own role mix,
- * and the depth bucket (E2) carries them. Hours the planner set on the package stand as they are; signed resource
- * assignments, and a package customer-owned, deferred or off the timeline, take nothing.
+ * and the depth bucket (E2) carries them. Hours the planner set on the package stand as they are; a package
+ * customer-owned, deferred or off the timeline takes nothing.
  */
 export function withHoursFill(effort: ScopedEffort): ScopedEffort {
   const fit = effort.internal.fit;
   const row = effort.workPackages.find(item => item.id === HOURS_FILL_BAR_ID);
-  if (!fit || !row || row.adjusted || row.deferred || row.owner !== "cdw" || effort.source === "assignments") return effort;
+  if (!fit || !row || row.adjusted || row.deferred || row.owner !== "cdw") return effort;
   const unused = unusedEntitlementHours(effort) ?? 0;
   if (unused < 1) return effort;
   const others = effort.workPackages.filter(item => item.id !== HOURS_FILL_BAR_ID);
@@ -1142,27 +1136,17 @@ function assembleScopedEffort(
   extra: Pick<ScopedEffort["internal"], "pass1" | "fit"> = {},
 ): ScopedEffort {
   const calculatedRows = rowsFromLines(lines);
-  const assignments: EffortRow[] = completedReport(document.report).resourceAssignments.map(item => ({
-    workstream: item.workstream,
-    architect: item.architect,
-    srConsultant: item.srConsultant,
-    projectManager: item.projectManager,
-    ...(item.seniorArchitect ? { seniorArchitect: item.seniorArchitect } : {}),
-    ...(item.offshoreProjectManager ? { offshoreProjectManager: item.offshoreProjectManager } : {}),
-    total: item.architect + item.srConsultant + item.projectManager + (item.seniorArchitect ?? 0) + (item.offshoreProjectManager ?? 0),
-  }));
   // v2: the runbook needs CDW's proving waves; a plan with waves in scope but none funded holds it back.
   const holdRunbook = Boolean(extra.pass1?.lines.some(item => item.code === "FILL_mig")) && !lines.some(item => item.code === "FILL_mig");
   const workPackages = workPackageEffort(document, lines, totalsOf(calculatedRows), { holdRunbook, firstWorkloadSeparate: Boolean(extra.pass1?.lines.some(item => item.code === "DW")) });
   const planned = workPackages.filter(row => row.total > 0);
-  const rows = assignments.length ? assignments : calculatedRows;
   // The calculated plan is the work packages as adjusted by the planner; it falls back to the catalog lines with no timeline.
   const calculatedTotals = planned.length ? planned.reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 }) : totalsOf(calculatedRows);
   return {
-    source: assignments.length ? "assignments" : "calculated",
-    rows,
+    source: "calculated",
+    rows: calculatedRows,
     workPackages,
-    totals: assignments.length ? totalsOf(assignments) : calculatedTotals,
+    totals: calculatedTotals,
     internal: {
       lines,
       calculatedRows,

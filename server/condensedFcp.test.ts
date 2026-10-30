@@ -74,7 +74,7 @@ describe("Condensed FCP", () => {
     expect(html.match(/<path fill="currentColor"/g)?.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("shows signed resource assignments and keeps the table footed", () => {
+  it("prints the calculated hours when an older brief still carries signed resource assignments", () => {
     const document = engagement(raw => {
       raw.resourceAssignments = [
         { workstream: "Design discovery, architecture and design", architect: 24, srConsultant: 16, projectManager: 6 },
@@ -83,8 +83,8 @@ describe("Condensed FCP", () => {
     });
     const html = render(document);
     expect(check(html, document)).toEqual([]);
-    expect(text(html)).toContain("from the signed resource assignments");
-    expect(text(html)).toContain("Total CDW-delivered hours 34 66 14 114");
+    expect(html).toBe(render(engagement()));
+    expect(text(html)).not.toMatch(/signed resource assignment/i);
   });
 
   it("says when no consumption data exists instead of showing zeros", () => {
@@ -133,7 +133,6 @@ describe("Condensed FCP", () => {
     const document = engagement();
     document.fields.entitlementAmount = 4_000_000;
     document.report.entitlement.hours = null;
-    document.report.resourceAssignments = [];
     const visible = text(render(document));
     expect(visible).toContain("Work Packages and Scoped Effort");
     expect(visible).toMatch(/Reference Architecture Design/);
@@ -524,20 +523,6 @@ describe("Condensed FCP review fixes", () => {
     expect(text(html)).toContain("Current RVTools export");
     expect(text(renderCondensedFcpHtml("Acme Health", refreshed, { effort: scopedEffortForDocument(refreshed), format: "summary" }))).not.toContain(INTERNAL_HOURS_ITEM);
   });
-
-
-  it("shows Senior Architect and Offshore PM hours from a signed work plan", () => {
-    const document = engagement(raw => { raw.resourceAssignments = [{ workstream: "Design and build", architect: 180, srConsultant: 900, projectManager: 190, seniorArchitect: 62, offshoreProjectManager: 113 }]; });
-    const effort = scopedEffortForDocument(document);
-    expect(effort.source).toBe("assignments");
-    expect(effort.totals.total).toBe(1_445);
-    const html = renderCondensedFcpHtml("Acme Health", document, { effort, today: "2026-09-30" });
-    const visible = text(html);
-    expect(visible).toContain("Sr. Architect");
-    expect(visible).toContain("Offshore PM");
-    expect(visible).toContain("1,445");
-    expect(checkCondensedFcp(html, { customerName: document.fields.customerName, entitlementValue: document.fields.entitlementAmount }).filter(item => !/costs more/.test(item))).toEqual([]);
-  });
 });
 
 describe("Condensed FCP gates", () => {
@@ -660,7 +645,7 @@ describe("work the entitlement cannot carry", () => {
   it("moves out of the entitlement timeline and starts after the entitlement in the notional", async () => {
     const { migrateDocument } = await import("../shared/fcp");
     const { timelinesWithDeferrals } = await import("../shared/effort");
-    const document = migrateDocument(engagement(raw => { raw.resourceAssignments = []; }));
+    const document = migrateDocument(engagement());
     const effort = scopedEffortForDocument(document);
     const deferred = effort.workPackages.filter(row => row.deferred && !row.id.includes(":"));
     expect(deferred.length).toBeGreaterThan(0);

@@ -277,7 +277,7 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
     : `<div class="kpi"><div class="v">Not yet booked</div><div class="l">Entitlement</div><div class="sub">Hours and term to be confirmed</div></div>`;
   const kpis = burndown
     ? `${valueTile}<div class="kpi"><div class="v">${hours(burndown.remainingHours)} hrs</div><div class="l">Hours Remaining</div><div class="sub">${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} hours delivered${report.entitlement.consumedAsOf ? ` (as of ${esc(shortDate(report.entitlement.consumedAsOf))})` : ""}</div></div><div class="kpi"><div class="v">${burndown.daysToExpiry} days</div><div class="l">Days to Expiry</div><div class="sub">Expires ${esc(shortDate(burndown.termEnd))}${tbc}</div></div><div class="kpi"><div class="v">${burndown.expiryPace} hrs/wk</div><div class="l">Required Weekly Pace</div><div class="sub">To consume by expiry · ~${burndown.expiryPaceFte} FTE from ${esc(shortDate(burndown.asOf))}</div></div>`
-    : `${valueTile}<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">${effort.source === "assignments" ? "Signed resource assignments" : "Estimated from the plan"}</div></div><div class="kpi"><div class="v">${esc(termEnd ? shortDate(termEnd) : shortDate(items.at(-1)?.end ?? asOf))}</div><div class="l">${termEnd ? "Delivery Window Ends" : "Planned Completion"}</div><div class="sub">${termEnd && assumedEnd ? "12 months from the start; to be confirmed" : "No consumption data yet"}</div></div><div class="kpi"><div class="v">${esc(platform)}</div><div class="l">Target Platform</div><div class="sub">${esc(plan.label)}</div></div>`;
+    : `${valueTile}<div class="kpi"><div class="v">${hours(effort.totals.total)} hrs</div><div class="l">Scoped Effort</div><div class="sub">Estimated from the plan</div></div><div class="kpi"><div class="v">${esc(termEnd ? shortDate(termEnd) : shortDate(items.at(-1)?.end ?? asOf))}</div><div class="l">${termEnd ? "Delivery Window Ends" : "Planned Completion"}</div><div class="sub">${termEnd && assumedEnd ? "12 months from the start; to be confirmed" : "No consumption data yet"}</div></div><div class="kpi"><div class="v">${esc(platform)}</div><div class="l">Target Platform</div><div class="sub">${esc(plan.label)}</div></div>`;
 
   // ---- Executive summary
   const situation = report.situation.map(esc);
@@ -312,14 +312,11 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
   const effortTotal = ["Total CDW-delivered hours", hours(effort.totals.architect), hours(effort.totals.srConsultant), hours(effort.totals.projectManager), hours(effort.totals.total)];
   const fundedPackages = effort.workPackages.filter(row => row.total > 0);
   let scopedEffort: string;
-  if (effort.source === "assignments" || !fundedPackages.length) {
-    // A signed work plan can also carry Senior Architect and Offshore PM hours; their columns appear only when used.
-    const senior = effort.rows.some(row => row.seniorArchitect);
-    const offshore = effort.rows.some(row => row.offshoreProjectManager);
-    const headers = ["Workstream", "Architect", ...(senior ? ["Sr. Architect"] : []), "Sr. Consultant", "Sr. Project Manager", ...(offshore ? ["Offshore PM"] : []), "Total Hours"];
-    const cells = (values: { architect: number; srConsultant: number; projectManager: number; seniorArchitect?: number; offshoreProjectManager?: number; total: number }) => [hours(values.architect), ...(senior ? [hours(values.seniorArchitect ?? 0)] : []), hours(values.srConsultant), hours(values.projectManager), ...(offshore ? [hours(values.offshoreProjectManager ?? 0)] : []), hours(values.total)];
+  if (!fundedPackages.length) {
+    const headers = ["Workstream", "Architect", "Sr. Consultant", "Sr. Project Manager", "Total Hours"];
+    const cells = (values: { architect: number; srConsultant: number; projectManager: number; total: number }) => [hours(values.architect), hours(values.srConsultant), hours(values.projectManager), hours(values.total)];
     const effortRows = effort.rows.map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), ...cells(row)]);
-    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by workstream and role${effort.source === "assignments" ? `, from the signed resource assignments for ${w("this entitlement", "these BSAS hours")}` : ", estimated from this plan; the signed resource assignments replace these figures"}.</p>${table(headers, effortRows, { numeric: headers.slice(1).map((_, index) => index + 1), foot: true, total: ["Total CDW-delivered hours", ...cells(effort.totals)] })}`;
+    scopedEffort = `<h2>Scoped Effort</h2><p class="lead">CDW-delivered hours by workstream and role, estimated from this plan.</p>${table(headers, effortRows, { numeric: headers.slice(1).map((_, index) => index + 1), foot: true, total: ["Total CDW-delivered hours", ...cells(effort.totals)] })}`;
   } else {
     // One table per work package: window, lead role and hours, with what it delivers, how it is accepted, and what it starts after.
     const numeric = (value: number) => `<td class="num">${hours(value)}</td>`;
@@ -345,7 +342,7 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
       return rows.length ? [`<tr class="cat"><td colspan="7">${esc(category)}</td></tr>`, ...rows.map(row => `<tr><td>${label(row)}${detail(row)}</td><td>${row.start && row.end ? esc(formatWindow(row.start, row.end)) : ""}</td><td>${esc(row.note === "customer-owned" ? `${customer} team` : row.leadRole)}</td>${numeric(row.architect)}${numeric(row.srConsultant)}${numeric(row.projectManager)}${numeric(row.total)}</tr>`)] : [];
     });
     const other = shown.filter(row => !row.category).map(row => `<tr><td>${label(row)}</td><td></td><td></td>${numeric(row.architect)}${numeric(row.srConsultant)}${numeric(row.projectManager)}${numeric(row.total)}</tr>`);
-    scopedEffort = `<h2>Work Packages and Scoped Effort</h2><p class="lead">${esc(plan.label)}: ${esc(plan.description)} Each work package with its window, lead role and CDW hours, what it delivers and how it is accepted. Design decisions are made with ${esc(customer)} in design sessions. Estimated from this plan; the signed resource assignments replace these figures.</p><table data-foot="sum"><thead><tr><th>Work Package</th><th>Window</th><th>Lead Delivery Role</th><th class="num">Architect</th><th class="num">Sr. Consultant</th><th class="num">Sr. Project Manager</th><th class="num">Total Hours</th></tr></thead><tbody>${body.join("")}${other.join("")}<tr class="total"><td>${effortTotal[0]}</td><td></td><td></td>${effortTotal.slice(1).map(value => `<td class="num">${value}</td>`).join("")}</tr></tbody></table>`;
+    scopedEffort = `<h2>Work Packages and Scoped Effort</h2><p class="lead">${esc(plan.label)}: ${esc(plan.description)} Each work package with its window, lead role and CDW hours, what it delivers and how it is accepted. Design decisions are made with ${esc(customer)} in design sessions. Estimated from this plan.</p><table data-foot="sum"><thead><tr><th>Work Package</th><th>Window</th><th>Lead Delivery Role</th><th class="num">Architect</th><th class="num">Sr. Consultant</th><th class="num">Sr. Project Manager</th><th class="num">Total Hours</th></tr></thead><tbody>${body.join("")}${other.join("")}<tr class="total"><td>${effortTotal[0]}</td><td></td><td></td>${effortTotal.slice(1).map(value => `<td class="num">${value}</td>`).join("")}</tr></tbody></table>`;
   }
 
   // ---- Follow-on scope: work planned after the entitlement, in hours (no limit; a follow-on services scope)
@@ -477,7 +474,7 @@ export function renderCondensedFcpHtml(title: string, input: EngagementDocument,
 
   // ---- Deliverables: the playbook work packages for the selected path
   const packages = [...plan.designPackages, ...plan.implementationPackages];
-  const deliverables = packages.length && (effort.source === "assignments" || !fundedPackages.length)
+  const deliverables = packages.length && !fundedPackages.length
     ? `<h3>What CDW Delivers</h3><p class="lead">${esc(plan.label)}: ${esc(plan.description)}</p>${table(["Work Package", "Outcome", "Acceptance"], packages.map(item => [esc(item.title), esc(item.outcome), esc(item.acceptance)]))}`
     : "";
 

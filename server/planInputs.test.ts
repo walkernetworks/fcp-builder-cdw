@@ -107,6 +107,20 @@ describe("explicit plan inputs on older documents", () => {
   });
 });
 
+describe("signed resource assignments on saved documents", () => {
+  it("loads a document saved with report.resourceAssignments, drops the field, and renders the calculated plan", () => {
+    for (const fixture of FCP_FIXTURES) {
+      const clean = JSON.parse(JSON.stringify(fixture.build()));
+      const raw = JSON.parse(JSON.stringify(clean));
+      raw.report.resourceAssignments = [{ workstream: "Design and build", architect: 180, srConsultant: 900, projectManager: 190, seniorArchitect: 62, offshoreProjectManager: 113 }];
+      const migrated = migrateDocument(raw);
+      expect("resourceAssignments" in migrated.report, fixture.slug).toBe(false);
+      expect(migrated.report.entitlement, fixture.slug).toEqual(migrateDocument(clean).report.entitlement);
+      expect(render(migrated), fixture.slug).toBe(render(migrateDocument(clean)));
+    }
+  });
+});
+
 describe("plan inputs from a customer brief", () => {
   const brief = () => JSON.parse(readFileSync(path.resolve(import.meta.dirname, "../docs/examples/customer-brief.example.json"), "utf8"));
 

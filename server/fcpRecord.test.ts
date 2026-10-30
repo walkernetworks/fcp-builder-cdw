@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultDocument } from "../shared/fcp";
-import { BUILD_LOCK_STALE_MS, buildLockState, hoursSource, signedAssignmentHours, sourceUpdatesFromDocument, type SourceItemState } from "../shared/fcpRecord";
+import { BUILD_LOCK_STALE_MS, buildLockState, hoursSource, sourceUpdatesFromDocument, type SourceItemState } from "../shared/fcpRecord";
 
 const TODAY = "2026-10-16";
 const items = (overrides: Partial<Record<SourceItemState["kind"], SourceItemState["status"]>> = {}): SourceItemState[] =>
@@ -10,7 +10,8 @@ function documentWith(options: { rvtools?: boolean; brief?: boolean; signedHours
   const document = createDefaultDocument();
   if (options.rvtools) document.inventorySources = [{ id: "f1", filename: "RVTools_export_example.xlsx", byteSize: 1000, sheets: ["vInfo"], importedAt: "2026-10-12T15:00:00.000Z", warnings: [] }];
   if (options.brief) document.report.whatWeHeard = [{ component: "Consolidation", customerPosition: "Fewer clusters", whereItLands: "" }];
-  if (options.signedHours) document.report.resourceAssignments = [{ workstream: "Design", architect: options.signedHours, srConsultant: 0, projectManager: 0, seniorArchitect: 0, offshoreProjectManager: 0 }];
+  // A document saved before signed resource assignments were removed.
+  if (options.signedHours) (document.report as Record<string, unknown>).resourceAssignments = [{ workstream: "Design", architect: options.signedHours, srConsultant: 0, projectManager: 0, seniorArchitect: 0, offshoreProjectManager: 0 }];
   if (options.hoursModel) document.fields.hoursModel = options.hoursModel;
   return document;
 }
@@ -21,15 +22,14 @@ describe("source checklist evidence from the FCP", () => {
     expect(update).toMatchObject({ id: 1, status: "received", receivedOn: "2026-10-12", reference: "RVTools_export_example.xlsx" });
   });
 
-  it("receives the customer brief and the hours source from what the FCP holds", () => {
+  it("receives the customer brief from what the FCP holds, and leaves the hours source to people", () => {
     const updates = sourceUpdatesFromDocument(documentWith({ brief: true, signedHours: 320 }), items(), TODAY);
-    expect(updates.map(update => update.id)).toEqual([3, 4]);
-    expect(updates[1].reference).toBe("Signed resource assignment: 320 hours");
+    expect(updates.map(update => update.id)).toEqual([3]);
   });
 
   it("never changes a verified or waived decision, and leaves discovery notes to people", () => {
-    const updates = sourceUpdatesFromDocument(documentWith({ rvtools: true, brief: true, signedHours: 40 }), items({ rvtools: "verified", customer_brief: "waived" }), TODAY);
-    expect(updates.map(update => update.id)).toEqual([4]);
+    const updates = sourceUpdatesFromDocument(documentWith({ rvtools: true, brief: true }), items({ rvtools: "verified", customer_brief: "waived" }), TODAY);
+    expect(updates).toEqual([]);
   });
 
   it("does nothing for an empty FCP", () => {
@@ -38,11 +38,10 @@ describe("source checklist evidence from the FCP", () => {
 });
 
 describe("hours source", () => {
-  it("is the signed resource assignment when one is recorded, otherwise the estimate", () => {
-    expect(hoursSource(documentWith({ signedHours: 200 }))).toMatchObject({ kind: "signed-assignment", hours: 200 });
-    expect(hoursSource(documentWith())).toMatchObject({ kind: "catalog-estimate", hours: null });
+  it("is always the calculated estimate, even when a saved document still carries signed assignments", () => {
+    expect(hoursSource(documentWith({ signedHours: 200 }))).toMatchObject({ kind: "catalog-estimate" });
+    expect(hoursSource(documentWith())).toMatchObject({ kind: "catalog-estimate" });
     expect(hoursSource(documentWith({ hoursModel: "v1" }))).toMatchObject({ kind: "bracket-estimate" });
-    expect(signedAssignmentHours(createDefaultDocument())).toBeNull();
   });
 });
 

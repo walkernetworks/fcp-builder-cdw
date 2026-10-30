@@ -1,5 +1,4 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { signedAssignmentHours } from "@shared/fcpRecord";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,7 +20,7 @@ type Props = {
 export type ReportSection =
   | "entitlement" | "consumption" | "heard" | "problems" | "questions" | "people" | "milestones" | "open-items" | "cover"
   | "situation" | "profile" | "elements" | "technical" | "constraints" | "asks" | "customer-work"
-  | "sizing" | "environment" | "licensing" | "assignments" | "details";
+  | "sizing" | "environment" | "licensing" | "details";
 
 /** The sections this form is limited to, or null for all of them. */
 const SectionFilter = createContext<ReadonlySet<string> | null>(null);
@@ -202,7 +201,6 @@ export function ReportContentEditor({ document, onChange, sections }: Props) {
   const setEntitlement = (patch: Partial<ReportContent["entitlement"]>) => set("entitlement", { ...report.entitlement, ...patch });
   // A BSAS-only deal takes its hours from the Engagement step; the consumption record here is the BSAS consumption.
   const bsasOnly = document.fields.fundingSource === "bsas";
-  const signedHours = signedAssignmentHours(document);
   const setDiscovery = (patch: Partial<ReportContent["discovery"]>) => set("discovery", { ...report.discovery, ...patch });
   const textInput = (value: string | null, onValue: (value: string | null) => void, placeholder = "") => <Input className="bg-surface" value={value ?? ""} placeholder={placeholder} onChange={event => onValue(event.target.value === "" ? null : event.target.value)} />;
   const numberInput = (value: number | null, onValue: (value: number | null) => void, placeholder = "") => <Input className="bg-surface" type="number" min={0} value={value ?? ""} placeholder={placeholder} onChange={event => onValue(numberOrNull(event.target.value))} />;
@@ -237,11 +235,10 @@ export function ReportContentEditor({ document, onChange, sections }: Props) {
       <Group members={["entitlement", "consumption"]}>
         <Accordion type="multiple" defaultValue={opened(["entitlement", "consumption"])} className="border-t border-s100">
           {!bsasOnly && (
-            <Section value="entitlement" title="Entitled hours" filled={Boolean(report.entitlement.hours)} hint="What the entitlement funds. Enter the total from the signed Broadcom resource assignments when they exist. Left blank, the plan derives the funded hours from the entitlement value.">
+            <Section value="entitlement" title="Entitled hours" filled={Boolean(report.entitlement.hours)} hint="What the entitlement funds. Enter the entitled hours from Broadcom's record. Left blank, the plan derives the funded hours from the entitlement value.">
               <div className="grid gap-3 md:grid-cols-3">
-                <Field label="Entitled hours">{numberInput(report.entitlement.hours, value => setEntitlement({ hours: value }), signedHours ? `${signedHours} from the signed resource assignments` : "Derived from the entitlement value")}</Field>
+                <Field label="Entitled hours">{numberInput(report.entitlement.hours, value => setEntitlement({ hours: value }), "Derived from the entitlement value")}</Field>
               </div>
-              {signedHours !== null && <p className="mt-2 text-xs leading-5 text-s400">The signed resource assignments on this record total {signedHours} hours.</p>}
             </Section>
           )}
           <Section value="consumption" title={bsasOnly ? "BSAS hours consumed" : "Hours consumed"} filled={report.entitlement.hoursConsumed !== null} hint={bsasOnly ? "From the latest BSAS consumption entry: the hours used so far and the date of that entry. The BSAS hours and term are set above." : "From the latest consumption entry in CDW's records: the hours used so far and the date of that entry. A different number from the entitled hours, from a different source."}>
@@ -321,7 +318,7 @@ export function ReportContentEditor({ document, onChange, sections }: Props) {
         </Accordion>
       </Group>
 
-      <Group title="Estate, discovery and details" description="Optional. Each answer is used only where this plan makes it matter: in the design elements, constraints and open items of the report, and in the Technical Handoff for the delivery team." members={["sizing", "environment", "licensing", "assignments", "details"]}>
+      <Group title="Estate, discovery and details" description="Optional. Each answer is used only where this plan makes it matter: in the design elements, constraints and open items of the report, and in the Technical Handoff for the delivery team." members={["sizing", "environment", "licensing", "details"]}>
         <Accordion type="multiple" defaultValue={opened([])} className="border-t border-s100">
           <Section value="sizing" title="Sizing inputs" hint="Used for the hours estimate. Blank values fall back to RVTools.">
             <div className="grid gap-3 md:grid-cols-3">
@@ -363,10 +360,6 @@ export function ReportContentEditor({ document, onChange, sections }: Props) {
               <Field label="Add-ons purchased (comma separated)"><Input className="bg-surface" value={listToText(report.discovery.addOnsPurchased)} placeholder="VCF Operations for networks, vDefend" onChange={event => setDiscovery({ addOnsPurchased: textToList(event.target.value) })} /></Field>
               <Field label="Not requested (comma separated)" hint="Shown where a category has no work, e.g. Kubernetes, Private AI."><Input className="bg-surface" value={listToText(report.declined)} onChange={event => set("declined", textToList(event.target.value))} /></Field>
             </div>
-          </Section>
-
-          <Section value="assignments" title="Signed resource assignments" heading="Scoped Effort" hint={`Once the resource assignments are signed, enter the hours here; they replace the hours calculated from the plan. Total entered: ${report.resourceAssignments.reduce((total, row) => total + row.architect + row.srConsultant + row.projectManager, 0)} hours.`}>
-            <RowTable rows={report.resourceAssignments} columns={[{ key: "workstream", label: "Work stream", width: "40%" }, { key: "architect", label: "Architect", type: "number" }, { key: "srConsultant", label: "Sr. Consultant", type: "number" }, { key: "projectManager", label: "Sr. Project Manager", type: "number" }, { key: "seniorArchitect", label: "Sr. Architect", type: "number" }, { key: "offshoreProjectManager", label: "Offshore PM", type: "number" }]} blank={{ workstream: "", architect: 0, srConsultant: 0, projectManager: 0, seniorArchitect: 0, offshoreProjectManager: 0 }} addLabel="Add work stream" onChange={rows => set("resourceAssignments", rows)} />
           </Section>
 
           <Section value="details" title="Revision and sources" hint="The revision note and the documents cited in the footer. The delivery model appears in the title band.">

@@ -38,7 +38,6 @@ function twoSite(patch: (raw: any) => void = () => {}): EngagementDocument {
   raw.entitlement = { value: 450_000, hours: null, termStart: "2026-10-11", termEnd: null, hoursConsumed: null, consumedAsOf: null };
   raw.schedule = { projectStart: "2026-10-16", implementationStart: null, targetComplete: "2027-10-15", hardwareLeadWeeks: null, calendarConstraints: null };
   raw.customerOwnedWork = [];
-  raw.resourceAssignments = [];
   raw.openItems = [{ item: "Confirm the entitlement term and end date (not yet stated in writing)", gates: "Entitlement term and plan length", owner: "Account lead / Partner practice lead" }];
   Object.assign(raw.discovery, {
     assessmentCompleted: true, vcenters: 5, datacenters: 2, edgeSites: 12, esxHosts: 313, vcfInstances: 2, storage: "vmfs-fc",
@@ -392,14 +391,10 @@ describe("Two-site review: text, dedupe and layout", () => {
 });
 
 describe("Two-site review: the rebuild", () => {
-  it("keeps a signed plan within the entitlement after the reserve by moving late work, and never blocks the export", () => {
-    const document = twoSite(raw => {
-      raw.entitlement.value = 410_000;
-      raw.resourceAssignments = [{ workstream: "VCF Services Entitlement", architect: 180, srConsultant: 900, projectManager: 190, seniorArchitect: 62, offshoreProjectManager: 113 }];
-    });
+  it("keeps the plan within the entitlement after the reserve by moving late work, and never blocks the export", () => {
+    const document = twoSite(raw => { raw.entitlement.value = 410_000; });
     const effort = scopedEffortForDocument(document);
-    expect(effort.source).toBe("assignments");
-    expect(effort.totals.total).toBe(1_445);
+    expect(effort.source).toBe("calculated");
     const fit = effort.internal.fit!;
     expect(effort.workPackages.reduce((sum, row) => sum + row.total, 0)).toBeLessThanOrEqual(Math.floor(fit.fillableHours));
     expect(effort.internal.cost?.status).not.toBe("over");

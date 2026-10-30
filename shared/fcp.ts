@@ -4095,8 +4095,18 @@ function withExplicitPlanInputs(value: unknown): unknown {
   return { ...document, fields: { ...rawFields, commercialPlan, ...(adoptionDetails === undefined ? {} : { adoptionDetails }) } };
 }
 
+/** Signed resource assignments are no longer an input: a document saved with them loads without them. */
+function withoutResourceAssignments(value: unknown): unknown {
+  if (!value || typeof value !== "object") return value;
+  const document = value as Record<string, unknown>;
+  const report = document.report;
+  if (!report || typeof report !== "object" || !("resourceAssignments" in report)) return value;
+  const { resourceAssignments: _dropped, ...rest } = report as Record<string, unknown>;
+  return { ...document, report: rest };
+}
+
 export function migrateDocument(value: unknown): EngagementDocument {
-  const normalizedValue = normalizeRawTimelineTaxonomy(withExplicitPlanInputs(value));
+  const normalizedValue = normalizeRawTimelineTaxonomy(withExplicitPlanInputs(withoutResourceAssignments(value)));
   const current = engagementDocumentV11Schema.safeParse(normalizedValue);
   if (current.success) {
     const fields = normalizePlanningDates(current.data.fields);

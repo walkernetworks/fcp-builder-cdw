@@ -19,7 +19,7 @@ Rules
 What each section is for
 - customer, contacts: who the customer is and who is involved (customer, CDW, Broadcom), with roles. primaryContact is the customer's main contact as "Name, role"; accountId is the CDW account number when it appears in the sources.
 - schedule: dates the customer named. projectStart is when they want the engagement to start, implementationStart when build work can begin, targetComplete their target finish. hardwareLeadWeeks is the lead time for new hardware in weeks. calendarConstraints is one or two sentences on freezes, site dates, fiscal deadlines or other limits on timing.
-- entitlement: the services entitlement. value is the entitlement dollar value (the only dollar figure the report may show). hours is the entitled hours from the signed resource assignments. hoursConsumed and consumedAsOf come from the latest consumption record.
+- entitlement: the services entitlement. value is the entitlement dollar value (the only dollar figure the report may show). hours is the entitled hours on Broadcom's entitlement record. hoursConsumed and consumedAsOf come from the latest consumption record.
 - discovery: answers to the discovery questionnaire (RVTools export, licensing and core counts, current versions, Enhanced Linked Mode, networking, vCenters, data centers, edge sites, ESX hosts, storage, hardware vendor, container platform, network details, jumbo frames, security tooling, DR, backup, hyperscalers, new hardware purchased, planned path, consolidated domain, add-ons considered or not wanted).
   - plannedPath: one of greenfield, in-place, converge, import-workload-domain, hybrid, design-only, undecided.
   - platformEdition: vcf or vvf (VMware vSphere Foundation) when the customer is licensed for VVF only.
@@ -53,7 +53,6 @@ What each section is for
 - openItems: every item still outstanding, what it gates, and the owner.
 - personnel: for each work stream, the named CDW, Broadcom and customer people.
 - milestonesToDate: what has already happened, with dates (entitlement start, discovery sessions, assessment delivered, kickoff).
-- resourceAssignments: ONLY if signed resource assignments exist, hours by work stream for Architect, Sr. Consultant and Project Manager; otherwise null.
 - sources: the documents you used, with their dates.
 - headline: one cover line that starts "Amazing happens when" and states the customer's outcome in their terms.
 - revision: one or two sentences saying what this brief was built from and the date of the newest source.
@@ -93,7 +92,6 @@ JSON shape (fill every key; keep the structure exactly)
   "openItems": [{ "item": "", "gates": "", "owner": "" }],
   "personnel": [{ "workstream": "", "cdw": [], "broadcom": [], "customer": [] }],
   "milestonesToDate": [{ "date": "YYYY-MM-DD", "event": "", "detail": "" }],
-  "resourceAssignments": null,
   "sources": [{ "title": "", "date": "YYYY-MM-DD" }],
   "revision": null
 }

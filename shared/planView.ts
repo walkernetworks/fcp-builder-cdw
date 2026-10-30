@@ -56,8 +56,7 @@ export function planBuckets(document: EngagementDocument, effort: ScopedEffort):
 }
 
 /** Where a work package's hours come from. */
-export function packageHoursProvenance(row: Pick<WorkPackageEffort, "adjusted" | "owner">, source: ScopedEffort["source"]): Provenance {
-  if (source === "assignments") return { state: "confirmed", source: "Signed resource assignments print instead" };
+export function packageHoursProvenance(row: Pick<WorkPackageEffort, "adjusted" | "owner">): Provenance {
   if (row.owner !== "cdw") return { state: "confirmed", source: row.owner === "customer" ? "Customer-owned: no CDW hours" : "Checkpoint: no hours" };
   return row.adjusted ? { state: "confirmed", source: "Set by the planner" } : { state: "assumed", source: "Services catalog baseline" };
 }

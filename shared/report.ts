@@ -18,7 +18,7 @@ const optionalNumber = z.number().min(0).max(1_000_000_000).nullable().default(n
 const personSchema = z.object({ name: text, role: z.string().max(200).default("") });
 
 export const reportEntitlementSchema = z.object({
-  /** Entitled hours: the signed Resource Assignments total. */
+  /** Entitled hours, from Broadcom's entitlement record. */
   hours: optionalNumber,
   /** Term as stated by the entitlement record; when blank the app uses the engagement's entitlement dates. */
   termStart: optionalDate,
@@ -82,8 +82,6 @@ const rowSchemas = {
   milestone: z.object({ date: dateOrBlank, event: text, detail: z.string().max(4000).default("") }),
   /** Planner-adjusted hours for one timeline work package; a null role keeps the calculated baseline. */
   workPackageHours: z.object({ id: z.string().max(300), architect: hours.nullable().default(null), srConsultant: hours.nullable().default(null), projectManager: hours.nullable().default(null), placement: z.enum(["auto", "entitlement", "notional"]).default("auto"), owner: z.enum(["auto", "cdw", "customer", "checkpoint"]).default("auto") }),
-  /** Hours by role from the signed Broadcom work plan; Senior Architect and Offshore PM are roles the work plan can carry. */
-  assignment: z.object({ workstream: text, architect: hours.default(0), srConsultant: hours.default(0), projectManager: hours.default(0), seniorArchitect: hours.default(0), offshoreProjectManager: hours.default(0) }),
   source: z.object({ title: text, date: optionalDate }),
 };
 
@@ -121,8 +119,6 @@ export const reportSchema = z.object({
   openItems: z.array(rowSchemas.openItem).default([]),
   personnel: z.array(rowSchemas.personnel).default([]),
   milestonesToDate: z.array(rowSchemas.milestone).default([]),
-  /** Signed Resource Assignments; when present they replace the calculated Scoped Effort on the page. */
-  resourceAssignments: z.array(rowSchemas.assignment).default([]),
   sources: z.array(rowSchemas.source).default([]),
   revision: optionalText,
   /** Hours per role the planner set on timeline work packages, by bar id, replacing the calculated baseline. */
@@ -131,7 +127,6 @@ export const reportSchema = z.object({
   hiddenGenerated: z.array(z.string().max(500)).default([]),
 });
 export type ReportContent = z.infer<typeof reportSchema>;
-export type ResourceAssignment = ReportContent["resourceAssignments"][number];
 
 export function emptyReport(): ReportContent {
   return reportSchema.parse({});
@@ -205,7 +200,6 @@ export function completedReport(report: ReportContent): ReportContent {
     openItems: report.openItems.filter(item => filled(item.item)),
     personnel: report.personnel.filter(item => filled(item.workstream)),
     milestonesToDate: report.milestonesToDate.filter(item => filled(item.date) && filled(item.event)),
-    resourceAssignments: report.resourceAssignments.filter(item => filled(item.workstream) && item.architect + item.srConsultant + item.projectManager + (item.seniorArchitect ?? 0) + (item.offshoreProjectManager ?? 0) > 0),
     sources: report.sources.filter(item => filled(item.title)),
   };
 }
