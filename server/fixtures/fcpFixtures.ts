@@ -168,6 +168,21 @@ export function cedarRidgeLogistics(): EngagementDocument {
   return refreshDerivedDocument(document);
 }
 
+/**
+ * Corporate, converge plus two imported workload domains on existing hardware (no hosts purchased), with a stated
+ * kickoff and implementation start. Two unsupported hosts are excluded by the brief. `entitledHours` 1,000 funds the
+ * requested scope; 400 forces some of it into the follow-on. Imported from its own synthetic brief, not the example.
+ */
+export function harborPointLogistics(entitledHours = 1000): EngagementDocument {
+  const raw = JSON.parse(readFileSync(path.resolve(import.meta.dirname, "harbor-point-logistics.brief.json"), "utf8"));
+  raw.entitlement.hours = entitledHours;
+  raw.milestonesToDate[0].detail = `${entitledHours.toLocaleString("en-US")}-hour services entitlement opened.`;
+  const base = createDefaultDocument();
+  base.fields.priorities = [];
+  const document = applyCustomerBrief(base, raw).document;
+  return issuedAsPlanned({ ...document, report: { ...document.report, importedAt: "2026-10-15T00:00:00.000Z" } });
+}
+
 export const FCP_FIXTURES = [
   { slug: "acme-health", title: "Acme Health", build: acmeHealth },
   { slug: "meridian-health", title: "Meridian Health", build: meridianHealth },
