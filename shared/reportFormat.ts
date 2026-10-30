@@ -78,13 +78,31 @@ function entitlementProblem(document: EngagementDocument, effort: ScopedEffort, 
   const unit = document.fields.fundingSource === "bsas" ? "BSAS hours" : "entitlement";
   if (reconciliation) {
     const { delivered, planned, reserve, entitled, difference, balanced } = reconciliation;
-    if (balanced) return null;
+    if (balanced) return lateWorkProblem(document, effort);
     const parts = `${hours(delivered)} delivered, ${hours(planned)} planned and ${hours(reserve)} held in reserve`;
     if (difference > 0) return `Under-funded: ${parts} come to ${hours(difference)} hours more than the ${hours(entitled)}-hour ${unit}. Move work to the follow-on or reduce hours in the Plan section.`;
+    // Hours are placed by fit; a package the timeline puts after the term is a calendar problem the planner has to fix.
+    const late = lateWorkProblem(document, effort);
+    if (late) return `${late} ${hours(-difference)} funded hours are not planned (${parts}, against the ${hours(entitled)}-hour ${unit}).`;
     return `${hours(-difference)} hours are not planned and will be forfeited at term end (${parts}, against the ${hours(entitled)}-hour ${unit}). Plan them in the Plan section.`;
   }
+  const late = lateWorkProblem(document, effort);
+  if (late) return late;
   const gap = effort.internal.fit?.underFunded?.gapHours;
   return gap ? `Under-funded: the plan needs ${hours(gap)} hours more than the ${unit} funds. Move work to the follow-on or reduce hours in the Plan section.` : null;
+}
+
+/**
+ * Funded work the timeline schedules after the term. Hours are placed by fit, never by the calendar, so this is a
+ * scheduling problem for the planner to fix (or log a reason for), not a silent move to the follow-on.
+ */
+function lateWorkProblem(document: EngagementDocument, effort: ScopedEffort): string | null {
+  const late = (effort.internal.fit?.scopeMoves ?? []).filter(move => move.reason === "after the entitlement window");
+  if (!late.length) return null;
+  const hours = (value: number) => Math.round(value).toLocaleString("en-US");
+  const unit = document.fields.fundingSource === "bsas" ? "BSAS term" : "entitlement";
+  const names = late.map(move => `${move.label} (${hours(move.hours)} hours)`).join(", ");
+  return `Does not fit the window: ${names} ${late.length === 1 ? "is" : "are"} scheduled after the ${unit} ends. Start the work earlier, shorten the schedule, or log a reason.`;
 }
 
 /**

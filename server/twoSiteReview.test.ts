@@ -11,6 +11,7 @@ import { createDefaultDocument, domainBuildWeight, domainHosts, domainPackages, 
 import { checkCondensedFcp } from "./condensedFcpChecks";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { scopedEffortForDocument } from "./rateCard";
+import { fundingProblem } from "../shared/reportFormat";
 
 /**
  * Regression fixture shaped like a two-site customer review (two sites, two management domains, four workload domains,
@@ -439,8 +440,10 @@ describe("Two-site review: a later start", () => {
     expect(plan).toContain("Capacity and Cost Visibility");
     expect(visible.split("Follow-on Scope — Two-Year Notional")[1]).toContain("Capacity and Cost Visibility");
     expect(visible).toMatch(/Moved out of this entitlement: .*Capacity and Cost Visibility \(\d+ hours\) moved to the follow-on because it is scheduled after the entitlement ends/);
-    // The entitlement hours the late work leaves unused are held in the reserve, not handed to other packages.
-    expect(effort.internal.fit!.reserveHours).toBeGreaterThan(scopedEffortForDocument(twoSite()).internal.fit!.reserveHours);
+    // Hours are placed by fit, not the calendar: the late work's hours are not parked in the reserve. The plan stops
+    // balancing and the planner is told which package does not fit the window.
+    expect(effort.internal.fit!.reserveHours).toBeCloseTo(scopedEffortForDocument(twoSite()).internal.fit!.reserveHours, 0);
+    expect(fundingProblem(document, effort, "2026-10-15")).toMatch(/^Does not fit the window: .*Capacity and Cost Visibility \(\d+ hours\)/);
   });
 
   it("keeps handover inside the entitlement whenever a wave is, alongside the runbook knowledge transfer", () => {

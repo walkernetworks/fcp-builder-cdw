@@ -994,7 +994,7 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
 
 /**
  * Funded work the timeline places after the entitlement ends carries its hours as follow-on scope. The buckets follow
- * it, depth first, and the entitlement hours it leaves unused go to the reserve rather than to other packages.
+ * it, depth first. The entitlement hours it leaves unused are not moved anywhere, so the reconciliation shows the gap.
  */
 function withLateWorkReleased(effort: ScopedEffort): ScopedEffort {
   const fit = effort.internal.fit;
@@ -1009,8 +1009,8 @@ function withLateWorkReleased(effort: ScopedEffort): ScopedEffort {
       fit: {
         ...fit,
         buckets: { ...fit.buckets, E2: fit.buckets.E2 - fromDepth, E1: fit.buckets.E1 - (hours - fromDepth), F: fit.buckets.F + hours },
-        // Hours that fall after the window go to the reserve; the runbook's hours, held for want of proving waves, stay unused for the fill.
-        reserveHours: fit.reserveHours + late.filter(row => row.deferred === "after the entitlement window").reduce((sum, row) => sum + row.followOn!.total, 0),
+        // Hours are placed by fit, not by the calendar: work the timeline puts after the window is a scheduling problem, so its
+        // hours are not parked in the reserve. The plan stops balancing and the planner has to move the work or log a reason.
         scopeMoves: [...(fit.scopeMoves ?? []), ...late.map(row => ({ label: row.label, hours: row.followOn!.total, reason: "after the entitlement window" as const }))],
       },
     },

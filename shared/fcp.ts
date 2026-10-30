@@ -2805,9 +2805,13 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   // domain, so it runs alongside the migration waves; elsewhere the pathway execution itself readies the platform.
   const migratesOntoNewPlatform = playbookPlan.path === "greenfield" || playbookPlan.path === "hybrid";
   const deliveryCompleteId = platformReadyId;
-  const platformReadyEnd = migratesOntoNewPlatform ? workloadEnd : migrationEnd;
+  // On converge and import plans, VCF Operations and the other capabilities run on the management domain, so they start
+  // once the foundation is accepted and run alongside the domain imports instead of waiting for the last one.
+  const capabilitiesFollowFoundation = playbookPlan.path === "converge" || playbookPlan.path === "import-workload-domain";
+  const platformReadyEnd = migratesOntoNewPlatform ? workloadEnd : capabilitiesFollowFoundation ? foundationEnd : migrationEnd;
   // The platform is ready when the last build package is accepted (the first workload domain on a standard plan).
   if (migratesOntoNewPlatform) platformReadyId = vvf ? "bar-vvf-workload-clusters" : lastBuildId;
+  if (capabilitiesFollowFoundation) platformReadyId = foundationId;
   const implementationApproved = playbookPlan.path !== "undecided" && playbookPlan.path !== "design-only";
   const operationsBars: TimelineBar[] = [...designBars.operations];
   if (executionPathway) {
