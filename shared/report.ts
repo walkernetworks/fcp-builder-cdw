@@ -138,7 +138,8 @@ export const ADD_ON_OUTCOMES: Record<string, { label: string; priority?: string;
   chargeback: { label: "Chargeback and capacity", priority: "operations", detailKey: "operations", focus: ["capacity-cost"] },
   "vcf-automation": { label: "VCF Automation", priority: "automation", detailKey: "automation", focus: ["vm-self-service"] },
   "vcf-networks": { label: "VCF Operations for networks", priority: "networking", detailKey: "networking", focus: ["network-operations"] },
-  nsx: { label: "NSX segments", priority: "networking", detailKey: "networking", focus: ["overlay-transport"] },
+  // NSX ships with VCF; considering it says nothing about which networking outcome the customer wants.
+  nsx: { label: "NSX segments" },
   vpc: { label: "VCF VPCs", priority: "networking", detailKey: "networking", focus: ["vpc"] },
   vdefend: { label: "vDefend microsegmentation", priority: "security", detailKey: "security", focus: ["segmentation"] },
   atp: { label: "vDefend Advanced Threat Prevention", priority: "security", detailKey: "security", focus: ["ids-ips", "malware-prevention"] },

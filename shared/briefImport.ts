@@ -246,6 +246,7 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   const focusAdditions: Record<string, Set<string>> = {};
   const followOnOnly = new Set<string>();
   let efficiency = false;
+  const considered = new Map<string, { detailKey: string; focus: string[] }>();
   for (const value of textList(discovery.addOnsConsidered, "discovery.addOnsConsidered", warnings)) {
     const key = canonicalAddOn(value);
     if (!key) { warnings.push(`discovery.addOnsConsidered: "${value}" is not a recognized add-on; ignored`); continue; }
@@ -254,15 +255,12 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
       if (!statesScope || depthStated("efficiency")) efficiency = true;
       else followOnOnly.add("efficiency");
     }
-    if (addOn.priority) priorities.add(addOn.priority);
-    if (addOn.detailKey && addOn.focus) {
-      focusAdditions[addOn.detailKey] ??= new Set();
-      addOn.focus.forEach(focus => focusAdditions[addOn.detailKey!].add(focus));
-      if (!areaSelected(addOn.detailKey) && addOn.priority) followOnOnly.add(addOn.priority);
-    }
+    // Considered is not wanted: an add-on the customer only considered is follow-on scope. What the plan builds comes
+    // from outcomesWanted and componentDepth.
+    if (addOn.priority && addOn.detailKey && addOn.focus) considered.set(addOn.priority, { detailKey: addOn.detailKey, focus: addOn.focus });
     if (key === "hcx") changes.push("discovery.addOnsConsidered: HCX is planned through the migration waves; no separate outcome added");
+    if (key === "nsx") changes.push("discovery.addOnsConsidered: NSX is part of the VCF platform; no separate outcome added");
   }
-  for (const capability of Array.from(followOnOnly)) changes.push(`discovery.addOnsConsidered: ${capability === "efficiency" ? "memory tiering" : capability} is considered but not selected; planned as follow-on scope after the entitlement`);
   // Outcomes the customer asked for in each area build the adoption plan.
   for (const [detailKey, capability] of OUTCOME_AREAS) {
     for (const focus of wanted[detailKey]) {
@@ -270,6 +268,17 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
       (focusAdditions[detailKey] ??= new Set()).add(focus);
     }
   }
+  // A considered add-on outside the planned areas is follow-on scope; inside them it adds nothing.
+  for (const [capability, { detailKey, focus }] of Array.from(considered.entries())) {
+    // In an area the plan already builds, a considered add-on adds nothing: what is built comes from outcomesWanted.
+    if (priorities.has(capability) || (statesScope && areaSelected(detailKey))) continue;
+    // Outside them it is follow-on scope, estimated from its outcome.
+    priorities.add(capability);
+    focusAdditions[detailKey] ??= new Set();
+    focus.forEach(item => focusAdditions[detailKey].add(item));
+    followOnOnly.add(capability);
+  }
+  for (const capability of Array.from(followOnOnly)) changes.push(`discovery.addOnsConsidered: ${capability === "efficiency" ? "memory tiering" : capability} is considered but not selected; planned as follow-on scope after the entitlement`);
   const declined = textList(discovery.notInterested, "discovery.notInterested", warnings);
   const declinedPriorities = new Set(declined.flatMap(value => {
     const key = canonicalAddOn(value);
