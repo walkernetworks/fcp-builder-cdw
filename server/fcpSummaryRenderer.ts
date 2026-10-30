@@ -1,3 +1,4 @@
+import { storageLabel } from "../shared/report";
 import type { SupersededVersion } from "../shared/reportFormat";
 import { formatWindow, type ScopedEffort } from "../shared/effort";
 import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument, type Timeline } from "../shared/fcp";
@@ -235,7 +236,7 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   const joined = (...parts: Array<string | null | undefined>) => parts.filter((part): part is string => Boolean(part && part.trim())).map(part => sentence(clause(part))).join(" ");
   const archRows: Array<[string, string]> = [
     ["Platform", profile.availability || profile.physicalSite ? joined(`${platform}${discovery.serverVendor ? ` on ${discovery.serverVendor} hosts` : ""}`, profile.availability, profile.physicalSite) : ""],
-    ["Storage, network", joined(discovery.storage, profile.isolation)],
+    ["Storage, network", joined(storageLabel(discovery.storage), profile.isolation)],
     ["Recovery", joined(profile.recoverability)],
   ].filter((row): row is [string, string] => Boolean(row[1])) as Array<[string, string]>;
   const architecture = archRows.length ? `<h3>Architecture at a Glance</h3><table class="arch"><tbody>${archRows.map(([label, text]) => `<tr><td>${esc(label)}</td><td>${esc(text)}</td></tr>`).join("")}</tbody></table>` : "";

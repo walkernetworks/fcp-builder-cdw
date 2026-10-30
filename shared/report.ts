@@ -77,6 +77,13 @@ const rowSchemas = {
   technicalItem: z.object({ item: text, reference: z.string().max(1000).default("") }),
   constraint: z.object({ constraint: text, imposedBy: z.string().max(200).default(""), effect: z.string().max(4000).default("") }),
   customerWork: z.object({ label: text, start: monthOrBlank, end: monthOrBlank }),
+  /** The customer's own estimate of its team's hours per week in a phase, replacing CDW's planning default. */
+  customerEffort: z.object({
+    phase: z.enum(["design", "build", "migration", "customer-waves", "capability", "recovery", "handover"]),
+    platformLead: z.number().min(0).max(80).nullable().default(null),
+    operations: z.number().min(0).max(80).nullable().default(null),
+    network: z.number().min(0).max(80).nullable().default(null),
+  }),
   openItem: z.object({ item: text, gates: z.string().max(1000).default(""), owner: z.string().max(400).default("") }),
   personnel: z.object({ workstream: text, cdw: z.array(z.string().max(300)).default([]), broadcom: z.array(z.string().max(300)).default([]), customer: z.array(z.string().max(300)).default([]) }),
   milestone: z.object({ date: dateOrBlank, event: text, detail: z.string().max(4000).default("") }),
@@ -116,6 +123,7 @@ export const reportSchema = z.object({
   constraints: z.array(rowSchemas.constraint).default([]),
   customerAsks: z.array(text).default([]),
   customerOwnedWork: z.array(rowSchemas.customerWork).default([]),
+  customerEffort: z.array(rowSchemas.customerEffort).default([]),
   openItems: z.array(rowSchemas.openItem).default([]),
   personnel: z.array(rowSchemas.personnel).default([]),
   milestonesToDate: z.array(rowSchemas.milestone).default([]),
@@ -204,3 +212,18 @@ export function completedReport(report: ReportContent): ReportContent {
     sources: report.sources.filter(item => filled(item.title)),
   };
 }
+
+const STORAGE_LABELS: Record<string, string> = {
+  vsan: "vSAN principal storage",
+  "nfs-v3": "NFS v3 principal storage",
+  "vmfs-fc": "VMFS on Fibre Channel principal storage",
+  "other-existing": "Existing storage, to be validated against the supported principal storage types",
+  undecided: "Principal storage to be decided in design",
+};
+
+/** The brief's storage code (discovery.storage) in words; free text passes through unchanged. */
+export function storageLabel(value: string | null | undefined): string | null {
+  if (!value || !value.trim()) return null;
+  return STORAGE_LABELS[value.trim().toLowerCase()] ?? value;
+}
+

@@ -14,7 +14,27 @@ type SourceResult = {
   sheets: string[];
   importedAt: string;
   warnings: string[];
+  /** One-way keys of the vCenters in the export, so the same vCenter exported twice counts once. Never the names. */
+  vcenterKeys?: string[];
+  /** The day RVTools wrote the export (vMetaData), YYYY-MM-DD, when the export says. */
+  exportedOn?: string;
 };
+
+/** FNV-1a: a short, one-way key for a vCenter name, so only a count of distinct vCenters leaves the browser. */
+function vcenterKey(name: string): string {
+  let hash = 0x811c9dc5;
+  for (const char of name.toLowerCase()) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 0x01000193) >>> 0; }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/** The export date from the vMetaData tab: an Excel serial day or a date string. */
+function exportDate(sheets: SheetMap): string | undefined {
+  const value = sheet(sheets, "vMetaData").map(row => first(row, ["xlsx creation datetime", "Export date", "Creation date"])).find(cell => norm(cell));
+  if (value === undefined) return undefined;
+  const serial = typeof value === "number" ? value : /^\d+(\.\d+)?$/.test(norm(value)) ? Number(norm(value)) : NaN;
+  const date = Number.isFinite(serial) && serial > 20_000 ? new Date(Math.round((serial - 25_569) * 86_400_000)) : new Date(norm(value));
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString().slice(0, 10);
+}
 
 export type RvToolsImportResult = {
   sources: SourceResult[];
@@ -381,7 +401,9 @@ export async function parseRvToolsFiles(files: File[]): Promise<RvToolsImportRes
     if (!sheet(sheets, "vHost").length) warnings.push("vHost data missing; host and core totals may be incomplete.");
     if (!sheet(sheets, "vInfo").length) warnings.push("vInfo data missing; VM totals may be incomplete.");
     if (!sheet(sheets, "vDatastore").length) warnings.push("vDatastore data missing; storage totals may be incomplete.");
-    sources.push({ id: crypto.randomUUID(), filename: file.name, byteSize: file.size, sheets: sheetNames, importedAt: new Date().toISOString(), warnings });
+    const vcenterNames = new Set([...sheet(sheets, "vInfo"), ...sheet(sheets, "vHost")].map(row => norm(first(row, ["VI SDK Server"]))).filter(Boolean));
+    const exportedOn = exportDate(sheets);
+    sources.push({ id: crypto.randomUUID(), filename: file.name, byteSize: file.size, sheets: sheetNames, importedAt: new Date().toISOString(), warnings, ...(vcenterNames.size ? { vcenterKeys: Array.from(vcenterNames, vcenterKey) } : {}), ...(exportedOn ? { exportedOn } : {}) });
 
     for (const row of physicalHostRows) {
       const identity = norm(first(row, ["UUID", "Object ID"])) || compositeIdentity([first(row, ["Datacenter"]), first(row, ["Cluster"]), first(row, ["Host"])]);

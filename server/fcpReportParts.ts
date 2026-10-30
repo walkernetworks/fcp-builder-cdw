@@ -26,9 +26,19 @@ export function shortDate(value: string): string {
   const month = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(date);
   return `${date.getUTCDate()} ${month} ${date.getUTCFullYear()}`;
 }
+/**
+ * The first sentence, kept under `maximum` characters. A sentence that is too long ends at its last clause boundary
+ * (a comma, semicolon or dash past the halfway point) as a full stop; failing that, at a word boundary with an ellipsis.
+ * It never cuts inside a word.
+ */
 export const firstSentence = (text = "", maximum = 150) => {
   const sentence = (text.split(/(?<=\.)\s/)[0] || "").trim();
-  return sentence.length > maximum ? `${sentence.slice(0, maximum - 1).trim()}…` : sentence;
+  if (sentence.length <= maximum) return sentence;
+  const cut = sentence.slice(0, maximum - 1);
+  const clause = Math.max(...[", ", "; ", " – ", " — "].map(mark => cut.lastIndexOf(mark)));
+  if (clause > maximum / 2) return `${cut.slice(0, clause).replace(/[\s,;:–—-]+$/, "")}.`;
+  const word = cut.lastIndexOf(" ");
+  return `${(word > maximum / 2 ? cut.slice(0, word) : cut).replace(/[\s,;:–—-]+$/, "")}…`;
 };
 export const hours = (value: number) => `${Math.round(value).toLocaleString("en-US")}`;
 export const money = (value: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);

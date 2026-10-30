@@ -1303,8 +1303,12 @@ export function buildCustomerEffort(document: EngagementDocument): { phases: Cus
     if (WAVES_LABEL.test(work.label) && !customerRunsRemainingWaves(document)) continue;
     add(WAVES_LABEL.test(work.label) ? "customerWaves" : "build", { label: work.label, start, end });
   }
+  // The customer's own estimate, from the brief, replaces CDW's planning default role by role.
+  const stated = new Map(document.report.customerEffort.map(row => [row.phase === "customer-waves" ? "customerWaves" : row.phase, row]));
   const phases = Array.from(sources.entries()).map(([key, items]) => {
-    const defaults = CUSTOMER_EFFORT_DEFAULTS[key];
+    const own = stated.get(key);
+    const base = CUSTOMER_EFFORT_DEFAULTS[key];
+    const defaults = { phase: base.phase, platformLead: own?.platformLead ?? base.platformLead, operations: own?.operations ?? base.operations, network: own?.network ?? base.network };
     const total = defaults.platformLead + defaults.operations + defaults.network;
     const start = items.map(item => item.start).sort()[0];
     const end = items.map(item => item.end).sort().at(-1)!;

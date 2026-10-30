@@ -49,6 +49,9 @@ tr{break-inside:avoid}
 .bd-tick{position:absolute;top:-4px;bottom:-4px;width:3px;background:#1A1D21;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .keep{break-inside:avoid}
 .closer{font-size:18px;font-weight:900;border-top:3px solid var(--red);padding-top:8px;margin:22px 0 6px;break-after:avoid}
+/* The closing lines stay with the content before them, so they never sit alone on a last page. */
+.ending{break-before:avoid;break-inside:avoid}
+.ending .closer{margin-top:14px}
 .closer.red{color:var(--red)}
 .tl-sheet{break-before:page;break-inside:avoid}
 .tl-head{margin:0 0 8px;padding:0 0 7px;border-bottom:2px solid var(--dark)}
@@ -130,6 +133,6 @@ tr{break-inside:avoid}
 <h3>Customer Team Commitments</h3><ul><li><b>Effort:</b> 6–8 hours per week, peaking at 0.2 FTE during platform build</li><li><b>Decisions by November:</b> hosts for the build, DR policy direction, wave ownership</li></ul>
 <h3>Open Items</h3><table><thead><tr><th>Item</th><th>What It Gates</th><th>Owner</th></tr></thead><tbody><tr><td>Current RVTools export</td><td>Design sign-off and sizing</td><td>Pat Rivera</td></tr></tbody></table>
 
-<div class="closer red">Make Amazing Happen.</div>
+<div class="ending"><div class="closer red">Make Amazing Happen.</div>
 <div class="revision">Revision: Built from the VCF 9.1 assessment and the scoping questionnaire of 30 Sep 2026.</div>
-<p class="sources">Prepared by CDW Consulting Solution Architecture for Meridian Health — Functional Consumption Plan (Condensed) · For customer review · 30 Sep 2026.</p></td></tr></tbody></table><button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button></body></html>
+<p class="sources">Prepared by CDW Consulting Solution Architecture for Meridian Health — Functional Consumption Plan (Condensed) · For customer review · 30 Sep 2026.</p></div></td></tr></tbody></table><button class="printbtn" type="button" onclick="window.print()">Print / Save as PDF</button></body></html>
