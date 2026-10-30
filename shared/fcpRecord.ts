@@ -37,6 +37,11 @@ export function sourceUpdatesFromDocument(document: EngagementDocument, items: S
     const titles = (document.report?.sources ?? []).map(source => source.title).filter(Boolean).join(", ");
     for (const item of open("customer_brief")) updates.push({ id: item.id, status: "received", receivedOn: today, reference: (titles || "Copilot customer brief").slice(0, 1024), note: "Received when the customer brief was imported into the FCP." });
   }
+  // Entitled hours come from Broadcom's entitlement record; once they are on the plan, the hours source is in hand.
+  const entitled = document.report?.entitlement?.hours;
+  if (entitled) {
+    for (const item of open("hours_source")) updates.push({ id: item.id, status: "received", receivedOn: today, reference: `${entitled.toLocaleString("en-US")} entitled hours`, note: "Received when the entitled hours from Broadcom's entitlement record were entered in the FCP." });
+  }
   return updates;
 }
 

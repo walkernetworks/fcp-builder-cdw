@@ -334,7 +334,7 @@ export const DEFAULT_SOURCE_CHAIN: ReadonlyArray<{ kind: SourceItemKind; label: 
   { kind: "rvtools", label: "RVTools export", required: true },
   { kind: "discovery_notes", label: "Discovery notes", required: true },
   { kind: "customer_brief", label: "Customer brief", required: true },
-  { kind: "hours_source", label: "Hours source", required: true },
+  { kind: "hours_source", label: "Entitled hours (Broadcom record)", required: true },
 ];
 
 // ---------------------------------------------------------------------------------------------------------------------
