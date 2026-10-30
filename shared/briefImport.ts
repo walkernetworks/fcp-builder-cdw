@@ -198,6 +198,7 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
       pathway: /import/i.test(String(row.pathway ?? "")) ? "import" : /converg/i.test(String(row.pathway ?? "")) ? "converge" : /green|new|build/i.test(String(row.pathway ?? "")) ? "greenfield" : row.pathway ?? undefined,
       hosts: row.hosts === null || row.hosts === undefined || row.hosts === "" ? null : Number(row.hosts),
       instance: row.instance ?? "", notes: row.notes ?? "",
+      deferred: row.deferred === true || /^(true|yes|later|deferred)$/i.test(String(row.deferred ?? "")),
     } : row) : discovery.domains;
     detailsPatch.domains = parseRows(rows, vcfDomainSchema, "discovery.domains", warnings);
   }

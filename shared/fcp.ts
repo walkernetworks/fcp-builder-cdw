@@ -552,6 +552,8 @@ export const vcfDomainSchema = z.object({
   instance: z.string().max(120).default(""),
   hosts: z.number().int().nonnegative().nullable().default(null),
   notes: z.string().max(500).default(""),
+  /** The customer wants this domain after this entitlement: it is follow-on scope with its hours, not built in the window. */
+  deferred: z.boolean().default(false),
 });
 export type VcfDomain = z.infer<typeof vcfDomainSchema>;
 
@@ -1704,7 +1706,7 @@ function limitToEntitlement(fields: MinimalFields, schedule: Timeline): Timeline
 }
 
 /** Work packages that always stay inside the entitlement: handover, the runbook and training, licensing and the management domains. */
-const PROTECTED_PACKAGES = /^bar-(platform-(handover|runbook-transfer|enablement|licensing)|management-domain(-\d+)?|converge-management-domain)$/;
+const PROTECTED_PACKAGES = /^bar-(platform-(handover|runbook-transfer|enablement|licensing)|management-domain(-\d+)?|converge-management-domain|import-domain-\d+|workload-domain(-\d+)?|import-workload-domain(-\d+)?)$/;
 const COMPRESSED_INTO_ENTITLEMENT = "Compressed into the last entitlement month so it is delivered within the entitlement.";
 const HANDOVER_WITH_RUNBOOK = "Runs in the last entitlement month, alongside the runbook knowledge transfer, so the service is accepted within the entitlement.";
 
@@ -1719,7 +1721,9 @@ function keepProtectedInEntitlement(fields: MinimalFields, schedule: Timeline): 
   if (schedule.columns.length <= count) return schedule;
   const all = schedule.lanes.flatMap(lane => lane.bars);
   const firstWave = all.filter(activity => /^bar-playbook-execution-/.test(activity.id)).sort((left, right) => left.startCol - right.startCol)[0];
-  const isProtected = (activity: TimelineBar) => PROTECTED_PACKAGES.test(activity.id) || activity.id === firstWave?.id;
+  // A domain the customer wants later is not held in the window.
+  const later = new Set(domainPackages(fields).filter(({ domain }) => domain.deferred).map(({ id }) => id));
+  const isProtected = (activity: TimelineBar) => (PROTECTED_PACKAGES.test(activity.id) && !later.has(activity.id)) || activity.id === firstWave?.id;
   if (!all.some(activity => isProtected(activity) && activity.startCol > count)) return schedule;
   const placed = new Map(all.map(activity => [activity.id, activity]));
   const moved = new Map<string, TimelineBar>();
