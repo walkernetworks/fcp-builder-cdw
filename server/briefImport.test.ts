@@ -63,7 +63,7 @@ describe("customer brief import", () => {
   it("lists missing facts that become open items", () => {
     const result = applyCustomerBrief(createDefaultDocument(), { schemaVersion: 1, customer: { name: "Acme Health" } });
     expect(result.ok).toBe(true);
-    expect(result.missing).toEqual(expect.arrayContaining(["Entitled hours (Resource Assignments total)", "What we heard", "Target personnel"]));
+    expect(result.missing).toEqual(expect.arrayContaining(["Entitled hours", "What we heard", "Target personnel"]));
   });
 
   it("rejects a different schema version or a non-object file", () => {
@@ -114,10 +114,31 @@ describe("Copilot prompt", () => {
 
   it("asks for every top-level brief field the importer reads", async () => {
     const { COPILOT_BRIEF_PROMPT } = await import("../shared/briefPrompt");
-    for (const key of ["entitlement", "discovery", "designProfile", "designElements", "whatWeHeard", "problems", "openQuestions", "technicalItems", "constraints", "customerAsks", "customerOwnedWork", "openItems", "personnel", "milestonesToDate", "resourceAssignments", "sources", "headline", "revision"]) {
+    for (const key of ["entitlement", "discovery", "designProfile", "designElements", "whatWeHeard", "problems", "openQuestions", "technicalItems", "constraints", "customerAsks", "customerOwnedWork", "openItems", "personnel", "milestonesToDate", "sources", "headline", "revision"]) {
       expect(COPILOT_BRIEF_PROMPT, key).toContain(`"${key}"`);
     }
     expect(COPILOT_BRIEF_PROMPT).toContain("Do NOT use the words \"readiness\", \"workshop\" or \"TRW\"");
+    expect(COPILOT_BRIEF_PROMPT).not.toContain("resourceAssignments");
+  });
+
+  it("imports a brief that still carries a resourceAssignments block, ignores it, and warns once", () => {
+    const brief = example();
+    brief.resourceAssignments = [{ workstream: "Design and build", architect: 180, srConsultant: 900, projectManager: 190, seniorArchitect: 62, offshoreProjectManager: 113 }];
+    const plain = applyCustomerBrief(createDefaultDocument(), example());
+    const result = applyCustomerBrief(createDefaultDocument(), brief);
+    expect(result.ok).toBe(true);
+    const ignored = result.warnings.filter(warning => warning.startsWith("resourceAssignments"));
+    expect(ignored).toEqual(["resourceAssignments: signed resource assignments are no longer used; the block is ignored"]);
+    expect(result.warnings.filter(warning => !warning.startsWith("resourceAssignments"))).toEqual(plain.warnings);
+    expect("resourceAssignments" in result.document.report).toBe(false);
+    expect(result.document.report.entitlement).toEqual(plain.document.report.entitlement);
+    expect(result.changes.some(change => change.includes("resourceAssignments"))).toBe(false);
+  });
+
+  it("does not warn about a resourceAssignments block that is null", () => {
+    const brief = example();
+    brief.resourceAssignments = null;
+    expect(applyCustomerBrief(createDefaultDocument(), brief).warnings.some(warning => warning.startsWith("resourceAssignments"))).toBe(false);
   });
 });
 

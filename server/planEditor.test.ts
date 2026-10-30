@@ -24,9 +24,9 @@ describe("plan edits", () => {
     expect(packageSettings(edited, row.id).architect).toBe(12);
     const after = effortOf(edited).workPackages.find(item => item.id === row.id)!;
     expect([after.architect, after.adjusted]).toEqual([12, true]);
-    expect(packageHoursProvenance(after, "calculated")).toEqual({ state: "confirmed", source: "Set by the planner" });
+    expect(packageHoursProvenance(after)).toEqual({ state: "confirmed", source: "Set by the planner" });
     expect(resetRoleHours(edited, row.id).report.workPackageHours).toEqual(document.report.workPackageHours);
-    expect(packageHoursProvenance(row, "calculated").state).toBe("assumed");
+    expect(packageHoursProvenance(row).state).toBe("assumed");
   });
 
   it("moves a package to follow-on through the engine, which plans it in the Two-Year Notional and the FCP prints it there", () => {

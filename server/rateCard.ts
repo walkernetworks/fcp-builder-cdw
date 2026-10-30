@@ -54,9 +54,9 @@ type Squeezed = { effort: ScopedEffort; moves: ScopeMove[] };
  * wave) and work the planner pinned never move. Design and governance move last, latest first, and only when no protected
  * package builds on them; if the protected work alone exceeds the entitlement the plan stays over. Moved work then comes back, earliest first, wherever it still fits.
  */
-function withinBudget(document: EngagementDocument, effort: ScopedEffort, value: number, hoursCap: number | null = document.report.entitlement.hours, evenWithAssignments = false): Squeezed {
+function withinBudget(document: EngagementDocument, effort: ScopedEffort, value: number, hoursCap: number | null = document.report.entitlement.hours): Squeezed {
   const hours = hoursCap;
-  if ((!value && !hours) || (effort.source === "assignments" && !evenWithAssignments)) return { effort, moves: [] };
+  if (!value && !hours) return { effort, moves: [] };
   const bars = document.adoptionTimeline.lanes.flatMap(lane => lane.bars);
   const dependents = new Map<string, string[]>();
   for (const bar of bars) for (const prerequisite of bar.prerequisites ?? []) dependents.set(prerequisite, [...(dependents.get(prerequisite) ?? []), bar.id]);
@@ -151,7 +151,6 @@ function splitToFollowOn(effort: ScopedEffort, id: string, share: number): Scope
       followOn: { architect: prior.architect + later.architect, srConsultant: prior.srConsultant + later.srConsultant, projectManager: prior.projectManager + later.projectManager, total: prior.total + later.total },
     };
   });
-  if (effort.source === "assignments") return { ...effort, workPackages };
   const totals = workPackages.reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
   return { ...effort, workPackages, totals, internal: { ...effort.internal, planHours: totals.total } };
 }
@@ -165,7 +164,6 @@ function mergeDiscoveryIntoPathway(effort: ScopedEffort, discovery: WorkPackageE
     if (row.id === pathway.id) return { ...row, architect: larger.architect, srConsultant: larger.srConsultant, projectManager: larger.projectManager, total: larger.total, label: `${pathway.label}, with ${discovery.label}` };
     return row;
   });
-  if (effort.source === "assignments") return { ...effort, workPackages };
   const totals = workPackages.reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { ...zero });
   return { ...effort, workPackages, totals, internal: { ...effort.internal, planHours: totals.total } };
 }

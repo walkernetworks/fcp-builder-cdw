@@ -116,12 +116,12 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
   });
   const uncategorised = shown.filter(row => !row.category).map(row => [esc(packageLabel(row.label)), "", esc(row.leadRole), num(row.architect), num(row.srConsultant), num(row.projectManager), num(row.total)]);
   const reserveRow = reserve >= 1 ? [[`\u0001hold:${esc(RESERVE_LINE)}`, "", "", "", "", "", num(reserve)]] : [];
-  const workRows = effort.source === "assignments" || !shown.length
+  const workRows = !shown.length
     ? effort.rows.filter(row => row.total > 0).map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), "", "", num(row.architect), num(row.srConsultant), num(row.projectManager), num(row.total)])
     : [...packageRows, ...uncategorised];
   // The planned packages, then their subtotal, then what the entitlement also holds: hours already delivered and the
   // reserve have no role split, so the entitlement total shows hours only and every role column adds up where it shows.
-  const plannedRoles = (effort.source === "assignments" || !shown.length ? effort.rows.filter(row => row.total > 0) : shown).reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
+  const plannedRoles = (!shown.length ? effort.rows.filter(row => row.total > 0) : shown).reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
   const heldRows = [...(deliveredRow as Cell[][]), ...reserveRow];
   const plannedRow = heldRows.length ? [[`\u0001sub:Total planned`, "", "", num(plannedRoles.architect), num(plannedRoles.srConsultant), num(plannedRoles.projectManager), num(plannedRoles.total)]] : [];
   const entitlementTotal = heldRows.length

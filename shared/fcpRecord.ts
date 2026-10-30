@@ -14,13 +14,6 @@ export type SourceItemUpdate = { id: number; status: "received"; receivedOn: str
 
 const dayOf = (iso: string) => (/^\d{4}-\d{2}-\d{2}/.test(iso) ? iso.slice(0, 10) : null);
 
-/** Hours from the signed Broadcom resource assignment, or null when none is recorded. */
-export function signedAssignmentHours(document: EngagementDocument): number | null {
-  const rows = document.report?.resourceAssignments ?? [];
-  const total = rows.reduce((sum, row) => sum + row.architect + row.srConsultant + row.projectManager + (row.seniorArchitect ?? 0) + (row.offshoreProjectManager ?? 0), 0);
-  return total > 0 ? total : null;
-}
-
 function briefImported(document: EngagementDocument) {
   const report = document.report;
   if (!report) return false;
@@ -44,24 +37,18 @@ export function sourceUpdatesFromDocument(document: EngagementDocument, items: S
     const titles = (document.report?.sources ?? []).map(source => source.title).filter(Boolean).join(", ");
     for (const item of open("customer_brief")) updates.push({ id: item.id, status: "received", receivedOn: today, reference: (titles || "Copilot customer brief").slice(0, 1024), note: "Received when the customer brief was imported into the FCP." });
   }
-  const signed = signedAssignmentHours(document);
-  if (signed !== null) {
-    for (const item of open("hours_source")) updates.push({ id: item.id, status: "received", receivedOn: today, reference: `Signed resource assignment: ${signed.toLocaleString("en-US")} hours`, note: "Received when signed resource-assignment hours were entered in the FCP." });
-  }
   return updates;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Hours source
 
-export type HoursSource = { kind: "signed-assignment" | "catalog-estimate" | "bracket-estimate"; label: string; detail: string; hours: number | null };
+export type HoursSource = { kind: "catalog-estimate" | "bracket-estimate"; label: string; detail: string };
 
-/** Where the plan's hours come from. A signed resource assignment replaces the calculated estimate. */
+/** Where the plan's hours come from: always the calculated estimate, fitted into the entitlement. */
 export function hoursSource(document: EngagementDocument): HoursSource {
-  const signed = signedAssignmentHours(document);
-  if (signed !== null) return { kind: "signed-assignment", label: "Signed resource assignment", detail: "Hours by role from the signed Broadcom work plan. They replace the calculated estimate in the report.", hours: signed };
-  if (document.fields.hoursModel === "v1") return { kind: "bracket-estimate", label: "Estimate: host brackets (hours model v1)", detail: "Calculated from host-count brackets. Replace it with the signed resource assignment when Broadcom issues the RA.", hours: null };
-  return { kind: "catalog-estimate", label: "Estimate: services catalog (hours model v2)", detail: "Calculated from the services catalog for this plan's topology. Replace it with the signed resource assignment when Broadcom issues the RA.", hours: null };
+  if (document.fields.hoursModel === "v1") return { kind: "bracket-estimate", label: "Estimate: host brackets (hours model v1)", detail: "Calculated from host-count brackets." };
+  return { kind: "catalog-estimate", label: "Estimate: services catalog (hours model v2)", detail: "Calculated from the services catalog for this plan's topology." };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

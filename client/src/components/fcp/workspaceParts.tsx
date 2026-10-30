@@ -76,8 +76,8 @@ export function DeliveryPackageHeader({ document }: { document: EngagementDocume
     { label: "Service scope", ready: document.fields.priorities.length > 0 },
     { label: "Entitlement adoption timeline", ready: document.adoptionTimeline.lanes.some(lane => lane.bars.length) },
     { label: "Technical evidence", ready: Boolean(document.inventory.hosts && document.readiness.hardwarePlatforms.length) },
-    // The account team's item, not the customer's: the hours behind the burndown come from the signed resource assignments.
-    { label: "Entitled hours from signed assignments", ready: Boolean(document.report.entitlement.hours || document.report.resourceAssignments.length || (document.fields.fundingSource === "bsas" && document.fields.bsasHours)) },
+    // The account team's item, not the customer's: the entitled hours behind the burndown come from Broadcom's record.
+    { label: "Entitled hours", ready: Boolean(document.report.entitlement.hours || (document.fields.fundingSource === "bsas" && document.fields.bsasHours)) },
     // Our own record to confirm; the customer documents mark the date "to be confirmed" until it is.
     { label: document.fields.fundingSource === "bsas" ? "BSAS end date confirmed" : "Entitlement end date confirmed", ready: !termEndAssumed(document) },
     // Our own planning input: without a host count the design hours assume a full design (shared/estateSize.ts).

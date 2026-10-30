@@ -66,10 +66,10 @@ The header (`Home.tsx:283`) holds Switch engagement, the title, the save state, 
 | Document | `EngagementDocument` (`shared/fcp.ts`), stored in `engagements.data`; `migrateDocument` runs on load and on export |
 | Report content | `document.report`, `ReportContent` / `reportSchema` (`shared/report.ts`); `effectiveReport` (`shared/reportView.ts`) merges in generated rows |
 | Effort | `ScopedEffort` (`shared/effort.ts`), computed server-side by `scopedEffortForDocument` (`server/rateCard.ts`; rates never reach the client), exposed as `effort.scoped` |
-| Signed resource assignments (hours) | `document.report.resourceAssignments` (**not** `engagementAssignments`; see C-2) |
+| Entitled and used hours | `report.entitlement.hours`, `hoursConsumed`, `consumedAsOf`. Signed resource assignments are no longer an input; `migrateDocument` drops a saved `report.resourceAssignments` (see C-2) |
 | Record roles (people) | `engagementAssignments.role`, `ASSIGNMENT_ROLES` (`shared/vsaFields.ts`) |
 | Source checklist | `sourceChainItems` (`kind` in `SOURCE_ITEM_KINDS`, `status` in `SOURCE_ITEM_STATUSES`); `tracker.setSourceItem` etc.; `sourceUpdatesFromDocument` (`shared/fcpRecord.ts`) ticks items off on save |
-| Hours source | `hoursSource(document)` (`shared/fcpRecord.ts`): `signed-assignment`, `catalog-estimate` or `bracket-estimate` |
+| Hours source | `hoursSource(document)` (`shared/fcpRecord.ts`): `catalog-estimate` or `bracket-estimate`; the hours are always the calculated estimate |
 | Build lock | `fcpRecord.acquireLock` / `releaseLock`, `useBuildLock`, `buildLockState` |
 | Customer content gates | `checkCondensedFcp(html, { customerName, entitlementValue, bsasOnly })` (`server/condensedFcpChecks.ts`) |
 | Condensed renderer | `renderCondensedFcpHtml(title, document, { today?, effort })` |
@@ -223,7 +223,7 @@ Answered on 2026-10-23; see section 8.
 ### D-2: C-1 to C-12 accepted, with these conditions
 
 - **C-1.** Build the full page. **No Activity tab** (that is a north-star item). Phase 3 only writes the `stageEvents` and `fcpVersions` rows a future Activity tab will read.
-- **C-2.** The hours-source choice stays and reads `report.resourceAssignments`. The design doc has been corrected where it said `engagementAssignments` holds hours.
+- **C-2.** The hours-source choice stays and reads `report.resourceAssignments`. The design doc has been corrected where it said `engagementAssignments` holds hours. *Superseded:* signed resource assignments were later removed. The FCP estimates hours by role from the work packages and fits them into the entitlement; from Broadcom's record it takes only the entitled hours, the term and the hours used.
 - **C-3.** `issueNumber` and `status` are new columns. The existing `versionNumber` is a **save counter**: it never appears as a customer-facing version, and from Phase 1 on it is not shown with a "v" prefix anywhere (see D-3).
 - **C-5 / C-6.** The draft watermark is a **render option** (`CondensedFcpOptions.draft`), never a document field, so it cannot be saved into a document or reach print by accident. When it is off, the output is byte-identical, which the golden files cover. Phase 1 uses it on the preview only; Phase 3 adds it to draft exports once "issued" exists. Known gap until Phase 3: exported PDFs carry no watermark. That is today's behaviour, so there is no regression.
 - **C-7.** `compatibilityHandoffRenderer.ts` stays.
@@ -299,7 +299,7 @@ If you would rather accept the plan changes for mismatched records instead, say 
      - Nothing here depends on the VVF rule. Changing the plan type through the warning leaves the stored platform edition as it is.
   4. *Funding copy.*
      - The Funding section no longer sits under the "From the customer" header. Funding facts come from the order and CDW's records.
-     - **Entitled hours** (what the entitlement funds: the signed resource assignment total, or blank to derive from the entitlement value) and **Hours consumed** (the latest consumption entry and its date) are separate sections, each with its own description.
+     - **Entitled hours** (what the entitlement funds, from Broadcom's record, or blank to derive from the entitlement value) and **Hours consumed** (the latest consumption entry and its date) are separate sections, each with its own description.
 
 ## 9. Phase 2: Funding (design §5.3)
 
@@ -314,7 +314,7 @@ If you would rather accept the plan changes for mismatched records instead, say 
 - **The entitlement end is now editable.** It writes the stated term end (`report.entitlement.termEnd`), which the report already reads. Blank keeps "12 months from the start; to be confirmed".
 - **Internal, never prints.** A locked panel with a lock icon and an "Internal · never prints" tag holds:
   - the blended rate and where it comes from;
-  - how the entitled hours are derived (the signed resource assignment total, or the entitlement value at the blended rate, after the reserve);
+  - how the entitled hours are derived (as entered, or the entitlement value at the blended rate, after the reserve);
   - the reserve held back (moved here);
   - the PO received date and hours, read-only from the tracker;
   - a note that the BSAS amount is never entered.
@@ -347,7 +347,7 @@ UI only: no schema change and no change to generated output. `client/src/compone
 UI only: no schema change and no change to generated output. `client/src/components/fcp/PlanEditor.tsx` replaces the scope register, the Condensed FCP panel and the raw assignments and customer-work editors in the Plan section.
 
 - **Above the table**, in a panel of what prints (hours only):
-  - **Hours source:** "Estimated from this plan" or "Signed resource assignments", with the assignments editor and **Clear assignments**.
+  - **Hours source:** "Estimated from this plan".
   - **Scope by bucket:** core, depth, follow-on, customer-funded and reserve. Shows the under-funded warning and the scope moves.
   - **BSAS allocation:** hours available with the term's provenance, planned inside the term, forfeited, and follow-on BSAS does not cover.
   - The buckets and the allocation come from `shared/planView.ts`, which works them out the way the Condensed FCP prints them. `server/planView.test.ts` checks them against the printed FCP for every fixture.

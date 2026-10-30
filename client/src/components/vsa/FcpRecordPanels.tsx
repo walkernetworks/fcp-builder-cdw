@@ -37,7 +37,7 @@ export function FcpRecordStrip({ engagementId, document, onOpenSources }: { enga
             </div>
             <div className="flex flex-wrap items-center gap-2 lg:border-l lg:border-s100 lg:pl-4" title={hours.detail}>
               <p className="text-[11px] font-medium uppercase tracking-wide text-cool-8">Hours source</p>
-              {hours.kind === "signed-assignment" ? <Pill verdict="go">Signed RA · {hours.hours?.toLocaleString("en-US")} hours</Pill> : <Chip>{hours.label}</Chip>}
+              <Chip>{hours.label}</Chip>
             </div>
           </section>
         );

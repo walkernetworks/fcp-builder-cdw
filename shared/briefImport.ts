@@ -369,7 +369,6 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
     openItems: keep(parseRows(brief.openItems, element(reportShape.openItems), "openItems", warnings), prior.openItems),
     personnel: keep(parseRows(brief.personnel, element(reportShape.personnel), "personnel", warnings), prior.personnel),
     milestonesToDate: keep(parseRows(brief.milestonesToDate, element(reportShape.milestonesToDate), "milestonesToDate", warnings), prior.milestonesToDate),
-    resourceAssignments: keep(parseRows(brief.resourceAssignments, element(reportShape.resourceAssignments), "resourceAssignments", warnings), prior.resourceAssignments),
     sources: keep(parseRows(brief.sources, element(reportShape.sources), "sources", warnings), prior.sources),
     revision: typeof brief.revision === "string" ? brief.revision : prior.revision,
     hiddenGenerated: prior.hiddenGenerated,
@@ -387,7 +386,7 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   reportCount("openItems", report.openItems.length);
   reportCount("personnel", report.personnel.length);
   reportCount("milestonesToDate", report.milestonesToDate.length);
-  reportCount("resourceAssignments", report.resourceAssignments.length);
+  if (brief.resourceAssignments !== undefined && brief.resourceAssignments !== null) warnings.push("resourceAssignments: signed resource assignments are no longer used; the block is ignored");
   if (bsasBrief && Object.keys(bsasBrief).some(key => !["hours", "termStart", "termEnd"].includes(key))) warnings.push("bsas: only BSAS hours and term dates are kept; any amount, rate or tier is left out of the plan");
   if (report.entitlement.hours !== prior.entitlement.hours) changes.push(`report.entitlement.hours: ${prior.entitlement.hours ?? "not set"} → ${report.entitlement.hours ?? "not set"}`);
 
@@ -397,7 +396,7 @@ export function applyCustomerBrief(document: EngagementDocument, raw: unknown): 
   } else {
     if (!fields.entitlementStart) missing.push("Entitlement start date");
     if (!fields.entitlementAmount) missing.push("Entitlement value");
-    if (report.entitlement.hours === null) missing.push("Entitled hours (Resource Assignments total)");
+    if (report.entitlement.hours === null) missing.push("Entitled hours");
   }
   if (report.entitlement.hoursConsumed === null) missing.push("Hours consumed to date");
   if (!report.headline) missing.push("Cover headline");

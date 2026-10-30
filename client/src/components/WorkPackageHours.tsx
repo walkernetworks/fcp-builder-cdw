@@ -44,30 +44,28 @@ const COST_STYLE: Record<PlanCost["status"], { bar: string; box: string; text: s
 };
 
 /** INTERNAL: the plan's cost at the rate card against the entitlement value. Never printed in a document. */
-export function CostMeter({ cost, hours, assignments = false, fit }: { cost: PlanCost; hours: number; assignments?: boolean; fit?: ScopedEffort["internal"]["fit"] }) {
+export function CostMeter({ cost, hours, fit }: { cost: PlanCost; hours: number; fit?: ScopedEffort["internal"]["fit"] }) {
   // Under-funded only because of the reserve: the plan costs less than the entitlement value but more than what is left after it.
-  const reserveOnly = cost.status === "over" && Boolean(fit?.underFunded) && !assignments && cost.planCost <= cost.entitlementValue;
+  const reserveOnly = cost.status === "over" && Boolean(fit?.underFunded) && cost.planCost <= cost.entitlementValue;
   const style = reserveOnly ? { ...COST_STYLE.over, text: "Over the hours left after the reserve" } : COST_STYLE[cost.status];
   const percent = cost.ratio === null ? 0 : Math.round(cost.ratio * 100);
   return (
     <div className={`rounded-lg border p-3 text-xs ${style.box}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-[11px] font-medium uppercase tracking-wide">{assignments ? "Signed assignments cost" : "Plan cost"} · internal, not in the report</span>
+        <span className="text-[11px] font-medium uppercase tracking-wide">Plan cost · internal, not in the report</span>
         <span className="font-semibold">{style.text}</span>
       </div>
       <p className="mt-1 text-sm font-semibold">
         {dollars(cost.planCost)} for {hours.toLocaleString("en-US")} hours
         {cost.entitlementValue > 0 && <> of {dollars(cost.entitlementValue)} ({percent}%){cost.status === "over" && !reserveOnly ? ` · over by ${dollars(cost.planCost - cost.entitlementValue)}` : ` · ${dollars(cost.entitlementValue - cost.planCost)} left`}</>}
       </p>
-      {fit?.movedToFollowOn && fit.movedToFollowOn.hours > 0 && !assignments && <p className="mt-1 font-semibold">The core work needed {Math.round(fit.coreRequiredHours).toLocaleString("en-US")} hours against {Math.round(fit.fillableHours).toLocaleString("en-US")} left after the reserve, so the latest work moved to the Two-Year Notional as follow-on: {fit.movedToFollowOn.packages.join(", ")} ({Math.round(fit.movedToFollowOn.hours).toLocaleString("en-US")} h).</p>}
-      {cost.status === "over" && fit?.underFunded && !assignments && <div className="mt-1 space-y-1">
+      {fit?.movedToFollowOn && fit.movedToFollowOn.hours > 0 && <p className="mt-1 font-semibold">The core work needed {Math.round(fit.coreRequiredHours).toLocaleString("en-US")} hours against {Math.round(fit.fillableHours).toLocaleString("en-US")} left after the reserve, so the latest work moved to the Two-Year Notional as follow-on: {fit.movedToFollowOn.packages.join(", ")} ({Math.round(fit.movedToFollowOn.hours).toLocaleString("en-US")} h).</p>}
+      {cost.status === "over" && fit?.underFunded && <div className="mt-1 space-y-1">
         <p className="font-semibold">Under-funded: the entitlement funds {Math.round(fit.fillableHours).toLocaleString("en-US")} hours after the reserve, and the protected work (handover, licensing, the management domains, the first wave) with the design it builds on is {Math.round(fit.underFunded.gapHours).toLocaleString("en-US")} hours over it. Everything else, design included, has moved to the Two-Year Notional. The full scope needs {Math.round(fit.underFunded.fullScopeGapHours).toLocaleString("en-US")} more hours than the entitlement funds. The Condensed FCP still exports, but issuing it needs a logged reason until the protected work fits.</p>
         <p>The core is discovery, design, the pathway build or upgrade, the dated migration waves and VCF Operations Tier 1. Largest parts: {fit.coreByLine.slice(0, 4).map(row => `${row.line} ${Math.round(row.loaded).toLocaleString("en-US")} h`).join("; ")}.</p>
         <p>To close the gap, change the scope rather than the estimate: correct the estate facts the hours are built from (see Assumptions below), mark a prior assessment if one was delivered, lower the dated migration waves, choose a smaller pathway, or raise the entitlement or the rate used.</p>
       </div>}
-      {cost.status === "over" && !(fit?.underFunded && !assignments) && <p className="mt-1 font-semibold">{assignments
-        ? "The signed resource assignments cost more than the entitlement value, and the Condensed FCP will not export. Replace them with the plan or correct them in the report content."
-        : "The entitlement window cannot go over the entitlement value, and the Condensed FCP will not export. Only design and work pinned to the entitlement are left to cut: reduce their hours or move work to the Two-Year Notional."}</p>}
+      {cost.status === "over" && !fit?.underFunded && <p className="mt-1 font-semibold">The entitlement window cannot go over the entitlement value, and the Condensed FCP will not export. Only design and work pinned to the entitlement are left to cut: reduce their hours or move work to the Two-Year Notional.</p>}
       {cost.followOnCost > 0 && <p className="mt-1">Follow-on scope in the Two-Year Notional: {dollars(cost.followOnCost)} (no limit; not drawn from the entitlement).</p>}
       {cost.entitlementValue > 0 && (
         <div className="relative mt-2 h-2 rounded-full bg-white/70">
@@ -142,26 +140,7 @@ export function RoleHoursEditor({ document, effort, barId, onChange }: { documen
         {row.deferred && <p className="mt-2 rounded-lg bg-s50 px-2 py-1.5 text-[11px] leading-4 text-s500">{placementNote[row.deferred]}</p>}
       </div>
       <div className="space-y-2">
-        <AssignmentsInForce document={document} effort={effort} onChange={onChange} />
-        {cost && <CostMeter cost={cost} hours={effort.totals.total} assignments={effort.source === "assignments"} fit={effort.internal.fit} />}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Signed resource assignments replace the calculated plan in the report and the cost check, so edits on the
- * timeline do not change either until the assignments are replaced or cleared.
- */
-export function AssignmentsInForce({ document, effort, onChange }: { document: EngagementDocument; effort: ScopedEffort; onChange: (document: EngagementDocument) => void }) {
-  if (effort.source !== "assignments") return null;
-  const planHours = effort.workPackages.filter(row => !row.deferred).reduce((sum, row) => sum + row.total, 0);
-  const clear = () => onChange({ ...document, report: { ...document.report, resourceAssignments: [] } });
-  return (
-    <div className="rounded-lg border border-s200 bg-s50 p-3 text-xs leading-5 text-s600">
-      <p><b>Signed resource assignments are in force ({effort.totals.total.toLocaleString("en-US")} hours).</b> They are the hours from the signed resource assignment document, entered on the FCP Report Content step, and they replace this plan in the report and in the cost check, so changing hours or moving work here does not change either. This plan is {planHours.toLocaleString("en-US")} hours in the entitlement.</p>
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant="outline" className="h-7 bg-surface text-xs" onClick={clear}>Clear assignments</Button>
+        {cost && <CostMeter cost={cost} hours={effort.totals.total} fit={effort.internal.fit} />}
       </div>
     </div>
   );
@@ -191,8 +170,7 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
         <p className="mt-2 max-w-4xl text-xs leading-5 text-s500">
           Baseline hours come from the services catalog for this plan, placed on the work packages that deliver them; adjusted rows are marked. The entitlement window is held to the entitlement value; work beyond it moves to the Two-Year Notional as follow-on scope. The Condensed FCP and the Delivery Package show this same table.
         </p>
-        {effort && <div className="mt-3"><AssignmentsInForce document={document} effort={effort} onChange={onChange} /></div>}
-        {effort?.internal.cost && <div className="mt-3"><CostMeter cost={effort.internal.cost} hours={effort.totals.total} assignments={effort.source === "assignments"} fit={effort.internal.fit} /></div>}
+        {effort?.internal.cost && <div className="mt-3"><CostMeter cost={effort.internal.cost} hours={effort.totals.total} fit={effort.internal.fit} /></div>}
         <div className="mt-3"><HoursFillPanel document={document} effort={effort} onChange={onChange} /></div>
         <div className="mt-3"><EntitlementFitPanel document={document} effort={effort} onChange={onChange} /></div>
         {effort ? <div className="mt-4"><WorkPackageTable effort={effort} /></div> : <p className="mt-4 text-xs text-s400">Calculating…</p>}

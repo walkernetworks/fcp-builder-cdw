@@ -69,7 +69,6 @@
   "openItems": [],
   "personnel": [],
   "milestonesToDate": [{ "date": "2026-04-30", "event": "Entitlement effective", "detail": "1,000-hour services entitlement opened." }],
-  "resourceAssignments": null,
   "sources": [],
   "revision": "Synthetic fixture: converge plus two imported workload domains on existing hardware."
 }

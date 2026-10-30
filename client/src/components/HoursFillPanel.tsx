@@ -17,7 +17,7 @@ export function HoursFillPanel({ document, effort, onChange }: { document: Engag
   const { mutate } = options;
   const fit = effort?.internal.fit;
   const fillRow = effort?.workPackages.find(row => row.id === HOURS_FILL_BAR_ID);
-  const active = document.fields.hoursModel === "v2" && Boolean(fit) && effort?.source !== "assignments";
+  const active = document.fields.hoursModel === "v2" && Boolean(fit);
   useEffect(() => {
     if (!active) return;
     const timer = window.setTimeout(() => mutate({ data: document }), 600);

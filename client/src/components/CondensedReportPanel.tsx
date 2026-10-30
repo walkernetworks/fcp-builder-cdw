@@ -1,4 +1,4 @@
-import { AssignmentsInForce, CostMeter, WorkPackageTable } from "@/components/WorkPackageHours";
+import { CostMeter, WorkPackageTable } from "@/components/WorkPackageHours";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,7 +36,6 @@ export function CondensedReportPanel({ document, onChange, showJsonEditor = true
     const timer = window.setTimeout(() => mutate({ data: document }), 400);
     return () => window.clearTimeout(timer);
   }, [document, mutate]);
-  const assignments = document.report.resourceAssignments;
 
   return (
     <section className="rounded-lg border border-s100 bg-surface p-5">
@@ -44,7 +43,7 @@ export function CondensedReportPanel({ document, onChange, showJsonEditor = true
         <div>
           <p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Condensed FCP</p>
           <h3 className="mt-1 text-lg font-semibold text-ink">Scoped effort and report content</h3>
-          <p className="mt-1 max-w-3xl text-xs leading-5 text-s400">Hours are priced from the services catalog for this plan and placed on the adoption timeline's work packages. Signed resource assignments replace them in the report. The fit figures below are internal and never appear in the document.</p>
+          <p className="mt-1 max-w-3xl text-xs leading-5 text-s400">Hours are priced from the services catalog for this plan and placed on the adoption timeline's work packages. The fit figures below are internal and never appear in the document.</p>
         </div>
         {showJsonEditor && <div className="flex flex-wrap gap-2">
           <ReportJsonButton document={document} onChange={onChange} />
@@ -53,21 +52,9 @@ export function CondensedReportPanel({ document, onChange, showJsonEditor = true
       {!data ? <p className="mt-4 flex items-center gap-2 text-sm text-s400"><Loader2 className="size-4 animate-spin" /> Calculating hours…</p> : (
         <div className="mt-4 grid gap-4 xl:grid-cols-[1.4fr_1fr]">
           <div className="overflow-x-auto">
-            {data.source === "assignments" ? <>
-              <div className="mb-3 space-y-2"><AssignmentsInForce document={document} effort={data} onChange={onChange} />{data.internal.cost && <CostMeter fit={data.internal.fit} cost={data.internal.cost} hours={data.totals.total} assignments />}</div>
-              <p className="mb-1 text-xs font-semibold text-s500">Signed resource assignments (shown in the report)</p>
-              <table className="tbl w-full">
-                <thead><tr className="text-left text-[11px]"><th className="p-2">Workstream</th><th className="p-2 text-right">Architect</th><th className="p-2 text-right">Sr. Consultant</th><th className="p-2 text-right">PM</th><th className="p-2 text-right">Total</th></tr></thead>
-                <tbody>
-                  {data.rows.map(row => <tr key={row.workstream} className="border-b border-s100"><td className="p-2 font-semibold text-ink">{row.workstream}</td><td className="p-2 text-right">{row.architect}</td><td className="p-2 text-right">{row.srConsultant}</td><td className="p-2 text-right">{row.projectManager}</td><td className="p-2 text-right font-semibold">{row.total}</td></tr>)}
-                  <tr className="font-semibold text-ink"><td className="p-2">Total</td><td className="p-2 text-right">{data.totals.architect}</td><td className="p-2 text-right">{data.totals.srConsultant}</td><td className="p-2 text-right">{data.totals.projectManager}</td><td className="p-2 text-right">{data.totals.total}</td></tr>
-                </tbody>
-              </table>
-            </> : <>
-              <p className="mb-1 text-xs font-semibold text-s500">Calculated from the plan, by work package: the same table as stage 03 and the report, until assignments are entered</p>
-              {data.internal.cost && <div className="mb-3"><CostMeter fit={data.internal.fit} cost={data.internal.cost} hours={data.totals.total} /></div>}
-              <WorkPackageTable effort={data} />
-            </>}
+            <p className="mb-1 text-xs font-semibold text-s500">Calculated from the plan, by work package: the same table as stage 03 and the report</p>
+            {data.internal.cost && <div className="mb-3"><CostMeter fit={data.internal.fit} cost={data.internal.cost} hours={data.totals.total} /></div>}
+            <WorkPackageTable effort={data} />
           </div>
           <div className="rounded-lg border border-state-warn/30 bg-state-warn-soft p-4 text-xs leading-5 text-state-warn-text">
             <p className="text-[11px] font-medium uppercase tracking-wide">Internal fit check · not in the report</p>

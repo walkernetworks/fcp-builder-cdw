@@ -55,9 +55,8 @@ describe("funding provenance", () => {
     const document = funded();
     expect(fundingProvenance(document).entitledHours).toMatchObject({ state: "assumed", source: "Derived from the entitlement value" });
     expect(fundingProvenance(document).hoursConsumed).toMatchObject({ state: "unknown", source: "No consumption entry yet" });
-    document.report.resourceAssignments = [{ ...({} as any), architect: 200, srConsultant: 300, projectManager: 100 }];
     document.report.entitlement = { ...document.report.entitlement, hours: 600, hoursConsumed: 120, consumedAsOf: "2026-12-15" };
-    expect(fundingProvenance(document).entitledHours).toMatchObject({ state: "confirmed", source: "Signed resource assignments", value: 600 });
+    expect(fundingProvenance(document).entitledHours).toMatchObject({ state: "confirmed", source: "Entered", value: 600 });
     expect(fundingProvenance(document).hoursConsumed).toMatchObject({ state: "confirmed", source: "Consumption entry as of 2026-12-15", value: 120 });
   });
 

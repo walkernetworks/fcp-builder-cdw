@@ -72,7 +72,6 @@
     { "date": "2026-04-29", "event": "Entitlement effective", "detail": "262-hour services entitlement opened." },
     { "date": "2026-07-21", "event": "Discovery session", "detail": "Environment, DR site and priorities reviewed." }
   ],
-  "resourceAssignments": null,
   "sources": [{ "title": "Acme Health VCF 9.1 Compatibility Assessment", "date": "2026-09-30" }],
   "revision": "Built from the VCF 9.1 assessment and the scoping questionnaire of 30 Sep 2026."
 }

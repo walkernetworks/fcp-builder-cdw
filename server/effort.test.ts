@@ -197,17 +197,17 @@ describe("scoped effort table", () => {
     expect(["fits", "fits-reduced", "short"]).toContain(effort.internal.status);
   });
 
-  it("shows signed Resource Assignments instead of the calculated table", () => {
+  it("always takes the hours from the calculated estimate, even when a document still carries signed assignments", () => {
     const document = engagement(document => {
-      document.report.resourceAssignments = [
+      (document.report as Record<string, unknown>).resourceAssignments = [
         { workstream: "Design discovery, architecture and design", architect: 24, srConsultant: 16, projectManager: 6 },
         { workstream: "Converged management domain build", architect: 10, srConsultant: 50, projectManager: 8 },
       ];
     });
     const effort = buildScopedEffort(document);
-    expect(effort.source).toBe("assignments");
-    expect(effort.totals).toEqual({ architect: 34, srConsultant: 66, projectManager: 14, total: 114 });
-    expect(effort.internal.calculatedRows.length).toBeGreaterThan(0);
+    expect(effort.source).toBe("calculated");
+    expect(effort.rows).toEqual(effort.internal.calculatedRows);
+    expect(effort.totals).toEqual(buildScopedEffort(engagement()).totals);
   });
 
   it("estimates the envelope from the entitlement value on the server when hours are unknown", () => {

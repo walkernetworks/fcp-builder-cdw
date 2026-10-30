@@ -180,7 +180,7 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   // Nothing booked: no entitlement value, hours or term. The plan's own hours and dates stand in, and one tile says so.
   const booked = bsasOnly || Boolean(burndown) || fields.entitlementAmount > 0 || Boolean(termEnd);
   const windowName = bsasOnly ? "BSAS term" : booked ? "entitlement window" : "planned delivery window";
-  const plannedHoursTile = kpi(`${hours(effort.totals.total)} hrs`, "Planned CDW Hours", effort.source === "assignments" ? "Signed resource assignments" : "Estimated from this plan");
+  const plannedHoursTile = kpi(`${hours(effort.totals.total)} hrs`, "Planned CDW Hours", "Estimated from this plan");
   const valueTile = bsasOnly
     ? kpi(`${hours(fields.bsasHours)} hrs`, "Broadcom Software Adoption Services", `BSAS hours${term ? ` · ${term}` : ""}`)
     : fields.entitlementAmount
@@ -245,7 +245,7 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   const delivered = reconciliation && reconciliation.delivered > 0 ? reconciliation : null;
   const deliveredRows = delivered ? [`<tr class="cat"><td colspan="3">Delivered to Date</td></tr>`, `<tr class="done"><td>${esc(options.deliveredNotes?.length ? options.deliveredNotes.join("; ") : "Hours delivered to date")}</td><td>${esc(termStart && delivered.deliveredAsOf ? formatWindow(termStart, delivered.deliveredAsOf) : delivered.deliveredAsOf ? `To ${shortDate(delivered.deliveredAsOf)}` : "")}</td><td class="num">${hours(delivered.delivered)}</td></tr>`] : [];
   let packageRows: string[];
-  if (effort.source === "assignments" || !effort.workPackages.some(row => row.total > 0)) {
+  if (!effort.workPackages.some(row => row.total > 0)) {
     packageRows = effort.rows.filter(row => row.total > 0).map(row => `<tr><td>${esc(row.note ? `${row.workstream} (${row.note})` : row.workstream)}</td><td></td><td class="num">${hours(row.total)}</td></tr>`);
   } else {
     const shown = effort.workPackages.filter(row => !row.deferred && row.total > 0);
@@ -261,7 +261,7 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   const balanced = Boolean(reconciliation?.balanced);
   const total = (delivered?.delivered ?? 0) + Math.round(effort.totals.total) + (reserve >= 1 ? reserve : 0);
   const totalLabel = balanced ? w("Total, funded by the entitlement", "Total, funded by the BSAS hours") : "Total CDW hours";
-  const basis = effort.source === "assignments" ? "From the signed resource assignments." : "The signed resource assignments replace these estimates.";
+  const basis = "Estimated from this plan.";
   // The sentence states only what the printed figures show: "equals" when they add up to the hour.
   const reconcileNote = reconciliation && balanced
     ? `CDW-delivered hours: ${hours(reconciliation.delivered)} delivered, ${hours(reconciliation.planned)} planned and ${hours(reconciliation.reserve)} held for change requests ${reconciliation.exact ? "add up to" : "use"} the ${hours(reconciliation.entitled)}-hour ${w("entitlement", "BSAS allocation")}${reconciliation.exact ? "" : ", to within an hour of rounding"}. ${basis}`
