@@ -422,8 +422,7 @@ describe("Two-site review: a later start", () => {
     const domainIds = new Set(domainPackages(twoSite().fields).map(({ id }) => id));
     for (let months = 1; months <= 4; months += 1) {
       const after = packages(startingOn(shifted(months)));
-      // A package the entitlement partly funds has its displaced scope as a package of its own (`:later`); when the whole
-      // package moves, that scope joins it. Either way the work is still listed under the package's id.
+      // A package is funded whole or moves whole; either way the work is still listed under the package's id.
       expect(new Set(after.map(row => base(row.id))).size, `start + ${months} months`).toBeGreaterThanOrEqual(new Set(before.map(row => base(row.id))).size);
       for (const row of before) expect(after.some(item => base(item.id) === base(row.id)), `${row.id} at + ${months} months`).toBe(true);
       // Each role column is rounded on its own, so a package can differ by an hour per role.

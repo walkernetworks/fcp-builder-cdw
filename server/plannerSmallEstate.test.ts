@@ -187,7 +187,7 @@ describe("the fill order: whole packages, in order, never shaved", () => {
     const effort = effortOf(acmeHealth());
     const fit = effort.internal.fit!;
     expect(fit.underFunded).toBeNull();
-    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A", "AH", "AK", "AP", "AR", "D", "NX", "S_storage", "X4:platform"]);
+    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A", "AH", "AK", "AP", "AR", "D", "NX", "S_storage", "X10:design-share", "X4:design-share"]);
     const total = (id: string) => effort.workPackages.find(row => row.id === id)?.total ?? 0;
     for (const id of ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-playbook-design-migration-design"]) expect(total(id), id).toBeGreaterThan(0);
     // The first workload domain is whole or follow-on, and it is not in the build package's hours.
@@ -213,10 +213,10 @@ describe("the fill order: whole packages, in order, never shaved", () => {
 
   it("lists Acme's funded packages in fill order, with their hours", () => {
     const effort = effortOf(acmeHealth());
-    const order = ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-design-migration-design", "bar-operations-observability"];
+    const order = ["bar-platform-plan", "bar-hcl-review", "bar-playbook-design-target-state", "bar-management-domain", "bar-playbook-component-design-operations", "bar-design-access-mapping", "bar-platform-licensing", "bar-platform-enablement", "bar-platform-handover", "bar-playbook-design-migration-design", "bar-playbook-component-design-resilience"];
     expect(order.map(id => [id, effort.workPackages.find(row => row.id === id)!.total])).toEqual([
-      ["bar-platform-plan", 2], ["bar-hcl-review", 13], ["bar-playbook-design-target-state", 40], ["bar-management-domain", 63], ["bar-playbook-component-design-operations", 7], ["bar-design-access-mapping", 13],
-      ["bar-platform-licensing", 7], ["bar-platform-enablement", 6], ["bar-platform-handover", 11], ["bar-playbook-design-migration-design", 24], ["bar-operations-observability", 19],
+      ["bar-platform-plan", 2], ["bar-hcl-review", 13], ["bar-playbook-design-target-state", 40], ["bar-management-domain", 63], ["bar-playbook-component-design-operations", 10], ["bar-design-access-mapping", 13],
+      ["bar-platform-licensing", 7], ["bar-platform-enablement", 7], ["bar-platform-handover", 11], ["bar-playbook-design-migration-design", 24], ["bar-playbook-component-design-resilience", 10],
     ]);
   });
 
@@ -291,7 +291,7 @@ describe("the fill order: whole packages, in order, never shaved", () => {
     expect(waves).toMatchObject({ total: 0, deferred: "not funded" });
     expect(effort.internal.fit!.placements.filter(item => item.code === "FILL_mig").every(item => item.bucket === "F")).toBe(true);
     // A customer-run row is not drawn for waves the customer was never handed.
-    expect(effort.workPackages.some(row => row.id.endsWith(":later") && /waves/i.test(row.id))).toBe(false);
+    expect(effort.workPackages.some(row => /waves/i.test(row.label) && row.owner === "customer")).toBe(false);
   });
 
   it("carries each follow-on package's outcome and acceptance on its row, for the follow-on table", () => {

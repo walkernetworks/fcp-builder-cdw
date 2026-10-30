@@ -1080,12 +1080,9 @@ export const LATER_DESIGN_PHASE = {
   acceptance: "Architecture, infrastructure, network and recovery owners approve the workload domain, DR and NSX overlay design.",
 } as const;
 
-const remainingLabel = (row: Pick<WorkPackageEffort, "id" | "label">) => (/^bar-playbook-execution-/.test(row.id) ? `${row.label}, Later Waves` : `${row.label}, Remaining Scope`);
-
 /**
  * Displaced hours become follow-on scope. A package is wholly in the entitlement or wholly follow-on, never both: a
- * stage with nothing left in the entitlement moves to the Two-Year Notional with its hours, and displaced hours that
- * land on a stage the entitlement does fund (later migration waves, say) become a package of their own, entirely follow-on.
+ * stage with nothing left in the entitlement moves to the Two-Year Notional with its hours.
  * Design the entitlement cannot carry is a design phase by deliverable, also its own package.
  */
 function withDisplacedLines(document: EngagementDocument, effort: ScopedEffort, displacedLines: EffortLine[]): ScopedEffort {
@@ -1093,17 +1090,13 @@ function withDisplacedLines(document: EngagementDocument, effort: ScopedEffort, 
   const rest = displacedLines.filter(line => line.code !== "A");
   const displacedRows = workPackageEffort(document, rest, totalsOf(rowsFromLines(rest)), { ignoreHourOverrides: true });
   const later = new Map(displacedRows.map(row => [row.id, row.total > 0 ? row : row.followOn ? { ...row, ...row.followOn } : row]));
-  const alongside: WorkPackageEffort[] = [];
   const merged = effort.workPackages.map((row): WorkPackageEffort => {
     const moved = later.get(row.id);
     later.delete(row.id);
     if (!moved || moved.total <= 0 || row.note === "checkpoint" || row.note === "customer-owned") return row;
     const roles = { architect: moved.architect, srConsultant: moved.srConsultant, projectManager: moved.projectManager, total: moved.total };
-    if (row.total > 0 && !row.deferred) {
-      const { note: _note, ...rest } = row;
-      alongside.push({ ...rest, id: `${row.id}:later`, label: remainingLabel(row), start: null, end: null, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: "not funded", followOn: roles, placement: "auto", adjusted: false, baseline: { architect: 0, srConsultant: 0, projectManager: 0 }, notes: undefined });
-      return row;
-    }
+    // A funded package takes no displaced hours: the fit funds a package whole or moves it whole.
+    if (row.total > 0 && !row.deferred) return row;
     const followOn = { architect: (row.followOn?.architect ?? 0) + roles.architect, srConsultant: (row.followOn?.srConsultant ?? 0) + roles.srConsultant, projectManager: (row.followOn?.projectManager ?? 0) + roles.projectManager, total: (row.followOn?.total ?? 0) + roles.total };
     if (row.deferred) return { ...row, followOn };
     const { note: _note, ...rest } = row;
@@ -1122,7 +1115,7 @@ function withDisplacedLines(document: EngagementDocument, effort: ScopedEffort, 
       detail: { outcome: LATER_DESIGN_PHASE.outcome, acceptance: LATER_DESIGN_PHASE.acceptance },
     });
   }
-  return { ...effort, workPackages: [...merged, ...alongside] };
+  return { ...effort, workPackages: merged };
 }
 
 /** The v1 bracket model. */
