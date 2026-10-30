@@ -656,8 +656,44 @@ export const adoptionDetailsSchema = adoptionDetailsV6Schema.extend({
    * in the Two-Year Notional as follow-on scope and never draw on the entitlement. "efficiency" is memory tiering.
    */
   followOnOnly: z.array(z.enum(["operations", "automation", "networking", "security", "resilience", "kubernetes", "private-ai", "efficiency"])).default([]),
+  /** Hosts the customer excludes from scope (retired, not moved): left out of the compatibility check and its schedule path. Matched by host name, case-insensitive. */
+  excludedHosts: z.array(z.string().max(240)).max(500).default([]),
 });
 export type AdoptionDetails = z.infer<typeof adoptionDetailsSchema>;
+
+/**
+ * The inventory without the hosts the brief excludes from scope: their per-host evidence is dropped and the host
+ * models they belonged to are counted without them, so an excluded unsupported host cannot set the schedule path.
+ */
+export function inventoryInScope(inventory: InventorySummary, excludedHosts: readonly string[] = []): InventorySummary {
+  const excluded = new Set(excludedHosts.map(name => name.trim().toLowerCase()).filter(Boolean));
+  if (!excluded.size) return inventory;
+  const isExcluded = (name: string) => excluded.has(name.trim().toLowerCase());
+  const removed = inventory.hclEvidence.hosts.filter(host => isExcluded(host.name));
+  if (!removed.length) return inventory;
+  const modelKey = (vendor: string, model: string, cpu: string) => [vendor, model, cpu].map(value => value.trim().toLowerCase()).join("|");
+  const removedByModel = new Map<string, number>();
+  for (const host of removed) {
+    const key = modelKey(host.vendor, host.model, host.cpuModel);
+    removedByModel.set(key, (removedByModel.get(key) ?? 0) + 1);
+  }
+  const evidence = inventory.hclEvidence as Record<string, unknown> & { hosts: typeof inventory.hclEvidence.hosts };
+  const scopedEvidence: Record<string, unknown> = { ...evidence, hosts: evidence.hosts.filter(host => !isExcluded(host.name)) };
+  // Adapter and controller rows carry the host they belong to; drop the excluded hosts' rows too.
+  for (const [key, rows] of Object.entries(evidence)) {
+    if (key !== "hosts" && Array.isArray(rows) && rows.every(row => row && typeof row === "object" && typeof (row as { host?: unknown }).host === "string")) {
+      scopedEvidence[key] = rows.filter(row => !isExcluded((row as { host: string }).host));
+    }
+  }
+  return {
+    ...inventory,
+    hosts: Math.max(0, inventory.hosts - removed.length),
+    hostModels: inventory.hostModels
+      .map(platform => ({ ...platform, hosts: Math.max(0, platform.hosts - (removedByModel.get(modelKey(platform.vendor, platform.model, platform.cpuModel)) ?? 0)) }))
+      .filter(platform => platform.hosts > 0),
+    hclEvidence: scopedEvidence as InventorySummary["hclEvidence"],
+  };
+}
 
 const minimalFieldsV5Schema = z.object({
   customerName: z.string().max(240),
@@ -1431,6 +1467,7 @@ export function emptyInventory(): InventorySummary {
 export function createDefaultAdoptionDetails(): AdoptionDetails {
   return {
     domains: [],
+    excludedHosts: [],
     upgradePath: "undecided",
     platformEdition: "vcf",
     domainTopology: "undecided",
@@ -2412,11 +2449,13 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
   const selectedTaskCount = (capability: "automation" | "kubernetes" | "private-ai" | "security" | "resilience" | "networking") =>
     resolvedOutcomes.outcomes.filter(outcome => outcome.key.startsWith(`${capability}:`)).length;
   // HCL evidence work runs alongside mobilization; only the part that outlasts it delays the build.
-  const hclBufferDuration = path === "red" ? procurementDuration + greenfieldDuration : path === "yellow" || path === "unresolved" ? Math.max(0, remediationDuration - mobilizationDuration) : 0;
+  // Red on hardware the customer is keeping is an exceptions task, not a hardware purchase.
+  const redOnExistingHardware = path === "red" && fields.hardwareAvailability === "existing";
+  const hclBufferDuration = path === "red" && !redOnExistingHardware ? procurementDuration + greenfieldDuration : path === "yellow" || path === "unresolved" || redOnExistingHardware ? Math.max(0, remediationDuration - mobilizationDuration) : 0;
   const cloudDuration = (selectedTaskCount("automation") + selectedTaskCount("kubernetes") + selectedTaskCount("private-ai")) * moduleDuration;
   const securityPathDuration = (selectedTaskCount("security") + selectedTaskCount("resilience") + (outcomeKeys.has("platform:ssp") ? 1 : 0)) * securityDuration + selectedTaskCount("networking") * moduleDuration;
   const estimatedHandoverStart = 1 + mobilizationDuration + hclBufferDuration + 1 + Math.max(managementDuration + networkingDuration + workloadDuration + cloudDuration, securityPathDuration) + migrationDuration;
-  const baseMinimumColumns = scheduleUnits(cadence, path === "red" ? 30 : path === "yellow" || path === "unresolved" ? 22 : 18, path === "red" ? 12 : path === "yellow" || path === "unresolved" ? 10 : 8);
+  const baseMinimumColumns = scheduleUnits(cadence, path === "red" && !redOnExistingHardware ? 30 : path === "yellow" || path === "unresolved" || redOnExistingHardware ? 22 : 18, path === "red" && !redOnExistingHardware ? 12 : redOnExistingHardware ? 10 : path === "yellow" || path === "unresolved" ? 10 : 8);
   const minimumColumns = Math.max(baseMinimumColumns, estimatedHandoverStart, requiredColumns);
   const startDate = timelineStartDate(fields);
   const columns = ensureScheduleColumns(primaryColumns(fields), startDate, cadence, minimumColumns);
@@ -2542,7 +2581,13 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       : "Confirmed when the missing host details are collected and each host's compatibility is checked.";
   }
 
-  if (path === "red") {
+  if (redOnExistingHardware) {
+    // The customer is keeping its hosts, so unsupported ones get an exception, a replacement, or leave scope.
+    const [exceptionStart, exceptionEnd] = range(mobilizationStart, remediationDuration);
+    infrastructureBars.push(bar("bar-hcl-remediation", exceptionStart, exceptionEnd, "red", "Resolve Compatibility Exceptions", false, false, appendDeliveryContext("Runs alongside mobilization. Decide each unsupported host before releasing the platform build."), "Give each unsupported host an approved exception, a replacement, or an exclusion from scope."));
+    hclBufferEnd = Math.max(mobilizationEnd, exceptionEnd);
+    hclDependency = "Confirmed when each unsupported host has an approved exception, a replacement, or is excluded from scope.";
+  } else if (path === "red") {
     const [procurementStart, procurementEnd] = range(mobilizationEnd, procurementDuration);
     const [greenfieldStart, greenfieldEnd] = range(procurementEnd, greenfieldDuration);
     infrastructureBars.push(
@@ -2571,7 +2616,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       const [softStart, softEnd] = range(mobilizationEnd, scheduleUnits(cadence, 3, 1));
       const id = `bar-soft-prerequisite-${prerequisite}`;
       infrastructureBars.push({
-        ...bar(id, softStart, softEnd, "teal", softPrerequisiteLabel(prerequisite), false, false, path === "red" ? "This site prerequisite may run in parallel with Red-path procurement and greenfield provisioning." : "This site prerequisite runs in parallel with the HCL evidence review and closes before platform build begins.", path === "red" ? "Remove an infrastructure dependency without delaying the hardware procurement buffer." : "Remove an infrastructure dependency before the platform build window opens."),
+        ...bar(id, softStart, softEnd, "teal", softPrerequisiteLabel(prerequisite), false, false, path === "red" && !redOnExistingHardware ? "This site prerequisite may run in parallel with Red-path procurement and greenfield provisioning." : "This site prerequisite runs in parallel with the HCL evidence review and closes before platform build begins.", path === "red" && !redOnExistingHardware ? "Remove an infrastructure dependency without delaying the hardware procurement buffer." : "Remove an infrastructure dependency before the platform build window opens."),
         prerequisites: ["bar-platform-plan"],
       });
       sitePrerequisiteIds.push(id);
@@ -3242,7 +3287,8 @@ export function planContextFor(document: Pick<EngagementDocument, "fields" | "in
 }
 
 export function buildAdoptionPlans(fields: MinimalFields, inventory: InventorySummary, providedHclPath?: HclSchedulePath, context: PlanContext = {}): { adoptionTimeline: Timeline; twoYearPlan: Timeline; rationale: string } {
-  const hclPath = providedHclPath ?? getHclSchedulePath(inventory);
+  // Hosts the brief excludes from scope never set the schedule path.
+  const hclPath = providedHclPath ?? getHclSchedulePath(inventoryInScope(inventory, fields.adoptionDetails.excludedHosts));
   const playbookPlan = playbookPlanForFields(fields);
   // Schedule everything first, then cap the entitlement view; the Two-Year Notional carries what falls after it.
   const schedule = keepProtectedInEntitlement(fields, buildPrimaryTimeline(fields, inventory, hclPath, 0, context));
@@ -3496,9 +3542,11 @@ export function assessReadiness(fields: MinimalFields, inventory: InventorySumma
     evidence: inventory.esxiVersions.map(item => `${item.version}: ${item.hosts}`).join("; ") || "No vHost version data",
   });
 
-  const hardwarePlatforms = assessHardwarePlatforms(inventory, fields.compatibilityTargetRelease);
-  const hcl = assessHclEstate(inventory.hclEvidence, new Date(), fields.compatibilityTargetRelease);
-  const hclSchedulePath = hclSchedulePathForAssessment(inventory, hcl);
+  // The compatibility check covers the in-scope hosts only: hosts the brief excludes (retired, not moved) are left out.
+  const inScope = inventoryInScope(inventory, fields.adoptionDetails.excludedHosts);
+  const hardwarePlatforms = assessHardwarePlatforms(inScope, fields.compatibilityTargetRelease);
+  const hcl = assessHclEstate(inScope.hclEvidence, new Date(), fields.compatibilityTargetRelease);
+  const hclSchedulePath = hclSchedulePathForAssessment(inScope, hcl);
   const hclBlockers = hcl.findings.filter(finding => finding.severity === "BLOCKER");
   const hclWarnings = hcl.findings.filter(finding => finding.severity === "WARNING");
   const upgradeRequiredPlatforms = hardwarePlatforms.filter(platform => platform.status === "upgrade-required");
@@ -3674,7 +3722,7 @@ function migrateFieldsToV6(fields: z.infer<typeof minimalFieldsV5Schema>): z.inf
 function migrateFieldsToV7(fields: z.infer<typeof minimalFieldsV6Schema>): MinimalFields {
   return {
     ...fields,
-    adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise", domains: [], followOnOnly: [] },
+    adoptionDetails: { ...fields.adoptionDetails, industryTemplate: "general-enterprise", domains: [], followOnOnly: [], excludedHosts: [] },
     exportPreferences: { includeVcfReadiness: true, includeOperationalTimeline: true },
     hoursModel: "v2",
     estimateInputs: {},
