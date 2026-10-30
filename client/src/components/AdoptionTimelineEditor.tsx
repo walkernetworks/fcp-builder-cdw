@@ -32,6 +32,8 @@ type Props = {
   description?: string;
   /** Extra detail for the selected work package, such as its hours. */
   selectionDetail?: (barId: string) => ReactNode;
+  /** Planner warnings about the whole plan, such as a build that starts after the planned implementation start. */
+  planWarnings?: string[];
 };
 
 type TimelineLane = Timeline["lanes"][number];
@@ -64,11 +66,12 @@ export function AdoptionTimelineEditor({
   title = "Adoption Timeline",
   description = "Use the five delivery categories to coordinate scoped work packages. Each workstream carries a lead delivery role, and packages may overlap when delivery can proceed concurrently. Drag a package to move it and drag either edge to resize its delivery window.",
   selectionDetail,
+  planWarnings = [],
 }: Props) {
   const [selected, setSelected] = useState<{ laneId: string; barId: string } | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const errors = useMemo(() => validateTimeline(timeline), [timeline]);
-  const sequenceWarnings = useMemo(() => validateTimelineSequence(timeline), [timeline]);
+  const sequenceWarnings = useMemo(() => [...planWarnings, ...validateTimelineSequence(timeline)], [timeline, planWarnings]);
   const selectedLane = timeline.lanes.find(lane => lane.id === selected?.laneId);
   const selectedBar = selectedLane?.bars.find(bar => bar.id === selected?.barId);
   const selectedPrerequisites = useMemo(() => {

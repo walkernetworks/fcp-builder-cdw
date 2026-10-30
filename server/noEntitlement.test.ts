@@ -35,19 +35,19 @@ describe("no entitlement booked: the Summary", () => {
   });
 
   it("shows the plan's hours once, its dates, and says the entitlement is not booked", () => {
-    expect(tiles(summary(cedarRidgeLogistics()))).toEqual(["Planned CDW Hours: 335 hrs", "Plan Starts: 2 Nov 2026", "Planned Completion: 31 Jul 2027", "Entitlement: Not yet booked"]);
+    expect(tiles(summary(cedarRidgeLogistics()))).toEqual(["Planned CDW Hours: 335 hrs", "Plan Starts: 2 Nov 2026", "Planned Completion: 30 Jun 2027", "Entitlement: Not yet booked"]);
   });
 
   it("calls it the planned delivery window, never the entitlement window", () => {
     const text = visible(summary(cedarRidgeLogistics()));
-    expect(text).toContain("2 November 2026 through 31 July 2027, the planned delivery window.");
+    expect(text).toContain("2 November 2026 through 30 June 2027, the planned delivery window.");
     expect(text).not.toMatch(/entitlement (window|ends)/i);
     expect(text).not.toContain("No entitlement booked yet");
   });
 
   it("prints key dates from the plan alone, including a plan with no start date set", () => {
     const text = visible(summary(cedarRidgeLogistics()));
-    expect(text).toContain("Key Dates 2 Nov 2026 Design and planning start 1 Feb 2027 Platform build begins 31 Jul 2027 Planned completion");
+    expect(text).toContain("Key Dates 2 Nov 2026 Design and planning start 1 Jan 2027 Platform build begins 30 Jun 2027 Planned completion");
     const undated = cedarRidgeLogistics();
     undated.fields.plannedProjectStart = "";
     undated.fields.plannedImplementationStart = "";

@@ -2428,6 +2428,9 @@ function softPrerequisiteLabel(key: AdoptionDetails["softPrerequisites"][number]
   }[key];
 }
 
+/** Pathway design packages written alongside the design before them; only the target-state design gates the build. */
+const PARALLEL_DESIGN_PACKAGES = new Set(["converge-runbook", "import-runbook", "upgrade-runbook", "migration-design", "integrated-runbook"]);
+
 function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary, path = getHclSchedulePath(inventory), requiredColumns = 0, context: PlanContext = {}): Timeline {
   const cadence = fields.adoptionCadence;
   const mobilizationDuration = scheduleUnits(cadence, 2, 1);
@@ -2494,10 +2497,14 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     return "operations";
   };
   let pathwayDesignCursor = 1;
+  let previousDesignStart = 1;
   let firstDesignPackageEnd: number | undefined;
   playbookPlan.designPackages.forEach((workPackage, index) => {
     const duration = index === 0 ? scheduleUnits(cadence, 2, 1) : scheduleUnits(cadence, 3, 1);
-    const [taskStart, taskEnd] = range(pathwayDesignCursor, duration);
+    // A runbook or migration design is written alongside the design before it, so it does not push the build back.
+    const parallel = index > 1 && PARALLEL_DESIGN_PACKAGES.has(workPackage.id) && playbookPlan.path !== "design-only";
+    const [taskStart, taskEnd] = range(parallel ? previousDesignStart : pathwayDesignCursor, duration);
+    previousDesignStart = taskStart;
     const ownership = getVcfPlaybookWorkPackageOwnership(playbookPlan.path, workPackage);
     const reference = context.referenceDesign && REFERENCE_DESIGN_PACKAGE[playbookPlan.path as VcfDeliveryPath] === workPackage.id ? REFERENCE_DESIGN : null;
     designBars[designLaneKey(ownership)].push(bar(
@@ -2511,7 +2518,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
       appendDeliveryContext(workPackage.dependsOn),
       `${reference?.outcome ?? workPackage.outcome} Acceptance: ${reference?.acceptance ?? workPackage.acceptance}`,
     ));
-    pathwayDesignCursor = taskEnd;
+    pathwayDesignCursor = Math.max(pathwayDesignCursor, taskEnd);
     firstDesignPackageEnd ??= taskEnd;
   });
   // Component designs start once requirements are confirmed and run alongside the rest of the pathway design.

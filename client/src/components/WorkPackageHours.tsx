@@ -4,6 +4,7 @@ import { HoursFillPanel } from "@/components/HoursFillPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
+import { buildStartWarning } from "@shared/buildingBlocks";
 import { FIXED_GANTT_CATEGORIES, unstampActivityOwners, type EngagementDocument, type Timeline } from "@shared/fcp";
 import { COST_THRESHOLDS, formatWindow, timelinesWithDeferrals, withHiddenBars, withoutBars, withOwnership, type PlanCost, type RoleHours, type ScopedEffort, type WorkPackageEffort } from "@shared/effort";
 import { RotateCcw } from "lucide-react";
@@ -164,7 +165,7 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
           <b>{moved.length} work package{moved.length === 1 ? " is" : "s are"} in the Two-Year Notional</b>, after the entitlement ends: {moved.map(row => row.label).join("; ")}. Open the Two-Year Notional tab to see them or bring one back.
         </div>
       )}
-      <AdoptionTimelineEditor timeline={withoutBars(withOwnership(document).adoptionTimeline, hidden)} onChange={edited => onTimelineChange(withHiddenBars(unstampActivityOwners(edited), document.adoptionTimeline, hidden))} title="Entitlement Adoption Timeline" description={`${description} Click a work package to adjust its hours by role or plan it in the Two-Year Notional.`} selectionDetail={barId => <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} />} />
+      <AdoptionTimelineEditor timeline={withoutBars(withOwnership(document).adoptionTimeline, hidden)} onChange={edited => onTimelineChange(withHiddenBars(unstampActivityOwners(edited), document.adoptionTimeline, hidden))} title="Entitlement Adoption Timeline" planWarnings={[buildStartWarning(document.fields, document.adoptionTimeline)].filter((warning): warning is string => Boolean(warning))} description={`${description} Click a work package to adjust its hours by role or plan it in the Two-Year Notional.`} selectionDetail={barId => <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} />} />
       <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm">
         <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Hours by work package</p>
         <p className="mt-2 max-w-4xl text-xs leading-5 text-s500">

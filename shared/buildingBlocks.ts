@@ -308,3 +308,30 @@ function withRequiredDependencies(assessments: BuildingBlockAssessment[], vvf: b
 export function isCommercialPlan(fields: Pick<MinimalFields, "commercialPlan">): boolean {
   return fields.commercialPlan;
 }
+
+/**
+ * Planner warning when the platform build starts in a later month (or week) than the planned implementation start,
+ * naming what holds it back. Null when the build starts on time or there is no planned implementation start.
+ */
+export function buildStartWarning(fields: Pick<MinimalFields, "plannedImplementationStart">, timeline: Timeline): string | null {
+  if (!fields.plannedImplementationStart) return null;
+  const bars = timeline.lanes.flatMap(lane => lane.bars);
+  // The build packages are the ones released by the hardware compatibility sign-off.
+  const builds = bars.filter(bar => (bar.prerequisites ?? []).includes("bar-hcl-gate") && !bar.milestone);
+  if (!builds.length) return null;
+  const build = builds.reduce((earliest, candidate) => (candidate.startCol < earliest.startCol ? candidate : earliest));
+  const window = barWindow(timeline, build);
+  const planned = parseIsoDate(fields.plannedImplementationStart);
+  const started = window && parseIsoDate(window.start);
+  if (!planned || !started) return null;
+  const late = timeline.cadence === "week"
+    ? started.getTime() - planned.getTime() >= 7 * 86_400_000
+    : started.getUTCFullYear() * 12 + started.getUTCMonth() > planned.getUTCFullYear() * 12 + planned.getUTCMonth();
+  if (!late) return null;
+  // What ends just as the build starts is what holds it back.
+  const gating = bars.filter(bar => bar.endCol === build.startCol && bar.id !== build.id
+    && /^bar-(hcl-|playbook-design-|playbook-component-design-|soft-prerequisite-|hardware-delivery|networking-physical-fabric)/.test(bar.id));
+  const causes = Array.from(new Set(gating.map(bar => bar.label)));
+  const plannedText = displayDate(fields.plannedImplementationStart);
+  return `The platform build (“${build.label}”) starts ${displayDate(window!.start)}, after the planned implementation start of ${plannedText}${causes.length ? `, because it waits for ${causes.map(label => `“${label}”`).join(" and ")}` : ""}. Start that work earlier or move the planned implementation start.`;
+}
