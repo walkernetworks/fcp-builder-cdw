@@ -224,13 +224,13 @@ describe("plan inputs from the brief", () => {
     const brief = example() as Record<string, any>;
     brief.discovery = { ...brief.discovery, plannedPath: "hybrid", domains: [
       { name: "North", kind: "Management Domain", pathway: "Greenfield build", instance: "North", hosts: "4", notes: "Move the CORE 600 workloads first" },
-      { name: "Clinical", kind: "Workload", pathway: "Import existing vCenter", instance: "North", hosts: null, notes: null },
+      { name: "Clinical", kind: "Workload", pathway: "Import existing vCenter", instance: "North", hosts: null, notes: null, deferred: "later" },
       { name: "", kind: "workload", pathway: "import" },
     ] };
     const result = applyCustomerBrief(createDefaultDocument(), brief);
     expect(result.document.fields.adoptionDetails.domains).toEqual([
-      { name: "North", kind: "management", pathway: "greenfield", instance: "North", hosts: 4, notes: "Move the CORE 600 workloads first" },
-      { name: "Clinical", kind: "workload", pathway: "import", instance: "North", hosts: null, notes: "" },
+      { name: "North", kind: "management", pathway: "greenfield", instance: "North", hosts: 4, notes: "Move the CORE 600 workloads first", deferred: false },
+      { name: "Clinical", kind: "workload", pathway: "import", instance: "North", hosts: null, notes: "", deferred: true },
     ]);
   });
 });

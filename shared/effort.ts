@@ -551,6 +551,8 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     const addOn = addOnBars(item.code);
     if (addOn && item.reduction === "design only") for (const { bar } of bars) if (addOn.bars.test(bar.id) && !componentDesign(addOn)(bar.id)) deferred.set(bar.id, "not funded");
   }
+  // A domain the customer wants after this entitlement is planned for later, unless the planner pins it back in.
+  const laterDomains = new Set(domainPackages(document.fields).filter(({ domain }) => domain.deferred).map(({ id }) => id));
   for (const { bar, timeline: owner } of bars) {
     const placement = overrides.get(bar.id)?.placement ?? "auto";
     if (placement === "entitlement") deferred.delete(bar.id);
@@ -558,6 +560,8 @@ export function workPackageEffort(source: EngagementDocument, lines: EffortLine[
     const window = barWindow(owner, bar);
     // Hours cannot be consumed after the entitlement ends, whatever the placement.
     if (termEnd && window && window.start > termEnd) deferred.set(bar.id, "after the entitlement window");
+    // Wanted later on purpose, so not a calendar problem; the planner can still pin it into the entitlement.
+    if (laterDomains.has(bar.id) && placement !== "entitlement") deferred.set(bar.id, "planned for later");
   }
 
   // The runbook transfer is the proving waves' runbook: without CDW's proving waves in the entitlement there is nothing to
@@ -771,7 +775,7 @@ export function protectedWorkPackages(timeline: Timeline): Set<string> {
   const firstWave = all.filter(bar => /^bar-playbook-execution-/.test(bar.id)).sort((left, right) => left.startCol - right.startCol)[0];
   return new Set([...all.filter(bar => PROTECTED_PACKAGES.test(bar.id)).map(bar => bar.id), ...(firstWave ? [firstWave.id] : [])]);
 }
-const PROTECTED_PACKAGES = /^bar-(platform-(handover|runbook-transfer|enablement|licensing)|management-domain(-\d+)?|converge-management-domain)$/;
+const PROTECTED_PACKAGES = /^bar-(platform-(handover|runbook-transfer|enablement|licensing)|management-domain(-\d+)?|converge-management-domain|import-domain-\d+|workload-domain(-\d+)?|import-workload-domain(-\d+)?)$/;
 
 /** Design and governance work stays in the entitlement; operating readiness for a later implementation can move. */
 export const isDesignWorkPackage = (id: string) => GOVERNANCE_BARS.test(id) || /^bar-playbook-(component-)?design-/.test(id) || /^bar-(hcl-review|design-access-mapping|design-edge-sites)$/.test(id);
