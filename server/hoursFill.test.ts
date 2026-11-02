@@ -90,7 +90,9 @@ describe("fully staffing the entitlement", () => {
     const squeezed = scopedEffortForDocument(doc(40_000));
     const effort = scopedEffortForDocument(withFill(doc(40_000)));
     const fit = effort.internal.fit!;
-    expect(effort.workPackages.find(item => item.id === HOURS_FILL_BAR_ID)!.total).toBe(unusedEntitlementHours(squeezed));
+    // Without the package those hours are held for change requests (no whole package fits them); with it, the package takes them.
+    const held = squeezed.internal.fit!.reserveHours - fit.reserveHours;
+    expect(Math.abs(effort.workPackages.find(item => item.id === HOURS_FILL_BAR_ID)!.total - held)).toBeLessThanOrEqual(1);
     expect(planHours(effort)).toBeLessThanOrEqual(Math.floor(fit.entitlementHours - fit.reserveHours));
     expect(fit.movedToFollowOn).toEqual(squeezed.internal.fit!.movedToFollowOn);
   });

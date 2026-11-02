@@ -52,7 +52,10 @@ describe("hours reconciliation", () => {
     const reconciled = acmeHealthReconciled();
     expect(fundingProblem(reconciled, scopedEffortForDocument(reconciled, FIXTURE_TODAY), FIXTURE_TODAY)).toBeNull();
     const under = acmeHealth();
-    expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("5 hours are not planned and will be forfeited at term end (39 delivered, 200 planned and 18 held in reserve, against the 262-hour entitlement). Plan them in the Plan section.");
+    // Five spare hours are fewer than any package waiting in year two, so they are held for change requests, not forfeited.
+    const underEffort = scopedEffortForDocument(under, FIXTURE_TODAY);
+    expect(fundingProblem(under, underEffort, FIXTURE_TODAY)).toBeNull();
+    expect(reconcileHours(under, underEffort, FIXTURE_TODAY)).toMatchObject({ planned: 200, reserve: 23, balanced: true });
   });
 
   it("moves the part of the minimum a small entitlement cannot carry to the follow-on, whole and with its hours", () => {

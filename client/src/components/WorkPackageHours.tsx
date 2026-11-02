@@ -7,7 +7,7 @@ import { trpc } from "@/lib/trpc";
 import { buildStartWarning } from "@shared/buildingBlocks";
 import { lateWorkProblem } from "@shared/reportFormat";
 import { FIXED_GANTT_CATEGORIES, unstampActivityOwners, type EngagementDocument, type Timeline } from "@shared/fcp";
-import { COST_THRESHOLDS, formatWindow, timelinesWithDeferrals, withHiddenBars, withoutBars, withOwnership, type PlanCost, type RoleHours, type ScopedEffort, type WorkPackageEffort } from "@shared/effort";
+import { COST_THRESHOLDS, formatWindow, timelinesWithDeferrals, unscopedWorkPackageIds, withHiddenBars, withoutBars, withOwnership, type PlanCost, type RoleHours, type ScopedEffort, type WorkPackageEffort } from "@shared/effort";
 import { RotateCcw } from "lucide-react";
 import { useEffect } from "react";
 
@@ -148,6 +148,13 @@ export function RoleHoursEditor({ document, effort, barId, onChange }: { documen
   );
 }
 
+/** Bars the printed entitlement timeline leaves out: moved work, packages with no hours, and checkpoints left without their work. */
+function hiddenFromEntitlement(document: EngagementDocument, effort: ScopedEffort): Set<string> {
+  const owned = withOwnership(document);
+  const shown = new Set(timelinesWithDeferrals(owned, effort.workPackages.filter(row => row.deferred).map(row => row.id), unscopedWorkPackageIds(effort)).adoption.lanes.flatMap(lane => lane.bars.map(bar => bar.id)));
+  return new Set(owned.adoptionTimeline.lanes.flatMap(lane => lane.bars.map(bar => bar.id)).filter(id => !shown.has(id)));
+}
+
 const deferredIds = (effort: ScopedEffort | undefined) => new Set((effort?.workPackages ?? []).filter(row => row.deferred).map(row => row.id));
 
 /**
@@ -155,19 +162,20 @@ const deferredIds = (effort: ScopedEffort | undefined) => new Set((effort?.workP
  * is planned. Work in the Two-Year Notional (placed there, or moved to keep the plan within the entitlement
  * value) is not drawn here; it appears on the Two-Year Notional tab.
  */
-export function EntitlementTimelineWithHours({ document, onTimelineChange, onChange, description }: { document: EngagementDocument; onTimelineChange: (timeline: Timeline) => void; onChange: (document: EngagementDocument) => void; description: string }) {
+export function EntitlementTimelineWithHours({ document, onTimelineChange, onChange, description, bare = false }: { document: EngagementDocument; onTimelineChange: (timeline: Timeline) => void; onChange: (document: EngagementDocument) => void; description: string; /** Only the timeline: no moved-work banner and no hours section (the Plan screen shows those itself). */ bare?: boolean }) {
   const effort = useScopedEffort(document);
-  const hidden = deferredIds(effort);
+  // The Plan screen draws exactly what the FCP prints: no moved work, no unscoped packages, no checkpoint without its work.
+  const hidden = bare && effort ? hiddenFromEntitlement(document, effort) : deferredIds(effort);
   const moved = (effort?.workPackages ?? []).filter(row => row.deferred);
   return (
     <div className="space-y-4">
-      {moved.length > 0 && (
+      {!bare && moved.length > 0 && (
         <div className="rounded-lg border border-s100 bg-s50 px-4 py-3 text-xs leading-5 text-s600">
           <b>{moved.length} work package{moved.length === 1 ? " is" : "s are"} in the Two-Year Notional</b>, after the entitlement ends: {moved.map(row => row.label).join("; ")}. Open the Two-Year Notional tab to see them or bring one back.
         </div>
       )}
       <AdoptionTimelineEditor timeline={withoutBars(withOwnership(document).adoptionTimeline, hidden)} onChange={edited => onTimelineChange(withHiddenBars(unstampActivityOwners(edited), document.adoptionTimeline, hidden))} title="Entitlement Adoption Timeline" planWarnings={[buildStartWarning(document.fields, document.adoptionTimeline), effort ? lateWorkProblem(document, effort) : null].filter((warning): warning is string => Boolean(warning))} description={`${description} Click a work package to adjust its hours by role or plan it in the Two-Year Notional.`} selectionDetail={barId => <RoleHoursEditor document={document} effort={effort} barId={barId} onChange={onChange} />} />
-      <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm">
+      {!bare && <section className="rounded-lg border border-s100 bg-surface p-5 shadow-sm">
         <p className="text-xs font-medium uppercase tracking-wide text-ink-muted">Hours by work package</p>
         <p className="mt-2 max-w-4xl text-xs leading-5 text-s500">
           Baseline hours come from the services catalog for this plan, placed on the work packages that deliver them; adjusted rows are marked. The entitlement window is held to the entitlement value; work beyond it moves to the Two-Year Notional as follow-on scope. The Condensed FCP and the Delivery Package show this same table.
@@ -176,7 +184,7 @@ export function EntitlementTimelineWithHours({ document, onTimelineChange, onCha
         <div className="mt-3"><HoursFillPanel document={document} effort={effort} onChange={onChange} /></div>
         <div className="mt-3"><EntitlementFitPanel document={document} effort={effort} onChange={onChange} /></div>
         {effort ? <div className="mt-4"><WorkPackageTable effort={effort} /></div> : <p className="mt-4 text-xs text-s400">Calculating…</p>}
-      </section>
+      </section>}
     </div>
   );
 }

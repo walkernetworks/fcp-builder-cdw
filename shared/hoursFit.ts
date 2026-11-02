@@ -87,6 +87,8 @@ export type FitOptions = {
   reserveShare?: number;
   /** The customer's team runs the waves CDW's entitlement does not carry, so they are not CDW follow-on scope. */
   wavesMode?: "cdw" | "customer-remaining" | "customer-all";
+  /** Lines the planner brought into this entitlement: they fill right after the foundation, ahead of the rest. */
+  priorityLines?: V2Code[];
 };
 
 /** Spec 7.4 step 6 default order when the customer has not ranked outcomes. Operations modules beyond Tier 1 come last. */
@@ -147,6 +149,10 @@ function fillOrder(pass1: Pass1, options: FitOptions): Item[] {
   // Anything a step did not claim (the EF uplift) fills last.
   const claimed = new Set(items.map(item => item.unit.id));
   for (const line of pass1.lines) for (const unit of line.units) if (!claimed.has(unit.id)) push(line, unit, 9);
+  // Work the planner brought into the entitlement fills right after the foundation, so what it displaces is the
+  // lowest-priority work instead.
+  const pinned = new Set(options.priorityLines ?? []);
+  for (const item of items) if (pinned.has(item.line.code) && item.step > 3) item.step = 3.5;
   // When the customer runs every wave, none of the waves line is CDW's, at any depth.
   return items.filter(item => !(wavesMode === "customer-all" && item.line.code === "FILL_mig")).sort((left, right) => left.step - right.step || left.order - right.order);
 }

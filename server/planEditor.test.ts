@@ -77,9 +77,12 @@ describe("plan section", () => {
     expect(printed).toBeDefined();
   });
 
-  it("draws the timelines from the rendered FCP, not a second drawing", () => {
-    expect(editor).toMatch(/querySelectorAll\("section\.tl-sheet"\)/);
-    expect(editor).toMatch(/sandbox=""/);
+  it("leads with the answer, then this entitlement, year two and one timeline; the working sits in one drawer", () => {
+    const order = ["<PlanAnswer", 'title="In this entitlement"', 'title="Year two and on"', 'title="Timeline"', "<Calculator"].map(marker => editor.indexOf(marker));
+    expect(order.every(index => index >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    // One timeline you edit directly; no printed copy of it beside a second, hidden editor.
+    expect(editor).not.toMatch(/tl-sheet|sandbox=""|Edit activities on the timeline/);
   });
 
   it("replaces the raw report panels in the workspace", () => {
