@@ -23,6 +23,8 @@ const when = (value: Date | string | null) => (value ? new Date(value).toLocaleS
 const PACKAGE_CHANGE: Record<ChangeSummary["packages"][number]["change"], string> = { added: "Added", removed: "Removed", "to-follow-on": "Moved to follow-on", "from-follow-on": "Brought back from follow-on", hours: "Hours changed" };
 
 type IssueActions = {
+  /** Called with each issue check's outcome (and undefined when the check is cleared), so the Review checklist can show the funding result. */
+  onChecked?: (result: { fundingProblem: string | null } | undefined) => void;
   engagementId: number;
   title: string;
   document: EngagementDocument;
@@ -51,7 +53,7 @@ export function ReportFormatPicker({ segment, value, overridden, onChange }: { s
   return (
     <Panel title="Customer format" sub={`${segment ? `${SEGMENT_NAMES[segment]} segment` : "No tracker segment"}: ${REPORT_FORMAT_LABELS[fallback]} by default. The preview, the draft export and the next issue use the format chosen here.`} bodyClassName="space-y-2 p-4">
       <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Customer format">
-        {REPORT_FORMAT_CHOICES.map(choice => (
+        {REPORT_FORMAT_CHOICES.filter(choice => choice !== "full").map(choice => (
           <Button key={choice} role="radio" aria-checked={value === choice} variant={value === choice ? "default" : "outline"} size="sm" onClick={() => onChange(choice)}>{REPORT_FORMAT_LABELS[choice]}{choice === fallback ? " (default)" : ""}</Button>
         ))}
       </div>
@@ -65,7 +67,7 @@ export function ReportFormatPicker({ segment, value, overridden, onChange }: { s
  * mark. Issuing stores it as the next numbered version, exactly as rendered, with the change summary against the one
  * before; that version is what the customer receives, and it never changes.
  */
-export function IssuePanel({ engagementId, document, readOnly, saveDocument, reload, reportFormat }: IssueActions) {
+export function IssuePanel({ engagementId, document, readOnly, saveDocument, reload, reportFormat, onChecked }: IssueActions) {
   const utils = trpc.useUtils();
   const issued = trpc.fcpRecord.issued.useQuery({ id: engagementId });
   const preview = trpc.fcpRecord.issuePreview.useMutation();
@@ -82,7 +84,8 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
   const check = async () => {
     try {
       await saveDocument(document);
-      await preview.mutateAsync({ id: engagementId, reportFormat });
+      const checked = await preview.mutateAsync({ id: engagementId, reportFormat });
+      onChecked?.({ fundingProblem: checked.fundingProblem });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The changes could not be checked");
     }
@@ -95,6 +98,7 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
       setNote("");
       setOverride("");
       preview.reset();
+      onChecked?.(undefined);
       await refresh();
       toast.success(`Issue ${result.issueNumber} recorded. Download it from the list below to send it.`);
     } catch (error) {
@@ -106,6 +110,7 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
     try {
       await revise.mutateAsync({ id: engagementId });
       await refresh();
+      onChecked?.(undefined);
       reload();
       toast.success(`The working FCP now starts from issue ${current.issueNumber}`);
     } catch (error) {

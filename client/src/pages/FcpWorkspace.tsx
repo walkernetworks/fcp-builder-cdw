@@ -1,7 +1,6 @@
-import { ReportJsonButton } from "@/components/CondensedReportPanel";
 import { CustomerBriefImport } from "@/components/CustomerBriefImport";
 import { DeliveryBriefing } from "@/components/DeliveryBriefing";
-import { DeliverableCard, DeliveryPackageHeader, ExportPreferenceCard, ScopeAtGlance, StaffingSummary } from "@/components/fcp/workspaceParts";
+import { ScopeAtGlance, StaffingSummary } from "@/components/fcp/workspaceParts";
 import { PlanSetup } from "@/components/PlanSetup";
 import { ReportContentEditor, type ReportSection } from "@/components/ReportContentEditor";
 import { Button } from "@/components/ui/button";
@@ -14,18 +13,18 @@ import { useShell } from "@/components/vsa/ShellContext";
 import { trpc } from "@/lib/trpc";
 import { sectionFromSearch, type WorkspaceSection } from "@/lib/fcpWorkspaceRoutes";
 import { useFcpEngagement } from "@/lib/useFcpEngagement";
-import { isCommercialPlan } from "@shared/buildingBlocks";
 import { wavesSettingWarning } from "@shared/effort";
 import { HISTORY_REASON_LABEL, segmentWarning } from "@shared/fcpRecord";
 import { SegmentReview } from "@/components/fcp/SegmentReview";
 import { FundingSection } from "@/components/fcp/FundingSection";
 import { ScopeSection } from "@/components/fcp/ScopeSection";
 import { PlanEditor } from "@/components/fcp/PlanEditor";
-import { IssuedRailList, IssuedVersionsList, IssuePanel, ReportFormatPicker } from "@/components/fcp/IssuedVersions";
+import { IssuedRailList } from "@/components/fcp/IssuedVersions";
+import { ReviewSection } from "@/components/fcp/ReviewSection";
 import { defaultReportFormat, type ReportFormatChoice } from "@shared/reportFormat";
 import { fundedFields, getFollowOnReadinessGuidance, type EngagementDocument } from "@shared/fcp";
 import { openSources, STAGE_LABELS } from "@shared/vsaStage";
-import { ArrowLeft, Copy, Download, Eye, FileCheck2, FileSpreadsheet, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, PanelRightClose, PanelRightOpen, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, Download, Eye, FileText, History, ListChecks, Loader2, LockKeyhole, MoreHorizontal, RefreshCw, Save, PanelRightClose, PanelRightOpen, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { toast } from "sonner";
@@ -44,7 +43,7 @@ export const WORKSPACE_SECTIONS: Array<{ id: WorkspaceSection; label: string; wh
   { id: "review", label: "Review and issue", why: "Choose what the export includes, check the delivery package, and download the plan and the technical handoff." },
 ];
 
-const NARRATIVE_SECTIONS: readonly ReportSection[] = ["heard", "problems", "questions", "people", "milestones", "open-items", "cover", "situation", "technical", "constraints", "asks"];
+const NARRATIVE_SECTIONS: readonly ReportSection[] = ["heard", "problems", "questions", "contacts", "people", "milestones", "details", "open-items", "cover", "situation", "technical", "constraints", "asks"];
 const STATUS_LABEL: Record<SectionStatus, string> = { empty: "Not started", partial: "In progress", complete: "Complete" };
 const STATUS_DOT: Record<SectionStatus, string> = { empty: "border border-s300 bg-surface", partial: "bg-state-warn", complete: "bg-state-pass" };
 
@@ -218,38 +217,7 @@ function Workspace({ id }: { id: number }) {
             </>}
             {section === "plan" && <PlanSection document={document} onChange={fcp.mutateDocument} onRebuild={fcp.buildPlan} setup={setup} previewHtml={fcp.preview} />}
             {section === "narrative" && <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={NARRATIVE_SECTIONS} />}
-            {section === "review" && <>
-              {segmentWarningText && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-state-warn/30 bg-state-warn-soft p-4 text-sm" role="status">
-                  <span className="text-state-warn-text"><strong>Needs a decision:</strong> {segmentWarningText}</span>
-                  <Button variant="outline" size="sm" className="bg-surface" onClick={() => setSection("engagement")}>Decide in Engagement</Button>
-                </div>
-              )}
-              {wavesWarning && (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-state-warn/30 bg-state-warn-soft p-4 text-sm" role="status">
-                  <span className="text-state-warn-text"><strong>Needs a decision:</strong> {wavesWarning}</span>
-                  <Button variant="outline" size="sm" className="bg-surface" onClick={() => setSection("plan")}>Decide in Plan</Button>
-                </div>
-              )}
-              <DeliveryPackageHeader document={document} />
-              {tracker && <ReportFormatPicker segment={tracker.segment} value={reportFormat} overridden={formatChoice !== null && formatChoice !== defaultReportFormat(tracker.segment)} onChange={next => setFormatChoice(next === defaultReportFormat(tracker.segment) ? null : next)} />}
-              <IssuePanel {...issueActions} />
-              <IssuedVersionsList {...issueActions} />
-              <section className="grid gap-3 rounded-lg border border-s100 bg-surface p-4 lg:grid-cols-2">
-                <ExportPreferenceCard title="Compatibility summary in the FCP" description={`Include the target-release compatibility posture in the long FCP: hosts by decision, the top compatibility actions, and the planning considerations from RVTools. ${reportFormat === "summary" ? "The Summary FCP you are issuing ignores this setting and never prints compatibility. " : ""}The Standard FCP will print a one-line status when it is on. The Compatibility Delivery Handoff always includes compatibility, and holds the detailed evidence.`} checked={document.fields.exportPreferences.includeVcfReadiness} onCheckedChange={includeVcfReadiness => fcp.mutateDocument({ ...document, fields: { ...document.fields, exportPreferences: { ...document.fields.exportPreferences, includeVcfReadiness } } })} switchId="include-vcf-readiness-export" />
-                <ExportPreferenceCard title="Delivery adoption timeline" description="Include the entitlement adoption timeline in the FCP so delivery leadership can align resources to the work-package windows. When it is off, the Two-Year Notional covers the whole plan from the project start." checked={document.fields.exportPreferences.includeOperationalTimeline} onCheckedChange={includeOperationalTimeline => fcp.mutateDocument({ ...document, fields: { ...document.fields, exportPreferences: { ...document.fields.exportPreferences, includeOperationalTimeline } } })} switchId="include-operational-timeline-export" />
-              </section>
-              <section className="grid gap-px overflow-hidden border border-s100 bg-s100 lg:grid-cols-2">
-                <DeliverableCard title="Functional Consumption Plan" label="Draft export" description="The working FCP, marked DRAFT on every page: for internal review. To send the customer a copy, issue a version above and download it from Issued versions. Content checks run before every download." icon={FileCheck2} activeExport={fcp.activeExport} documentType="condensed-fcp" onExport={fcp.startExport} />
-                <DeliverableCard title="Compatibility Delivery Handoff" label="Technical engineer evidence pack" description="Maintained-catalog host cohorts, release support, blockers, evidence gaps, owners, and the actions required before platform build." icon={ShieldCheck} activeExport={fcp.activeExport} documentType="plan-output" onExport={fcp.startExport} />
-                {isCommercialPlan(document.fields) && <DeliverableCard title="Building Blocks Workbook" label="Commercial plan · VCF 9 Building Blocks" description="Every Building Blocks tool block with its category start date, status, projected dates, and dependencies taken from this plan. Out-of-scope blocks start hidden." icon={FileSpreadsheet} activeExport={fcp.activeExport} documentType="building-blocks" formats={["xlsx"]} onExport={fcp.startExport} />}
-              </section>
-              <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["details"]} />
-              <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-s100 bg-surface p-4">
-                <div><p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Advanced</p><p className="mt-1 max-w-2xl text-xs leading-5 text-s400">The report content as JSON, checked before it is stored. Needed today only for the customer contacts list; every other field has a form in its section.</p></div>
-                <ReportJsonButton document={document} onChange={fcp.mutateDocument} label="Edit report content (JSON)" />
-              </section>
-            </>}
+            {section === "review" && <ReviewSection document={document} segmentWarning={segmentWarningText} wavesWarning={wavesWarning} onFix={setSection} segment={tracker?.segment ?? null} reportFormat={reportFormat} formatChoice={formatChoice} onFormatChoice={setFormatChoice} issueActions={issueActions} activeExport={fcp.activeExport} onExport={fcp.startExport} onChange={fcp.mutateDocument} />}
           </fieldset>
         </main>
 

@@ -6,7 +6,7 @@ import * as db from "./db";
 import { BUILDING_BLOCKS_MIME, buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
 import { verifyExportTicket } from "./exportTickets";
 import { viewerFor } from "./visibility";
-import { renderCompatibilityHandoffHtml } from "./compatibilityHandoffRenderer";
+import { renderDeliveryHandoffHtml, type HandoffRecord } from "./deliveryHandoffRenderer";
 import { renderFcpHtml } from "./fcpRenderer";
 import { renderPdf } from "./pdf";
 import { condensedReleaseFailures, recordDeliveredNotes } from "./fcpIssue";
@@ -70,9 +70,20 @@ export function registerExportDownloadRoutes(app: Express) {
         const failures = condensedReleaseFailures(renderCondensedFcpHtml(row.title, document, { effort, ...formatOptions }), document, effort, format);
         if (failures.length) return deny(res, 409, `The FCP was not exported because it failed these checks:\n- ${failures.join("\n- ")}`);
         html = renderCondensedFcpHtml(row.title, document, { effort, draft: true, ...formatOptions });
+      } else if (ticket.documentType === "plan-output") {
+        // The Delivery Handoff (internal): the same document and effort as the customer formats, plus the record and the latest issue.
+        const latest = await db.getLatestIssuedVersion(viewerFor(user!), ticket.engagementId);
+        const record: HandoffRecord = {
+          opportunityNumber: row.opportunityNumber,
+          segment: row.segment,
+          stage: row.stage,
+          issued: latest && latest.issueNumber !== null ? { issueNumber: latest.issueNumber, issuedOn: latest.issuedAt ? latest.issuedAt.toISOString().slice(0, 10) : null, format: latest.reportFormat ?? null, broadcomApprovedOn: latest.broadcomApprovedOn ?? null, customerApprovedOn: latest.customerApprovedOn ?? null } : null,
+          deliveredNotes: await recordDeliveredNotes(viewerFor(user!), ticket.engagementId, document),
+        };
+        html = renderDeliveryHandoffHtml(row.title, document, { effort: scopedEffortForDocument(document), record });
       } else {
         // "fcp" is the retired full template (deprecated): no UI path asks for it, and it goes with server/fcpRenderer.ts.
-        html = ticket.documentType === "plan-output" ? renderCompatibilityHandoffHtml(row.title, document) : renderFcpHtml(row.title, document);
+        html = renderFcpHtml(row.title, document);
       }
       const filename = safeExportFilename(row.title, ticket.format === "html" ? "html" : "pdf", ticket.documentType === "plan-output" || ticket.documentType === "condensed-fcp" ? ticket.documentType : "fcp");
 
