@@ -209,27 +209,25 @@ describe("fcpRecord.issue", () => {
     expect(db.issueFcpVersion).toHaveBeenCalledTimes(3);
   });
 
-  it("refuses an under-funded plan until a reason is given, and logs the reason on the version", async () => {
-    vi.mocked(db.getEngagement).mockResolvedValue(row(acmeHealthUnderFunded()));
-    vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
-    vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
-    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Under-funded: 39 delivered, 188 planned and 4 held in reserve come to 141 hours more than the 90-hour entitlement.") });
-    await expect(caller().fcpRecord.issue({ id: 4, fundingOverride: "  " })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
-    expect(db.issueFcpVersion).not.toHaveBeenCalled();
-    await caller().fcpRecord.issue({ id: 4, fundingOverride: "Broadcom asked for the plan as scoped; the follow-on purchase is in progress." });
-    expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].fundingOverrideNote).toBe("Broadcom asked for the plan as scoped; the follow-on purchase is in progress.");
-    const preview = await caller().fcpRecord.issuePreview({ id: 4 });
-    expect(preview.fundingProblem).toMatch(/^Under-funded/);
+  it("issues a small entitlement without a reason: the plan never promises more than the hours", async () => {
+    for (const document of [acmeHealthUnderFunded(), riverbendHealthOverfunded()]) {
+      vi.mocked(db.getEngagement).mockResolvedValue(row(document));
+      vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
+      vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
+      expect((await caller().fcpRecord.issuePreview({ id: 4 })).fundingProblem).toBeNull();
+      await expect(caller().fcpRecord.issue({ id: 4 })).resolves.toMatchObject({ issueNumber: 1 });
+    }
   });
 
-  it("requires a reason when the hours exceed the BSAS pool, and none when they reconcile", async () => {
-    vi.mocked(db.getEngagement).mockResolvedValue(row(riverbendHealthOverfunded()));
+  it("refuses a plan with a funding problem until a reason is given, and logs the reason on the version", async () => {
+    vi.mocked(db.getEngagement).mockResolvedValue(row(meridianHealthForfeiting()));
     vi.mocked(db.getLatestIssuedVersion).mockResolvedValue(null);
     vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 90, issueNumber: 1 } });
-    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: expect.stringContaining("Under-funded: 40 delivered, 165 planned and 4 held in reserve come to 119 hours more than the 90-hour BSAS hours.") });
+    await expect(caller().fcpRecord.issue({ id: 4 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    await expect(caller().fcpRecord.issue({ id: 4, fundingOverride: "  " })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
     expect(db.issueFcpVersion).not.toHaveBeenCalled();
-    vi.mocked(db.getEngagement).mockResolvedValue(row(riverbendHealth()));
-    expect((await caller().fcpRecord.issuePreview({ id: 4 })).fundingProblem).toBeNull();
+    await caller().fcpRecord.issue({ id: 4, fundingOverride: "Broadcom confirmed the BSAS term moves with the renewal." });
+    expect(vi.mocked(db.issueFcpVersion).mock.calls[0][2].fundingOverrideNote).toBe("Broadcom confirmed the BSAS term moves with the renewal.");
   });
 
   it("requires a reason, in the forfeiture wording, when BSAS hours go unplanned", async () => {

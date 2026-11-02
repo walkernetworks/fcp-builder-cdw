@@ -71,7 +71,8 @@ describe("funding problems, per pool", () => {
   });
 
   it("checks the entitlement and BSAS separately, and a BSAS-only deal against its own hours", () => {
-    expect(problem(riverbendHealthOverfunded())).toMatch(/^Under-funded: 40 delivered, 165 planned and 4 held in reserve come to 119 hours more than the 90-hour BSAS hours/);
-    expect(problem(riverbendHealthOverfunded())).not.toMatch(/BSAS allocation/);
+    // A BSAS-only deal is planned within its own hours: nothing to raise, and never against an allocation it does not have.
+    expect(problem(riverbendHealthOverfunded())).toBeNull();
+    expect(problem(meridianHealthForfeiting())).toMatch(/BSAS allocation/);
   });
 });

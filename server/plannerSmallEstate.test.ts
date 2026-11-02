@@ -5,7 +5,7 @@ import { LATER_DESIGN_PHASE, RUNBOOK_TRANSFER_BAR, timelinesWithDeferrals, unsco
 import { activityOwner, migrateDocument, REFERENCE_DESIGN, refreshDerivedDocument, type EngagementDocument } from "../shared/fcp";
 import { HOURS_V2 } from "../shared/hoursConfig";
 import { loadedOf, scopeV2 } from "../shared/hoursV2";
-import { fundingProblem } from "../shared/reportFormat";
+import { fundingProblem, reconcileHours } from "../shared/reportFormat";
 import { renderCondensedFcpHtml } from "./condensedFcpRenderer";
 import { acmeHealth, acmeHealthReconciled, acmeHealthUnderFunded, cedarRidgeLogistics, FCP_FIXTURES, FIXTURE_TODAY, meridianHealth, northwindMfg, riverbendHealth } from "./fixtures/fcpFixtures";
 import { scopedEffortForDocument } from "./rateCard";
@@ -344,29 +344,25 @@ describe("the fill order: whole packages, in order, never shaved", () => {
     expect(effortOf(document).internal.fit!.designPhased).toBe(false);
   });
 
-  it("is under-funded, with the gap in hours, when the minimum does not fit; nothing is shaved or squeezed", () => {
+  it("is never over-committed: the minimum fits in order up to the hours, and what does not fit moves whole with its hours", () => {
     const document = acmeHealthUnderFunded();
     const effort = effortOf(document);
     const fit = effort.internal.fit!;
-    expect(fit.underFunded).not.toBeNull();
-    expect(fit.underFunded!.gapHours).toBeGreaterThan(0);
-    expect(fit.underFunded!.fullScopeGapHours).toBeGreaterThanOrEqual(fit.underFunded!.gapHours);
-    // The minimum is placed whole, over the fillable hours: discovery, the foundation design, the build, the Operations design.
-    expect(E(effort).map(item => item.unitId).sort()).toEqual(["A:foundation", "D", "NX", "S_storage", "X4:design-share"].sort());
-    expect(effort.totals.total).toBeGreaterThan(fit.fillableHours);
-    expect(effort.workPackages.filter(row => row.deferred === "over budget")).toEqual([]);
+    expect(fit.underFunded).toBeNull();
+    expect(effort.totals.total).toBeLessThanOrEqual(fit.fillableHours + 1);
+    // Nothing is shaved: a package is funded whole or moved whole, and a moved package keeps its hours.
     expect(effort.workPackages.every(row => !(row.total > 0 && (row.followOn?.total ?? 0) > 0))).toBe(true);
-    expect(fit.warnings[0]).toMatch(/^Under-funded/);
+    expect(effort.workPackages.filter(row => row.deferred).every(row => (row.followOn?.total ?? 0) > 0)).toBe(true);
+    // Hours too few for the next whole package are held in the reserve, so the plan still adds up.
+    expect(reconcileHours(document, effort, FIXTURE_TODAY)!.balanced).toBe(true);
+    expect(fit.warnings[0]).toMatch(/^The entitlement holds \d+ plannable hours/);
   });
 });
 
-describe("rule 5: what still does not fit is under-funded and stays internal", () => {
-  it("makes the issue gate ask for a decision, saying how many more hours the full scope needs", () => {
+describe("rule 5: a small entitlement is planned within its hours and stays internal", () => {
+  it("needs no recorded decision to issue: the plan never promises more than the entitlement holds", () => {
     const document = acmeHealthUnderFunded();
-    const effort = effortOf(document);
-    const problem = fundingProblem(document, effort, FIXTURE_TODAY)!;
-    expect(problem).toContain(`The full scope needs ${Math.round(effort.internal.fit!.underFunded!.fullScopeGapHours).toLocaleString("en-US")} more hours`);
-    expect(problem).toContain("Record the decision");
+    expect(fundingProblem(document, effortOf(document), FIXTURE_TODAY)).toBeNull();
   });
 
   it("prints nothing about the gap in any customer document", () => {
