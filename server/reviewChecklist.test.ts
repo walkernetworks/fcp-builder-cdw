@@ -31,6 +31,61 @@ describe("Review checklist", () => {
   });
 });
 
+describe("Review checklist items", () => {
+  const none = { segmentWarning: null, wavesWarning: null, fundingProblem: null };
+  const item = (document: ReturnType<typeof acmeHealthReconciled>, id: string) => reviewChecklist(document, none).find(entry => entry.id === id)!;
+
+  it("has every item the tests below turn off ready in the reconciled fixture", () => {
+    for (const id of ["segment", "waves", "funding-check", "customer", "hours", "end-date", "scope", "timeline", "estate-size"]) expect(item(acmeHealthReconciled(), id).ready, id).toBe(true);
+  });
+
+  it("holds the end date not ready while it is only calculated from the start", () => {
+    const document = acmeHealthReconciled();
+    document.report.entitlement.termEnd = "";
+    expect(item(document, "end-date")).toMatchObject({ ready: false, fixIn: "funding" });
+    expect(item(document, "end-date").detail).toContain("to be confirmed");
+    document.report.entitlement.termEnd = "2027-03-31";
+    expect(item(document, "end-date")).toMatchObject({ ready: true });
+    expect(item(document, "end-date")).not.toHaveProperty("detail");
+  });
+
+  it("holds the estate size not ready until it is known or the planner decides", () => {
+    const document = acmeHealthReconciled();
+    document.inventory.hosts = 0;
+    document.report.discovery.esxHosts = 0;
+    delete document.fields.estimateInputs.smallEstate;
+    const unknown = item(document, "estate-size");
+    expect(unknown).toMatchObject({ ready: false, fixIn: "estate" });
+    expect(unknown.detail).toContain("Set Small estate in the planner inputs");
+    document.fields.estimateInputs.smallEstate = "no";
+    expect(item(document, "estate-size")).toMatchObject({ ready: true });
+  });
+
+  it("reads the BSAS hours and wording when the funding source is BSAS", () => {
+    const document = acmeHealthReconciled();
+    document.fields.fundingSource = "bsas";
+    document.report.entitlement.hours = 0;
+    document.fields.bsasHours = 0;
+    expect(item(document, "customer").label).toBe("Customer and BSAS");
+    expect(item(document, "end-date").label).toBe("BSAS end date confirmed");
+    expect(item(document, "hours").ready).toBe(false);
+    document.fields.bsasHours = 120;
+    expect(item(document, "hours").ready).toBe(true);
+  });
+
+  it("holds the customer item not ready without a name", () => {
+    const document = acmeHealthReconciled();
+    document.fields.customerName = "";
+    expect(item(document, "customer")).toMatchObject({ ready: false, fixIn: "funding" });
+  });
+
+  it("counts the unchecked funding item among the items still open", () => {
+    const open = reviewChecklist(acmeHealthReconciled(), { segmentWarning: null, wavesWarning: null }).filter(entry => !entry.ready);
+    expect(open.map(entry => entry.id)).toContain("funding-check");
+    expect(open.find(entry => entry.id === "funding-check")).toMatchObject({ pending: true });
+  });
+});
+
 describe("Review section layout", () => {
   const review = read("components/fcp/ReviewSection.tsx");
   const order = (...needles: string[]) => needles.map(needle => review.indexOf(needle));

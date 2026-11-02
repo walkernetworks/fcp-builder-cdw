@@ -54,7 +54,7 @@ export type PreparedIssue = {
  * The next issue as it would be: the saved FCP, migrated as on load, rendered without the draft mark in the customer's
  * format with the next issue number, checked, and compared with the current issued version. Writes nothing.
  */
-export async function prepareIssue(viewer: Viewer, engagementId: number, options: { today?: string; reportFormat?: ReportFormatChoice } = {}): Promise<PreparedIssue | undefined> {
+export async function prepareIssue(viewer: Viewer, engagementId: number, options: { today?: string; reportFormat?: ReportFormatChoice; revisionNote?: string | null } = {}): Promise<PreparedIssue | undefined> {
   const row = await db.getEngagement(viewer, engagementId);
   if (!row) return undefined;
   const today = options.today;
@@ -71,7 +71,7 @@ export async function prepareIssue(viewer: Viewer, engagementId: number, options
   const issueContext: IssueContext | null = format
     ? { supersedes: latest && latest.issueNumber !== null ? { issueNumber: latest.issueNumber, broadcomApprovedOn: latest.broadcomApprovedOn ?? null, customerApprovedOn: latest.customerApprovedOn ?? null } : null }
     : null;
-  const html = renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version: { issueNumber: (latest?.issueNumber ?? 0) + 1, issuedOn }, deliveredNotes: notes, ...(format === "standard" && issueContext ? { ...(issueContext.supersedes ? { supersedes: issueContext.supersedes } : {}) } : {}) } : {}) });
+  const html = renderCondensedFcpHtml(row.title, document, { effort, ...(today ? { today } : {}), ...(format ? { format, version: { issueNumber: (latest?.issueNumber ?? 0) + 1, issuedOn }, deliveredNotes: notes, ...(format === "standard" && issueContext ? { ...(issueContext.supersedes ? { supersedes: issueContext.supersedes } : {}), ...(options.revisionNote ? { revisionNote: options.revisionNote } : {}) } : {}) } : {}) });
   const previous = latest && latest.issueNumber !== null && latest.effortSnapshot ? { document: latest.data, effort: latest.effortSnapshot, issueNumber: latest.issueNumber } : null;
   const changeSummary = computeChangeSummary(previous, { document, effort });
   // Unchanged means the working document is the same as the current issue's stored snapshot, in the same format. Not the

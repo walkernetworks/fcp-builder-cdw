@@ -70,6 +70,16 @@ td{padding:3.5px 6px;border-bottom:1px solid var(--hair);color:var(--slate);vert
 td:first-child{color:var(--ink);font-weight:700}
 .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 tr.cat td{background:#f4f5f7;font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--ink);padding:3px 6px}
+tr{break-inside:avoid}
+tr.total{break-before:avoid}
+table.tight td{padding:2px 6px}
+table.tight{table-layout:fixed}
+table.tight th:nth-child(1){width:49%}
+table.tight th:nth-child(2){width:8%}
+table.tight th:nth-child(3){width:16%}
+table.tight th:nth-child(4){width:20%}
+table.tight th:nth-child(5){width:7%}
+table.tight td small{font-size:8px;line-height:1.25;margin-top:0}
 tr.total td{border-top:2px solid #1a1d21;border-bottom:0;font-weight:900;color:var(--ink)}
 tr.sub td{font-weight:800;color:var(--ink);border-top:1px solid var(--line)}
 td small{display:block;font-weight:400;color:var(--muted);font-size:8.5px;line-height:1.35;margin-top:1px}
@@ -94,6 +104,22 @@ td small{display:block;font-weight:400;color:var(--muted);font-size:8.5px;line-h
 @media print{.printbtn{display:none}}
 @media screen{body{max-width:11in;margin:0 auto}}
 `;
+
+const TAB_NAMES: Record<string, string> = { vhost: "vHost", vnic: "vNIC", vhba: "vHBA", vcluster: "vCluster", dvswitch: "dvSwitch", vscvmk: "vSCVMK", vdatastore: "vDatastore", vinfo: "vInfo", vnetwork: "vNetwork", vsnapshot: "vSnapshot", vtools: "vTools", vcd: "vCD", vusb: "vUSB" };
+
+/** The evidence gap rows. The missing RVTools tabs read as one row with one combined impact; every other gap keeps its own row. */
+function gapRows(gaps: EngagementDocument["readiness"]["hcl"]["coverageGaps"]): string[][] {
+  const missing = gaps.filter(gap => gap.kind === "missing-tab");
+  const combined = missing.length
+    ? [esc("missing tabs"), esc(`RVTools tabs missing: ${missing.map(gap => TAB_NAMES[gap.subject] ?? gap.subject).join(", ")}`), esc(`Skipped: ${missing.map(gap => gap.impact.replace(/^Skipped: /, "").replace(/\.$/, "")).join("; ")}.`)]
+    : null;
+  const rows: string[][] = [];
+  for (const gap of gaps) {
+    if (gap.kind !== "missing-tab") rows.push([esc(gap.kind.replace(/-/g, " ")), esc(gap.subject), esc(gap.impact)]);
+    else if (combined && !rows.includes(combined)) rows.push(combined);
+  }
+  return rows;
+}
 
 /** The marking and the page number on every printed page, in @page margin boxes so the number is the printed page. */
 function footerCss(customer: string, versionLabel: string): string {
@@ -339,7 +365,7 @@ export function renderDeliveryHandoffHtml(title: string, input: EngagementDocume
     handoff.cohorts.length ? `<h3>Server models</h3>${table(["Decision", "Server model", "Hosts", "Release posture"], handoff.cohorts.map(cohort => [esc(cohort.decisionLabel), `${esc(`${cohort.vendor} ${cohort.model}`)}<small>${esc(cohort.cpuModel)}</small>`, hours(cohort.hosts), esc(cohort.futureReleaseSupport.status === "unsupported-from-release" ? `Through ${cohort.futureReleaseSupport.verifiedThroughRelease}; unsupported from ${cohort.futureReleaseSupport.unsupportedFromRelease}` : cohort.releaseEvidence.map(release => `${release.release}: ${release.status.replace(/-/g, " ")}`).join("; "))]), { numeric: [2] })}` : "",
     handoff.actions.length ? `<h3>Owned actions</h3>${table(["Priority", "Hosts", "Owner", "Action", "Evidence required", "Done when"], handoff.actions.map(action => [esc(titleCase(action.priority)), hours(action.affectedHosts), esc(action.owner), esc(action.title), esc(action.evidenceRequired.join("; ")), esc(action.gateCondition)]), { numeric: [1] })}` : "",
     blocking.length ? `<h3>Blockers and warnings</h3>${table(["Finding", "Affected", "Observed", "Required action"], blocking.map(item => [`${esc(item.title)}${item.severity === "BLOCKER" ? '<span class="chip r">Blocker</span>' : ""}`, esc(`${hours(item.affectedCount)} ${item.scope}${item.affectedCount === 1 ? "" : "s"}`), esc(item.findings.slice(0, 2).map(entry => `${entry.subject}: ${entry.evidence}`).join(" · ")), esc(item.remediation)]))}${advisories ? `<p class="lead">${advisories} advisory finding${advisories === 1 ? " is" : "s are"} not listed; they do not block the build.</p>` : ""}` : "",
-    gaps.length ? `<h3>Evidence gaps</h3>${table(["Gap", "Evidence area", "Delivery impact"], gaps.map(gap => [esc(gap.kind.replace(/-/g, " ")), esc(gap.subject), esc(gap.impact)]))}` : "",
+    gaps.length ? `<h3>Evidence gaps</h3>${table(["Gap", "Evidence area", "Delivery impact"], gapRows(gaps))}` : "",
     noHostEvidence && !gaps.length ? "" : `<div class="note"><b>Handoff boundary:</b> ${esc(HCL_ESTATE_LIMITATION)} Delivery must still confirm NICs, HBAs and controllers, firmware, drivers, the OEM image or add-on, boot devices, storage, cluster topology and the customer-approved change path.</div>`,
   ].filter(Boolean).join("");
   const estatePage = `<section class="pg"><h2>Estate and Compatibility</h2><p class="lead">What discovery established about the current environment, and where the ${esc(handoff.targetRelease)} compatibility posture stands.</p>${estate}${compatibility}</section>`;
@@ -365,7 +391,7 @@ export function renderDeliveryHandoffHtml(title: string, input: EngagementDocume
     const text = [book?.outcome ?? bars.get(row.id)?.outcome ?? row.detail?.outcome ?? "", book?.acceptance ? `Accepted when: ${book.acceptance}` : row.detail?.acceptance ? `Accepted when: ${row.detail.acceptance}` : ""].filter(Boolean).join(" ");
     return [`${esc(row.label)}${text ? `<small>${esc(text)}</small>` : ""}`, esc(row.start && row.end ? formatWindow(row.start, row.end) : ""), esc(row.leadRole), esc(startsAfter(row.id)), hours(row.total)];
   })]);
-  const packagesPage = packageRows.length ? `<section class="pg"><h2>Work Package Detail</h2><p class="lead">Scope, acceptance and dependencies for each package in the plan.</p>${table(["Work package", "Window", "Lead role", "Starts after", "Hours"], [...packageRows, [`\u0001total:Total planned`, "", "", "", hours(planned)]], { numeric: [4] })}</section>` : "";
+  const packagesPage = packageRows.length ? `<section class="pg"><h2>Work Package Detail</h2><p class="lead">Scope, acceptance and dependencies for each package in the plan.</p>${table(["Work package", "Window", "Lead role", "Starts after", "Hours"], [...packageRows, [`\u0001total:Total planned`, "", "", "", hours(planned)]], { numeric: [4], className: "tight" })}</section>` : "";
 
   // ---- Customer commitments, customer-run work, open items and questions
   const effortTable = customerEffort.phases.length ? `<h3>${esc(customer)} team effort</h3>${table(["Phase", "Window", "Platform", "Ops", "Network", "Total / wk", "FTE"], customerEffort.phases.map(phase => [esc(phase.phase), esc(phase.window), String(phase.platformLead), String(phase.operations), String(phase.network), String(phase.total), phase.fte.toFixed(2)]), { numeric: [2, 3, 4, 5, 6] })}` : "";

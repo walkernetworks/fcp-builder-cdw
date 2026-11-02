@@ -212,7 +212,7 @@ export const appRouter = router({
       }))
       .mutation(async ({ ctx, input }) => {
         const viewer = viewerFor(ctx.user);
-        const prepared = requireRow(await prepareIssue(viewer, input.id, { reportFormat: input.reportFormat }));
+        const prepared = requireRow(await prepareIssue(viewer, input.id, { reportFormat: input.reportFormat, revisionNote: input.revisionNote }));
         if (prepared.failures.length) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued because it failed these checks:\n- ${prepared.failures.join("\n- ")}` });
         if (prepared.fundingProblem && !input.fundingOverride) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `The FCP was not issued: ${prepared.fundingProblem} To issue it anyway, give the reason.` });
         if (prepared.unchanged && !prepared.hoursOnly) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Nothing has changed since issue ${prepared.basedOn?.issueNumber}.` });
