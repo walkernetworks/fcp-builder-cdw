@@ -15,7 +15,7 @@ const optionalDate = isoDate.nullable().default(null);
 const hours = z.number().min(0).max(100_000);
 const optionalNumber = z.number().min(0).max(1_000_000_000).nullable().default(null);
 
-const personSchema = z.object({ name: text, role: z.string().max(200).default("") });
+const personSchema = z.object({ name: text, role: z.string().max(200).default(""), email: z.string().max(200).default(""), phone: z.string().max(60).default("") });
 
 export const reportEntitlementSchema = z.object({
   /** Entitled hours, from Broadcom's entitlement record. */

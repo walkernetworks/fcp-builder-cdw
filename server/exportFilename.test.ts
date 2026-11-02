@@ -13,7 +13,7 @@ describe("export file names", () => {
   });
 
   it("names the other exports the same way", () => {
-    expect(exportFilename("Northwind Mfg", "plan-output", "pdf")).toBe("Northwind Mfg - Compatibility Handoff.pdf");
+    expect(exportFilename("Northwind Mfg", "plan-output", "pdf")).toBe("Northwind Mfg - Delivery Handoff.pdf");
     expect(exportFilename("Northwind Mfg", "building-blocks", "xlsx")).toBe("Northwind Mfg - Building Blocks.xlsx");
   });
 

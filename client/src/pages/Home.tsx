@@ -27,7 +27,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const DEFAULT_ENGAGEMENT_TITLE = "New FCP Engagement";
-const EXPORT_DOCUMENT_LABELS: Record<ExportDocumentType, string> = { fcp: "FCP", "condensed-fcp": "Condensed FCP", "plan-output": "Compatibility handoff", "building-blocks": "Building Blocks workbook" };
+const EXPORT_DOCUMENT_LABELS: Record<ExportDocumentType, string> = { fcp: "FCP", "condensed-fcp": "Condensed FCP", "plan-output": "Delivery Handoff", "building-blocks": "Building Blocks workbook" };
 type WorkspaceStage = "engagement" | "plan" | "staffing" | "technical" | "report" | "package";
 
 export default function Home() {
