@@ -18,7 +18,7 @@ type Props = {
 };
 
 export type ReportSection =
-  | "entitlement" | "consumption" | "heard" | "problems" | "questions" | "people" | "milestones" | "open-items" | "cover"
+  | "entitlement" | "consumption" | "heard" | "problems" | "questions" | "contacts" | "people" | "milestones" | "open-items" | "cover"
   | "situation" | "profile" | "elements" | "technical" | "constraints" | "asks" | "customer-work"
   | "sizing" | "environment" | "licensing" | "details";
 
@@ -250,7 +250,7 @@ export function ReportContentEditor({ document, onChange, sections }: Props) {
         </Accordion>
       </Group>
 
-      <Group title="From the customer" description="What only a conversation with the customer can provide." members={["heard", "problems", "questions", "people", "milestones", "open-items", "cover"]}>
+      <Group title="From the customer" description="What only a conversation with the customer can provide." members={["heard", "problems", "questions", "contacts", "people", "milestones", "open-items", "cover"]}>
         <Accordion type="multiple" defaultValue={opened(["heard"])} className="border-t border-s100">
           <Section value="heard" title="Customer positions" heading="What we heard, and what we have built to" filled={report.whatWeHeard.length > 0} hint="For each area (goal, build path, storage, networking, DR, add-ons): what the customer said, in their words, and how this plan responds.">
             <RowTable rows={report.whatWeHeard} columns={[{ key: "component", label: "Area", width: "16%", placeholder: "Storage" }, { key: "customerPosition", label: "What the customer said", type: "longtext", placeholder: "Keep the existing array" }, { key: "whereItLands", label: "How the plan responds", type: "longtext", placeholder: "Fibre Channel stays principal storage" }]} blank={{ component: "", customerPosition: "", whereItLands: "" }} addLabel="Add position" onChange={rows => set("whatWeHeard", rows)} />
@@ -262,6 +262,15 @@ export function ReportContentEditor({ document, onChange, sections }: Props) {
 
           <Section value="questions" title="Open questions" heading="Open Questions" filled={report.openQuestions.length > 0} hint="Scope decisions still open, and why the answer is needed now.">
             <RowTable rows={report.openQuestions} columns={[{ key: "question", label: "Question", type: "longtext" }, { key: "whyNow", label: "Why it matters now", type: "longtext" }]} blank={{ question: "", whyNow: "" }} addLabel="Add question" onChange={rows => set("openQuestions", rows)} />
+          </Section>
+
+          <Section value="contacts" title="Contacts" heading="Who Is Involved" filled={report.contacts.cdw.length + report.contacts.broadcom.length + report.contacts.customer.length > 0} hint="Who to call, with role, email and phone. The customer documents print name and role; the Delivery Handoff prints everything. The customer's primary contact is set in Engagement.">
+            {(["customer", "cdw", "broadcom"] as const).map(party => (
+              <div key={party} className="space-y-1">
+                <p className="text-xs font-semibold text-s600">{party === "customer" ? "Customer" : party === "cdw" ? "CDW" : "Broadcom"}</p>
+                <RowTable rows={report.contacts[party]} columns={[{ key: "name", label: "Name", width: "24%" }, { key: "role", label: "Role", width: "22%" }, { key: "email", label: "Email" }, { key: "phone", label: "Phone", width: "16%" }]} blank={{ name: "", role: "", email: "", phone: "" }} addLabel={`Add ${party === "customer" ? "customer" : party === "cdw" ? "CDW" : "Broadcom"} contact`} onChange={rows => set("contacts", { ...report.contacts, [party]: rows })} />
+              </div>
+            ))}
           </Section>
 
           <Section value="people" title="People by work stream" heading="Target Personnel by Work Stream" filled={report.personnel.some(item => item.cdw.length || item.customer.length)} hint="The work streams come from the scoped hours. Override a row to add names (comma separated). Work streams with nobody named are left out, and the section is left out until someone is named.">

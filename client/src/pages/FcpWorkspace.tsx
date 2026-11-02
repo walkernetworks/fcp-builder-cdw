@@ -1,4 +1,3 @@
-import { ReportJsonButton } from "@/components/CondensedReportPanel";
 import { CustomerBriefImport } from "@/components/CustomerBriefImport";
 import { DeliveryBriefing } from "@/components/DeliveryBriefing";
 import { DeliverableCard, DeliveryPackageHeader, ExportPreferenceCard, ScopeAtGlance, StaffingSummary } from "@/components/fcp/workspaceParts";
@@ -44,7 +43,7 @@ export const WORKSPACE_SECTIONS: Array<{ id: WorkspaceSection; label: string; wh
   { id: "review", label: "Review and issue", why: "Choose what the export includes, check the delivery package, and download the plan and the technical handoff." },
 ];
 
-const NARRATIVE_SECTIONS: readonly ReportSection[] = ["heard", "problems", "questions", "people", "milestones", "open-items", "cover", "situation", "technical", "constraints", "asks"];
+const NARRATIVE_SECTIONS: readonly ReportSection[] = ["heard", "problems", "questions", "contacts", "people", "milestones", "open-items", "cover", "situation", "technical", "constraints", "asks"];
 const STATUS_LABEL: Record<SectionStatus, string> = { empty: "Not started", partial: "In progress", complete: "Complete" };
 const STATUS_DOT: Record<SectionStatus, string> = { empty: "border border-s300 bg-surface", partial: "bg-state-warn", complete: "bg-state-pass" };
 
@@ -245,10 +244,6 @@ function Workspace({ id }: { id: number }) {
                 {isCommercialPlan(document.fields) && <DeliverableCard title="Building Blocks Workbook" label="Commercial plan · VCF 9 Building Blocks" description="Every Building Blocks tool block with its category start date, status, projected dates, and dependencies taken from this plan. Out-of-scope blocks start hidden." icon={FileSpreadsheet} activeExport={fcp.activeExport} documentType="building-blocks" formats={["xlsx"]} onExport={fcp.startExport} />}
               </section>
               <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={["details"]} />
-              <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-s100 bg-surface p-4">
-                <div><p className="text-[11px] font-medium uppercase tracking-wide text-ink-muted">Advanced</p><p className="mt-1 max-w-2xl text-xs leading-5 text-s400">The report content as JSON, checked before it is stored. Needed today only for the customer contacts list; every other field has a form in its section.</p></div>
-                <ReportJsonButton document={document} onChange={fcp.mutateDocument} label="Edit report content (JSON)" />
-              </section>
             </>}
           </fieldset>
         </main>
