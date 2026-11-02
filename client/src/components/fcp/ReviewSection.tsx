@@ -35,8 +35,10 @@ export function ReviewSection({ document, segmentWarning, wavesWarning, onFix, s
   onExport: (format: ExportFormat, documentType: ExportDocumentType) => Promise<void>;
   onChange: (document: EngagementDocument) => void;
 }) {
-  // The funding result comes from the issue check; until it has run the checklist says so.
-  const [funding, setFunding] = useState<{ fundingProblem: string | null } | undefined>();
+  // The funding result comes from the issue check; until it has run the checklist says so. It belongs to the document
+  // it was run on, so any edit afterwards puts the item back to "not checked".
+  const [checked, setChecked] = useState<{ document: EngagementDocument; fundingProblem: string | null } | undefined>();
+  const funding = checked?.document === document ? checked : undefined;
   const items = reviewChecklist(document, { segmentWarning, wavesWarning, fundingProblem: funding?.fundingProblem });
   const open = items.filter(item => !item.ready);
   const internal = internalChecklistItems(document);
@@ -69,7 +71,7 @@ export function ReviewSection({ document, segmentWarning, wavesWarning, onFix, s
 
       <section className="space-y-4" aria-label="Issue to the customer">
         <ReportFormatPicker segment={segment} value={reportFormat} overridden={formatChoice !== null && formatChoice !== fallback} onChange={choice => onFormatChoice(choice === fallback ? null : choice)} />
-        <IssuePanel {...issueActions} onChecked={setFunding} />
+        <IssuePanel {...issueActions} onChecked={result => setChecked(result ? { document, fundingProblem: result.fundingProblem } : undefined)} />
         <IssuedVersionsList {...issueActions} />
       </section>
 
