@@ -20,7 +20,7 @@ type Props = {
 export type ReportSection =
   | "entitlement" | "consumption" | "heard" | "problems" | "questions" | "contacts" | "people" | "milestones" | "open-items" | "cover"
   | "situation" | "profile" | "elements" | "technical" | "constraints" | "asks" | "customer-work"
-  | "sizing" | "environment" | "licensing" | "details";
+  | "sizing" | "environment" | "licensing" | "details" | "sources";
 
 /** The sections this form is limited to, or null for all of them. */
 const SectionFilter = createContext<ReadonlySet<string> | null>(null);
@@ -371,13 +371,20 @@ export function ReportContentEditor({ document, onChange, sections }: Props) {
             </div>
           </Section>
 
-          <Section value="details" title="Revision and sources" hint="The revision note and the documents cited in the footer. The delivery model appears in the title band.">
+          <Section value="details" title="Delivery model and revision" hint="The delivery model appears in the title band. The revision note is what the document control line says this version was built from.">
             <div className="grid gap-3 md:grid-cols-3">
               <Field label="Delivery model">{textInput(report.deliveryModel, value => set("deliveryModel", value), "CDW")}</Field>
               <Field label="Content current as of">{dateInput(report.asOf, value => set("asOf", value))}</Field>
               <Field label="Revision note">{textInput(report.revision, value => set("revision", value), "What this revision was built from")}</Field>
             </div>
-            <div className="mt-3">
+          </Section>
+        </Accordion>
+      </Group>
+
+      <Group members={["sources"]}>
+        <Accordion type="multiple" defaultValue={opened([])} className="border-t border-s100">
+          <Section value="sources" title="Sources" hint="The documents cited in the footer of the report.">
+            <div>
               <RowTable rows={report.sources.map(source => ({ ...source, date: source.date ?? "" }))} columns={[{ key: "title", label: "Source document", width: "70%" }, { key: "date", label: "Date", type: "date" }]} blank={{ title: "", date: "" }} addLabel="Add source" onChange={rows => set("sources", rows.map(row => ({ title: row.title, date: row.date || null })))} />
             </div>
           </Section>
