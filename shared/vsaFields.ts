@@ -14,6 +14,26 @@ export const INTAKE_SOURCES = ["manual", "sharepoint_import", "intake_import"] a
 export const STAGE_EVENT_SOURCES = ["manual", "import", "system"] as const;
 export const SOURCE_ITEM_KINDS = ["rvtools", "discovery_notes", "customer_brief", "hardware_review", "hours_source", "broadcom_ser", "other"] as const;
 export const SOURCE_ITEM_STATUSES = ["needed", "requested", "received", "verified", "waived"] as const;
+/** The shared status words, used for any kind without its own. */
+const DEFAULT_SOURCE_STATUS: Record<(typeof SOURCE_ITEM_STATUSES)[number], string> = { needed: "Needed", requested: "Requested", received: "Received", verified: "Verified", waived: "Waived" };
+
+/**
+ * What each shared status means for each kind of source. The stored statuses stay one enum (it drives the readiness
+ * counts and the stage gates); only the label changes with the kind. Waived reads the same everywhere.
+ */
+const SOURCE_STATUS_BY_KIND: Partial<Record<(typeof SOURCE_ITEM_KINDS)[number], Partial<Record<(typeof SOURCE_ITEM_STATUSES)[number], string>>>> = {
+  rvtools: { requested: "Requested from the customer", received: "Export received", verified: "Imported and checked" },
+  discovery_notes: { needed: "Not scheduled", requested: "Scheduled", received: "Recorded", verified: "Transcript attached" },
+  customer_brief: { requested: "Sent to the customer", received: "Received", verified: "Imported to the plan" },
+  hardware_review: { requested: "Scheduled", received: "Review done", verified: "Signed off" },
+  hours_source: { requested: "Requested from Broadcom", received: "Hours on record", verified: "Confirmed with Broadcom" },
+  broadcom_ser: { requested: "Submitted", received: "Received", verified: "Approved" },
+};
+
+export function sourceStatusLabel(kind: string, status: string): string {
+  const byKind = (SOURCE_STATUS_BY_KIND as Record<string, Record<string, string> | undefined>)[kind];
+  return byKind?.[status] ?? (DEFAULT_SOURCE_STATUS as Record<string, string>)[status] ?? status;
+}
 export const ASSIGNMENT_ROLES = ["sales_rep", "account_manager", "presales", "architect", "pm", "sr_consultant", "broadcom_ad"] as const;
 export const VSA_ROLES = ["sales", "architect", "presales", "pm", "leadership"] as const;
 /** Who said FCP approval isn't needed. */

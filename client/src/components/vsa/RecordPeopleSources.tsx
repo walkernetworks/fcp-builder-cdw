@@ -2,8 +2,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import type { TrackerRecord } from "@/lib/vsa";
-import { ROLE_LABELS, SOURCE_KIND_LABELS, SOURCE_STATUS_LABELS } from "@/lib/vsaLabels";
-import { ASSIGNMENT_ROLES, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, type AssignmentRole, type SourceItemKind, type SourceItemStatus } from "@shared/vsaFields";
+import { ROLE_LABELS, SOURCE_KIND_LABELS } from "@/lib/vsaLabels";
+import { ASSIGNMENT_ROLES, SOURCE_ITEM_KINDS, SOURCE_ITEM_STATUSES, sourceStatusLabel, type AssignmentRole, type SourceItemKind, type SourceItemStatus } from "@shared/vsaFields";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -97,7 +97,7 @@ function SourceRow({ recordId, source }: { recordId: number; source: TrackerReco
       </div>
       <div className="grid gap-2 sm:grid-cols-[150px_150px_1fr]">
         <select aria-label={`${source.label} status`} className={selectClass} value={form.status} onChange={event => setForm({ ...form, status: event.target.value as SourceItemStatus })}>
-          {SOURCE_ITEM_STATUSES.map(option => <option key={option} value={option}>{SOURCE_STATUS_LABELS[option]}</option>)}
+          {SOURCE_ITEM_STATUSES.map(option => <option key={option} value={option}>{sourceStatusLabel(source.kind, option)}</option>)}
         </select>
         <Input aria-label={`${source.label} received date`} type="date" className="h-9 rounded-md" value={form.receivedOn} onChange={event => setForm({ ...form, receivedOn: event.target.value })} />
         <Input aria-label={`${source.label} reference`} placeholder="File name or folder path" className="h-9 rounded-md" value={form.reference} onChange={event => setForm({ ...form, reference: event.target.value })} />
