@@ -803,8 +803,11 @@ export function timelinesWithDeferrals(document: EngagementDocument, deferredIds
   if (!unscopedIds.length) return result;
   // Packages with no hours at all (neither funded nor follow-on scope) are drawn on neither timeline.
   const gone = new Set(unscopedIds);
-  const clean = (timeline: Timeline): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !gone.has(bar.id)).map(bar => (bar.prerequisites?.some(id => gone.has(id)) ? { ...bar, prerequisites: bar.prerequisites.filter(id => !gone.has(id)) } : bar)) })) });
-  return { adoption: clean(result.adoption), notional: clean(result.notional) };
+  // A checkpoint whose packages all left the entitlement timeline goes with them.
+  const left = result.adoption.lanes.flatMap(lane => lane.bars).filter(bar => !gone.has(bar.id));
+  const gates = new Set(Object.entries(GATED_WORK).filter(([, work]) => !left.some(bar => work.test(bar.id))).map(([gate]) => gate));
+  const clean = (timeline: Timeline, drop: Set<string>): Timeline => ({ ...timeline, lanes: timeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !drop.has(bar.id)).map(bar => (bar.prerequisites?.some(id => drop.has(id)) ? { ...bar, prerequisites: bar.prerequisites.filter(id => !drop.has(id)) } : bar)) })) });
+  return { adoption: clean(result.adoption, new Set([...Array.from(gone), ...Array.from(gates)])), notional: clean(result.notional, gone) };
 }
 
 /**
@@ -819,7 +822,7 @@ export function unscopedWorkPackageIds(effort: Pick<ScopedEffort, "workPackages"
 }
 
 /** The packages each checkpoint gates. */
-const GATED_WORK: Record<string, RegExp> = { "bar-backup-gate": /^bar-playbook-execution-/ };
+const GATED_WORK: Record<string, RegExp> = { "bar-backup-gate": /^bar-playbook-execution-/, "bar-hcl-gate": /^bar-hcl-review$/ };
 
 function movedTimelines(document: EngagementDocument, deferredIds: string[]): { adoption: Timeline; notional: Timeline } {
   const ids = new Set(deferredIds);
@@ -1111,7 +1114,28 @@ function withDisplacedLines(document: EngagementDocument, effort: ScopedEffort, 
   for (const row of Array.from(later.values())) if (row.total > 0) merged.push({ ...row, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: "not funded", followOn: { architect: row.architect, srConsultant: row.srConsultant, projectManager: row.projectManager, total: row.total } });
   if (designPhase) {
     const lead = merged.find(row => /^bar-playbook-design-/.test(row.id) && row.category && row.total > 0) ?? merged.find(row => row.category === "Modernize Infrastructure");
-    const planned = designPhase.roles ?? rolesOf(designPhase);
+    const all = designPhase.roles ?? rolesOf(designPhase);
+    // When the entitlement cannot carry the foundation design either, its share follows the foundation design package
+    // into the follow-on; only the rest is the later design phase.
+    const fitPlacements = effort.internal.fit?.placements ?? [];
+    const movedDesign = fitPlacements.filter(item => item.code === "A" && item.bucket !== "E1" && item.bucket !== "E2");
+    const foundationLoaded = movedDesign.filter(item => item.unitId === "A:foundation").reduce((sum, item) => sum + item.loaded, 0);
+    const movedLoaded = movedDesign.reduce((sum, item) => sum + item.loaded, 0);
+    const foundationShare = movedLoaded > 0 ? foundationLoaded / movedLoaded : 0;
+    if (foundationShare > 0) {
+      const referenceId = referenceDesignBarId(playbookPlanForFields(document.fields).path);
+      const index = merged.findIndex(row => row.id === referenceId) >= 0 ? merged.findIndex(row => row.id === referenceId) : merged.findIndex(row => row.id === "bar-playbook-design-target-state");
+      if (index >= 0) {
+        const row = merged[index];
+        const add = { architect: all.architect * foundationShare, srConsultant: all.srConsultant * foundationShare, projectManager: all.projectManager * foundationShare };
+        const followOn = { architect: (row.followOn?.architect ?? 0) + add.architect, srConsultant: (row.followOn?.srConsultant ?? 0) + add.srConsultant, projectManager: (row.followOn?.projectManager ?? 0) + add.projectManager, total: 0 };
+        followOn.total = followOn.architect + followOn.srConsultant + followOn.projectManager;
+        const { note: _note, ...rest } = row;
+        merged[index] = { ...rest, architect: 0, srConsultant: 0, projectManager: 0, total: 0, deferred: row.deferred ?? "not funded", followOn };
+      }
+    }
+    const kept = merged.some(row => row.id === referenceDesignBarId(playbookPlanForFields(document.fields).path) || row.id === "bar-playbook-design-target-state") ? 1 - foundationShare : 1;
+    const planned = { architect: all.architect * kept, srConsultant: all.srConsultant * kept, projectManager: all.projectManager * kept };
     const roles = { architect: Math.round(planned.architect), srConsultant: Math.round(planned.srConsultant), projectManager: Math.round(planned.projectManager) };
     const total = roles.architect + roles.srConsultant + roles.projectManager;
     if (total > 0) merged.push({

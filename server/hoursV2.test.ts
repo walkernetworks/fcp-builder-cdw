@@ -323,16 +323,18 @@ describe("v2 Pass 2 fit (spec section 7)", () => {
     }
   });
 
-  it("flags an under-funded core with its gap and keeps the whole core rather than stopping mid-spine", () => {
+  it("fits the minimum in order up to the hours instead of over-committing, and stops at the first package that does not fit", () => {
     const pass1 = scopeV2(doc({ hosts: 40, vms: 800 }));
     const fit = fitOf(pass1, 200);
-    expect(fit.underFunded).not.toBeNull();
-    expect(fit.underFunded!.gapHours).toBeCloseTo(fit.coreRequiredHours - fit.fillableHours, 6);
-    // The minimum is placed whole, over the fillable hours; every other package waits for hours the minimum leaves.
-    expect(fit.placements.filter(item => (item.step <= 3 || item.designShare) && item.reason !== "design phased").every(item => item.bucket === "E1")).toBe(true);
-    expect(fit.placements.filter(item => item.step > 3 && !item.designShare && item.bucket !== "F").map(item => item.unitId + item.bucket)).toEqual([]);
-    expect(fit.buckets.E2).toBe(0);
-    expect(fit.warnings[0]).toMatch(/^Under-funded/);
+    expect(fit.underFunded).toBeNull();
+    const funded = fit.placements.filter(item => item.bucket === "E1" || item.bucket === "E2");
+    expect(funded.reduce((sum, item) => sum + item.loaded, 0)).toBeLessThanOrEqual(fit.fillableHours + 1e-6);
+    // In order: no funded package comes after one that moved.
+    const firstMoved = Math.min(...fit.placements.filter(item => item.bucket === "F" && item.step <= 3).map(item => item.step));
+    expect(funded.filter(item => item.step > firstMoved && !item.designShare)).toEqual([]);
+    // The hours the next package is too big for are held in the reserve, so nothing is lost.
+    expect(fit.reserveHours + funded.reduce((sum, item) => sum + item.loaded, 0)).toBeCloseTo(fit.entitlementHours - fit.deliveredHours, 6);
+    expect(fit.warnings[0]).toMatch(/^The entitlement holds/);
   });
 
   it("keeps a displaced add-on's design share in E2 when it fits, as a package of its own at its full estimate", () => {
@@ -469,7 +471,7 @@ describe("v2 in the plan", () => {
 });
 
 describe("entitlement ceiling and the reserve field", () => {
-  it("never plans more than the entitlement after the reserve except an under-funded minimum, and never squeezes or trims a package", async () => {
+  it("never plans more than the entitlement after the reserve, and never squeezes or trims a package", async () => {
     const { scopedEffortForDocument } = await import("./rateCard");
     // A 150-host greenfield build whose minimum needs more than the smaller entitlements fund.
     let underFunded = 0;
@@ -482,14 +484,11 @@ describe("entitlement ceiling and the reserve field", () => {
       expect(effort.workPackages.filter(row => row.deferred === "over budget")).toEqual([]);
       expect(fit.scopeMoves?.filter(item => item.reason === "over budget") ?? []).toEqual([]);
       expect(Math.abs(fit.buckets.E1 + fit.buckets.E2 - effort.totals.total)).toBeLessThanOrEqual(2);
-      if (fit.underFunded) {
-        underFunded += 1;
-        expect(effort.totals.total).toBeGreaterThan(Math.floor(fit.fillableHours));
-      } else {
-        fitted += 1;
-        expect(effort.totals.total).toBeLessThanOrEqual(Math.floor(fit.fillableHours) + 1);
-        expect(effort.internal.cost!.status).not.toBe("over");
-      }
+      expect(fit.underFunded).toBeNull();
+      expect(effort.totals.total).toBeLessThanOrEqual(Math.floor(fit.fillableHours) + 1);
+      // A small entitlement moves part of the minimum to the follow-on, with its hours; a large one carries all of it.
+      if (fit.warnings.some(warning => warning.startsWith("The entitlement holds"))) underFunded += 1;
+      else fitted += 1;
     }
     expect(underFunded).toBeGreaterThan(0);
     expect(fitted).toBeGreaterThan(0);

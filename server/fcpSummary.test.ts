@@ -44,12 +44,10 @@ describe("hours reconciliation", () => {
     expect(fundingProblem(reconciled, scopedEffortForDocument(reconciled, FIXTURE_TODAY), FIXTURE_TODAY)).toBeNull();
   });
 
-  it("names an under-funded plan and a plan that leaves hours unplanned, for the planner", () => {
-    const over = acmeHealthUnderFunded();
-    const problem = fundingProblem(over, scopedEffortForDocument(over, FIXTURE_TODAY), FIXTURE_TODAY);
-    expect(problem).toContain("Under-funded: 39 delivered, 188 planned and 4 held in reserve come to 141 hours more than the 90-hour entitlement. Move work to the follow-on or reduce hours in the Plan section.");
-    // Rule 5: the internal problem says how many more hours the full scope needs.
-    expect(problem).toMatch(/The full scope needs 211 more hours than the entitlement funds after the reserve \(140 more for the minimum that can be delivered\)\./);
+  it("raises nothing for a small entitlement, and names a plan that leaves hours unplanned, for the planner", () => {
+    // A 90-hour entitlement is planned within its hours: no decision to record.
+    const small = acmeHealthUnderFunded();
+    expect(fundingProblem(small, scopedEffortForDocument(small, FIXTURE_TODAY), FIXTURE_TODAY)).toBeNull();
     // Whole packages leave what no package takes unplanned; the optimization package (hours fill) takes it up.
     const reconciled = acmeHealthReconciled();
     expect(fundingProblem(reconciled, scopedEffortForDocument(reconciled, FIXTURE_TODAY), FIXTURE_TODAY)).toBeNull();
@@ -57,14 +55,16 @@ describe("hours reconciliation", () => {
     expect(fundingProblem(under, scopedEffortForDocument(under, FIXTURE_TODAY), FIXTURE_TODAY)).toBe("5 hours are not planned and will be forfeited at term end (39 delivered, 200 planned and 18 held in reserve, against the 262-hour entitlement). Plan them in the Plan section.");
   });
 
-  it("never moves a package to the follow-on for hours: a large estate whose minimum does not fit is under-funded, whole", () => {
+  it("moves the part of the minimum a small entitlement cannot carry to the follow-on, whole and with its hours", () => {
     const document = acmeHealth();
     Object.assign(document.inventory, { hosts: 120, clusters: 8 });
     document.report.entitlement.hours = 380;
     const effort = scopedEffortForDocument(document, FIXTURE_TODAY);
+    expect(effort.internal.fit?.underFunded).toBeNull();
     expect(effort.workPackages.filter(row => row.deferred === "over budget")).toEqual([]);
-    expect(effort.internal.fit?.underFunded?.gapHours).toBeGreaterThan(0);
+    expect(effort.workPackages.some(row => row.deferred === "not funded" && (row.followOn?.total ?? 0) > 0)).toBe(true);
     expect(effort.workPackages.every(row => !(row.total > 0 && (row.followOn?.total ?? 0) > 0))).toBe(true);
+    expect(reconcileHours(document, effort, FIXTURE_TODAY)!.balanced).toBe(true);
   });
 
   it("allows an hour either way for rounding, and says so on the page instead of claiming the figures are equal", () => {
@@ -123,13 +123,14 @@ describe("Summary FCP", () => {
     expect(visible(html)).toContain("Delivered to Date Assessment; Design discovery Apr – Sep 2026 39");
   });
 
-  it("never prints the under-funded gap or the buckets, and makes no equality claim it cannot keep", () => {
+  it("never prints a gap or the buckets for a small entitlement, and foots to the entitlement", () => {
     const document = acmeHealthUnderFunded();
     const html = summary(document);
     const text = visible(html);
     for (const term of ["Under-funded", "under-funded", "Scope by Bucket", "reserve", "more than it funds", "Moved out of", "gap", "bucket"]) expect(text).not.toContain(term);
-    expect(text).toContain("Total CDW hours 231");
-    expect(text).not.toMatch(/add up to the|use the 262/);
+    // Planned within its hours: what the entitlement cannot carry is follow-on, so the column foots to the entitlement.
+    expect(text).toContain("Total, funded by the entitlement 90");
+    expect(text).toMatch(/Total follow-on \d+/);
     expect(checks(html, document)).toEqual([]);
   });
 

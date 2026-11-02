@@ -201,7 +201,10 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     designPhased = true;
   }
   const coreNeed = needWith(coreDesign);
-  const underFunded: FitV2["underFunded"] = coreNeed > fillableHours + eps ? { gapHours: coreNeed - fillableHours, fullScopeGapHours: fullNeed - fillableHours } : null;
+  // The plan is never over-committed: when the minimum does not fit, the entitlement takes it in order (discovery, the
+  // design, then the foundation build) up to the hours it has, and the rest moves whole to the follow-on with its hours.
+  const underFunded: FitV2["underFunded"] = null;
+  const minimumShort = coreNeed > fillableHours + eps;
   const coreItems = [...discovery, ...coreDesign, ...spine];
   const coreRequiredHours = hoursOf(coreItems) + opsDesignCost;
   const coreByLine = [
@@ -227,10 +230,20 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   const reasonOf = new Map<string, DisplacedReason>();
   const sharedLines = new Set<V2Code>();
 
-  for (const item of coreItems) place(item, "E1");
+  let used = 0;
+  // In order, whole packages: the first one that does not fit stops the minimum, and it and everything after it move.
+  let minimumStopped = false;
+  const fundedCore: Item[] = [];
+  for (const item of coreItems) {
+    const cost = loaded(item.line, item.unit.base) + (item.step === 3 && !fundedCore.some(entry => entry.step === 3) ? nsxCost : 0);
+    if (!minimumStopped && used + cost <= fillableHours + eps) { place(item, "E1"); fundedCore.push(item); used += cost; }
+    else { minimumStopped = true; displaced.push(item); }
+  }
   for (const item of design.filter(item => !coreDesign.includes(item))) { displaced.push(item); reasonOf.set(item.unit.id, "design phased"); }
-  let used = hoursOf(coreItems) + nsxCost;
-  if (opsLine && opsDesignCost) {
+  // The foundation build carries the VLAN-backed NSX design; without the build in the entitlement it is not held.
+  const spineFunded = fundedCore.some(item => item.step === 3);
+  if (!spineFunded) used = fundedCore.reduce((sum, item) => sum + loaded(item.line, item.unit.base), 0);
+  if (opsLine && opsDesignCost && !minimumStopped && used + opsDesignCost <= fillableHours + eps) {
     placements.push({ code: "X4", line: opsLine.name, unitId: "X4:design-share", label: "Design share", base: opsDesignBase, loaded: opsDesignCost, bucket: "E1", step: 5, designShare: true });
     sharedLines.add("X4");
     used += opsDesignCost;
@@ -238,7 +251,7 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
 
   // Everything after the minimum fills in order, whole units, until the first that does not fit; the rest is follow-on.
   // The migration waves after CDW's proving waves are the customer's with the runbook only when the proving waves are in.
-  let stopped = Boolean(underFunded);
+  let stopped = minimumStopped || (Boolean(opsLine && opsDesignCost) && !placements.some(entry => entry.unitId === "X4:design-share"));
   let provingFunded = false;
   let opsReleased = false;
   for (const item of items.filter(entry => entry.step > 3)) {
@@ -276,7 +289,7 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
       displaced.push(item);
     }
   }
-    const stopFill = Boolean(underFunded);
+  const stopFill = stopped && minimumShort;
   const designShareFlags: string[] = [];
 
   // Design share: an add-on with none of its Tier 1 work in the entitlement keeps 25% of its Tier 1 value in E2
@@ -310,15 +323,19 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   // management domain; otherwise the VLAN-backed NSX design goes into the core with the first management domain,
   // and the networking line's follow-on keeps the rest.
   const nsxDesignFunded = placements.some(item => NETWORKING.includes(item.code) && (item.bucket === "E1" || item.bucket === "E2"));
-  const nsxCarved = Boolean(nsx && carvedFrom && carveBase > 0 && !nsxDesignFunded);
+  const nsxCarved = Boolean(nsx && carvedFrom && carveBase > 0 && !nsxDesignFunded && spineFunded);
   if (nsxCarved) {
     const later = placements.filter(item => item.code === carvedFrom!.code && item.bucket !== "E1" && item.bucket !== "E2" && !item.unitId.includes(":tier-"));
     const laterBase = later.reduce((sum, item) => sum + item.base, 0);
     for (const item of later) { item.base -= carveBase * (item.base / laterBase); item.loaded = loaded(carvedFrom!, item.base); }
     placements.push({ code: "NX", line: nsx!.name, unitId: nsx!.units[0].id, label: nsx!.units[0].label, base: carveBase, loaded: nsxCost, bucket: "E1", step: 3 });
-  } else {
+  } else if (spineFunded) {
     used -= nsxCost;
   }
+
+  // Hours the next whole package is too big for are held in the reserve, released to the follow-on work if unused, so
+  // delivered + planned + reserve still adds up to the entitlement and nothing is forfeited by the fit.
+  const heldBack = minimumShort ? Math.max(0, fillableHours - used) : 0;
 
   const buckets: Record<Bucket, number> = { E1: 0, E2: 0, F: 0, C: 0 };
   for (const item of placements) buckets[item.bucket] += item.loaded;
@@ -336,8 +353,9 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
   const total = pass1.lines.reduce((sum, line) => sum + loaded(line, line.computedBase), 0) - customerRunHours;
   const placedTotal = buckets.E1 + buckets.E2 + buckets.F + buckets.C;
   const warnings: string[] = [];
-  if (underFunded) {
-    warnings.push(`Under-funded: discovery, the ${designPhased ? "foundation " : ""}design, the foundation build and the Operations design need ${Math.round(coreNeed)} hours, ${Math.round(underFunded.gapHours)} more than the ${Math.round(fillableHours)} fillable hours; the full scope needs ${Math.round(underFunded.fullScopeGapHours)} more. Nothing is split further: record the decision before issuing.`);
+  if (minimumShort) {
+    const moved = displaced.filter(item => item.step <= 3).map(item => item.unit.label);
+    warnings.push(`The entitlement holds ${Math.round(fillableHours)} plannable hours; discovery, the design and the foundation build need ${Math.round(coreNeed)}. It carries the work in order up to its hours${moved.length ? `, and ${moved.join(", ")} moves to the follow-on with its hours` : ""}.`);
   }
   if (designPhased) warnings.push("The design is phased by deliverable: the foundation design is in the entitlement, and the workload domain, DR and NSX overlay design are a follow-on package.");
   if (!pass1.estate.known && pass1.estate.choice === "auto") warnings.push(ESTATE_SIZE_UNKNOWN_FLAG);
@@ -355,7 +373,7 @@ export function fitV2(pass1: Pass1, options: FitOptions): FitV2 {
     "Follow-on (F) work depends on a future purchase of VCF or a renewal with entitlement attached. It is a forecast, not a commitment.",
   ];
   return {
-    entitlementHours, deliveredHours, reserveHours, fillableHours, placements, buckets,
+    entitlementHours, deliveredHours, reserveHours: reserveHours + heldBack, fillableHours, placements, buckets,
     entitlementRemaining: Math.max(0, fillableHours - used),
     coreRequiredHours: coreRequiredHours + (nsxCarved ? nsxCost : 0), coreByLine, underFunded, designPhased, monthsRemaining,
     requiredMonthlyBurn: (entitlementHours - deliveredHours) / monthsRemaining,
