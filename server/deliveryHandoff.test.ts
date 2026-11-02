@@ -112,6 +112,23 @@ describe("Delivery Handoff", () => {
     expect(handoff(doc)).not.toMatch(/<script/i);
   });
 
+  it("lists the missing RVTools tabs as one evidence gap row with one combined impact", () => {
+    const html = handoff(acmeHealthReconciled());
+    const rows = html.split("<h3>Evidence gaps</h3>")[1].split("</table>")[0].match(/<tr>.*?<\/tr>/g) ?? [];
+    const missing = rows.filter(row => row.includes("RVTools tabs missing:"));
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toContain("vHost, vNIC, vHBA");
+    expect(missing[0]).toContain("Skipped: ");
+    expect(rows.filter(row => /<td>missing tab/.test(row))).toHaveLength(1);
+    // The other gaps keep their own rows.
+    expect(rows.some(row => row.includes("Guest OS compatibility dataset"))).toBe(true);
+  });
+
+  it.skipIf(!chrome)("prints Harbor Point in seven pages: no page holds only the tail of the Work Package Detail table", async () => {
+    const pdf = await renderPdf(handoff(harborPointLogistics()));
+    expect(pages(pdf)).toBe(7);
+  }, 90_000);
+
   it.skipIf(!chrome)("prints to a PDF", async () => {
     expect(pages(await renderPdf(handoff(acmeHealthReconciled(), issued)))).toBeGreaterThanOrEqual(5);
   }, 90_000);

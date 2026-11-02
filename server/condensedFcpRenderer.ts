@@ -248,6 +248,8 @@ export type CondensedFcpOptions = {
   deliveredNotes?: string[];
   /** Standard only: the previous issue and its recorded approvals. */
   supersedes?: SupersededVersion;
+  /** Standard only: the revision note typed when issuing, printed in the Revision cell. */
+  revisionNote?: string;
 };
 
 

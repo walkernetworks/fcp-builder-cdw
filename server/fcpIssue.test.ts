@@ -125,6 +125,22 @@ describe("fcpRecord.issue", () => {
       expect(text).toContain("Supersedes Version 1, approved by Broadcom 12 Oct 2026 and by Acme Health 15 Oct 2026");
     });
 
+    it("prints the revision note typed at issue in the Revision cell, even with an empty report.revision", async () => {
+      const document = acmeHealthReconciled();
+      document.report.revision = "";
+      vi.mocked(db.getEngagement).mockResolvedValue(standardRow(document));
+      vi.mocked(db.issueFcpVersion).mockResolvedValue({ status: "ok", value: { id: 91, issueNumber: 2 } });
+      const earlier = acmeHealth();
+      vi.mocked(db.getLatestIssuedVersion).mockResolvedValue({ id: 90, issueNumber: 1, status: "issued", data: earlier, effortSnapshot: effortOf(earlier), renderedHtml: "<html>v1</html>", issuedAt: new Date("2026-09-30"), reportFormat: "standard" } as never);
+      const note = "Added the second wave after the Broadcom review.";
+      await caller().fcpRecord.issue({ id: 4, reportFormat: "standard", revisionNote: note });
+      const stored = vi.mocked(db.issueFcpVersion).mock.calls.at(-1)![2];
+      expect(stored.revisionNote).toBe(note);
+      const text = stored.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+      expect(text).toContain(`Revision ${note}`);
+      expect(text).not.toContain("Revision Working draft");
+    });
+
     it("does not count an approval recorded after the issue as a change", async () => {
       const { document, stored } = await issuedVersionTwo();
       // Version 1's approvals are recorded or amended later, and Version 2 is approved by the customer.

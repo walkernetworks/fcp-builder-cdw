@@ -154,6 +154,8 @@ export type SummaryOptions = {
   today?: string; effort: ScopedEffort; draft?: boolean; version?: IssueStamp; deliveredNotes?: string[];
   /** The previous issue and its recorded approvals; absent on Version 1. */
   supersedes?: SupersededVersion;
+  /** The note typed when issuing; the Standard prints it in its Revision cell ahead of the report's own revision text. */
+  revisionNote?: string;
 };
 
 /**
