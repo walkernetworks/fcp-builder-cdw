@@ -957,6 +957,14 @@ function fitBurndown(document: EngagementDocument, fit: FitV2): Array<{ month: s
 }
 
 /** The v2 model: Pass 1 scope, fitted to the entitlement by Pass 2, spread across the plan's stages. */
+/** The catalog lines behind the packages the planner brought into this entitlement. */
+function priorityLinesFor(document: EngagementDocument, pass1: ReturnType<typeof scopeV2>): V2Code[] {
+  const pinned = document.report.workPackageHours.filter(item => item.placement === "entitlement").map(item => item.id);
+  if (!pinned.length) return [];
+  const discovery = pass1.lines.some(line => DISCOVERY_CODES.test(line.code));
+  return pass1.lines.filter(line => pinned.some(id => barsForLine({ code: line.code, reduction: undefined } as Pick<EffortLine, "code" | "reduction">, discovery)(id))).map(line => line.code);
+}
+
 function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffortOptions): ScopedEffort {
   const pass1 = scopeV2(document);
   const entitled = document.report.entitlement.hours;
@@ -981,6 +989,7 @@ function buildScopedEffortV2(document: EngagementDocument, options: ScopedEffort
     datedWaves: pass1.inputs.datedWaves,
     ...(inputs.reservePercent !== undefined ? { reserveShare: inputs.reservePercent / 100 } : {}),
     wavesMode: migrationWavesChoice(document),
+    priorityLines: priorityLinesFor(document, pass1),
   });
   const fundedBases = new Map<V2Code, number>();
   const displacedBases = new Map<V2Code, number>();

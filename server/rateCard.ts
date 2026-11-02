@@ -1,4 +1,4 @@
-import { barsForLine, buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, protectedWorkPackages, ROLE_LOADING, withHoursFill, type DeferralReason, type FitMoney, type RoleHours, type ScopedEffort, type WorkPackageEffort, type WorkPlanRoles } from "../shared/effort";
+import { barsForLine, buildScopedEffort, costStatus, deferWorkPackages, isDesignWorkPackage, protectedWorkPackages, ROLE_LOADING, unusedEntitlementHours, withHoursFill, type DeferralReason, type FitMoney, type RoleHours, type ScopedEffort, type WorkPackageEffort, type WorkPlanRoles } from "../shared/effort";
 import { HOURS_V2 } from "../shared/hoursConfig";
 import type { ScopeMove } from "../shared/hoursFit";
 import type { EngagementDocument } from "../shared/fcp";
@@ -188,7 +188,7 @@ function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEff
   // Delivered hours were paid from the same value, and the reserve is a share of what is left after them.
   const delivered = document.report.entitlement.hoursConsumed ?? 0;
   const valueCapHours = value ? Math.max(0, value / blendedRate - delivered) * (1 - reserveShare) : undefined;
-  const effort = withHoursFill(valueCapHours === undefined ? fitted : { ...fitted, internal: { ...fitted.internal, valueCapHours } });
+  const effort = holdTooFewForTheNextPackage(withHoursFill(valueCapHours === undefined ? fitted : { ...fitted, internal: { ...fitted.internal, valueCapHours } }));
   const fit = effort.internal.fit;
   const dollars = (hours: number) => Math.round(hours * blendedRate);
   const money: FitMoney | undefined = fit ? {
@@ -203,6 +203,21 @@ function scopedEffortV2(document: EngagementDocument, today?: string): ScopedEff
   // Under v2 the fit decides what is in the entitlement; only an under-funded core makes the plan cost more than the value.
   const status = fit?.underFunded ? "over" : costStatus(ratio && ratio > 1 ? 1 : ratio);
   return { ...effort, internal: { ...effort.internal, cost: { planCost, followOnCost, entitlementValue: value, ratio, status, byPackage }, ...(money ? { money } : {}) } };
+}
+
+/**
+ * Hours left over that are fewer than any package the entitlement could not carry are held in the reserve (released to
+ * the follow-on if unused), not reported as forfeited: no whole package fits them. Spare hours with nothing waiting are
+ * left alone, so the planner still sees them and the fill options.
+ */
+function holdTooFewForTheNextPackage(effort: ScopedEffort): ScopedEffort {
+  const fit = effort.internal.fit;
+  const unused = unusedEntitlementHours(effort) ?? 0;
+  // Hours the planner set by hand are the planner's call: a gap they leave stays visible.
+  if (!fit || unused < 1 || effort.workPackages.some(row => row.adjusted)) return effort;
+  const waiting = effort.workPackages.filter(row => row.owner === "cdw" && row.deferred && row.deferred !== "planned for later" && row.deferred !== "after the entitlement window" && (row.followOn?.total ?? 0) > 0);
+  if (!waiting.length || waiting.some(row => row.followOn!.total <= unused)) return effort;
+  return { ...effort, internal: { ...effort.internal, fit: { ...fit, reserveHours: fit.reserveHours + unused } } };
 }
 
 /** The plan's hours in the entitlement: its work packages, whatever the totals are taken from. */

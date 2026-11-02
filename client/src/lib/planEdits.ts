@@ -57,3 +57,11 @@ export function windowColumns(document: EngagementDocument, barId: string): { fi
   const bar = document.adoptionTimeline.lanes.flatMap(lane => lane.bars).find(item => item.id === barId);
   return bar ? { first: bar.startCol, last: bar.endCol - 1 } : null;
 }
+
+/**
+ * Brings a year-two package into this entitlement: the fit places it right after the foundation, and the lowest-priority
+ * work moves out to make room. Apply it only after the preview shows it fits.
+ */
+export function bringIntoEntitlement(document: EngagementDocument, id: string): EngagementDocument {
+  return write(document, { ...packageSettings(document, id), placement: "entitlement" });
+}
