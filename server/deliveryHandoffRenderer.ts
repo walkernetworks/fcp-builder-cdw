@@ -7,6 +7,7 @@ import { lateWorkProblem, reconcileHours, REPORT_FORMAT_LABELS, type ReportForma
 import { planKeyDates, platformName, minimumTargetRelease } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { esc, hours, prepareReport, shortDate, RESERVE_LINE } from "./fcpReportParts";
+import { cssString } from "./fcpSummaryRenderer";
 
 /**
  * Delivery Handoff (docs/fcp-formats/FCP-REPORT-FORMATS.md section 5): the internal document that lets delivery pick up
@@ -93,8 +94,6 @@ td small{display:block;font-weight:400;color:var(--muted);font-size:8.5px;line-h
 @media print{.printbtn{display:none}}
 @media screen{body{max-width:11in;margin:0 auto}}
 `;
-
-const cssString = (value: string) => `"${value.replace(/["\\]/g, "\\$&")}"`;
 
 /** The marking and the page number on every printed page, in @page margin boxes so the number is the printed page. */
 function footerCss(customer: string, versionLabel: string): string {

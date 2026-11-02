@@ -106,6 +106,12 @@ describe("Delivery Handoff", () => {
     expect(html).not.toMatch(/<script|src=|https?:\/\/|@import|<link/i);
   });
 
+  it("cannot be broken out of its page footer by a hostile customer name", () => {
+    const doc = acmeHealthReconciled();
+    doc.fields.customerName = "Acme</style><script>alert(1)</script>";
+    expect(handoff(doc)).not.toMatch(/<script/i);
+  });
+
   it.skipIf(!chrome)("prints to a PDF", async () => {
     expect(pages(await renderPdf(handoff(acmeHealthReconciled(), issued)))).toBeGreaterThanOrEqual(5);
   }, 90_000);
