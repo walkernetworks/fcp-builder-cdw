@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultDocument } from "../shared/fcp";
 
-vi.mock("./db", () => ({ getEngagement: vi.fn(), getUserById: vi.fn() }));
+vi.mock("./db", () => ({ getEngagement: vi.fn(), getUserById: vi.fn(), getLatestIssuedVersion: vi.fn(async () => null), listConsumptionEntries: vi.fn(async () => []) }));
 vi.mock("./pdf", () => ({ renderPdf: vi.fn(async () => Buffer.from("%PDF-1.7\npreview export\n", "utf8")) }));
 
 import * as db from "./db";
@@ -106,10 +106,10 @@ describe("signed binary export downloads", () => {
 
     expect(verifyExportTicket(ticket)).toMatchObject({ documentType: "plan-output" });
     expect(response.status).toBe(200);
-    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - Compatibility Handoff.html"');
-    expect(content).toContain("VCF Compatibility Delivery Handoff");
-    expect(content).toContain("Every observed server and CPU model");
-    expect(content).toContain("Compatibility action register");
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Meridian FCP Plan - Delivery Handoff.html"');
+    expect(content).toContain("Internal, not for customer distribution");
+    expect(content).toContain("Start here: what delivery needs to know first");
+    expect(content).toContain("Estimating Basis");
   });
 
   it("streams the Building Blocks workbook for a Commercial plan", async () => {
@@ -144,7 +144,7 @@ describe("signed binary export downloads", () => {
 
   it("normalizes unsafe and empty export names", () => {
     expect(safeExportFilename("  ACME / FCP: West  ", "pdf")).toBe("ACME FCP West - FCP.pdf");
-    expect(safeExportFilename("  ACME / FCP: West  ", "pdf", "plan-output")).toBe("ACME FCP West - Compatibility Handoff.pdf");
+    expect(safeExportFilename("  ACME / FCP: West  ", "pdf", "plan-output")).toBe("ACME FCP West - Delivery Handoff.pdf");
     expect(safeExportFilename("///", "html")).toBe("Engagement - FCP.html");
   });
 });

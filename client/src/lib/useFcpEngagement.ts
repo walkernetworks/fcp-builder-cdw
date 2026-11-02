@@ -8,7 +8,7 @@ import type { ReportFormatChoice } from "@shared/reportFormat";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
-const EXPORT_DOCUMENT_LABELS: Record<ExportDocumentType, string> = { fcp: "FCP", "condensed-fcp": "FCP", "plan-output": "Compatibility handoff", "building-blocks": "Building Blocks workbook" };
+const EXPORT_DOCUMENT_LABELS: Record<ExportDocumentType, string> = { fcp: "FCP", "condensed-fcp": "FCP", "plan-output": "Delivery Handoff", "building-blocks": "Building Blocks workbook" };
 
 /**
  * One engagement's FCP in the workspace: load (with the same migration exports apply), autosave while this person holds
