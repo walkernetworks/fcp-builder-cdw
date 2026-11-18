@@ -382,6 +382,18 @@ export function fitToEnvelope(lines: EffortLine[], envelopeHours: number | null)
   return { lines: working, fullScopeHours, status: "short" as FitStatus, shortfallHours: afterReduction - envelopeHours, headroomHours: 0 };
 }
 
+/**
+ * When the funded work ends: the end of the last CDW-delivered activity left on the entitlement timeline, never later
+ * than the entitlement end. The plan can only bill its hours up to there, so follow-on work starts the month after it,
+ * not when the entitlement window closes. Falls back to the entitlement end when no CDW activity is scheduled.
+ */
+export function fundedWorkEnd(adoption: Timeline, termEnd: string | null): string | null {
+  const ends = adoption.lanes.flatMap(lane => lane.bars).filter(bar => activityOwner(bar) === "cdw").map(bar => barWindow(adoption, bar)?.end ?? "").filter(Boolean).sort();
+  const last = ends.at(-1);
+  if (!last) return termEnd;
+  return termEnd && last > termEnd ? termEnd : last;
+}
+
 /** The entitlement end: the recorded term, or one year from the entitlement start. */
 export function entitlementTermEnd(document: EngagementDocument): string | null {
   const { report, fields } = document;
@@ -834,7 +846,8 @@ function movedTimelines(document: EngagementDocument, deferredIds: string[]): { 
   const gateless = new Set(Object.entries(GATED_WORK).filter(([, work]) => !remaining.some(bar => work.test(bar.id))).map(([gate]) => gate));
   const adoption: Timeline = { ...document.adoptionTimeline, lanes: document.adoptionTimeline.lanes.map(lane => ({ ...lane, bars: lane.bars.filter(bar => !ids.has(bar.id) && !gateless.has(bar.id)).map(withoutMoved) })) };
   const notional = document.twoYearPlan;
-  const termEnd = entitlementTermEnd(document);
+  // Follow-on work starts after the funded work ends, which can be well before the entitlement window does.
+  const termEnd = fundedWorkEnd(adoption, entitlementTermEnd(document));
   const start = /^(\d{4})-(\d{2})/.exec(notional.startDate);
   const end = termEnd ? /^(\d{4})-(\d{2})/.exec(termEnd) : null;
   if (!ids.size || !start || !end) return { adoption, notional };
