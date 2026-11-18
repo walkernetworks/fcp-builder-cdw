@@ -13,25 +13,25 @@ const checks = (html: string, document: EngagementDocument) => checkCondensedFcp
 const visible = (html: string) => html.replace(/<style[\s\S]*?<\/style>/g, " ").replace(/<svg[\s\S]*?<\/svg>/g, " ").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ");
 
 describe("Summary with BSAS", () => {
-  it("BSAS only: the fact strip shows the BSAS hours and term, and no dollar figure (golden)", async () => {
+  it("BSAS only: the fact strip shows the BSAS term, and no hours or dollar figure (golden)", async () => {
     const document = riverbendHealth();
     const html = summary(document);
     const text = visible(html);
-    expect(text).toContain("400 hrs");
+    expect(text).not.toMatch(/\d\s*(BSAS\s+)?(hours?|hrs?)\b(?!\s*(per|a)\s*week)/i);
     expect(text).toContain("Broadcom Software Adoption Services");
-    expect(text).toMatch(/BSAS hours · .*2027/);
+    expect(text).toMatch(/Funded Broadcom Software Adoption Services .*2027/);
     expect(text).not.toMatch(/\$\s?\d/);
     expect(checks(html, document)).toEqual([]);
     await expect(html).toMatchFileSnapshot("./__golden__/summary-riverbend-health.html");
   });
 
-  it("entitlement plus BSAS: How It's Funded names the BSAS hours, term and forfeiture, in hours and dates only (golden)", async () => {
+  it("entitlement plus BSAS: How It's Funded names the BSAS term and forfeiture, in dates only (golden)", async () => {
     const document = meridianHealth();
     const html = summary(document);
     const after = visible(html).split("How It's Funded")[1] ?? "";
-    expect(after).toContain("(BSAS) fund this work: 291 hours from 1 May 2027 to 30 Apr 2028. 291 hours are planned.");
+    expect(after).toContain("(BSAS) fund this work from 1 May 2027 to 30 Apr 2028.");
+    expect(after).not.toMatch(/\d\s*hours/i);
     expect(after).not.toMatch(/\$\s?\d|rate|tier|forfeit|needs one of/i);
-    expect(visible(html)).toMatch(/BSAS hours\s+Governance|BSAS hours/);
     expect(checks(html, document)).toEqual([]);
     await expect(html).toMatchFileSnapshot("./__golden__/summary-meridian-health.html");
   });
@@ -59,7 +59,8 @@ describe("funding problems, per pool", () => {
   it("BSAS hours no planned follow-on work draws on are forfeited, and the Summary says so", () => {
     const document = meridianHealthForfeiting();
     expect(problem(document)).toMatch(/285 hours are not planned and will be forfeited at term end \(315 planned against the 600-hour BSAS allocation, 2027-05-01 to 2028-04-30\)\./);
-    expect(visible(summary(document))).toContain("315 hours are planned; 285 hours are not planned and will be forfeited at term end.");
+    // The planner sees the hours (the funding problem above); the customer page says only that unplanned BSAS is forfeited.
+    expect(visible(summary(document))).toContain("Any part not planned by term end is forfeited.");
   });
 
   it("stays quiet within one hour of rounding either way", () => {
