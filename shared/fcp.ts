@@ -2951,19 +2951,26 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     // execution decision, then governed and prepared for implementation rather than leaving the window empty.
     const designEnd = Math.max(pathwayDesignEnd, hclGateEnd, ...Object.values(componentDesignCursors));
     // These run through entitlement end, not to the end of the scheduling grid.
-    const windowEnd = entitlementLimitDate(fields) ? Math.min(count, primaryColumns(fields).length) : count;
+    const gridWindowEnd = entitlementLimitDate(fields) ? Math.min(count, primaryColumns(fields).length) : count;
+    // The grid is sized to a twelve-month entitlement, but the term can end sooner: these packages stop at the real end.
+    const termEndDate = parseIsoDate(fundedFields(fields).entitlementEnd);
+    const termColumns = !termEndDate || termEndDate < projectStart ? gridWindowEnd
+      : cadence === "month" ? monthDifference(new Date(Date.UTC(projectStart.getUTCFullYear(), projectStart.getUTCMonth(), 1)), new Date(Date.UTC(termEndDate.getUTCFullYear(), termEndDate.getUTCMonth(), 1))) + 1
+      : Math.floor((termEndDate.getTime() - projectStart.getTime()) / (7 * 86_400_000)) + 1;
+    const windowEnd = Math.max(1, Math.min(gridWindowEnd, termColumns));
     const lastDesignPackage = playbookPlan.designPackages.at(-1);
-    const [decisionStart, decisionEnd] = range(designEnd, 1);
+    // When design runs to or past the window these overlap its last column rather than starting after the term.
+    const [decisionStart, decisionEnd] = range(Math.min(designEnd, windowEnd), 1);
     programBars.push({
       ...bar("bar-platform-execution-decision", decisionStart, decisionEnd, colorForWorkstreamType("Governance"), playbookPlan.path === "design-only" ? "Funding and Delivery Window Approval" : "Pathway and Funding Approval", true, false, "Begin after the design package is accepted by the architecture and funding owners.", "Record the approved execution pathway, funding, delivery window, and implementation partner so implementation can be planned."),
       ...(lastDesignPackage ? { prerequisites: [`bar-playbook-design-${lastDesignPackage.id}`] } : {}),
     });
-    const [governanceStart, governanceEnd] = range(decisionEnd, windowEnd + 1 - decisionEnd);
+    const [governanceStart, governanceEnd] = range(Math.min(decisionEnd, windowEnd), windowEnd + 1 - Math.min(decisionEnd, windowEnd));
     programBars.push({
       ...bar("bar-platform-design-authority", governanceStart, governanceEnd, colorForWorkstreamType("Governance"), "Design Authority and Entitlement Tracking", false, false, "Continue after the execution decision through entitlement end.", "Keep the decision register, design baseline, risks, and entitlement drawdown current until implementation is contracted."),
       prerequisites: ["bar-platform-execution-decision"],
     });
-    const [readinessStart, readinessEnd] = range(designEnd, windowEnd + 1 - designEnd);
+    const [readinessStart, readinessEnd] = range(Math.min(designEnd, windowEnd), windowEnd + 1 - Math.min(designEnd, windowEnd));
     operationsBars.push({
       ...bar("bar-platform-operating-readiness", readinessStart, readinessEnd, colorForWorkstreamType("Operating Model / Platform"), "Operating Model, Skills, and Runbooks", false, false, "Begin after the design package is accepted.", "Prepare platform ownership, skills, support model, and operational runbooks so implementation can start without delay once approved."),
       ...(lastDesignPackage ? { prerequisites: [`bar-playbook-design-${lastDesignPackage.id}`] } : {}),
