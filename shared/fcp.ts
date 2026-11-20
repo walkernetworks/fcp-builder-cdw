@@ -1683,6 +1683,20 @@ function entitlementLimitDate(fields: MinimalFields): string {
   return parseIsoDate(end) && end >= timelineStartDate(fields) ? end : "";
 }
 
+/**
+ * Columns from the timeline start to the real entitlement end, never more than `gridColumns`. The grid is sized to a twelve-month
+ * entitlement from its start, but the term can end sooner, and work placed past the real end counts as scheduled after it.
+ */
+function termColumns(fields: MinimalFields, gridColumns: number): number {
+  const start = parseIsoDate(timelineStartDate(fields));
+  const end = parseIsoDate(fundedFields(fields).entitlementEnd);
+  if (!start || !end || end < start) return gridColumns;
+  const through = fields.adoptionCadence === "month"
+    ? monthDifference(new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1)), new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1))) + 1
+    : Math.floor((end.getTime() - start.getTime()) / (7 * 86_400_000)) + 1;
+  return Math.max(1, Math.min(gridColumns, through));
+}
+
 const CONTINUES_AFTER_ENTITLEMENT = "Continues after the entitlement ends; the remainder is carried in Year 2 of the Two-Year Notional.";
 const SCHEDULED_AFTER_ENTITLEMENT = "Scheduled after the entitlement ends; carried in Year 2 of the Two-Year Notional and needs a renewed or additional entitlement.";
 
@@ -1711,6 +1725,8 @@ function limitToEntitlement(fields: MinimalFields, schedule: Timeline): Timeline
 
 /** Work packages that always stay inside the entitlement: handover, the runbook and training, licensing and the management domains. */
 const PROTECTED_PACKAGES = /^bar-(platform-(handover|runbook-transfer|enablement|licensing)|management-domain(-\d+)?|converge-management-domain|import-domain-\d+|workload-domain(-\d+)?|import-workload-domain(-\d+)?)$/;
+/** The closing packages: when the calendar runs out they overlap the last entitlement months rather than falling after the term. */
+const CLOSING_PACKAGES = /^bar-(playbook-adoption-(vcf-management|vvf-operations)|operations-lifecycle)$/;
 const COMPRESSED_INTO_ENTITLEMENT = "Compressed into the last entitlement month so it is delivered within the entitlement.";
 const HANDOVER_WITH_RUNBOOK = "Runs in the last entitlement month, alongside the runbook knowledge transfer, so the service is accepted within the entitlement.";
 
@@ -1721,13 +1737,13 @@ const HANDOVER_WITH_RUNBOOK = "Runs in the last entitlement month, alongside the
  */
 function keepProtectedInEntitlement(fields: MinimalFields, schedule: Timeline): Timeline {
   if (!entitlementLimitDate(fields)) return schedule;
-  const count = primaryColumns(fields).length;
+  const count = termColumns(fields, primaryColumns(fields).length);
   if (schedule.columns.length <= count) return schedule;
   const all = schedule.lanes.flatMap(lane => lane.bars);
   const firstWave = all.filter(activity => /^bar-playbook-execution-/.test(activity.id)).sort((left, right) => left.startCol - right.startCol)[0];
   // A domain the customer wants later is not held in the window.
   const later = new Set(domainPackages(fields).filter(({ domain }) => domain.deferred).map(({ id }) => id));
-  const isProtected = (activity: TimelineBar) => (PROTECTED_PACKAGES.test(activity.id) && !later.has(activity.id)) || activity.id === firstWave?.id;
+  const isProtected = (activity: TimelineBar) => ((PROTECTED_PACKAGES.test(activity.id) || CLOSING_PACKAGES.test(activity.id)) && !later.has(activity.id)) || activity.id === firstWave?.id;
   if (!all.some(activity => isProtected(activity) && activity.startCol > count)) return schedule;
   const placed = new Map(all.map(activity => [activity.id, activity]));
   const moved = new Map<string, TimelineBar>();
@@ -2953,11 +2969,7 @@ function buildPrimaryTimeline(fields: MinimalFields, inventory: InventorySummary
     // These run through entitlement end, not to the end of the scheduling grid.
     const gridWindowEnd = entitlementLimitDate(fields) ? Math.min(count, primaryColumns(fields).length) : count;
     // The grid is sized to a twelve-month entitlement, but the term can end sooner: these packages stop at the real end.
-    const termEndDate = parseIsoDate(fundedFields(fields).entitlementEnd);
-    const termColumns = !termEndDate || termEndDate < projectStart ? gridWindowEnd
-      : cadence === "month" ? monthDifference(new Date(Date.UTC(projectStart.getUTCFullYear(), projectStart.getUTCMonth(), 1)), new Date(Date.UTC(termEndDate.getUTCFullYear(), termEndDate.getUTCMonth(), 1))) + 1
-      : Math.floor((termEndDate.getTime() - projectStart.getTime()) / (7 * 86_400_000)) + 1;
-    const windowEnd = Math.max(1, Math.min(gridWindowEnd, termColumns));
+    const windowEnd = termColumns(fields, gridWindowEnd);
     const lastDesignPackage = playbookPlan.designPackages.at(-1);
     // When design runs to or past the window these overlap its last column rather than starting after the term.
     const [decisionStart, decisionEnd] = range(Math.min(designEnd, windowEnd), 1);
