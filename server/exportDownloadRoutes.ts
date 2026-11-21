@@ -4,7 +4,7 @@ import { exportFilename, issuedFilename } from "../shared/exportFilename";
 import { migrateDocument } from "../shared/fcp";
 import * as db from "./db";
 import { BUILDING_BLOCKS_MIME, buildingBlocksFilename, renderBuildingBlocksWorkbook } from "./buildingBlocksWorkbook";
-import { verifyExportTicket } from "./exportTickets";
+import { isIssuedDocument, verifyExportTicket } from "./exportTickets";
 import { viewerFor } from "./visibility";
 import { renderDeliveryHandoffHtml, type HandoffRecord } from "./deliveryHandoffRenderer";
 import { renderFcpHtml } from "./fcpRenderer";
@@ -34,17 +34,42 @@ export function registerExportDownloadRoutes(app: Express) {
       const row = user ? await db.getEngagement(viewerFor(user), ticket.engagementId) : undefined;
       if (!row) return deny(res, 404, "Engagement not found.");
 
-      // An issued version goes out exactly as issued: its stored HTML, or a PDF rendered from it.
-      if (ticket.documentType === "issued-fcp") {
+      // An issued version goes out exactly as issued: its stored HTML, or a PDF rendered from it. Its Delivery Handoff and
+      // Building Blocks workbook are built from the snapshot stored with that issue, never from the working FCP.
+      if (isIssuedDocument(ticket.documentType)) {
         const version = await db.getIssuedVersion(viewerFor(user!), ticket.engagementId, ticket.versionId ?? 0);
-        if (!version?.renderedHtml || version.issueNumber === null) return deny(res, 404, "Issued version not found.");
+        if (!version || version.issueNumber === null) return deny(res, 404, "Issued version not found.");
         res.setHeader("Cache-Control", "private, no-store, max-age=0");
         res.setHeader("Pragma", "no-cache");
         res.setHeader("X-Content-Type-Options", "nosniff");
-        const name = issuedFilename(version.title, version.issueNumber, ticket.format === "html" ? "html" : "pdf");
-        res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
-        if (ticket.format === "html") return res.status(200).type("text/html; charset=utf-8").send(version.renderedHtml);
-        return res.status(200).type("application/pdf").send(Buffer.from(await renderPdf(version.renderedHtml)));
+        const extension = ticket.format === "xlsx" ? "xlsx" : ticket.format === "html" ? "html" : "pdf";
+        if (ticket.documentType === "issued-fcp") {
+          if (!version.renderedHtml) return deny(res, 404, "Issued version not found.");
+          res.setHeader("Content-Disposition", `attachment; filename="${issuedFilename(version.title, version.issueNumber, extension)}"`);
+          if (ticket.format === "html") return res.status(200).type("text/html; charset=utf-8").send(version.renderedHtml);
+          return res.status(200).type("application/pdf").send(Buffer.from(await renderPdf(version.renderedHtml)));
+        }
+        const issuedDocument = migrateDocument(version.data);
+        if (ticket.documentType === "issued-building-blocks") {
+          if (!isCommercialPlan(issuedDocument.fields)) return deny(res, 409, `Issue ${version.issueNumber} was not a Commercial plan, so it has no Building Blocks workbook.`);
+          res.setHeader("Content-Disposition", `attachment; filename="${issuedFilename(version.title, version.issueNumber, "xlsx", "building-blocks")}"`);
+          return res.status(200).type(BUILDING_BLOCKS_MIME).send(Buffer.from(renderBuildingBlocksWorkbook(issuedDocument)));
+        }
+        const issuedOn = version.issuedAt ? version.issuedAt.toISOString().slice(0, 10) : null;
+        const handoff = renderDeliveryHandoffHtml(version.title, issuedDocument, {
+          effort: version.effortSnapshot ?? scopedEffortForDocument(issuedDocument, issuedOn ?? undefined),
+          ...(issuedOn ? { today: issuedOn } : {}),
+          record: {
+            opportunityNumber: row.opportunityNumber,
+            segment: row.segment,
+            stage: row.stage,
+            issued: { issueNumber: version.issueNumber, issuedOn, format: version.reportFormat ?? null, broadcomApprovedOn: version.broadcomApprovedOn ?? null, customerApprovedOn: version.customerApprovedOn ?? null },
+            deliveredNotes: await recordDeliveredNotes(viewerFor(user!), ticket.engagementId, issuedDocument),
+          },
+        });
+        res.setHeader("Content-Disposition", `attachment; filename="${issuedFilename(version.title, version.issueNumber, extension, "plan-output")}"`);
+        if (ticket.format === "html") return res.status(200).type("text/html; charset=utf-8").send(handoff);
+        return res.status(200).type("application/pdf").send(Buffer.from(await renderPdf(handoff)));
       }
 
       // Same migration the workspace applies on load, so exports reflect current planning rules and wording.

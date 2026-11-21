@@ -7,12 +7,13 @@ import { Chip, EmptyState, Panel, Pill } from "@/components/vsa/elements";
 import { downloadServerAttachment } from "@/lib/downloads";
 import { trpc } from "@/lib/trpc";
 import type { ChangeSummary } from "@shared/fcpChangeSummary";
-import { issuedFilename } from "@shared/exportFilename";
+import { issuedFilename, type ExportDocumentType } from "@shared/exportFilename";
+import { isCommercialPlan } from "@shared/buildingBlocks";
 import type { EngagementDocument } from "@shared/fcp";
 import { defaultReportFormat, REPORT_FORMAT_CHOICES, REPORT_FORMAT_LABELS, type ReportFormatChoice } from "@shared/reportFormat";
 import { SEGMENT_NAMES } from "@shared/fcpRecord";
 import { requiresBroadcomApproval, type Segment } from "@shared/vsaStage";
-import { Columns2, Download, FileCheck2, Loader2, RotateCcw, Send } from "lucide-react";
+import { Columns2, Download, FileCheck2, FileSpreadsheet, Loader2, RotateCcw, Send, ShieldCheck } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -159,19 +160,22 @@ export function IssuePanel({ engagementId, document, readOnly, saveDocument, rel
 }
 
 /** Every issued version, newest first: download exactly as issued, and record approvals on the current one. */
-export function IssuedVersionsList({ engagementId, title, readOnly, segment }: IssueActions) {
+export function IssuedVersionsList({ engagementId, title, document, readOnly, segment }: IssueActions) {
   const issued = trpc.fcpRecord.issued.useQuery({ id: engagementId });
   const ticket = trpc.fcpRecord.issuedDownloadTicket.useMutation();
   const [downloading, setDownloading] = useState<string | null>(null);
   const [comparing, setComparing] = useState(false);
   const versions = issued.data?.versions ?? [];
 
-  const download = async (versionId: number, issueNumber: number, format: "html" | "pdf") => {
-    setDownloading(`${versionId}-${format}`);
+  // Each issue carries its own Delivery Handoff (internal) and, on a Commercial plan, its Building Blocks workbook, built from what was issued.
+  const commercial = isCommercialPlan(document.fields);
+  const download = async (versionId: number, issueNumber: number, format: "html" | "pdf" | "xlsx", kind: "fcp" | "handoff" | "building-blocks" = "fcp") => {
+    setDownloading(`${versionId}-${kind}-${format}`);
     try {
-      const { url } = await ticket.mutateAsync({ id: engagementId, versionId, format });
+      const { url } = await ticket.mutateAsync({ id: engagementId, versionId, document: kind, format });
       const response = await fetch(url, { credentials: "same-origin" });
-      await downloadServerAttachment(response, format, issuedFilename(title, issueNumber, format));
+      const documentType: ExportDocumentType = kind === "handoff" ? "plan-output" : kind === "building-blocks" ? "building-blocks" : "fcp";
+      await downloadServerAttachment(response, format, issuedFilename(title, issueNumber, format, documentType));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The download could not be started");
     } finally {
@@ -192,8 +196,16 @@ export function IssuedVersionsList({ engagementId, title, readOnly, segment }: I
                   {version.fundingOverrideNote && <p className="mt-1 max-w-3xl text-xs leading-5 text-state-warn-text">Issued before its hours reconciled: {version.fundingOverrideNote}</p>}
                   {version.revisionNote && <p className="mt-1 max-w-3xl text-xs leading-5 text-ink">“{version.revisionNote}”</p>}
                 </div>
-                <div className="flex gap-1.5">
-                  {(["html", "pdf"] as const).map(format => <Button key={format} variant="outline" size="sm" className="h-7" disabled={downloading !== null} onClick={() => void download(version.id, version.issueNumber!, format)}>{downloading === `${version.id}-${format}` ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />} {format.toUpperCase()}</Button>)}
+                <div className="flex flex-col items-end gap-1.5">
+                  <div className="flex items-center gap-1.5"><span className="text-[11px] text-ink-muted">FCP</span>
+                    {(["html", "pdf"] as const).map(format => <Button key={format} variant="outline" size="sm" className="h-7" disabled={downloading !== null} onClick={() => void download(version.id, version.issueNumber!, format)}>{downloading === `${version.id}-fcp-${format}` ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />} {format.toUpperCase()}</Button>)}
+                  </div>
+                  <div className="flex items-center gap-1.5"><span className="flex items-center gap-1 text-[11px] text-ink-muted"><ShieldCheck className="size-3.5" /> Delivery Handoff (internal)</span>
+                    {(["html", "pdf"] as const).map(format => <Button key={format} variant="outline" size="sm" className="h-7" disabled={downloading !== null} onClick={() => void download(version.id, version.issueNumber!, format, "handoff")}>{downloading === `${version.id}-handoff-${format}` ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />} {format.toUpperCase()}</Button>)}
+                  </div>
+                  {commercial && <div className="flex items-center gap-1.5"><span className="flex items-center gap-1 text-[11px] text-ink-muted"><FileSpreadsheet className="size-3.5" /> Building Blocks</span>
+                    <Button variant="outline" size="sm" className="h-7" disabled={downloading !== null} onClick={() => void download(version.id, version.issueNumber!, "xlsx", "building-blocks")}>{downloading === `${version.id}-building-blocks-xlsx` ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />} XLSX</Button>
+                  </div>}
                 </div>
               </div>
               <div className="grid gap-3 md:grid-cols-2">

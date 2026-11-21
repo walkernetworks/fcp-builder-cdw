@@ -19,6 +19,6 @@ export function exportFilename(title: string, documentType: ExportDocumentType, 
 }
 
 /** Download name for an issued version, for example "Northwind Mfg - FCP Issue 2.pdf". */
-export function issuedFilename(title: string, issueNumber: number, extension: "html" | "pdf"): string {
-  return exportFilename(title, "fcp", extension).replace(new RegExp(`\\.${extension}$`), ` Issue ${issueNumber}.${extension}`);
+export function issuedFilename(title: string, issueNumber: number, extension: "html" | "pdf" | "xlsx", documentType: ExportDocumentType = "fcp"): string {
+  return exportFilename(title, documentType, extension).replace(new RegExp(`\\.${extension}$`), ` Issue ${issueNumber}.${extension}`);
 }
