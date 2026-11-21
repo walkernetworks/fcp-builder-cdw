@@ -2,14 +2,14 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { REPORT_FORMAT_CHOICES, type ReportFormatChoice } from "../shared/reportFormat";
 
 export type ExportFormat = "html" | "pdf" | "xlsx";
-export type ExportDocumentType = "fcp" | "condensed-fcp" | "plan-output" | "building-blocks" | "issued-fcp";
+export type ExportDocumentType = "fcp" | "condensed-fcp" | "plan-output" | "building-blocks" | "issued-fcp" | "issued-handoff" | "issued-building-blocks";
 
 type ExportTicketPayload = {
   userId: number;
   engagementId: number;
   format: ExportFormat;
   documentType: ExportDocumentType;
-  /** The issued version, for "issued-fcp" only. */
+  /** The issued version, for the three issued documents only (the FCP, its Delivery Handoff and its Building Blocks workbook). */
   versionId?: number;
   /** The customer format of an FCP draft, for "condensed-fcp" only; absent renders the long report. */
   reportFormat?: ReportFormatChoice;
@@ -27,6 +27,9 @@ function secret() {
 function sign(payload: string) {
   return createHmac("sha256", secret()).update(payload).digest("base64url");
 }
+
+/** The documents that come from one issued version, as it was issued. */
+export const isIssuedDocument = (documentType: unknown) => documentType === "issued-fcp" || documentType === "issued-handoff" || documentType === "issued-building-blocks";
 
 export function createExportTicket(userId: number, engagementId: number, format: ExportFormat, documentType: ExportDocumentType = "fcp", versionId?: number, reportFormat?: ReportFormatChoice) {
   const payload: ExportTicketPayload = {
@@ -56,14 +59,13 @@ export function verifyExportTicket(ticket: string): ExportTicketPayload | null {
     if (!Number.isInteger(parsed.userId) || Number(parsed.userId) <= 0) return null;
     if (!Number.isInteger(parsed.engagementId) || Number(parsed.engagementId) <= 0) return null;
     if (parsed.format !== "html" && parsed.format !== "pdf" && parsed.format !== "xlsx") return null;
-    if (parsed.documentType !== "fcp" && parsed.documentType !== "condensed-fcp" && parsed.documentType !== "plan-output" && parsed.documentType !== "building-blocks" && parsed.documentType !== "issued-fcp") return null;
+    if (parsed.documentType !== "fcp" && parsed.documentType !== "condensed-fcp" && parsed.documentType !== "plan-output" && parsed.documentType !== "building-blocks" && parsed.documentType !== "issued-fcp" && parsed.documentType !== "issued-handoff" && parsed.documentType !== "issued-building-blocks") return null;
     // An issued version is named by its id, and only an issued version is.
-    if ((parsed.documentType === "issued-fcp") !== (parsed.versionId !== undefined)) return null;
+    if (isIssuedDocument(parsed.documentType) !== (parsed.versionId !== undefined)) return null;
     if (parsed.versionId !== undefined && (!Number.isInteger(parsed.versionId) || parsed.versionId <= 0)) return null;
-    if (parsed.documentType === "issued-fcp" && parsed.format === "xlsx") return null;
     if (parsed.reportFormat !== undefined && (parsed.documentType !== "condensed-fcp" || !(REPORT_FORMAT_CHOICES as readonly string[]).includes(parsed.reportFormat))) return null;
     // The Building Blocks workbook is only ever issued as XLSX, and XLSX only for that workbook.
-    if ((parsed.format === "xlsx") !== (parsed.documentType === "building-blocks")) return null;
+    if ((parsed.format === "xlsx") !== (parsed.documentType === "building-blocks" || parsed.documentType === "issued-building-blocks")) return null;
     if (typeof parsed.expiresAt !== "number" || parsed.expiresAt < Date.now()) return null;
     return parsed as ExportTicketPayload;
   } catch {

@@ -90,16 +90,20 @@ describe("Review section layout", () => {
   const review = read("components/fcp/ReviewSection.tsx");
   const order = (...needles: string[]) => needles.map(needle => review.indexOf(needle));
 
-  it("runs top to bottom: ready to issue, the issue with its versions, downloads, then More", () => {
-    const positions = order('title="Ready to issue"', "<ReportFormatPicker", "<IssuePanel", "<IssuedVersionsList", 'title="Downloads"', ">More<");
+  it("runs top to bottom: ready to issue, the issue with its versions and their downloads, then More", () => {
+    const positions = order('title="Ready to issue"', "<ReportFormatPicker", "<IssuePanel", "<IssuedVersionsList", ">More<");
     expect(positions.every(index => index > 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   });
 
-  it("lists the three downloads once, with the Building Blocks workbook for Commercial plans only", () => {
-    expect(review.match(/<DeliverableCard /g)).toHaveLength(3);
-    expect(review).toContain("isCommercialPlan(document.fields) && <DeliverableCard");
-    expect(review).toContain('title="Delivery Handoff"');
+  it("has no Downloads panel: each issued version carries its FCP, Delivery Handoff and, on a Commercial plan, Building Blocks workbook", () => {
+    expect(review).not.toContain('title="Downloads"');
+    expect(review).not.toContain("<DeliverableCard");
+    const issued = read("components/fcp/IssuedVersions.tsx");
+    expect(issued).toContain('"handoff"');
+    expect(issued).toContain('"building-blocks"');
+    expect(issued).toContain("const commercial = isCommercialPlan(document.fields)");
+    expect(issued).toContain("{commercial && <div");
   });
 
   it("keeps only the sources behind More, and offers no long-report export toggles or full-report format", () => {

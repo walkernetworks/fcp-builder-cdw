@@ -217,7 +217,7 @@ function Workspace({ id }: { id: number }) {
             </>}
             {section === "plan" && <PlanSection document={document} onChange={fcp.mutateDocument} onRebuild={fcp.buildPlan} setup={setup} previewHtml={fcp.preview} />}
             {section === "narrative" && <ReportContentEditor document={document} onChange={fcp.mutateDocument} sections={NARRATIVE_SECTIONS} />}
-            {section === "review" && <ReviewSection document={document} segmentWarning={segmentWarningText} wavesWarning={wavesWarning} onFix={setSection} segment={tracker?.segment ?? null} reportFormat={reportFormat} formatChoice={formatChoice} onFormatChoice={setFormatChoice} issueActions={issueActions} activeExport={fcp.activeExport} onExport={fcp.startExport} onChange={fcp.mutateDocument} />}
+            {section === "review" && <ReviewSection document={document} segmentWarning={segmentWarningText} wavesWarning={wavesWarning} onFix={setSection} segment={tracker?.segment ?? null} reportFormat={reportFormat} formatChoice={formatChoice} onFormatChoice={setFormatChoice} issueActions={issueActions} onChange={fcp.mutateDocument} />}
           </fieldset>
         </main>
 

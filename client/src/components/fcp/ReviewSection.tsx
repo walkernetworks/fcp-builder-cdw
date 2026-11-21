@@ -1,16 +1,12 @@
-import { DeliverableCard } from "@/components/fcp/workspaceParts";
 import { IssuedVersionsList, IssuePanel, ReportFormatPicker } from "@/components/fcp/IssuedVersions";
 import { ReportContentEditor } from "@/components/ReportContentEditor";
 import { Button } from "@/components/ui/button";
 import { Panel, Pill } from "@/components/vsa/elements";
-import type { ActiveExport, ExportFormat } from "@/components/fcp/workspaceParts";
-import type { ExportDocumentType } from "@shared/exportFilename";
-import { isCommercialPlan } from "@shared/buildingBlocks";
 import type { EngagementDocument } from "@shared/fcp";
 import { defaultReportFormat, type ReportFormatChoice } from "@shared/reportFormat";
 import { internalChecklistItems, reviewChecklist, type FixSection } from "@shared/reviewChecklist";
 import type { Segment } from "@shared/vsaStage";
-import { ChevronDown, FileCheck2, FileSpreadsheet, ShieldCheck } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 
 const SECTION_NAMES: Record<FixSection, string> = { engagement: "Engagement", funding: "Funding", estate: "Estate", scope: "Scope", plan: "Plan" };
@@ -19,9 +15,10 @@ type IssueActions = Parameters<typeof IssuePanel>[0];
 
 /**
  * Review and issue, one flow from the top: what must be fixed before issuing, the issue itself with the versions and
- * their approvals under it, every download in one list, and the sources behind a "More" fold. Nothing below belongs above.
+ * their approvals and downloads (the FCP, its Delivery Handoff and its Building Blocks workbook) under it, and the sources
+ * behind a "More" fold. The draft FCP is exported from the header.
  */
-export function ReviewSection({ document, segmentWarning, wavesWarning, onFix, segment, reportFormat, formatChoice, onFormatChoice, issueActions, activeExport, onExport, onChange }: {
+export function ReviewSection({ document, segmentWarning, wavesWarning, onFix, segment, reportFormat, formatChoice, onFormatChoice, issueActions, onChange }: {
   document: EngagementDocument;
   segmentWarning: string | null;
   wavesWarning: string | null;
@@ -31,8 +28,6 @@ export function ReviewSection({ document, segmentWarning, wavesWarning, onFix, s
   formatChoice: ReportFormatChoice | null;
   onFormatChoice: (choice: ReportFormatChoice | null) => void;
   issueActions: IssueActions;
-  activeExport: ActiveExport;
-  onExport: (format: ExportFormat, documentType: ExportDocumentType) => Promise<void>;
   onChange: (document: EngagementDocument) => void;
 }) {
   // The funding result comes from the issue check; until it has run the checklist says so. It belongs to the document
@@ -74,14 +69,6 @@ export function ReviewSection({ document, segmentWarning, wavesWarning, onFix, s
         <IssuePanel {...issueActions} onChecked={result => setChecked(result ? { document, fundingProblem: result.fundingProblem } : undefined)} />
         <IssuedVersionsList {...issueActions} />
       </section>
-
-      <Panel title="Downloads" sub="Working copies and internal documents. The customer receives an issued version, downloaded from Issued versions above." bodyClassName="p-0">
-        <div className="grid grid-cols-1 gap-px bg-s100">
-          <DeliverableCard title="Draft FCP" label="Draft export" description="The working FCP in the chosen format, marked DRAFT on every page: for internal review. Content checks run before every download." icon={FileCheck2} activeExport={activeExport} documentType="condensed-fcp" onExport={onExport} />
-          <DeliverableCard title="Delivery Handoff" label="Internal, not for the customer" description="Hours and funding, the estimating basis, compatibility evidence and owned actions, design gates and customer commitments, for the delivery team." icon={ShieldCheck} activeExport={activeExport} documentType="plan-output" onExport={onExport} />
-          {isCommercialPlan(document.fields) && <DeliverableCard title="Building Blocks workbook" label="Commercial plan" description="Every Building Blocks tool block with its category start date, status, projected dates and dependencies taken from this plan." icon={FileSpreadsheet} activeExport={activeExport} documentType="building-blocks" formats={["xlsx"]} onExport={onExport} />}
-        </div>
-      </Panel>
 
       <section className="rounded-lg border border-s100 bg-surface">
         <button type="button" className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left" aria-expanded={more} onClick={() => setMore(value => !value)}>

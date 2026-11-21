@@ -333,6 +333,46 @@ describe("issued downloads", () => {
     expect(db.getIssuedVersion).toHaveBeenCalledWith({ id: 7, workspaceId: 1, role: "user" }, 4, 90);
   });
 
+  it("names the three issued documents in a ticket, each only with an issued version, and the workbook only as XLSX", () => {
+    expect(verifyExportTicket(createExportTicket(7, 4, "pdf", "issued-handoff", 90))).toMatchObject({ documentType: "issued-handoff", versionId: 90 });
+    expect(verifyExportTicket(createExportTicket(7, 4, "xlsx", "issued-building-blocks", 90))).toMatchObject({ documentType: "issued-building-blocks", versionId: 90 });
+    expect(verifyExportTicket(createExportTicket(7, 4, "pdf", "issued-handoff"))).toBeNull();
+    expect(verifyExportTicket(createExportTicket(7, 4, "pdf", "issued-building-blocks", 90))).toBeNull();
+    expect(verifyExportTicket(createExportTicket(7, 4, "xlsx", "issued-handoff", 90))).toBeNull();
+    expect(verifyExportTicket(createExportTicket(7, 4, "xlsx", "issued-fcp", 90))).toBeNull();
+  });
+
+  it("returns an issue's Delivery Handoff from the snapshot stored with it, named by issue", async () => {
+    const issued = acmeHealthReconciled();
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 7, workspaceId: 1, role: "user" } as never);
+    vi.mocked(db.getEngagement).mockResolvedValue({ id: 4, title: "Acme Health FCP", data: acmeHealth(), opportunityNumber: null, segment: null, stage: null } as never);
+    vi.mocked(db.getIssuedVersion).mockResolvedValue({ id: 90, issueNumber: 2, status: "issued", title: "Acme Health FCP", data: issued, effortSnapshot: effortOf(issued), issuedAt: new Date("2026-09-30T12:00:00Z"), reportFormat: "summary", renderedHtml: "<p>x</p>", broadcomApprovedOn: null, customerApprovedOn: null } as never);
+    const response = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 4, "html", "issued-handoff", 90)}`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-disposition")).toContain("Delivery Handoff Issue 2.html");
+    const html = await response.text();
+    expect(html).toContain("Acme Health");
+    expect(html).not.toContain("draft-mark");
+    expect(db.getIssuedVersion).toHaveBeenCalledWith({ id: 7, workspaceId: 1, role: "user" }, 4, 90);
+  });
+
+  it("returns an issue's Building Blocks workbook, and refuses it for an issue that was not a Commercial plan", async () => {
+    const commercial = acmeHealthReconciled();
+    commercial.fields.commercialPlan = true;
+    vi.mocked(db.getUserById).mockResolvedValue({ id: 7, workspaceId: 1, role: "user" } as never);
+    vi.mocked(db.getEngagement).mockResolvedValue({ id: 4, title: "Acme Health FCP", data: acmeHealth() } as never);
+    vi.mocked(db.getIssuedVersion).mockResolvedValue({ id: 90, issueNumber: 1, status: "superseded", title: "Acme Health FCP", data: commercial, issuedAt: new Date("2026-09-30T12:00:00Z") } as never);
+    const ok = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 4, "xlsx", "issued-building-blocks", 90)}`);
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("content-disposition")).toContain("Building Blocks Issue 1.xlsx");
+    expect((await ok.arrayBuffer()).byteLength).toBeGreaterThan(1000);
+    const plain = acmeHealthReconciled();
+    plain.fields.commercialPlan = false;
+    vi.mocked(db.getIssuedVersion).mockResolvedValue({ id: 91, issueNumber: 2, status: "issued", title: "Acme Health FCP", data: plain, issuedAt: new Date("2026-09-30T12:00:00Z") } as never);
+    const refused = await fetch(`${baseUrl}/api/download/${createExportTicket(7, 4, "xlsx", "issued-building-blocks", 91)}`);
+    expect(refused.status).toBe(409);
+  });
+
   it("marks an export of the working FCP as a draft", async () => {
     vi.mocked(db.getUserById).mockResolvedValue({ id: 7, workspaceId: 1, role: "user" } as never);
     vi.mocked(db.getEngagement).mockResolvedValue({ id: 4, title: "Acme Health FCP", data: acmeHealth() } as never);

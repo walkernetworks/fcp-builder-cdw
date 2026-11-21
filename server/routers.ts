@@ -230,10 +230,13 @@ export const appRouter = router({
       .input(z.object({ id: recordId, versionIds: z.tuple([recordId, recordId]).refine(([a, b]) => a !== b, "Pick two different issued versions") }))
       .query(async ({ ctx, input }) => requireRow(await compareIssued(viewerFor(ctx.user), input.id, input.versionIds))),
     /** A signed link to an issued version, exactly as issued. Downloading it writes nothing. */
-    issuedDownloadTicket: protectedProcedure.input(z.object({ id: recordId, versionId: recordId, format: z.enum(["html", "pdf"]) })).mutation(async ({ ctx, input }) => {
-      requireRow(await db.getIssuedVersion(viewerFor(ctx.user), input.id, input.versionId));
-      return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, "issued-fcp", input.versionId)}` };
-    }),
+    issuedDownloadTicket: protectedProcedure
+      .input(z.object({ id: recordId, versionId: recordId, document: z.enum(["fcp", "handoff", "building-blocks"]).default("fcp"), format: z.enum(["html", "pdf", "xlsx"]) }).refine(input => (input.document === "building-blocks") === (input.format === "xlsx"), "The Building Blocks workbook is an XLSX, and only it is"))
+      .mutation(async ({ ctx, input }) => {
+        requireRow(await db.getIssuedVersion(viewerFor(ctx.user), input.id, input.versionId));
+        const documentType = input.document === "handoff" ? "issued-handoff" : input.document === "building-blocks" ? "issued-building-blocks" : "issued-fcp";
+        return { url: `/api/download/${createExportTicket(ctx.user.id, input.id, input.format, documentType, input.versionId)}` };
+      }),
     /** Hours consumed as of a date, newest first. */
     consumption: protectedProcedure.input(z.object({ id: recordId })).query(async ({ ctx, input }) => (await db.listConsumptionEntries(viewerFor(ctx.user), input.id)) ?? []),
     /** Anyone who can see the engagement records consumption by hand; Salesforce entries come only from the connector. */
