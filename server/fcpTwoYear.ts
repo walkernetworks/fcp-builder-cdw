@@ -2,14 +2,14 @@ import type { BsasAllocation } from "../shared/bsas";
 import { barWindow } from "../shared/buildingBlocks";
 import { formatWindow, type ScopedEffort, type WorkPackageEffort } from "../shared/effort";
 import type { EngagementDocument, Timeline } from "../shared/fcp";
-import { customerFacing, esc, firstSentence, hours, longDate, sentence, shortDate, type PreparedReport } from "./fcpReportParts";
+import { customerFacing, esc, firstSentence, longDate, sentence, shortDate, type PreparedReport } from "./fcpReportParts";
 import { renderTimeline, sliceTimeline } from "./timelineHtml";
 import { packageLabel, summaryTimeline } from "./timelineLabels";
 
 /**
  * The two-year view's second year, shared by every customer format: the Summary's page 3 and the Standard's roadmap.
  * A Gantt that starts the month after the entitlement ends (or after planned completion when no entitlement is
- * booked), the follow-on work in hours, and how it is funded. Hours and dates only. It has content only when there is
+ * booked), the follow-on work, and how it is funded. Dates only: customer documents carry no hours. It has content only when there is
  * follow-on or notional work, so a plan with none stays a page shorter.
  */
 
@@ -24,12 +24,12 @@ export type TwoYearInput = {
   followOnRows: WorkPackageEffort[];
   /** The BSAS pool beside an entitlement; null otherwise. */
   bsasPlan: BsasAllocation | null;
-  /** `roles` adds the hours by role and the BSAS hours per package (Standard); the default is package, month, hours. */
+  /** `detail` adds the lead role (Standard); the default is package and month. */
   detail?: boolean;
 };
 
 export type TwoYearView = {
-  /** True when there are follow-on packages with hours, or a BSAS pool. */
+  /** True when there are follow-on packages, or a BSAS term. */
   hasContent: boolean;
   /** The page body: heading, lead, Gantt, follow-on table and the funding box. Empty without content. */
   html: string;
@@ -50,7 +50,6 @@ export function problemsAddressedByFollowOn(document: EngagementDocument, follow
 export function twoYearView(input: TwoYearInput): TwoYearView {
   const { document, effort, prepared, booked, plannedEnd, followOnRows, bsasPlan } = input;
   const { customer, termEnd, assumedEnd, bsasOnly, w, customerTimelines } = prepared;
-  const num = (value: number) => hours(value);
 
   // The boundary: the end of the entitlement, or of the plan when nothing is booked.
   const boundary = booked ? termEnd : plannedEnd;
@@ -66,10 +65,10 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
   const window = booked ? w("entitlement", "BSAS term") : "planned delivery window";
   const first = slice?.columns[0];
   const last = slice?.columns.at(-1);
-  const lead = `${first && last ? `${esc(first)} through ${esc(last)}, the` : "The"} second year of the two-year view. This is where ${esc(customer)} goes next. ${booked ? `None of it is funded by the current ${esc(w("entitlement", "BSAS hours"))}.` : "None of it is in the planned delivery window."}`;
+  const lead = `${first && last ? `${esc(first)} through ${esc(last)}, the` : "The"} second year of the two-year view. This is where ${esc(customer)} goes next. ${booked ? `None of it is funded by the current ${esc(w("entitlement", "BSAS term"))}.` : "None of it is in the planned delivery window."}`;
   const gantt = slice && hasBars ? renderTimeline(summaryTimeline(slice), "No activities are scheduled after the plan.", undefined, { skipEmptyCategories: true, legendFromChart: true }) : "";
 
-  // ---- Follow-on work: package, month, hours; the Standard adds the hours by role and the BSAS hours
+  // ---- Follow-on work: package, month; the Standard adds the lead role
   const firstMonth = (() => {
     const base = boundary ? /^(\d{4})-(\d{2})/.exec(boundary) : null;
     if (!base) return notional.startDate;
@@ -83,14 +82,12 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
     // Every follow-on package has a month: one without a bar of its own (the later design phase) starts the month after the boundary.
     return span && (!boundary || span.start > boundary) ? formatWindow(span.start, span.end) : formatWindow(firstMonth, firstMonth);
   };
-  const totals = followOnRows.reduce((sum, row) => ({ architect: sum.architect + row.followOn!.architect, srConsultant: sum.srConsultant + row.followOn!.srConsultant, projectManager: sum.projectManager + row.followOn!.projectManager, total: sum.total + row.followOn!.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
-  const bsasById = new Map(bsasPlan?.rows.map(row => [row.id, row.bsasHours]) ?? []);
   const designInPlan = effort.workPackages.some(row => !row.deferred && row.total > 0 && row.id.startsWith("bar-playbook-design"));
   const table = (() => {
     if (!followOnRows.length) return "";
     const detail = Boolean(input.detail);
-    const headers = detail ? ["Work package", "Planned window", "Lead role", "Architect", "Sr. Consultant", "PM", "Total hours", ...(bsasPlan ? ["BSAS hours"] : [])] : ["Package", "Month", "Hours", ...(bsasPlan ? ["BSAS hours"] : [])];
-    const cell = (value: string, index: number, tag: "td" | "th") => `<${tag}${(detail ? index >= 3 : index >= 2) ? ' class="num"' : ""}>${value}</${tag}>`;
+    const headers = detail ? ["Work package", "Planned window", "Lead role"] : ["Package", "Month"];
+    const cell = (value: string, _index: number, tag: "td" | "th") => `<${tag}>${value}</${tag}>`;
     // Each package prints its outcome, and what accepts it where it states one, under its name.
     const named = (row: WorkPackageEffort) => {
       const outcome = row.detail?.outcome ? sentence(firstSentence(row.detail.outcome, 220)) : "";
@@ -99,23 +96,20 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
       return `${esc(packageLabel(row.label))}${text.length ? `<div class="wp-detail">${text.map(item => esc(item)).join(" ")}</div>` : ""}`;
     };
     const rows = followOnRows.map(row => detail
-      ? [named(row), esc(monthOf(row)), esc(row.leadRole), num(row.followOn!.architect), num(row.followOn!.srConsultant), num(row.followOn!.projectManager), num(row.followOn!.total), ...(bsasPlan ? [num(bsasById.get(row.id) ?? 0)] : [])]
-      : [named(row), esc(monthOf(row)), num(row.followOn!.total), ...(bsasPlan ? [num(bsasById.get(row.id) ?? 0)] : [])]);
-    const total = detail
-      ? ["Total follow-on hours", "", "", num(totals.architect), num(totals.srConsultant), num(totals.projectManager), num(totals.total), ...(bsasPlan ? [num(bsasPlan.plannedHours)] : [])]
-      : ["Total follow-on", "", num(totals.total), ...(bsasPlan ? [num(bsasPlan.plannedHours)] : [])];
-    return `<h3>Follow-on Work</h3><table class="wp std" data-foot="sum"><thead><tr>${headers.map((header, index) => cell(esc(header), index, "th")).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((value, index) => cell(value, index, "td")).join("")}</tr>`).join("")}<tr class="total">${total.map((value, index) => cell(value, index, "td")).join("")}</tr></tbody></table><p class="note">Estimated CDW hours${designInPlan ? ", planned against a design already completed in year one" : ""}.</p>`;
+      ? [named(row), esc(monthOf(row)), esc(row.leadRole)]
+      : [named(row), esc(monthOf(row))]);
+    return `<h3>Follow-on Work</h3><table class="wp std"><thead><tr>${headers.map((header, index) => cell(esc(header), index, "th")).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((value, index) => cell(value, index, "td")).join("")}</tr>`).join("")}</tbody></table><p class="note">Estimated from this plan${designInPlan ? ", planned against a design already completed in year one" : ""}.</p>`;
   })();
 
-  // ---- How it's funded: hours and dates only, never an amount
+  // ---- How it's funded: dates only, never an amount or hours
   const ends = termEnd ? `, ${bsasOnly ? "whose term ends" : "which ends"} ${longDate(termEnd)}${assumedEnd ? " (to be confirmed)" : ""}` : "";
-  const notDrawn = booked ? `This work is not drawn from the current ${esc(w("entitlement", "BSAS hours"))}${ends}.` : `This work is not part of the planned delivery window.`;
+  const notDrawn = booked ? `This work is not drawn from the current ${esc(w("entitlement", "BSAS"))}${ends}.` : `This work is not part of the planned delivery window.`;
   // BSAS funding the work is stated directly; only what BSAS does not cover still needs a purchase.
   const options = bsasPlan
-    ? bsasPlan.unfundedHours > 0 ? `The other ${hours(bsasPlan.unfundedHours)} hours need a renewal with a services entitlement attached or a services purchase.` : ""
-    : bsasOnly ? "It needs additional BSAS hours or a services purchase." : "It needs one of: a renewal with a services entitlement attached, a services purchase, or Broadcom Software Adoption Services hours.";
+    ? bsasPlan.unfundedHours > 0 ? "Work beyond what BSAS covers needs a renewal with a services entitlement attached or a services purchase." : ""
+    : bsasOnly ? "It needs additional BSAS or a services purchase." : "It needs one of: a renewal with a services entitlement attached, a services purchase, or Broadcom Software Adoption Services.";
   const bsasLine = bsasPlan
-    ? `Broadcom Software Adoption Services (BSAS) fund this work: ${hours(bsasPlan.term.hours)} hours from ${shortDate(bsasPlan.term.termStart)} to ${shortDate(bsasPlan.term.termEnd)}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}. ${hours(bsasPlan.plannedHours)} hours are planned${bsasPlan.forfeitedHours > 0 ? `; ${hours(bsasPlan.forfeitedHours)} hours are not planned and will be forfeited at term end` : ""}.`
+    ? `Broadcom Software Adoption Services (BSAS) fund this work from ${shortDate(bsasPlan.term.termStart)} to ${shortDate(bsasPlan.term.termEnd)}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}.${bsasPlan.forfeitedHours > 0 ? " Any part not planned by term end is forfeited." : ""}`
     : "";
   const problems = problemsAddressedByFollowOn(document, followOnRows);
   const why = problems.length ? `The sooner it is funded, the sooner this is addressed: ${problems.map(item => item.charAt(0).toLowerCase() + item.slice(1)).join("; ")}.` : "";

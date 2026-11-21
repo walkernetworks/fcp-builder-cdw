@@ -7,7 +7,7 @@ import { reconcileHours } from "../shared/reportFormat";
 import { customerOpenItems, deliveryClause, planKeyDates, platformName, selectedScopeSummary } from "../shared/reportView";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { barWindow } from "../shared/buildingBlocks";
-import { DRAFT_MARK, entitlementWindowTimeline, esc, firstSentence, hours, longDate, money, prepareReport, RESERVE_LINE, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
+import { DRAFT_MARK, entitlementWindowTimeline, esc, firstSentence, longDate, money, prepareReport, RESERVE_LINE, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
 import { twoYearView } from "./fcpTwoYear";
 import { renderTimeline } from "./timelineHtml";
 import { packageLabel, shortBarLabel, summaryTimeline } from "./timelineLabels";
@@ -180,19 +180,18 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
 
   const kpi = (value: string, label: string, sub: string) => `<div class="kpi"><div class="v">${value}</div><div class="l">${label}</div><div class="s">${sub}</div></div>`;
   const term = termStart && termEnd ? `${esc(shortDate(termStart))} to ${esc(shortDate(termEnd))}` : "";
-  // Nothing booked: no entitlement value, hours or term. The plan's own hours and dates stand in, and one tile says so.
+  // Nothing booked: no entitlement value or term. The plan's own dates stand in, and one tile says so.
   const booked = bsasOnly || Boolean(burndown) || fields.entitlementAmount > 0 || Boolean(termEnd);
   const windowName = bsasOnly ? "BSAS term" : booked ? "entitlement window" : "planned delivery window";
-  const plannedHoursTile = kpi(`${hours(effort.totals.total)} hrs`, "Planned CDW Hours", "Estimated from this plan");
   const valueTile = bsasOnly
-    ? kpi(`${hours(fields.bsasHours)} hrs`, "Broadcom Software Adoption Services", `BSAS hours${term ? ` · ${term}` : ""}`)
+    ? kpi("Funded", "Broadcom Software Adoption Services", term || "BSAS term to be confirmed")
     : fields.entitlementAmount
-      ? kpi(esc(money(fields.entitlementAmount)), `${esc(platform.split(" ")[0])} Services Entitlement`, [burndown ? `${hours(burndown.entitledHours)} hours` : "", term].filter(Boolean).join(" · "))
-      : plannedHoursTile;
+      ? kpi(esc(money(fields.entitlementAmount)), `${esc(platform.split(" ")[0])} Services Entitlement`, term)
+      : "";
   const consumedAsOf = report.entitlement.consumedAsOf;
   const remainingTile = burndown
-    ? kpi(`${hours(burndown.remainingHours)} hrs`, "Hours Remaining", `${hours(burndown.consumedHours)} of ${hours(burndown.entitledHours)} delivered${consumedAsOf ? ` as of ${esc(shortDate(consumedAsOf))}` : ""}`)
-    : valueTile === plannedHoursTile ? "" : plannedHoursTile;
+    ? kpi(`${Math.round(burndown.pctConsumed * 100)}%`, "Delivered to Date", consumedAsOf ? `As of ${esc(shortDate(consumedAsOf))}` : "Of the entitlement")
+    : "";
   const { implementationStart, buildStart, buildLater } = planKeyDates(document);
   // The plan's dates: the start the planner set, else where the timeline starts; the finish the planner set, else where the last bar ends.
   const timelineStart = document.adoptionTimeline.startDate || "";
@@ -201,9 +200,9 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   const plannedEnd = termEnd || fields.targetComplete || timelineEnd || null;
   const startTile = planStart ? kpi(esc(shortDate(planStart)), "Plan Starts", buildLater && buildStart ? `Design and planning first; build from ${esc(shortDate(buildStart))}` : "Build, upgrade and migration work begins") : "";
   const endTile = termEnd
-    ? kpi(esc(shortDate(termEnd)), w("Entitlement Ends", "BSAS Term Ends"), `${w("Unused hours are not refunded", "Unused BSAS hours are forfeited")}${assumedEnd ? "; date to be confirmed" : ""}`)
+    ? kpi(esc(shortDate(termEnd)), w("Entitlement Ends", "BSAS Term Ends"), `${w("Unused entitlement is not refunded", "Unused BSAS allocation is forfeited")}${assumedEnd ? "; date to be confirmed" : ""}`)
     : plannedEnd ? kpi(esc(shortDate(plannedEnd)), "Planned Completion", fields.targetComplete ? `${esc(customer)}'s target` : "Estimated from this plan") : "";
-  const bookedTile = booked ? "" : kpi("Not yet booked", "Entitlement", "Hours and term to be confirmed");
+  const bookedTile = booked ? "" : kpi("Not yet booked", "Entitlement", "Value and term to be confirmed");
   const tiles = [valueTile, remainingTile, startTile, endTile, bookedTile].filter(Boolean);
   const kpis = `<div class="kpis" style="grid-template-columns:repeat(${tiles.length},1fr)">${tiles.join("")}</div>`;
 
@@ -246,30 +245,28 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   // ---- Work packages: package, month, hours. Delivered hours are their own row; the plan schedules what remains.
   const reconciliation = reconcileHours(input, effort, today);
   const delivered = reconciliation && reconciliation.delivered > 0 ? reconciliation : null;
-  const deliveredRows = delivered ? [`<tr class="cat"><td colspan="3">Delivered to Date</td></tr>`, `<tr class="done"><td>${esc(options.deliveredNotes?.length ? options.deliveredNotes.join("; ") : "Hours delivered to date")}</td><td>${esc(termStart && delivered.deliveredAsOf ? formatWindow(termStart, delivered.deliveredAsOf) : delivered.deliveredAsOf ? `To ${shortDate(delivered.deliveredAsOf)}` : "")}</td><td class="num">${hours(delivered.delivered)}</td></tr>`] : [];
+  const deliveredRows = delivered ? [`<tr class="cat"><td colspan="2">Delivered to Date</td></tr>`, `<tr class="done"><td>${esc(options.deliveredNotes?.length ? options.deliveredNotes.join("; ") : "Work delivered to date")}</td><td>${esc(termStart && delivered.deliveredAsOf ? formatWindow(termStart, delivered.deliveredAsOf) : delivered.deliveredAsOf ? `To ${shortDate(delivered.deliveredAsOf)}` : "")}</td></tr>`] : [];
   let packageRows: string[];
   if (!effort.workPackages.some(row => row.total > 0)) {
-    packageRows = effort.rows.filter(row => row.total > 0).map(row => `<tr><td>${esc(row.note ? `${row.workstream} (${row.note})` : row.workstream)}</td><td></td><td class="num">${hours(row.total)}</td></tr>`);
+    packageRows = effort.rows.filter(row => row.total > 0).map(row => `<tr><td>${esc(row.note ? `${row.workstream} (${row.note})` : row.workstream)}</td><td></td></tr>`);
   } else {
     const shown = effort.workPackages.filter(row => !row.deferred && row.total > 0);
     packageRows = FIXED_GANTT_CATEGORIES.flatMap(category => {
       const rows = shown.filter(row => row.category === category);
-      return rows.length ? [`<tr class="cat"><td colspan="3">${esc(category)}</td></tr>`, ...rows.map(row => `<tr><td>${esc(packageLabel(row.label))}</td><td>${row.start && row.end ? esc(formatWindow(row.start, row.end)) : ""}</td><td class="num">${hours(row.total)}</td></tr>`)] : [];
+      return rows.length ? [`<tr class="cat"><td colspan="2">${esc(category)}</td></tr>`, ...rows.map(row => `<tr><td>${esc(packageLabel(row.label))}</td><td>${row.start && row.end ? esc(formatWindow(row.start, row.end)) : ""}</td></tr>`)] : [];
     });
-    packageRows.push(...shown.filter(row => !row.category).map(row => `<tr><td>${esc(packageLabel(row.label))}</td><td></td><td class="num">${hours(row.total)}</td></tr>`));
+    packageRows.push(...shown.filter(row => !row.category).map(row => `<tr><td>${esc(packageLabel(row.label))}</td><td></td></tr>`));
   }
   // The reserve is one line, so the column visibly adds up to the entitlement; the buckets behind it stay internal.
   const reserve = Math.round(effort.internal.fit?.reserveHours ?? 0);
-  const reserveRows = reserve >= 1 ? [`<tr class="hold"><td>${esc(RESERVE_LINE)}</td><td></td><td class="num">${hours(reserve)}</td></tr>`] : [];
+  const reserveRows = reserve >= 1 ? [`<tr class="hold"><td>${esc(RESERVE_LINE)}</td><td></td></tr>`] : [];
   const balanced = Boolean(reconciliation?.balanced);
   const total = (delivered?.delivered ?? 0) + Math.round(effort.totals.total) + (reserve >= 1 ? reserve : 0);
-  const totalLabel = balanced ? w("Total, funded by the entitlement", "Total, funded by the BSAS hours") : "Total CDW hours";
+  const totalLabel = balanced ? w("Total, funded by the entitlement", "Total, funded by the BSAS allocation") : "Total CDW effort";
   const basis = "Estimated from this plan.";
   // The sentence states only what the printed figures show: "equals" when they add up to the hour.
-  const reconcileNote = reconciliation && balanced
-    ? `CDW-delivered hours: ${hours(reconciliation.delivered)} delivered, ${hours(reconciliation.planned)} planned and ${hours(reconciliation.reserve)} held for change requests ${reconciliation.exact ? "add up to" : "use"} the ${hours(reconciliation.entitled)}-hour ${w("entitlement", "BSAS allocation")}${reconciliation.exact ? "" : ", to within an hour of rounding"}. ${basis}`
-    : delivered ? `CDW-delivered hours: ${hours(delivered.delivered)} delivered, ${hours(delivered.planned)} planned and ${hours(delivered.reserve)} held for change requests. ${basis}` : `CDW-delivered hours. ${basis}`;
-  const workPackages = `<h3>Work Packages</h3><table class="wp" data-foot="sum"><thead><tr><th>Package</th><th>Month</th><th class="num">Hours</th></tr></thead><tbody>${[...deliveredRows, ...packageRows, ...reserveRows].join("")}<tr class="total"><td>${esc(totalLabel)}</td><td></td><td class="num">${hours(total)}</td></tr></tbody></table><p class="note">${esc(reconcileNote)}</p>`;
+  const reconcileNote = delivered ? `Work already delivered is shown first; the plan schedules what remains${reserve >= 1 ? ", with a share held for change requests" : ""}. ${basis}` : basis;
+  const workPackages = `<h3>Work Packages</h3><table class="wp"><thead><tr><th>Package</th><th>Month</th></tr></thead><tbody>${[...deliveredRows, ...packageRows, ...reserveRows].join("")}</tbody></table><p class="note">${esc(reconcileNote)}</p>`;
 
   // ---- Page 2: the entitlement window (or the planned delivery window), key dates, what we need, after this plan
   const windowStart = fields.plannedProjectStart || fields.targetStart || timelineStart;
@@ -282,8 +279,8 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
     ...(planStart ? [{ date: planStart, text: buildLater ? "Design and planning start" : "Implementation services start" }] : []),
     ...(buildLater && buildStart ? [{ date: buildStart, text: "Platform build begins" }] : []),
     ...(fields.targetComplete ? [{ date: fields.targetComplete, text: `${customer}'s target completion` }] : []),
-    ...(bsas && !bsasOnly ? [{ date: bsas.termStart, text: "BSAS term starts for follow-on work" }, { date: bsas.termEnd, text: "BSAS term ends; unused BSAS hours are forfeited" }] : []),
-    ...(termEnd ? [{ date: termEnd, text: `${w("Entitlement ends; unused hours are not refunded", "BSAS term ends; unused BSAS hours are forfeited")}${assumedEnd ? " (to be confirmed)" : ""}`, end: true }] : []),
+    ...(bsas && !bsasOnly ? [{ date: bsas.termStart, text: "BSAS term starts for follow-on work" }, { date: bsas.termEnd, text: "BSAS term ends; unused BSAS allocation is forfeited" }] : []),
+    ...(termEnd ? [{ date: termEnd, text: `${w("Entitlement ends; unused entitlement is not refunded", "BSAS term ends; unused BSAS allocation is forfeited")}${assumedEnd ? " (to be confirmed)" : ""}`, end: true }] : []),
     // With no term, the plan's own finish closes the list, whether it is the target or where the timeline ends.
     ...(!termEnd && plannedEnd && plannedEnd !== fields.targetComplete ? [{ date: plannedEnd, text: "Planned completion", end: true }] : []),
   ].sort((left, right) => left.date.localeCompare(right.date));
@@ -309,16 +306,16 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   const whatFollows = moved.length
     ? `${listJoin(moved)}${remainder.length ? `, with the rest of the ${listJoin(remainder)},` : ""} follow${moved.length === 1 && !remainder.length ? "s" : ""} ${when}`
     : `The rest of the ${listJoin(remainder)} follows ${when}`;
-  // Entitlement plus BSAS: the BSAS pool is stated on its own, in hours and dates, with what is not planned in the term.
+  // Entitlement plus BSAS: the BSAS term is stated on its own, in dates, with what is not planned in the term.
   const bsasPlan = bsas && !bsasOnly ? planBsasAllocation(input, effort) : null;
   // The two-year view's second year is page 3 when there is follow-on or notional work; page 2 only points to it.
   const twoYear = twoYearView({ document, effort, prepared: { customer, termEnd, assumedEnd, bsasOnly, w, customerTimelines }, booked, plannedEnd, followOnRows, bsasPlan, detail });
   const bsasFunds = bsasPlan
-    ? `Broadcom Software Adoption Services (BSAS) provide ${hours(bsasPlan.term.hours)} hours from ${shortDate(bsasPlan.term.termStart)} to ${shortDate(bsasPlan.term.termEnd)}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}. ${hours(bsasPlan.plannedHours)} hours are planned${bsasPlan.forfeitedHours > 0 ? `; ${hours(bsasPlan.forfeitedHours)} hours are not planned and will be forfeited at term end` : ""}.`
+    ? `Broadcom Software Adoption Services (BSAS) are available from ${shortDate(bsasPlan.term.termStart)} to ${shortDate(bsasPlan.term.termEnd)}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}.${bsasPlan.forfeitedHours > 0 ? " Any part not planned by term end is forfeited." : ""}`
     : "";
   const runsFrom = termEnd ? monthAfter(termEnd) : plannedEnd ? monthAfter(plannedEnd) : null;
   const after = twoYear.hasContent
-    ? `<h3>After This Plan</h3><div class="after">${followOnRows.length ? `About <b>${hours(followOnHours)} hours</b> of follow-on work runs ${runsFrom ? `from ${esc(runsFrom)}` : `after the ${windowName}`}. ` : ""}The two-year view and how it's funded are on page 3.</div>`
+    ? `<h3>After This Plan</h3><div class="after">${followOnRows.length ? `Follow-on work runs ${runsFrom ? `from ${esc(runsFrom)}` : `after the ${windowName}`}. ` : ""}The two-year view and how it's funded are on page 3.</div>`
     : bsasFunds ? `<h3>After This Plan</h3><div class="after">No follow-on work is planned yet. ${esc(bsasFunds)}</div>` : "";
 
   const strip = `<div class="strip"><span>${cdwLogoSvg("logo")}Consulting Solution Architecture</span><span>Functional Consumption Plan · Prepared for ${esc(customer)} · ${esc(issued)}</span></div>`;

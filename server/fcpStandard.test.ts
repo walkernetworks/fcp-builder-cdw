@@ -49,17 +49,17 @@ describe("Standard FCP", () => {
     expect(html).not.toContain(">Greenfield Design and Bill of Materials</div>");
   });
 
-  it("prints the hours as delivered, planned and held, adding up to the entitlement, and no internal buckets", () => {
+  it("prints delivered and held work with no hours, and no internal buckets", () => {
     const text = visible(standard(acmeHealthReconciled()));
-    expect(text).toContain("39 delivered, 205 planned and 18 held for change requests add up to the 262-hour entitlement");
+    expect(text).not.toMatch(/\d\s*(BSAS\s+)?(hours?|hrs?)\b(?!\s*(per|a)\s*week)/i);
     expect(text).toContain("Held for change requests, released to follow-on work if unused");
     expect(text).not.toMatch(/Scope by Bucket|Under-funded|catch-up|unfunded|shortfall/i);
   });
 
-  it("states the BSAS pool in the roadmap's follow-on table, in hours and dates only", () => {
+  it("states the BSAS term in the roadmap's follow-on section, in dates only", () => {
     const text = visible(standard(meridianHealth()));
-    expect(text).toContain("BSAS hours");
-    expect(text).toContain("(BSAS) fund this work: 291 hours from 1 May 2027 to 30 Apr 2028. 291 hours are planned.");
+    expect(text).toContain("(BSAS) fund this work from 1 May 2027 to 30 Apr 2028.");
+    expect(text).not.toMatch(/\d\s*(BSAS\s+)?hours\b(?!\s*per week)/i);
   });
 
   it("calls the window the planned delivery window when no entitlement is booked", () => {
@@ -87,22 +87,14 @@ describe("Standard FCP", () => {
     for (const issueNumber of [1, 2]) expect(visible(standard(meridianHealth(), issueNumber))).toContain("To approve this plan, reply to the email it was sent with.");
   });
 
-  it("adds up the work packages: a Total planned row whose role columns sum, then delivered, held and the entitlement total", () => {
+  it("lists the work packages with window and lead role, then delivered and held work, with no hours column or totals", () => {
     const html = standard(acmeHealthReconciled());
     expect(checks(html, acmeHealthReconciled())).toEqual([]);
-    const rows = Array.from((html.match(/<table class="std wp-table"[\s\S]*?<\/table>/) ?? [""])[0].matchAll(/<tr([^>]*)>([\s\S]*?)<\/tr>/g), match => ({ kind: /class="([a-z]+)"/.exec(match[1])?.[1] ?? "plain", cells: Array.from(match[2].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g), cell => cell[1].replace(/<[^>]+>/g, "").trim()) }));
-    const number = (value: string | undefined) => (value ? Number(value.replace(/,/g, "")) : 0);
-    const kinds = rows.filter(row => row.kind !== "cat").map(row => row.kind);
-    expect(kinds.slice(-4)).toEqual(["sub", "done", "hold", "total"]);
-    const planned = rows.filter(row => row.kind === "plain");
-    const sub = rows.find(row => row.kind === "sub")!;
-    const total = rows.find(row => row.kind === "total")!;
-    for (const column of [3, 4, 5]) expect(number(sub.cells[column]), `role column ${column + 1}`).toBe(planned.reduce((sum, row) => sum + number(row.cells[column]), 0));
-    expect(number(sub.cells[3]) + number(sub.cells[4]) + number(sub.cells[5])).toBe(number(sub.cells[6]));
-    expect(sub.cells[0]).toBe("Total planned");
-    // Delivered and held hours have no role split, so the entitlement total shows hours only.
-    expect([3, 4, 5].map(column => total.cells[column])).toEqual(["", "", ""]);
-    expect(number(sub.cells[6]) + rows.filter(row => row.kind === "done" || row.kind === "hold").reduce((sum, row) => sum + number(row.cells[6]), 0)).toBe(number(total.cells[6]));
+    const table = (html.match(/<table class="std wp-table"[\s\S]*?<\/table>/) ?? [""])[0];
+    expect(Array.from(table.matchAll(/<th(?:\s[^>]*)?>([\s\S]*?)<\/th>/g), match => match[1])).toEqual(["Work package", "Window", "Lead role"]);
+    expect(table).not.toMatch(/class="(sub|total)"|(Architect|Sr\. Consultant|PM|Total)<\/th>|class="num"/);
+    expect(table).toMatch(/class="done"/);
+    expect(table).toMatch(/class="hold"/);
   });
 
   it("never prints a zero or unknown count in the estate line", () => {

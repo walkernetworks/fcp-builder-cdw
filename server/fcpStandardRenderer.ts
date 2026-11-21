@@ -1,7 +1,7 @@
 import { buildCustomerEffort, formatWindow } from "../shared/effort";
 import { FIXED_GANTT_CATEGORIES } from "../shared/fcp";
 import { barWindow } from "../shared/buildingBlocks";
-import { customerFacing, DRAFT_MARK, esc, firstSentence, hours, longDate, RESERVE_LINE, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
+import { customerFacing, DRAFT_MARK, esc, firstSentence, longDate, RESERVE_LINE, sentence, shortDate, UNDECIDED_DEPTH } from "./fcpReportParts";
 import { cdwLogoSvg } from "./brand/cdwLogo";
 import { CSS, FIT_SCRIPT, fitAttribute, footerCss, listJoin, packageLabel, PAGE_FIT, summaryParts, summaryTimeline, type SummaryOptions } from "./fcpSummaryRenderer";
 import { renderTimeline, sliceTimeline } from "./timelineHtml";
@@ -99,7 +99,7 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
   const profile = profileRows.length ? `<h3>${esc(platform.split(" ")[0])} Design Profile</h3>${table(["Area", "Design"], profileRows)}` : "";
   const scopePage = page(`<h2>Scope and Architecture</h2><p class="lead">What this plan delivers, what it doesn't, and the platform it builds.</p>${scope}<div class="two"><div>${heard}</div><div>${profile}</div></div>`);
 
-  // ---- Work packages: window, lead role, hours by role, one-line outcome, accepted when
+  // ---- Work packages: window, lead role, one-line outcome, accepted when
   const bars = new Map(document.adoptionTimeline.lanes.flatMap(lane => lane.bars).map(bar => [bar.id, bar]));
   const acceptance = new Map<string, (typeof plan.designPackages)[number]>([...plan.designPackages.map(item => [`bar-playbook-design-${item.id}`, item] as [string, typeof item]), ...plan.implementationPackages.map(item => [`bar-playbook-execution-${item.id}`, item] as [string, typeof item])]);
   const detail = (row: (typeof effort.workPackages)[number]) => {
@@ -108,34 +108,25 @@ export function renderStandardFcpHtml(title: string, input: EngagementDocument, 
     return text.length ? `<div class="wp-detail">${text.map(item => esc(item)).join(" ")}</div>` : "";
   };
   const shown = effort.workPackages.filter(row => !row.deferred && row.total > 0);
-  const num = (value: number) => hours(value);
-  const deliveredRow = delivered ? [[`Delivered to date`], [`\u0001done:${esc(options.deliveredNotes?.length ? options.deliveredNotes.join("; ") : "Hours delivered to date")}`, esc(prepared.termStart && delivered.deliveredAsOf ? formatWindow(prepared.termStart, delivered.deliveredAsOf) : delivered.deliveredAsOf ? `To ${shortDate(delivered.deliveredAsOf)}` : ""), "", "", "", "", num(delivered.delivered)]] : [];
+  const deliveredRow = delivered ? [[`Delivered to date`], [`\u0001done:${esc(options.deliveredNotes?.length ? options.deliveredNotes.join("; ") : "Work delivered to date")}`, esc(prepared.termStart && delivered.deliveredAsOf ? formatWindow(prepared.termStart, delivered.deliveredAsOf) : delivered.deliveredAsOf ? `To ${shortDate(delivered.deliveredAsOf)}` : ""), ""]] : [];
   const packageRows = FIXED_GANTT_CATEGORIES.flatMap(category => {
     const rows = shown.filter(row => row.category === category);
-    return rows.length ? [[esc(category)], ...rows.map(row => [`${esc(packageLabel(row.label))}${detail(row)}`, row.start && row.end ? esc(formatWindow(row.start, row.end)) : "", esc(row.leadRole), num(row.architect), num(row.srConsultant), num(row.projectManager), num(row.total)])] : [];
+    return rows.length ? [[esc(category)], ...rows.map(row => [`${esc(packageLabel(row.label))}${detail(row)}`, row.start && row.end ? esc(formatWindow(row.start, row.end)) : "", esc(row.leadRole)])] : [];
   });
-  const uncategorised = shown.filter(row => !row.category).map(row => [esc(packageLabel(row.label)), "", esc(row.leadRole), num(row.architect), num(row.srConsultant), num(row.projectManager), num(row.total)]);
-  const reserveRow = reserve >= 1 ? [[`\u0001hold:${esc(RESERVE_LINE)}`, "", "", "", "", "", num(reserve)]] : [];
+  const uncategorised = shown.filter(row => !row.category).map(row => [esc(packageLabel(row.label)), "", esc(row.leadRole)]);
+  const reserveRow = reserve >= 1 ? [[`\u0001hold:${esc(RESERVE_LINE)}`, "", ""]] : [];
   const workRows = !shown.length
-    ? effort.rows.filter(row => row.total > 0).map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), "", "", num(row.architect), num(row.srConsultant), num(row.projectManager), num(row.total)])
+    ? effort.rows.filter(row => row.total > 0).map(row => [esc(row.note ? `${row.workstream} (${row.note})` : row.workstream), "", ""])
     : [...packageRows, ...uncategorised];
-  // The planned packages, then their subtotal, then what the entitlement also holds: hours already delivered and the
-  // reserve have no role split, so the entitlement total shows hours only and every role column adds up where it shows.
-  const plannedRoles = (!shown.length ? effort.rows.filter(row => row.total > 0) : shown).reduce((sum, row) => ({ architect: sum.architect + row.architect, srConsultant: sum.srConsultant + row.srConsultant, projectManager: sum.projectManager + row.projectManager, total: sum.total + row.total }), { architect: 0, srConsultant: 0, projectManager: 0, total: 0 });
-  const heldRows = [...(deliveredRow as Cell[][]), ...reserveRow];
-  const plannedRow = heldRows.length ? [[`\u0001sub:Total planned`, "", "", num(plannedRoles.architect), num(plannedRoles.srConsultant), num(plannedRoles.projectManager), num(plannedRoles.total)]] : [];
-  const entitlementTotal = heldRows.length
-    ? [esc(totalLabel), "", "", "", "", "", num(total)]
-    : [esc(totalLabel), "", "", num(effort.totals.architect), num(effort.totals.srConsultant), num(effort.totals.projectManager), num(total)];
-  const workTable = table(["Work package", "Window", "Lead role", "Architect", "Sr. Consultant", "PM", "Total"], [...workRows, ...plannedRow, ...heldRows], { numeric: [3, 4, 5, 6], foot: true, className: "wp-table", total: entitlementTotal });
-  const workPage = page(`<h2>Work Packages and Scoped Effort</h2><p class="lead">Each package with its window, lead role, CDW hours and how it is accepted. ${esc(reconcileNote)}${balanced ? "" : ""}</p>${workTable}`);
+  const workTable = table(["Work package", "Window", "Lead role"], [...workRows, ...(deliveredRow as Cell[][]), ...reserveRow], { className: "wp-table" });
+  const workPage = page(`<h2>Work Packages and Scoped Effort</h2><p class="lead">Each package with its window, lead role and how it is accepted. ${esc(reconcileNote)}</p>${workTable}`);
 
   // ---- Adoption timeline, milestones to date, key dates
   const past = report.milestonesToDate.filter(item => item.date <= today);
   const milestones = past.length ? `<h3>Milestones to Date</h3><div class="milestones">${past.map(item => `<div><b>${esc(shortDate(item.date))}</b><span>${esc(item.event)}</span></div>`).join("")}</div>` : "";
   const timelinePage = page(`${timeline.replace("<h2>Timeline</h2>", "<h2>Adoption Timeline</h2>")}<div class="two">${milestones ? `<div>${milestones}</div>` : ""}<div>${datesSection}</div></div>`);
 
-  // ---- Roadmap: the second year of the two-year view, shared with the Summary's page 3, with hours by role
+  // ---- Roadmap: the second year of the two-year view, shared with the Summary's page 3, 
   // The roadmap is not scaled to one page: when it runs long it continues onto a second page at full size.
   // The header strip is the table head of a wrapper table, so it repeats on every printed page the roadmap runs onto.
   const roadmapPage = parts.twoYear.hasContent ? `<section class="pg"><table class="paged"><thead><tr><td>${strip}</td></tr></thead><tbody><tr><td>${parts.twoYear.stackedHtml}</td></tr></tbody></table></section>` : "";

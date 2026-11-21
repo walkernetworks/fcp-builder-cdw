@@ -34,8 +34,8 @@ describe("no entitlement booked: the Summary", () => {
     await expect(html).toMatchFileSnapshot("./__golden__/summary-cedar-ridge-logistics.html");
   });
 
-  it("shows the plan's hours once, its dates, and says the entitlement is not booked", () => {
-    expect(tiles(summary(cedarRidgeLogistics()))).toEqual(["Planned CDW Hours: 335 hrs", "Plan Starts: 2 Nov 2026", "Planned Completion: 30 Jun 2027", "Entitlement: Not yet booked"]);
+  it("shows the plan's dates, no hours, and says the entitlement is not booked", () => {
+    expect(tiles(summary(cedarRidgeLogistics()))).toEqual(["Plan Starts: 2 Nov 2026", "Planned Completion: 30 Jun 2027", "Entitlement: Not yet booked"]);
   });
 
   it("calls it the planned delivery window, never the entitlement window", () => {
@@ -126,7 +126,7 @@ describe("customer open items: what the customer must do or decide", () => {
     expect(refreshed.report.openItems.map(row => row.item).join(" ")).not.toMatch(/assumed as 12 months/);
     expect(termEndAssumed(refreshed)).toBe(true);
     const summaryText = visible(render(refreshed, "summary"));
-    expect(summaryText).toContain("Entitlement ends; unused hours are not refunded (to be confirmed)");
+    expect(summaryText).toContain("Entitlement ends; unused entitlement is not refunded (to be confirmed)");
     expect(summaryText).toContain("date to be confirmed");
     expect(summaryText).toMatch(/through 2 November 2027 \(to be confirmed\)/);
     expect(visible(render(refreshed))).toContain("(12 months from the start; to be confirmed)");

@@ -92,6 +92,12 @@ export function checkCondensedFcp(html: string, context: { customerName: string;
     if (!dollars.has(expected)) failures.push(`The only dollar figure must be the entitlement value (${expected}).`);
   }
 
+  // The customer formats carry no CDW hours: hours are an internal figure (the handoff and the app show them). A number
+  // followed by "hours" or "hrs" is a figure. The customer team's own weekly time ("6-8 hours per week") is their commitment, not CDW hours.
+  if (context.format) {
+    const figure = /\d[\d,]*\s*(?:BSAS\s+)?(?:hours?|hrs?)\b(?!\s*(?:per|a|\/)\s*(?:week|wk))/i.exec(text);
+    if (figure) failures.push(`An hours figure on a customer format: "${figure[0]}". Customer documents carry no hours.`);
+  }
   // The long report shows every delivery category; a format leaves out the ones with nothing scheduled.
   if (!context.format) for (const category of FIXED_GANTT_CATEGORIES) {
     if (!html.includes(`<div class="timeline-lane timeline-category-lane"><strong>${category.replace(/&/g, "&amp;")}</strong></div>`)) failures.push(`Category missing from the timeline: ${category}.`);

@@ -77,8 +77,9 @@ describe("hours reconciliation", () => {
     expect(reconcileHours(document, effort, FIXTURE_TODAY)).toMatchObject({ planned: 204, balanced: true, exact: false, difference: -1 });
     expect(fundingProblem(document, effort, FIXTURE_TODAY)).toBeNull();
     const text = visible(summary(document));
-    expect(text).toContain("39 delivered, 204 planned and 18 held for change requests use the 262-hour entitlement, to within an hour of rounding");
-    expect(text).toContain("Total, funded by the entitlement 261");
+    // Customer documents carry no hours: the page says what the plan schedules, and the reconciliation stays internal.
+    expect(text).toContain("Work already delivered is shown first; the plan schedules what remains, with a share held for change requests.");
+    expect(text).not.toMatch(/\d\s*(BSAS\s+)?(hours?|hrs?)\b(?!\s*(per|a)\s*week)/i);
     document.report.workPackageHours.push({ id: "bar-platform-enablement", architect: 0, srConsultant: 4, projectManager: 0, placement: "auto", owner: "auto" });
     expect(fundingProblem(document, scopedEffortForDocument(document, FIXTURE_TODAY), FIXTURE_TODAY)).toMatch(/^4 hours are not planned/);
   });
@@ -109,12 +110,12 @@ describe("Summary FCP", () => {
     expect(summary(acmeHealthReconciled())).not.toContain('class="draft-mark"');
   });
 
-  it("prints delivered hours and the reserve as their own rows, so the column adds up to the entitlement", () => {
+  it("prints delivered work and the reserve as their own rows, with no hours", () => {
     const text = visible(summary(acmeHealthReconciled()));
-    expect(text).toContain("Delivered to Date Hours delivered to date Apr – Sep 2026 39");
-    expect(text).toContain("Total, funded by the entitlement 262");
-    expect(text).toContain("Held for change requests, released to follow-on work if unused 18 Total, funded by the entitlement 262");
-    expect(text).toContain("39 delivered, 205 planned and 18 held for change requests add up to the 262-hour entitlement");
+    expect(text).toContain("Delivered to Date Work delivered to date Apr – Sep 2026");
+    expect(text).toContain("Held for change requests, released to follow-on work if unused");
+    expect(text).not.toContain("Total, funded by");
+    expect(text).not.toMatch(/\d\s*(BSAS\s+)?(hours?|hrs?)\b(?!\s*(per|a)\s*week)/i);
     // The plan as scheduled: discovery was delivered, so it is not planned again.
     expect(text).not.toContain("Greenfield Discovery Sessions and Funding Oct 2026");
   });
@@ -123,24 +124,24 @@ describe("Summary FCP", () => {
     expect(deliveredNotes([{ asOf: "2026-09-03", note: "Design discovery." }, { asOf: "2026-07-21", note: "Assessment" }, { asOf: "2026-08-01", note: " " }, { asOf: "2026-08-15", note: "Assessment" }, { asOf: "2026-12-01", note: "Kickoff" }], "2026-09-03")).toEqual(["Assessment", "Design discovery"]);
     expect(deliveredNotes([{ asOf: "2026-09-03", note: null }], "2026-09-03")).toEqual([]);
     const html = renderCondensedFcpHtml("Acme Health", acmeHealthReconciled(), { effort: scopedEffortForDocument(acmeHealthReconciled(), FIXTURE_TODAY), today: FIXTURE_TODAY, format: "summary", version: VERSION, deliveredNotes: ["Assessment", "Design discovery"] });
-    expect(visible(html)).toContain("Delivered to Date Assessment; Design discovery Apr – Sep 2026 39");
+    expect(visible(html)).toContain("Delivered to Date Assessment; Design discovery Apr – Sep 2026");
   });
 
-  it("never prints a gap or the buckets for a small entitlement, and foots to the entitlement", () => {
+  it("never prints a gap or the buckets for a small entitlement, or any hours", () => {
     const document = acmeHealthUnderFunded();
     const html = summary(document);
     const text = visible(html);
     for (const term of ["Under-funded", "under-funded", "Scope by Bucket", "reserve", "more than it funds", "Moved out of", "gap", "bucket"]) expect(text).not.toContain(term);
-    // Planned within its hours: what the entitlement cannot carry is follow-on, so the column foots to the entitlement.
-    expect(text).toContain("Total, funded by the entitlement 90");
-    expect(text).toMatch(/Total follow-on \d+/);
+    expect(text).not.toMatch(/\d\s*(BSAS\s+)?(hours?|hrs?)\b(?!\s*(per|a)\s*week)/i);
     expect(checks(html, document)).toEqual([]);
   });
 
-  it("checks that the work packages column foots", () => {
+  it("refuses to release a customer format that prints an hours figure", () => {
     const document = acmeHealthReconciled();
-    const html = summary(document).replace('Total, funded by the entitlement</td><td></td><td class="num">262', 'Total, funded by the entitlement</td><td></td><td class="num">270');
-    expect(checks(html, document)).toEqual(["A table column does not foot: column 3 totals 270 but its rows sum to 262."]);
+    const html = summary(document).replace("<h3>Work Packages</h3>", "<h3>Work Packages</h3><p>Planned: 262 hours</p>");
+    expect(checks(html, document)).toEqual(['An hours figure on a customer format: "262 hours". Customer documents carry no hours.']);
+    // The customer team's own weekly time is their commitment, not CDW hours.
+    expect(checks(summary(document).replace("<h3>Work Packages</h3>", "<h3>Work Packages</h3><p>Effort: 6-8 hours per week</p>"), document)).toEqual([]);
   });
 
   it("caps key dates, commitments and open items, and says where the rest are", () => {
@@ -163,7 +164,6 @@ describe("Summary FCP", () => {
     document.twoYearPlan = { ...document.twoYearPlan, lanes: document.twoYearPlan.lanes.map(lane => ({ ...lane, bars: [] })) };
     const html = summary(document);
     for (const heading of ["Delivered to Date", "After This Plan", "After the Entitlement", "See the full list"]) expect(html).not.toContain(heading);
-    expect(visible(html)).toContain("Planned CDW Hours");
     expect(checks(html, document)).toEqual([]);
   });
 
