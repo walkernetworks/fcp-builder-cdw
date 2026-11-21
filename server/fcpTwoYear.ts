@@ -1,6 +1,6 @@
 import type { BsasAllocation } from "../shared/bsas";
 import { barWindow } from "../shared/buildingBlocks";
-import { formatWindow, type ScopedEffort, type WorkPackageEffort } from "../shared/effort";
+import { formatWindow, fundedWorkEnd, type ScopedEffort, type WorkPackageEffort } from "../shared/effort";
 import type { EngagementDocument, Timeline } from "../shared/fcp";
 import { customerFacing, esc, firstSentence, hours, longDate, sentence, shortDate, type PreparedReport } from "./fcpReportParts";
 import { renderTimeline, sliceTimeline } from "./timelineHtml";
@@ -53,7 +53,8 @@ export function twoYearView(input: TwoYearInput): TwoYearView {
   const num = (value: number) => hours(value);
 
   // The boundary: the end of the entitlement, or of the plan when nothing is booked.
-  const boundary = booked ? termEnd : plannedEnd;
+  // With an entitlement it is where the funded work ends, which can be before the entitlement does.
+  const boundary = booked ? fundedWorkEnd(customerTimelines.adoption, termEnd) : plannedEnd;
   const notional = customerFacing(customerTimelines.notional);
   const start = /^(\d{4})-(\d{2})/.exec(notional.startDate);
   const end = boundary ? /^(\d{4})-(\d{2})/.exec(boundary) : null;

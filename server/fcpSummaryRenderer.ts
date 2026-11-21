@@ -1,6 +1,6 @@
 import { declinedInCategory, storageLabel } from "../shared/report";
 import type { SupersededVersion } from "../shared/reportFormat";
-import { formatWindow, type ScopedEffort } from "../shared/effort";
+import { formatWindow, fundedWorkEnd, type ScopedEffort } from "../shared/effort";
 import { FIXED_GANTT_CATEGORIES, playbookPlanForFields, type EngagementDocument, type Timeline } from "../shared/fcp";
 import { planBsasAllocation } from "../shared/planView";
 import { reconcileHours } from "../shared/reportFormat";
@@ -305,7 +305,9 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   const moved = followOnRows.filter(row => row.deferred || row.total <= 0).map(row => packageLabel(row.label));
   const remainder = followOnRows.filter(row => !row.deferred && row.total > 0).map(row => packageLabel(row.label).toLowerCase());
   const followOnHours = followOnRows.reduce((sum, row) => sum + row.followOn!.total, 0);
-  const when = termEnd ? `from ${monthAfter(termEnd)}` : `after the ${bsasOnly ? "BSAS term" : booked ? "entitlement" : "planned delivery window"}`;
+  // Follow-on work starts the month after the funded work ends, which can be before the entitlement window closes.
+  const workEnd = termEnd ? fundedWorkEnd(customerTimelines.adoption, termEnd) : null;
+  const when = workEnd ? `from ${monthAfter(workEnd)}` : `after the ${bsasOnly ? "BSAS term" : booked ? "entitlement" : "planned delivery window"}`;
   const whatFollows = moved.length
     ? `${listJoin(moved)}${remainder.length ? `, with the rest of the ${listJoin(remainder)},` : ""} follow${moved.length === 1 && !remainder.length ? "s" : ""} ${when}`
     : `The rest of the ${listJoin(remainder)} follows ${when}`;
@@ -316,7 +318,7 @@ export function summaryParts(title: string, input: EngagementDocument, options: 
   const bsasFunds = bsasPlan
     ? `Broadcom Software Adoption Services (BSAS) provide ${hours(bsasPlan.term.hours)} hours from ${shortDate(bsasPlan.term.termStart)} to ${shortDate(bsasPlan.term.termEnd)}${bsasPlan.term.startAssumed || bsasPlan.term.endAssumed ? " (dates to be confirmed)" : ""}. ${hours(bsasPlan.plannedHours)} hours are planned${bsasPlan.forfeitedHours > 0 ? `; ${hours(bsasPlan.forfeitedHours)} hours are not planned and will be forfeited at term end` : ""}.`
     : "";
-  const runsFrom = termEnd ? monthAfter(termEnd) : plannedEnd ? monthAfter(plannedEnd) : null;
+  const runsFrom = workEnd ? monthAfter(workEnd) : plannedEnd ? monthAfter(plannedEnd) : null;
   const after = twoYear.hasContent
     ? `<h3>After This Plan</h3><div class="after">${followOnRows.length ? `About <b>${hours(followOnHours)} hours</b> of follow-on work runs ${runsFrom ? `from ${esc(runsFrom)}` : `after the ${windowName}`}. ` : ""}The two-year view and how it's funded are on page 3.</div>`
     : bsasFunds ? `<h3>After This Plan</h3><div class="after">No follow-on work is planned yet. ${esc(bsasFunds)}</div>` : "";
